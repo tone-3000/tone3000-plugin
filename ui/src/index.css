@@ -1,0 +1,151 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Arial', monospace;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #000000;
+  color: #ffffff;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+#root {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #000000;
+}
+
+/* Remove focus highlight for knobs */
+.knob:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.knob:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.knob {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Prevent text selection during knob interactions */
+.knob * {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+/* Global prevention of text selection during dragging */
+.knob:active,
+.knob:active * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+}
+
+/* Prevent text selection on the entire body during knob drag */
+body.dragging {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+}
+
+/* Custom Range Slider Styles */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* Fallback for browsers that don't support webkit/moz pseudo-elements */
+input[type='range'] {
+  background: linear-gradient(to right, #ffffff 0%, #ffffff 100%);
+  background-size: 100% 4px;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+input[type='range']::-webkit-slider-track {
+  width: 100%;
+  height: 4px;
+  background: #ffffff;
+  border: none;
+  border-radius: 0;
+}
+
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 20px;
+  width: 20px;
+  background: #ffffff;
+  border: 2px solid #000000;
+  cursor: pointer;
+  border-radius: 0;
+}
+
+input[type='range']::-moz-range-track {
+  width: 100%;
+  height: 4px;
+  background: #ffffff;
+  border: none;
+  border-radius: 0;
+}
+
+input[type='range']::-moz-range-thumb {
+  height: 20px;
+  width: 20px;
+  background: #ffffff;
+  border: 2px solid #000000;
+  cursor: pointer;
+  border-radius: 0;
+}
+
+/* Accent color variations */
+input[type='range'].accent-red::-webkit-slider-thumb {
+  background: #ff0000;
+}
+
+input[type='range'].accent-yellow::-webkit-slider-thumb {
+  background: #ffff00;
+}
+
+input[type='range'].accent-blue::-webkit-slider-thumb {
+  background: #0000ff;
+}
+
+input[type='range'].accent-red::-moz-range-thumb {
+  background: #ff0000;
+}
+
+input[type='range'].accent-yellow::-moz-range-thumb {
+  background: #ffff00;
+}
+
+input[type='range'].accent-blue::-moz-range-thumb {
+  background: #0000ff;
+}
+
+/* Hide scrollbar but keep scroll functionality */
+.hide-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}

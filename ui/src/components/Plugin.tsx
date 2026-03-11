@@ -1,0 +1,376 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { Settings as SettingsIcon } from 'lucide-react';
+import { KnobControl } from './KnobControl';
+import { useParameter } from '../hooks/useParameter';
+import { useFunction } from '../hooks/useFunction';
+import { ChainView } from './ChainView';
+import type { ChainBlockData, Tone } from '../types/tone';
+import Settings from './Settings';
+import { DbMeter } from './DbMeter';
+import { useT3kSelect } from '../hooks/useT3kSelect';
+
+export const Plugin: React.FC = () => {
+  // Plugin Parameters
+  const [inputLevel, setInputLevel] = useParameter('inputLevel', 'slider');
+  const [outputLevel, setOutputLevel] = useParameter('outputLevel', 'slider');
+  const [toneBass, setToneBass] = useParameter('toneBass', 'slider');
+  const [toneMid, setToneMid] = useParameter('toneMid', 'slider');
+  const [toneTreble, setToneTreble] = useParameter('toneTreble', 'slider');
+  const [noiseGate, setNoiseGate] = useParameter('gateThreshold', 'slider');
+
+  // Chain state
+  const [chainBlocks, setChainBlocks] = useState<ChainBlockData[]>([]);
+  const [showSettings, setShowSettings] = useState(false);
+
+  // Native functions
+  const getChainStatus = useFunction<any>('getChainStatus');
+  const loadTone = useFunction<string>('loadTone');
+  const switchModel = useFunction<boolean>('switchModel');
+  const removeChainBlock = useFunction<string>('removeChainBlock');
+  const reorderChainBlocks = useFunction<boolean>('reorderChainBlocks');
+  const testNativeFunction = useFunction<string>('testNativeFunction');
+
+  // Load chain status from backend
+  const loadChainStatus = async () => {
+    try {
+      const status = await getChainStatus.invoke();
+      if (status && status.chain) {
+        const newChain = status.chain as ChainBlockData[];
+        setChainBlocks(newChain);
+      }
+    } catch (error) {
+      console.error('Error loading chain status:', error);
+    }
+  };
+
+  // Remove a block from the chain
+  const removeBlock = async (id: string) => {
+    try {
+      await removeChainBlock.invoke(id);
+      await loadChainStatus();
+    } catch (error) {
+      console.error('Error removing chain block:', error);
+    }
+  };
+
+  // Reorder blocks in the chain
+  const handleReorderBlocks = async (activeId: string, overId: string) => {
+    try {
+      let newBlocks: ChainBlockData[] = [];
+
+      // Optimistically update the UI first
+      setChainBlocks((blocks) => {
+        const oldIndex = blocks.findIndex((block) => block.blockId === activeId);
+        const newIndex = blocks.findIndex((block) => block.blockId === overId);
+
+        if (oldIndex === -1 || newIndex === -1) return blocks;
+
+        newBlocks = [...blocks];
+        const [removed] = newBlocks.splice(oldIndex, 1);
+        newBlocks.splice(newIndex, 0, removed);
+        return newBlocks;
+      });
+
+      // Send the new order to the backend as an array of IDs
+      const newOrder = newBlocks.map((block) => block.blockId);
+      await reorderChainBlocks.invoke(newOrder);
+    } catch (error) {
+      console.error('Error reordering chain blocks:', error);
+      // If backend fails, reload to get the correct state
+      await loadChainStatus();
+    }
+  };
+
+  // Handle tone selection from TONE3000 Select flow
+  const handleToneSelected = useCallback(
+    async (tone: Tone) => {
+      if (!tone.models || tone.models.length === 0) {
+        console.error('Tone has no models');
+        return;
+      }
+
+      console.log('Loading tone:', tone.title);
+
+      try {
+        const blockId = await loadTone.invoke(JSON.stringify(tone));
+
+        if (blockId) {
+          console.log('Tone loaded successfully, block ID:', blockId);
+          await loadChainStatus();
+        } else {
+          console.error('Failed to load tone');
+        }
+      } catch (error) {
+        console.error('Error loading tone:', error);
+      }
+    },
+    [loadTone, loadChainStatus]
+  );
+
+  // TONE3000 Select integration
+  const showSelectView = useFunction<string>('showSelectView');
+  const { startSelectFlow } = useT3kSelect({
+    appId: 'TONE3000-Plugin',
+    onToneSelected: handleToneSelected,
+  });
+
+  // Detect if we're in JUCE
+  const isJuce = typeof (window as any).__JUCE__ !== 'undefined';
+
+  // Listen for messages from select webview
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      if (!event.data || !event.data.type) return;
+
+      switch (event.data.type) {
+        case 'tone3000.toneSelected': {
+          const toneUrl = event.data.data;
+          if (!toneUrl) return;
+
+          console.log('Plugin: Received tone URL from select webview:', toneUrl);
+
+          try {
+            // Fetch tone data from TONE3000
+            const response = await fetch(toneUrl);
+            if (!response.ok) {
+              throw new Error(`Failed to fetch tone: ${response.status}`);
+            }
+
+            const tone = await response.json();
+            console.log('Plugin: Tone fetched successfully:', tone.title);
+
+            // Load the tone
+            handleToneSelected(tone);
+          } catch (error) {
+            console.error('Plugin: Failed to fetch/load tone:', error);
+          }
+          break;
+        }
+
+        case 'tone3000.cancelled':
+          console.log('Plugin: Select flow cancelled');
+          break;
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [handleToneSelected]);
+
+  // Handle switching models within a block
+  const handleSwitchModel = async (blockId: string, modelId: number) => {
+    try {
+      const success = await switchModel.invoke(blockId, modelId);
+      if (success) {
+        await loadChainStatus();
+      } else {
+        console.error('Failed to switch model');
+      }
+    } catch (error) {
+      console.error('Error switching model:', error);
+    }
+  };
+
+  // Open TONE3000 Select flow for adding new model
+  const handleAddModel = async () => {
+    if (isJuce) {
+      // In JUCE: show select webview
+      try {
+        await showSelectView.invoke();
+      } catch (error) {
+        console.error('Failed to show select view:', error);
+      }
+    } else {
+      // In web browser: use redirect flow
+      startSelectFlow();
+    }
+  };
+
+  // Load chain status on mount and periodically
+  useEffect(() => {
+    const loadStatus = async () => {
+      await loadChainStatus();
+    };
+
+    // Test native function communication
+    const testNativeCommunication = async () => {
+      try {
+        console.log('Testing native function communication...');
+        const result = await testNativeFunction.invoke();
+        console.log('Native function test result:', result);
+      } catch (error) {
+        console.error('Native function communication failed:', error);
+      }
+    };
+
+    // Test native communication immediately
+    testNativeCommunication();
+
+    // Load status immediately
+    loadStatus();
+
+    // Load status every 2 seconds
+    const interval = setInterval(loadStatus, 2000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div
+      style={{
+        width: '100%',
+        maxWidth: '100%',
+        height: '710px',
+        display: 'flex',
+        flexDirection: 'column',
+        backgroundColor: '#000000',
+        boxSizing: 'border-box',
+        overflow: 'hidden',
+        color: '#ffffff',
+      }}
+    >
+      {/* Header with T3K Logo and Settings - Full Width */}
+      <div
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          backgroundColor: '#000000',
+          padding: '12px 24px',
+          flexShrink: 0,
+          borderBottom: '1px solid rgba(84, 84, 88, 0.65)',
+        }}
+      >
+        <a
+          href="https://www.tone3000.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16 }}
+        >
+          <img
+            src="/t3k.svg"
+            alt="T3K"
+            style={{
+              height: '30px',
+            }}
+          />
+          <img
+            src="/beta.svg"
+            alt="Beta"
+            style={{
+              height: '12px',
+            }}
+          />
+        </a>
+        <button
+          onClick={() => setShowSettings(true)}
+          title="Settings"
+          style={{
+            background: 'transparent',
+            // border: '1px solid #ffffff',
+            border: 'none',
+            color: '#ffffff',
+            // width: '32px',
+            // height: '32px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            borderRadius: '4px',
+          }}
+        >
+          <SettingsIcon size={18} />
+        </button>
+      </div>
+
+      {/* Middle Section: Meters + Chain View */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          flex: 1,
+          width: '100%',
+          backgroundColor: '#000000',
+          overflow: 'hidden',
+          minHeight: 0,
+          padding: '0 24px',
+        }}
+      >
+        {/* Left Meter - Input */}
+        <div
+          style={{
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            backgroundColor: '#000000',
+          }}
+        >
+          <DbMeter type="input" height={450} />
+        </div>
+
+        {/* Chain View - Center */}
+        <div
+          className="hide-scrollbar"
+          style={{
+            flex: 1,
+            height: '100%',
+            overflow: 'auto',
+            minHeight: 0,
+            padding: '24px 0',
+          }}
+        >
+          <ChainView
+            blocks={chainBlocks}
+            onAddModel={handleAddModel}
+            onRemoveBlock={removeBlock}
+            onReorderBlocks={handleReorderBlocks}
+            onSwitchModel={handleSwitchModel}
+          />
+        </div>
+
+        {/* Right Meter - Output */}
+        <div
+          style={{
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            backgroundColor: '#000000',
+          }}
+        >
+          <DbMeter type="output" height={450} labelsPosition="right" />
+        </div>
+      </div>
+
+      {/* Pinned Knobs Row at Bottom - Full Width */}
+      <div
+        style={{
+          width: '100%',
+          height: '142px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          flexShrink: 0,
+          borderTop: '1px solid rgba(84, 84, 88, 0.65)',
+          background: '#1C1C1E',
+          padding: '0 24px',
+        }}
+      >
+        <KnobControl label="Input" value={inputLevel} onChange={setInputLevel} />
+        <KnobControl label="Gate" value={noiseGate} onChange={setNoiseGate} />
+        <div style={{ display: 'flex', flexDirection: 'row', gap: 32 }}>
+          <KnobControl label="Bass" value={toneBass} onChange={setToneBass} />
+          <KnobControl label="Middle" value={toneMid} onChange={setToneMid} />
+          <KnobControl label="Treble" value={toneTreble} onChange={setToneTreble} />
+        </div>
+        <KnobControl label="Output" value={outputLevel} onChange={setOutputLevel} />
+      </div>
+
+      {/* Settings Modal */}
+      <Settings isOpen={showSettings} onClose={() => setShowSettings(false)} />
+    </div>
+  );
+};

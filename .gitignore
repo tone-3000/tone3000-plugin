@@ -1,0 +1,10 @@
+.sushi/
+.vscode/
+libs/
+bin/
+build/
+release-build/
+output/
+.DS_Store
+plugin/webview/*
+xcode-build/

@@ -1,0 +1,90 @@
+#pragma once
+#include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_gui_basics/juce_gui_basics.h>
+#include <juce_gui_extra/juce_gui_extra.h>
+#include <juce_audio_devices/juce_audio_devices.h>
+#include <juce_audio_utils/juce_audio_utils.h>
+#include <juce_audio_plugin_client/juce_audio_plugin_client.h>
+
+#if JucePlugin_Build_Standalone && ! JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP
+#include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
+#endif
+
+#include "BrowserWindow.h"
+#include "EditorWebViewSetup.h"
+#include "Processor.h"
+#include "BinaryData.h"  // Contains embedded Web UI assets (HTML/CSS/JS)
+
+// Restricts WebView loading to internal resources only
+struct SinglePageBrowser : juce::WebBrowserComponent {
+  using WebBrowserComponent::WebBrowserComponent;
+  bool pageAboutToLoad(const juce::String& newURL) override {
+    return newURL == juce::String("http://localhost:5173/") || newURL == getResourceProviderRoot();
+  }
+};
+
+class TONE3000Editor : public juce::AudioProcessorEditor {
+public:
+  explicit TONE3000Editor(TONE3000Processor&);
+  ~TONE3000Editor() override;
+
+  void paint(juce::Graphics&) override;
+  void resized() override;
+  void parentHierarchyChanged() override;
+
+  int getControlParameterIndex(juce::Component&) override {
+    return controlParameterIndexReceiver.getControlParameterIndex();
+  }
+
+private:
+  TONE3000Processor& processor;
+
+  //==============================================================================
+  // WebView UI
+  //==============================================================================
+  std::unique_ptr<juce::WebBrowserComponent> mainWebView;   // Main Plugin UI
+  std::unique_ptr<BrowserWindow> browserWindow;
+  juce::WebBrowserComponent::Options selectWebViewOptions;
+
+  juce::WebControlParameterIndexReceiver controlParameterIndexReceiver;
+
+  juce::WebSliderRelay inputLevelRelay{"inputLevel"};
+  juce::WebSliderRelay outputLevelRelay{"outputLevel"};
+  juce::WebSliderRelay bassRelay{"toneBass"};
+  juce::WebSliderRelay midRelay{"toneMid"};
+  juce::WebSliderRelay trebleRelay{"toneTreble"};
+  juce::WebSliderRelay gateThresholdRelay{"gateThreshold"};
+  juce::WebToggleButtonRelay normalizeRelay{"normalize"};
+  juce::WebToggleButtonRelay calibrateInputRelay{"calibrateInput"};
+  juce::WebSliderRelay inputCalibrationLevelRelay{"inputCalibrationLevel"};
+
+  // Attachments
+  juce::WebSliderParameterAttachment inputLevelWebAttachment{
+      *processor.parameters.getParameter("inputLevel"), inputLevelRelay, nullptr};
+  juce::WebSliderParameterAttachment outputLevelWebAttachment{
+      *processor.parameters.getParameter("outputLevel"), outputLevelRelay, nullptr};
+  juce::WebSliderParameterAttachment bassWebAttachment{
+      *processor.parameters.getParameter("toneBass"), bassRelay, nullptr};
+  juce::WebSliderParameterAttachment midWebAttachment{*processor.parameters.getParameter("toneMid"),
+                                                      midRelay, nullptr};
+  juce::WebSliderParameterAttachment trebleWebAttachment{
+      *processor.parameters.getParameter("toneTreble"), trebleRelay, nullptr};
+  juce::WebSliderParameterAttachment gateThresholdWebAttachment{
+      *processor.parameters.getParameter("gateThreshold"), gateThresholdRelay, nullptr};
+  juce::WebToggleButtonParameterAttachment normalizeWebAttachment{
+      *processor.parameters.getParameter("normalize"), normalizeRelay, nullptr};
+  juce::WebToggleButtonParameterAttachment calibrateInputWebAttachment{
+      *processor.parameters.getParameter("calibrateInput"), calibrateInputRelay, nullptr};
+  juce::WebSliderParameterAttachment inputCalibrationLevelWebAttachment{
+      *processor.parameters.getParameter("inputCalibrationLevel"), inputCalibrationLevelRelay, nullptr};
+
+  std::optional<juce::WebBrowserComponent::Resource> getResource(const juce::String& url);
+  juce::String getMimeForExtension(const juce::String& extension);
+
+  friend juce::WebBrowserComponent::Options
+  EditorWebViewSetup::buildMainWebViewOptions(TONE3000Editor*);
+  friend juce::WebBrowserComponent::Options
+  EditorWebViewSetup::buildSelectWebViewOptions(TONE3000Editor*);
+
+  JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TONE3000Editor)
+};
