@@ -141,8 +141,14 @@ add_dependencies(${PROJECT_NAME} NAM)
 
 
 if (NOT HEADLESS)
-    # Add Webview GUI files as binary data
+    # Add Webview GUI files as binary data (built by npm run build in ui/)
     file(GLOB_RECURSE WEB_ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/webview/*.*")
+    # Fallback: CI configures before UI build; use placeholder so juce_add_binary_data succeeds.
+    # Reconfigure after "Build UI" step to pick up real assets.
+    if (NOT WEB_ASSETS)
+        file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/_webview_placeholder.txt" " ")
+        list(APPEND WEB_ASSETS "${CMAKE_CURRENT_BINARY_DIR}/_webview_placeholder.txt")
+    endif()
 
     juce_add_binary_data(WebAssets
     SOURCES ${WEB_ASSETS}

@@ -26,9 +26,9 @@ jobs:
             runs-on: macos-14
             os: macos
             arch: arm64
-          # macOS Intel (x86_64)
+          # macOS Intel (x86_64) - macos-13 deprecated; use macos-15-intel
           - name: macOS Intel
-            runs-on: macos-13
+            runs-on: macos-15-intel
             os: macos
             arch: x64
           # Windows x64
@@ -105,6 +105,29 @@ jobs:
           npm ci
           npm run build
           cd ..
+
+      - name: Reconfigure CMake (macOS)
+        if: matrix.os == 'macos'
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch == 'arm64' && 'arm64' || 'x86_64' }} \
+            -DBUILD_AAX=OFF
+
+      - name: Reconfigure CMake (Windows)
+        if: matrix.os == 'windows'
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DBUILD_AAX=OFF
+
+      - name: Reconfigure CMake (Linux)
+        if: matrix.os == 'linux'
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/linux-toolchain.cmake \
+            -DBUILD_AAX=OFF
 
       - name: Build plugin
         run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
