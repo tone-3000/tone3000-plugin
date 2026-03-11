@@ -48,6 +48,7 @@ add_library(NAM STATIC
     ${NAM_SRC}/get_dsp.cpp
     ${NAM_SRC}/lstm.cpp
     ${NAM_SRC}/ring_buffer.cpp
+    ${NAM_SRC}/util.cpp
     ${NAM_SRC}/wavenet.cpp
 )
 target_include_directories(NAM PUBLIC
