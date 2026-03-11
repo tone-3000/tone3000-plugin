@@ -66,7 +66,7 @@ copy_au() {
     if [ ! -d "$source_path" ]; then
         print_error "AU plugin not found at: $source_path"
         print_error "Make sure you have built with AU enabled, e.g.:"
-        print_error "  cmake -B build -S . -DHEADLESS=OFF -DCMAKE_BUILD_TYPE=$build_type"
+        print_error "  cmake -B build -S . -DCMAKE_BUILD_TYPE=$build_type"
         print_error "  cmake --build build"
         exit 1
     fi

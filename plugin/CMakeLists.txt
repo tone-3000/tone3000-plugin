@@ -5,7 +5,8 @@ set(PLUGIN_NAME "TONE3000")            # Name of the plugin (used in the UI)
 set(PLUGIN_CODE T3K0)                # Unique 4-letter code for the plugin
 project(TONE3000 VERSION 0.0.1)        # Set version of the plugin
 
-option(HEADLESS "Disable GUI (headless/embedded build)" ON)
+option(HEADLESS "Disable GUI (headless/embedded build)" OFF)
+option(BUILD_AAX "Build AAX (Avid) format" ON)
 set(_plugin_formats "VST3") # Default plugin format
 
 # Build for Desktop or Embedded
@@ -17,7 +18,9 @@ if (NOT HEADLESS)
     if (APPLE)
         list(APPEND _plugin_formats "AU")
     endif()
-    list(APPEND _plugin_formats "AAX")        # Add AAX (Avid) format
+    if (BUILD_AAX)
+        list(APPEND _plugin_formats "AAX")
+    endif()
     set(VST3_MANIFEST TRUE)                     # Create moduleinfo.json for VST3
     add_compile_definitions(HEADLESS=0)
     if (WIN32)

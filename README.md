@@ -44,18 +44,20 @@ git submodule update --init --recursive
 
 ### 3. Configure and build
 
+The default build includes the GUI (Standalone, VST3, AU, AAX). For headless/embedded builds, add `-DHEADLESS=ON`.
+
 ```sh
 # Debug
-cmake -B build -S . -DHEADLESS=OFF -DCMAKE_BUILD_TYPE=Debug
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug
 
 # Release
-cmake -B build -S . -DHEADLESS=OFF -DCMAKE_BUILD_TYPE=Release
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 ```
 
 **Linux:** use the project’s Linux toolchain, for example:
 
 ```sh
-cmake -B build -S . -DHEADLESS=OFF -DCMAKE_BUILD_TYPE=Release \
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_TOOLCHAIN_FILE=cmake/linux-toolchain.cmake
 ```
 

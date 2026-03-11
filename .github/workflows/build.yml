@@ -1,0 +1,138 @@
+# TONE3000 Plugin - Multi-platform build
+# Builds VST3, Standalone, AU (macOS) on macOS (Intel + Apple Silicon), Windows, and Linux
+
+name: Build Plugin
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS Apple Silicon (arm64)
+          - name: macOS ARM64
+            runs-on: macos-14
+            os: macos
+            arch: arm64
+          # macOS Intel (x86_64)
+          - name: macOS Intel
+            runs-on: macos-13
+            os: macos
+            arch: x64
+          # Windows x64
+          - name: Windows x64
+            runs-on: windows-latest
+            os: windows
+            arch: x64
+          # Linux x64
+          - name: Linux x64
+            runs-on: ubuntu-24.04
+            os: linux
+            arch: x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            pkg-config \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libasound2-dev \
+            libcurl4-openssl-dev \
+            libfreetype6-dev \
+            libx11-dev \
+            libxcomposite-dev \
+            libxcursor-dev \
+            libxinerama-dev \
+            libxrandr-dev \
+            libxrender-dev
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: ui/package-lock.json
+
+      # CMake configure first to fetch JUCE (CPM) - required before npm install (UI depends on libs/juce)
+      - name: Configure CMake (macOS)
+        if: matrix.os == 'macos'
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch == 'arm64' && 'arm64' || 'x86_64' }} \
+            -DBUILD_AAX=OFF
+
+      - name: Configure CMake (Windows)
+        if: matrix.os == 'windows'
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DBUILD_AAX=OFF
+
+      - name: Configure CMake (Linux)
+        if: matrix.os == 'linux'
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/linux-toolchain.cmake \
+            -DBUILD_AAX=OFF
+
+      - name: Build UI
+        run: |
+          cd ui
+          npm ci
+          npm run build
+          cd ..
+
+      - name: Build plugin
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
+
+      - name: Upload artifacts (macOS)
+        if: matrix.os == 'macos' && success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TONE3000-${{ matrix.name }}-${{ env.BUILD_TYPE }}
+          path: |
+            build/plugin/TONE3000_artefacts/${{ env.BUILD_TYPE }}/Standalone
+            build/plugin/TONE3000_artefacts/${{ env.BUILD_TYPE }}/VST3
+            build/plugin/TONE3000_artefacts/${{ env.BUILD_TYPE }}/AU
+
+      - name: Upload artifacts (Windows)
+        if: matrix.os == 'windows' && success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TONE3000-${{ matrix.name }}-${{ env.BUILD_TYPE }}
+          path: |
+            build/plugin/TONE3000_artefacts/${{ env.BUILD_TYPE }}/Standalone
+            build/plugin/TONE3000_artefacts/${{ env.BUILD_TYPE }}/VST3
+
+      - name: Upload artifacts (Linux)
+        if: matrix.os == 'linux' && success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TONE3000-${{ matrix.name }}-${{ env.BUILD_TYPE }}
+          path: |
+            build/plugin/TONE3000_artefacts/${{ env.BUILD_TYPE }}/Standalone
+            build/plugin/TONE3000_artefacts/${{ env.BUILD_TYPE }}/VST3
