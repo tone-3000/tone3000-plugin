@@ -84,8 +84,13 @@ jobs:
             -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch == 'arm64' && 'arm64' || 'x86_64' }} \
             -DBUILD_AAX=OFF
 
+      - name: Install WebView2 (Windows)
+        if: matrix.os == 'windows'
+        run: pwsh -File script/install-webview2.ps1
+
       - name: Configure CMake (Windows)
         if: matrix.os == 'windows'
+        shell: bash
         run: |
           cmake -B build -S . \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
@@ -116,6 +121,7 @@ jobs:
 
       - name: Reconfigure CMake (Windows)
         if: matrix.os == 'windows'
+        shell: bash
         run: |
           cmake -B build -S . \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
