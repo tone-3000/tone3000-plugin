@@ -181,10 +181,14 @@ if (APPLE AND NOT HEADLESS)
     )
 endif()
 
-if (WIN32 AND NOT HEADLESS)
-    target_compile_definitions(${PROJECT_NAME}
-        PUBLIC JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1  # This will enable WebView2 as the WebView backend on Windows
-    )
+if (WIN32)
+    # Prevent windows.h min/max macros from breaking std::min/std::max in AudioDSPTools and plugin code
+    target_compile_definitions(${PROJECT_NAME} PUBLIC NOMINMAX)
+    if (NOT HEADLESS)
+        target_compile_definitions(${PROJECT_NAME}
+            PUBLIC JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1  # This will enable WebView2 as the WebView backend on Windows
+        )
+    endif()
 endif()
 
 # Treat all warnings as errors
