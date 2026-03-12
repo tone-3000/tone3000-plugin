@@ -39,6 +39,16 @@ endif()
 
 add_subdirectory(NeuralAmpModelerCore)
 
+# NeuralAmpModelerCore/tools uses -Wno-error (GCC/Clang only). MSVC doesn't support it; clear it.
+if(MSVC)
+    set_source_files_properties(
+        ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/Dependencies/AudioDSPTools/dsp/wav.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/NAM/dsp.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/NAM/conv1d.cpp
+        PROPERTIES COMPILE_FLAGS ""
+    )
+endif()
+
 # NAM static library - built here (not in submodule) to keep submodule pristine.
 # Must be linked with -force_load/--whole-archive so static factory::Helper
 # initializers (ConvNet, LSTM, WaveNet) are not stripped.

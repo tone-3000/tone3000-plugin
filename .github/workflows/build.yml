@@ -135,7 +135,12 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE=cmake/linux-toolchain.cmake \
             -DBUILD_AAX=OFF
 
-      - name: Build plugin
+      - name: Build plugin (Linux)
+        if: matrix.os == 'linux'
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel 2
+
+      - name: Build plugin (macOS, Windows)
+        if: matrix.os != 'linux'
         run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
 
       - name: Upload artifacts (macOS)
