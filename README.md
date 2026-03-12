@@ -121,6 +121,8 @@ Built artefacts: **Debug** → `build/plugin/TONE3000_artefacts/Debug/VST3/TONE3
 
 From the repo root, run **`./script/cp-VST3.sh`** or **`./script/cp-AU.sh`** (macOS only) to copy the built plugin into your system plugin folder. Add `Debug` to install the Debug build: `./script/cp-VST3.sh Debug`. Then rescan plugins in your DAW. Other scripts: `create-dmg.sh` (macOS disk image), `install-webview2.ps1` (Windows WebView2, run once).
 
+**macOS CI builds:** If you download a build from GitHub Actions and get “damaged and can’t be opened,” macOS has quarantined it. Run **`./script/fix-quarantine-macos.sh <path-to-extracted-folder>`** (e.g. `./script/fix-quarantine-macos.sh ~/Downloads/TONE3000-macOS\ ARM64-Release`) after extracting. This applies to Standalone, VST3, and AU.
+
 ---
 
 ## Audio processing setup
