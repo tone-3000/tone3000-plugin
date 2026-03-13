@@ -4,7 +4,7 @@ import { KnobControl } from './KnobControl';
 import { useParameter } from '../hooks/useParameter';
 import { useFunction } from '../hooks/useFunction';
 import { ChainView } from './ChainView';
-import type { ChainBlockData, Tone } from '../types/tone';
+import type { ChainItem, Tone } from '../types/tone';
 import Settings from './Settings';
 import { DbMeter } from './DbMeter';
 import { useT3kSelect } from '../hooks/useT3kSelect';
@@ -18,8 +18,8 @@ export const Plugin: React.FC = () => {
   const [toneTreble, setToneTreble] = useParameter('toneTreble', 'slider');
   const [noiseGate, setNoiseGate] = useParameter('gateThreshold', 'slider');
 
-  // Chain state
-  const [chainBlocks, setChainBlocks] = useState<ChainBlockData[]>([]);
+  // Chain state (full order from backend, includes insert block)
+  const [chain, setChain] = useState<ChainItem[]>([]);
   const [showSettings, setShowSettings] = useState(false);
 
   // Native functions
@@ -30,13 +30,12 @@ export const Plugin: React.FC = () => {
   const reorderChainBlocks = useFunction<boolean>('reorderChainBlocks');
   const testNativeFunction = useFunction<string>('testNativeFunction');
 
-  // Load chain status from backend
+  // Load chain status from backend (includes insert block position)
   const loadChainStatus = async () => {
     try {
       const status = await getChainStatus.invoke();
       if (status && status.chain) {
-        const newChain = status.chain as ChainBlockData[];
-        setChainBlocks(newChain);
+        setChain(status.chain as ChainItem[]);
       }
     } catch (error) {
       console.error('Error loading chain status:', error);
@@ -53,30 +52,20 @@ export const Plugin: React.FC = () => {
     }
   };
 
-  // Reorder blocks in the chain
-  const handleReorderBlocks = async (activeId: string, overId: string) => {
+  // Reorder items (full order including insert block - backend is source of truth)
+  const handleReorderItems = async (orderedIds: string[]) => {
     try {
-      let newBlocks: ChainBlockData[] = [];
+      const currentOrder = chain.map((item) => item.blockId);
+      const orderChanged =
+        currentOrder.length !== orderedIds.length ||
+        currentOrder.some((id, i) => id !== orderedIds[i]);
 
-      // Optimistically update the UI first
-      setChainBlocks((blocks) => {
-        const oldIndex = blocks.findIndex((block) => block.blockId === activeId);
-        const newIndex = blocks.findIndex((block) => block.blockId === overId);
-
-        if (oldIndex === -1 || newIndex === -1) return blocks;
-
-        newBlocks = [...blocks];
-        const [removed] = newBlocks.splice(oldIndex, 1);
-        newBlocks.splice(newIndex, 0, removed);
-        return newBlocks;
-      });
-
-      // Send the new order to the backend as an array of IDs
-      const newOrder = newBlocks.map((block) => block.blockId);
-      await reorderChainBlocks.invoke(newOrder);
+      if (orderChanged) {
+        await reorderChainBlocks.invoke(orderedIds);
+        await loadChainStatus();
+      }
     } catch (error) {
-      console.error('Error reordering chain blocks:', error);
-      // If backend fails, reload to get the correct state
+      console.error('Error reordering chain items:', error);
       await loadChainStatus();
     }
   };
@@ -323,10 +312,10 @@ export const Plugin: React.FC = () => {
           }}
         >
           <ChainView
-            blocks={chainBlocks}
+            chain={chain}
             onAddModel={handleAddModel}
             onRemoveBlock={removeBlock}
-            onReorderBlocks={handleReorderBlocks}
+            onReorderItems={handleReorderItems}
             onSwitchModel={handleSwitchModel}
           />
         </div>

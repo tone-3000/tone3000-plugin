@@ -3,10 +3,10 @@ import { PlusCircle } from 'lucide-react';
 
 interface AddModelButtonProps {
   onClick: () => void;
-  routing?: 1 | -1;
+  routing?: 2 | 1 | -1;
 }
 
-export const SelectButton: React.FC<AddModelButtonProps> = ({ onClick, routing = 1 }) => {
+export const SelectButton: React.FC<AddModelButtonProps> = ({ onClick, routing }) => {
   return (
     <button
       onClick={onClick}
@@ -32,7 +32,7 @@ export const SelectButton: React.FC<AddModelButtonProps> = ({ onClick, routing =
         position: 'relative',
       }}
     >
-      {routing === 1 && (
+      {(routing === 1 || routing === 2) && (
         <div
           style={{
             height: 110,
@@ -52,7 +52,7 @@ export const SelectButton: React.FC<AddModelButtonProps> = ({ onClick, routing =
       >
         <PlusCircle size={40} strokeWidth={1} />
       </span>
-      {routing === -1 && (
+      {(routing === -1 || routing === 2) && (
         <div
           style={{
             height: 110,

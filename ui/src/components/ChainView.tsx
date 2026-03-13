@@ -14,23 +14,25 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { ChainBlock } from './ChainBlock';
-import type { ChainBlockData } from '../types/tone';
-import { SelectButton } from './SelectButton';
+import type { ChainBlockData, ChainItem } from '../types/tone';
+import { isChainInsertBlock } from '../types/tone';
+import { SortableSelectButton, SELECT_BUTTON_ID } from './SortableSelectButton';
 import { PlusCircle } from 'lucide-react';
+import { SelectButton } from './SelectButton';
 
 interface ChainViewProps {
-  blocks: ChainBlockData[];
+  chain: ChainItem[];
   onAddModel: () => void;
   onRemoveBlock: (id: string) => void;
-  onReorderBlocks: (activeId: string, overId: string) => void;
+  onReorderItems: (orderedIds: string[]) => void;
   onSwitchModel?: (blockId: string, modelId: number) => Promise<void>;
 }
 
 export const ChainView: React.FC<ChainViewProps> = ({
-  blocks,
+  chain,
   onAddModel,
   onRemoveBlock,
-  onReorderBlocks,
+  onReorderItems,
   onSwitchModel,
 }) => {
   const sensors = useSensors(
@@ -40,16 +42,28 @@ export const ChainView: React.FC<ChainViewProps> = ({
     })
   );
 
+  // Chain order from backend (includes insert block)
+  const sortableItems = chain.map((item) => item.blockId);
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
 
-    if (over && active.id !== over.id) {
-      onReorderBlocks(active.id as string, over.id as string);
-    }
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = sortableItems.indexOf(active.id as string);
+    const newIndex = sortableItems.indexOf(over.id as string);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const newItems = [...sortableItems];
+    const [removed] = newItems.splice(oldIndex, 1);
+    newItems.splice(newIndex, 0, removed);
+
+    onReorderItems(newItems);
   };
 
+  const totalItems = sortableItems.length;
   const backgroundArray = Array.from(
-    { length: blocks.length === 0 ? 2 : blocks.length + 1 },
+    { length: totalItems === 1 ? 2 : totalItems },
     (_, i) => i
   );
   return (
@@ -119,21 +133,37 @@ export const ChainView: React.FC<ChainViewProps> = ({
           }}
         >
           <SortableContext
-            items={blocks.map((block) => block.blockId)}
+            items={sortableItems}
             strategy={verticalListSortingStrategy}
           >
-            {blocks.map((block) => (
-              <ChainBlock
-                key={block.blockId}
-                block={block}
-                onRemove={onRemoveBlock}
-                onSwitchModel={onSwitchModel}
-              />
-            ))}
+            {chain.length === 1 && (
+              <>
+                <SelectButton onClick={onAddModel} routing={-1} />
+                <SelectButton onClick={onAddModel} routing={1} />
+              </>
+            )}
+            {chain.length > 1 && chain.map((item) => {
+              if (isChainInsertBlock(item)) {
+                const isFirst = sortableItems.indexOf(SELECT_BUTTON_ID) === 0;
+                const isLast = sortableItems.indexOf(SELECT_BUTTON_ID) === sortableItems.length - 1;
+                return (
+                  <SortableSelectButton
+                    key={SELECT_BUTTON_ID}
+                    onClick={onAddModel}
+                    routing={isFirst ? -1 : isLast ? 1 : 2}
+                  />
+                );
+              }
+              return (
+                <ChainBlock
+                  key={item.blockId}
+                  block={item as ChainBlockData}
+                  onRemove={onRemoveBlock}
+                  onSwitchModel={onSwitchModel}
+                />
+              );
+            })}
           </SortableContext>
-
-          {blocks.length === 0 && <SelectButton onClick={onAddModel} routing={-1} />}
-          <SelectButton onClick={onAddModel} routing={1} />
         </div>
       </DndContext>
     </div>

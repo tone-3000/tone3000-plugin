@@ -53,6 +53,22 @@ export interface ChainBlockData extends Tone {
   activeModelId: number;
 }
 
+/**
+ * Insert block placeholder from backend (pass-through, no audio effect).
+ * Position in chain determines where new tones are added.
+ */
+export interface ChainInsertBlock {
+  blockId: string;
+  isInsertBlock: true;
+}
+
+/** Chain item: either a real block or the insert placeholder */
+export type ChainItem = ChainBlockData | ChainInsertBlock;
+
+export function isChainInsertBlock(item: ChainItem): item is ChainInsertBlock {
+  return 'isInsertBlock' in item && item.isInsertBlock === true;
+}
+
 export interface T3kDownloadEvent {
   type: 't3k.download.tone';
   tone: Tone;

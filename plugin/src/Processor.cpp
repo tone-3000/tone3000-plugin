@@ -23,6 +23,9 @@ TONE3000Processor::TONE3000Processor()
           juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple)),
       loadingThreadPool(2) {  // 2 threads for background loading
   normalizationGainSmoother.reset(48000, 0.05f);
+  // Always start with the insert block (pass-through placeholder for "add tone" position)
+  chainBlocks.push_back(
+      std::make_unique<ChainBlock>(INSERT_BLOCK_ID, ChainBlockType::INSERT));
   DBG("TONE3000Processor constructed");
 }
 
@@ -368,6 +371,9 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     juce::ScopedLock lock(chainMutex);
 
     for (const auto& block : chainBlocks) {
+      if (block->type == ChainBlockType::INSERT) {
+        continue;  // Insert block is pass-through, no audio effect
+      }
       if (!block->loaded || !block->enabled) {
         continue;
       }

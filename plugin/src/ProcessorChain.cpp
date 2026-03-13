@@ -57,7 +57,28 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString) {
   DBG("Created tone block: " << toneId << " (block: " << blockId << ")");
   DBG("Queueing first model for background loading: " << modelName);
 
-  chainBlocks.push_back(std::move(block));
+  // Insert new block at the insert block position, then move insert block to end
+  auto insertIt = std::find_if(
+      chainBlocks.begin(), chainBlocks.end(),
+      [](const std::unique_ptr<ChainBlock>& b) {
+        return b && b->type == ChainBlockType::INSERT;
+      });
+  if (insertIt != chainBlocks.end()) {
+    chainBlocks.insert(insertIt, std::move(block));
+    // Move insert block to end so it's always last after adding a tone
+    insertIt = std::find_if(
+        chainBlocks.begin(), chainBlocks.end(),
+        [](const std::unique_ptr<ChainBlock>& b) {
+          return b && b->type == ChainBlockType::INSERT;
+        });
+    if (insertIt != chainBlocks.end()) {
+      auto insertBlock = std::move(*insertIt);
+      chainBlocks.erase(insertIt);
+      chainBlocks.push_back(std::move(insertBlock));
+    }
+  } else {
+    chainBlocks.push_back(std::move(block));
+  }
 
   struct LoadToneJob : public juce::ThreadPoolJob {
     TONE3000Processor& processor;
@@ -166,6 +187,11 @@ bool TONE3000Processor::switchModel(const std::string& blockId, int modelId) {
 bool TONE3000Processor::removeChainBlock(const std::string& blockId) {
   juce::ScopedLock lock(chainMutex);
 
+  if (blockId == INSERT_BLOCK_ID) {
+    DBG("Cannot remove insert block");
+    return false;
+  }
+
   auto it = std::find_if(
       chainBlocks.begin(), chainBlocks.end(),
       [&blockId](const std::unique_ptr<ChainBlock>& block) { return block->id == blockId; });
@@ -184,7 +210,8 @@ bool TONE3000Processor::reorderChainBlocks(const std::vector<std::string>& newOr
   juce::ScopedLock lock(chainMutex);
 
   if (newOrder.size() != chainBlocks.size()) {
-    DBG("Failed to reorder chain blocks: size mismatch");
+    DBG("Failed to reorder chain blocks: size mismatch (got "
+        << newOrder.size() << ", expected " << chainBlocks.size() << ")");
     return false;
   }
 
@@ -209,7 +236,7 @@ bool TONE3000Processor::reorderChainBlocks(const std::vector<std::string>& newOr
   }
 
   chainBlocks = std::move(reorderedBlocks);
-  DBG("Successfully reordered chain blocks");
+  DBG("Successfully reordered chain blocks (including insert block)");
   return true;
 }
 
@@ -320,6 +347,14 @@ juce::var TONE3000Processor::getChainStatus() const {
   juce::Array<juce::var> chainArray;
 
   for (const auto& block : chainBlocks) {
+    if (block->type == ChainBlockType::INSERT) {
+      juce::DynamicObject::Ptr blockStatus = new juce::DynamicObject();
+      blockStatus->setProperty("blockId", juce::String(block->id));
+      blockStatus->setProperty("isInsertBlock", true);
+      chainArray.add(juce::var(blockStatus.get()));
+      continue;
+    }
+
     juce::var toneVar = juce::JSON::parse(block->toneJson);
 
     if (toneVar.isObject()) {

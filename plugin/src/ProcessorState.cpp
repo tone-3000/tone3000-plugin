@@ -17,30 +17,40 @@ void TONE3000Processor::getStateInformation(juce::MemoryBlock& destData) {
     for (const auto& block : chainBlocks) {
       juce::ValueTree blockState("ChainBlock");
 
+      juce::String typeStr = "ir";
+      if (block->type == ChainBlockType::NAM)
+        typeStr = "nam";
+      else if (block->type == ChainBlockType::INSERT)
+        typeStr = "insert";
+
       blockState.setProperty("id", juce::String(block->id), nullptr);
-      blockState.setProperty("type", block->type == ChainBlockType::NAM ? "nam" : "ir", nullptr);
+      blockState.setProperty("type", typeStr, nullptr);
       blockState.setProperty("enabled", block->enabled, nullptr);
       blockState.setProperty("outputGain", block->outputGainNormalized, nullptr);
       blockState.setProperty("mix", block->mixNormalized, nullptr);
 
-      blockState.setProperty("toneId", block->toneId, nullptr);
-      blockState.setProperty("toneJson", block->toneJson, nullptr);
-      blockState.setProperty("activeModelId", block->activeModelId, nullptr);
+      if (block->type != ChainBlockType::INSERT) {
+        blockState.setProperty("toneId", block->toneId, nullptr);
+        blockState.setProperty("toneJson", block->toneJson, nullptr);
+        blockState.setProperty("activeModelId", block->activeModelId, nullptr);
 
-      juce::ValueTree cacheState("ModelCache");
-      for (const auto& [modelId, modelData] : block->modelCache) {
-        juce::ValueTree cachedModel("CachedModel");
-        cachedModel.setProperty("modelId", modelId, nullptr);
+        juce::ValueTree cacheState("ModelCache");
+        for (const auto& [modelId, modelData] : block->modelCache) {
+          juce::ValueTree cachedModel("CachedModel");
+          cachedModel.setProperty("modelId", modelId, nullptr);
 
-        juce::String base64Data = juce::Base64::toBase64(modelData.data(), modelData.size());
-        cachedModel.setProperty("data", base64Data, nullptr);
+          juce::String base64Data =
+              juce::Base64::toBase64(modelData.data(), modelData.size());
+          cachedModel.setProperty("data", base64Data, nullptr);
 
-        cacheState.appendChild(cachedModel, nullptr);
-      }
-      blockState.appendChild(cacheState, nullptr);
+          cacheState.appendChild(cachedModel, nullptr);
+        }
+        blockState.appendChild(cacheState, nullptr);
 
-      if (block->type == ChainBlockType::IR && block->irTempFile.existsAsFile()) {
-        blockState.setProperty("irTempFilePath", block->irTempFile.getFullPathName(), nullptr);
+        if (block->type == ChainBlockType::IR && block->irTempFile.existsAsFile()) {
+          blockState.setProperty("irTempFilePath",
+                                block->irTempFile.getFullPathName(), nullptr);
+        }
       }
 
       chainState.appendChild(blockState, nullptr);
@@ -79,6 +89,8 @@ void TONE3000Processor::setStateInformation(const void* data, int sizeInBytes) {
     juce::ScopedLock lock(chainMutex);
     chainBlocks.clear();
 
+    bool hasInsertBlock = false;
+
     for (int i = 0; i < chainState.getNumChildren(); ++i) {
       juce::ValueTree blockState = chainState.getChild(i);
       if (blockState.hasType("ChainBlock")) {
@@ -88,16 +100,29 @@ void TONE3000Processor::setStateInformation(const void* data, int sizeInBytes) {
         float outputGain = blockState.getProperty("outputGain");
         float mix = blockState.getProperty("mix");
 
-        int toneId = blockState.getProperty("toneId");
-        juce::String toneJson = blockState.getProperty("toneJson");
-        int activeModelId = blockState.getProperty("activeModelId");
+        ChainBlockType type = ChainBlockType::IR;
+        if (typeStr == "nam")
+          type = ChainBlockType::NAM;
+        else if (typeStr == "insert")
+          type = ChainBlockType::INSERT;
 
-        ChainBlockType type = (typeStr == "nam") ? ChainBlockType::NAM : ChainBlockType::IR;
+        if (type == ChainBlockType::INSERT) {
+          hasInsertBlock = true;
+        }
 
         auto block = std::make_unique<ChainBlock>(blockId, type);
         block->enabled = enabled;
         block->outputGainNormalized = outputGain;
         block->mixNormalized = mix;
+
+        if (type == ChainBlockType::INSERT) {
+          chainBlocks.push_back(std::move(block));
+          continue;
+        }
+
+        int toneId = blockState.getProperty("toneId");
+        juce::String toneJson = blockState.getProperty("toneJson");
+        int activeModelId = blockState.getProperty("activeModelId");
         block->toneId = toneId;
         block->toneJson = toneJson;
         block->activeModelId = activeModelId;
@@ -113,7 +138,8 @@ void TONE3000Processor::setStateInformation(const void* data, int sizeInBytes) {
               juce::MemoryOutputStream outputStream;
               if (juce::Base64::convertFromBase64(outputStream, base64Data)) {
                 std::vector<uint8_t> modelData(outputStream.getDataSize());
-                std::memcpy(modelData.data(), outputStream.getData(), outputStream.getDataSize());
+                std::memcpy(modelData.data(), outputStream.getData(),
+                            outputStream.getDataSize());
 
                 block->modelCache[modelId] = modelData;
               }
@@ -141,6 +167,13 @@ void TONE3000Processor::setStateInformation(const void* data, int sizeInBytes) {
 
         chainBlocks.push_back(std::move(block));
       }
+    }
+
+    // Migration: old project files have no insert block; add it at the end
+    if (!hasInsertBlock) {
+      chainBlocks.push_back(
+          std::make_unique<ChainBlock>(INSERT_BLOCK_ID, ChainBlockType::INSERT));
+      DBG("Added insert block for migration from older project format");
     }
 
     DBG("Chain blocks restored from state: " << chainBlocks.size() << " blocks");

@@ -8,7 +8,10 @@
 #include "NamResampler.h"
 
 // Chain block types
-enum class ChainBlockType { NAM, IR };
+enum class ChainBlockType { NAM, IR, INSERT };
+
+// Fixed ID for the insert/select placeholder block (pass-through, no audio effect)
+constexpr const char* INSERT_BLOCK_ID = "select-insert";
 
 // Chain block data structure
 struct ChainBlock {
