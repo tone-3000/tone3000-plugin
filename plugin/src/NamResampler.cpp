@@ -1,4 +1,5 @@
 #include "NamResampler.h"
+#include "NAM/slimmable.h"
 #include <cmath>
 #include <stdexcept>
 
@@ -67,7 +68,26 @@ void NamResampler::prepare(double sampleRate, int maxBlockSize) {
         wrappedModel->ResetAndPrewarm(modelSampleRate, modelBlockSize);
     }
 
+    // SlimmableContainer / SlimmableWavenet: after max buffer size is set on the root DSP,
+    // SetSlimmableSize re-selects the active tier and ResetAndPrewarms it (see NAM render tools
+    // and NeuralAmpModelerCore tests). Without this, container models can stay on a stale or
+    // uninitialized sub-path until the host would drive a CPU slider.
+    if (auto* slimmable = dynamic_cast<nam::SlimmableModel*>(wrappedModel.get()))
+        slimmable->SetSlimmableSize(requestedSlimmableSize);
+
     isPrepared = true;
+}
+
+bool NamResampler::isSlimmableModel() const {
+    return dynamic_cast<nam::SlimmableModel*>(wrappedModel.get()) != nullptr;
+}
+
+void NamResampler::setSlimmableSize(double val) {
+    requestedSlimmableSize = juce::jlimit(0.5, 1.0, val);
+    if (!isPrepared)
+        return;
+    if (auto* slimmable = dynamic_cast<nam::SlimmableModel*>(wrappedModel.get()))
+        slimmable->SetSlimmableSize(requestedSlimmableSize);
 }
 
 void NamResampler::process(juce::AudioBuffer<float>& buffer) {

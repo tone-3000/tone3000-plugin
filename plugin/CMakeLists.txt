@@ -45,6 +45,7 @@ if(MSVC)
         ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/Dependencies/AudioDSPTools/dsp/wav.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/NAM/dsp.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/NAM/conv1d.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/NAM/wavenet/model.cpp
         PROPERTIES COMPILE_FLAGS ""
     )
 endif()
@@ -56,14 +57,16 @@ set(NAM_SRC "${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/NAM")
 add_library(NAM STATIC
     ${NAM_SRC}/activations.cpp
     ${NAM_SRC}/conv1d.cpp
+    ${NAM_SRC}/container.cpp
     ${NAM_SRC}/convnet.cpp
     ${NAM_SRC}/dsp.cpp
     ${NAM_SRC}/get_dsp.cpp
     ${NAM_SRC}/lstm.cpp
     ${NAM_SRC}/ring_buffer.cpp
-    ${NAM_SRC}/slimmable_wavenet.cpp
     ${NAM_SRC}/util.cpp
-    ${NAM_SRC}/wavenet.cpp
+    ${NAM_SRC}/wavenet/a2_fast.cpp
+    ${NAM_SRC}/wavenet/model.cpp
+    ${NAM_SRC}/wavenet/slimmable.cpp
 )
 target_include_directories(NAM PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore
@@ -71,6 +74,8 @@ target_include_directories(NAM PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/Dependencies/nlohmann
 )
 target_compile_options(NAM PRIVATE -fPIC)
+# A2 standard / A2 nano models use the hand-optimized path when config matches (see NeuralAmpModelerCore).
+target_compile_definitions(NAM PRIVATE NAM_ENABLE_A2_FAST)
 
 juce_add_plugin(${PROJECT_NAME}
     COMPANY_NAME TONE3000

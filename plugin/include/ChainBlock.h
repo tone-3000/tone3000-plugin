@@ -48,6 +48,10 @@ struct ChainBlock {
   float mixNormalized{1.0f};  // 0 = dry, 1 = wet
   juce::LinearSmoothedValue<float> mixSmoother;
 
+  // NAM slimmable / container (A2): 1.0 = std, 0.5 = nano; only used when namIsSlimmable
+  bool namIsSlimmable{false};
+  double namSlimmableSize{1.0};
+
   ChainBlock(const std::string& blockId, ChainBlockType blockType)
       : id(blockId), type(blockType), toneId(0), activeModelId(0), loaded(false),
         enabled(true) {}

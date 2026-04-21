@@ -132,6 +132,20 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             }
           })
       .withNativeFunction(
+          "setBlockNamSlimmableSize",
+          [editor](const juce::Array<juce::var>& args,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            if (args.size() >= 2) {
+              juce::String blockId = args[0].toString();
+              const double size = args[1].isDouble() ? static_cast<double>(args[1])
+                                                     : args[1].toString().getDoubleValue();
+              editor->processor.setBlockNamSlimmableSize(blockId.toStdString(), size);
+              completion(juce::var(true));
+            } else {
+              completion(juce::var(false));
+            }
+          })
+      .withNativeFunction(
           "testNativeFunction",
           [](const juce::Array<juce::var>&,
              juce::WebBrowserComponent::NativeFunctionCompletion completion) {

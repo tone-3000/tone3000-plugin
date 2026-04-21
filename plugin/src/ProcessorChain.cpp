@@ -372,6 +372,11 @@ juce::var TONE3000Processor::getChainStatus() const {
       blockStatus->setProperty("mix", block->mixNormalized);
       blockStatus->setProperty("activeModelId", block->activeModelId);
 
+      if (block->type == ChainBlockType::NAM) {
+        blockStatus->setProperty("namSlimmable", block->namIsSlimmable && block->loaded);
+        blockStatus->setProperty("namSlimmableSize", block->namSlimmableSize);
+      }
+
       chainArray.add(juce::var(blockStatus.get()));
     } else {
       juce::DynamicObject::Ptr blockStatus = new juce::DynamicObject();
@@ -382,6 +387,11 @@ juce::var TONE3000Processor::getChainStatus() const {
       blockStatus->setProperty("enabled", block->enabled);
       blockStatus->setProperty("outputGain", block->outputGainNormalized);
       blockStatus->setProperty("mix", block->mixNormalized);
+
+      if (block->type == ChainBlockType::NAM) {
+        blockStatus->setProperty("namSlimmable", block->namIsSlimmable && block->loaded);
+        blockStatus->setProperty("namSlimmableSize", block->namSlimmableSize);
+      }
 
       chainArray.add(juce::var(blockStatus.get()));
     }
@@ -420,6 +430,21 @@ void TONE3000Processor::setBlockMix(const std::string& blockId, float normalized
   if (it == chainBlocks.end()) return;
   ChainBlock* block = it->get();
   block->mixNormalized = juce::jlimit(0.0f, 1.0f, normalizedMix);
+}
+
+void TONE3000Processor::setBlockNamSlimmableSize(const std::string& blockId, double size) {
+  juce::ScopedLock lock(chainMutex);
+  auto it = std::find_if(
+      chainBlocks.begin(), chainBlocks.end(),
+      [&blockId](const std::unique_ptr<ChainBlock>& b) { return b->id == blockId; });
+  if (it == chainBlocks.end()) return;
+  ChainBlock* block = it->get();
+  if (block->type != ChainBlockType::NAM || !block->namIsSlimmable || block->namResampler == nullptr)
+    return;
+
+  const double clamped = juce::jlimit(0.5, 1.0, size);
+  block->namSlimmableSize = clamped;
+  block->namResampler->setSlimmableSize(clamped);
 }
 
 int TONE3000Processor::calculateTotalLatency() const {

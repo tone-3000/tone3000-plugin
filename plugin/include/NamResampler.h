@@ -125,6 +125,17 @@ public:
      */
     void resetAndPrewarm(double sampleRate, int maxBlockSize);
 
+    /** True if the wrapped NAM model supports SlimmableModel (container / A2 slimmable). */
+    bool isSlimmableModel() const;
+
+    /**
+     * Requested slimmable size (0.5 = nano, 1.0 = full). Clamped to [0.5, 1.0].
+     * Applied in prepare() and immediately if already prepared.
+     */
+    void setSlimmableSize(double val);
+
+    double getSlimmableSize() const noexcept { return requestedSlimmableSize; }
+
 private:
     // The wrapped NAM model
     std::unique_ptr<nam::DSP> wrappedModel;
@@ -146,6 +157,8 @@ private:
     // Prepared state
     bool isPrepared;
     int maxBlockSize;
+
+    double requestedSlimmableSize{1.0};
 
     // Helper to get sample rate from NAM model
     static double extractModelSampleRate(const std::unique_ptr<nam::DSP>& model);

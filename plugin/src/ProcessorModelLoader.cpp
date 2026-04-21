@@ -1,6 +1,22 @@
 #include "Processor.h"
 #include <cmath>
 #include <cstring>
+#include <stdexcept>
+#include <string>
+
+namespace {
+
+/** Single path segment for tempDirectory.getChildFile: API names may contain '/' etc. */
+juce::String uniqueSafeTempLeafName(const juce::String& filename) {
+  juce::String leaf(filename);
+  leaf = leaf.replaceCharacters("/\\:", "___");
+  leaf = leaf.trim();
+  if (leaf.isEmpty())
+    leaf = "model.bin";
+  return juce::Uuid().toString() + "_" + leaf;
+}
+
+} // namespace
 
 // #####################################
 // MODEL LOADING HELPERS
@@ -99,7 +115,7 @@ void TONE3000Processor::loadModelData(ChainBlock& block,
 
   try {
     juce::File tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
-    juce::File tempFile = tempDir.getChildFile(filename);
+    juce::File tempFile = tempDir.getChildFile(uniqueSafeTempLeafName(filename));
 
     if (!tempFile.replaceWithData(modelData.data(), modelData.size())) {
       DBG("Failed to create temporary file");
@@ -112,7 +128,22 @@ void TONE3000Processor::loadModelData(ChainBlock& block,
           nam::get_dsp(std::filesystem::path(tempFile.getFullPathName().toStdString()));
 
       if (rawDsp) {
+        if (rawDsp->NumInputChannels() != 1) {
+          throw std::runtime_error(
+              "NAM model must have 1 input channel, but has "
+              + std::to_string(rawDsp->NumInputChannels()));
+        }
+        if (rawDsp->NumOutputChannels() != 1) {
+          throw std::runtime_error(
+              "NAM model must have 1 output channel, but has "
+              + std::to_string(rawDsp->NumOutputChannels()));
+        }
+
         block.namResampler = std::make_unique<NamResampler>(std::move(rawDsp), hostSampleRate);
+        block.namIsSlimmable = block.namResampler->isSlimmableModel();
+        if (!block.namIsSlimmable)
+          block.namSlimmableSize = 1.0;
+        block.namResampler->setSlimmableSize(block.namSlimmableSize);
 
         if (hostSampleRate > 0) {
           block.namResampler->prepare(hostSampleRate, getBlockSize());

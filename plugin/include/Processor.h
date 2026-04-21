@@ -14,7 +14,7 @@
 #include "NAM/convnet.h"
 #include "NAM/lstm.h"
 #include "NAM/util.h"
-#include "NAM/wavenet.h"
+#include "NAM/wavenet/model.h"
 #include "ChainBlock.h"
 #include "NamResampler.h"
 
@@ -75,6 +75,7 @@ public:
   // Per-block control setters
   void setBlockOutputGain(const std::string& blockId, float normalizedGain);
   void setBlockMix(const std::string& blockId, float normalizedMix);
+  void setBlockNamSlimmableSize(const std::string& blockId, double size);
 
   // Latency management
   int calculateTotalLatency() const;
