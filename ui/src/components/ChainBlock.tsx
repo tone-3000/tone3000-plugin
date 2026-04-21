@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { X as XIcon, GripVertical, FolderClosed } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -68,7 +68,12 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, onRemove, onSwitc
   const [outputGain, setOutputGain] = useState<number>(block.outputGain ?? 0.5);
   const [mix, setMix] = useState<number>(block.mix ?? 1.0);
   const [isSwitchingModel, setIsSwitchingModel] = useState(false);
+  const [localNamSlimmableSize, setLocalNamSlimmableSize] = useState(block.namSlimmableSize ?? 1);
   const backend = useAudioBackend();
+
+  useEffect(() => {
+    setLocalNamSlimmableSize(block.namSlimmableSize ?? 1);
+  }, [block.blockId, block.namSlimmableSize]);
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: block.blockId,
@@ -79,6 +84,10 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, onRemove, onSwitc
     [backend]
   );
   const setBlockMix = useMemo(() => backend.getPluginFunction('setBlockMix'), [backend]);
+  const setBlockNamSlimmableSize = useMemo(
+    () => backend.getPluginFunction('setBlockNamSlimmableSize'),
+    [backend]
+  );
 
   const handleRemove = useCallback(
     (e: React.MouseEvent) => {
@@ -112,6 +121,22 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, onRemove, onSwitc
       }
     },
     [block.blockId, setBlockMix]
+  );
+
+  const namSlimmable = block.namSlimmable === true;
+  const isNano = localNamSlimmableSize < 0.75;
+
+  const handleNamSizeMode = useCallback(
+    (useNano: boolean) => {
+      const size = useNano ? 0.5 : 1.0;
+      setLocalNamSlimmableSize(size);
+      try {
+        Promise.resolve(setBlockNamSlimmableSize(block.blockId, size)).catch(() => {});
+      } catch {
+        // ignore missing native function
+      }
+    },
+    [block.blockId, setBlockNamSlimmableSize]
   );
 
   const handleModelSelect = async (id: string) => {
@@ -148,7 +173,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, onRemove, onSwitc
         transition: isDragging ? 'none' : 'all 0.2s ease',
         borderRadius: '16px',
         width: '640px',
-        height: '254px',
+        // height: '254px',
         padding: '24px',
       }}
     >
@@ -410,20 +435,89 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, onRemove, onSwitc
 
         <div
           style={{
-            display: 'flex',
+            display: 'inline-flex',
             flexDirection: 'row',
             alignItems: 'flex-start',
             gap: '32px',
-            flex: 1,
+            flex: '0 0 auto',
+            alignSelf: 'flex-start',
+            maxWidth: '100%',
+            minWidth: 0,
+            flexWrap: 'wrap',
+            boxSizing: 'border-box',
           }}
         >
           {/* Expanded Model Selector */}
 
-          <ModelSelect
-            options={block.models.map((m) => ({ id: String(m.id), name: m.name }))}
-            value={String(block.activeModelId)}
-            onChange={handleModelSelect}
-          />
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gap: '12px',
+              flex: '0 1 auto',
+              minWidth: 0,
+              maxWidth: '442px',
+            }}
+          >
+            <div style={{ width: '100%', minWidth: 0 }}>
+              <ModelSelect
+                options={block.models.map((m) => ({ id: String(m.id), name: m.name }))}
+                value={String(block.activeModelId)}
+                onChange={handleModelSelect}
+              />
+            </div>
+            {namSlimmable && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  flex: '0 0 auto',
+                  alignSelf: 'flex-start',
+                  width: 'max-content',
+                  maxWidth: '100%',
+                  boxSizing: 'border-box',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(84, 84, 88, 0.65)',
+                  overflow: 'hidden',
+                  opacity: block.loaded && !isSwitchingModel ? 1 : 0.45,
+                  pointerEvents: block.loaded && !isSwitchingModel ? 'auto' : 'none',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => handleNamSizeMode(true)}
+                  style={{
+                    padding: '6px 14px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: 'pointer',
+                    backgroundColor: isNano ? 'rgba(235, 235, 245, 0.18)' : 'transparent',
+                    color: '#ffffff',
+                  }}
+                >
+                  Nano
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleNamSizeMode(false)}
+                  style={{
+                    padding: '6px 14px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    border: 'none',
+                    borderLeft: '1px solid rgba(84, 84, 88, 0.65)',
+                    cursor: 'pointer',
+                    backgroundColor: !isNano ? 'rgba(235, 235, 245, 0.18)' : 'transparent',
+                    color: '#ffffff',
+                  }}
+                >
+                  Std
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Knobs */}
           <div
@@ -432,6 +526,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, onRemove, onSwitc
               alignItems: 'center',
               gap: '24px',
               marginTop: '-24px',
+              flex: '0 0 auto',
             }}
           >
             <KnobControl

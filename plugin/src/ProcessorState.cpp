@@ -29,6 +29,9 @@ void TONE3000Processor::getStateInformation(juce::MemoryBlock& destData) {
       blockState.setProperty("outputGain", block->outputGainNormalized, nullptr);
       blockState.setProperty("mix", block->mixNormalized, nullptr);
 
+      if (block->type == ChainBlockType::NAM)
+        blockState.setProperty("namSlimmableSize", block->namSlimmableSize, nullptr);
+
       if (block->type != ChainBlockType::INSERT) {
         blockState.setProperty("toneId", block->toneId, nullptr);
         blockState.setProperty("toneJson", block->toneJson, nullptr);
@@ -114,6 +117,10 @@ void TONE3000Processor::setStateInformation(const void* data, int sizeInBytes) {
         block->enabled = enabled;
         block->outputGainNormalized = outputGain;
         block->mixNormalized = mix;
+
+        if (type == ChainBlockType::NAM && blockState.hasProperty("namSlimmableSize"))
+          block->namSlimmableSize = juce::jlimit(
+              0.5, 1.0, static_cast<double>(blockState.getProperty("namSlimmableSize")));
 
         if (type == ChainBlockType::INSERT) {
           chainBlocks.push_back(std::move(block));

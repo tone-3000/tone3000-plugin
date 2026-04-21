@@ -31,25 +31,28 @@ TONE3000Processor::TONE3000Processor()
 
 juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createParameterLayout() {
   juce::AudioProcessorValueTreeState::ParameterLayout layout;
-  layout.add(
-      std::make_unique<juce::AudioParameterFloat>("inputLevel", "inputLevel", 0.0f, 1.0f, 0.5f));
-  layout.add(
-      std::make_unique<juce::AudioParameterFloat>("toneBass", "toneBass", 0.01f, 10.0f, 5.0f));
-  layout.add(std::make_unique<juce::AudioParameterFloat>("toneMid", "toneMid", 0.01f, 10.0f, 5.0f));
-  layout.add(
-      std::make_unique<juce::AudioParameterFloat>("toneTreble", "toneTreble", 0.01f, 10.0f, 5.0f));
-  layout.add(
-      std::make_unique<juce::AudioParameterFloat>("outputLevel", "outputLevel", 0.0f, 1.0f, 0.5f));
-  layout.add(std::make_unique<juce::AudioParameterFloat>("gateThreshold", "gateThreshold",
-                                                         -100.0f, 0.0f, -80.0f));
-  layout.add(std::make_unique<juce::AudioParameterFloat>("targetLoudness", "targetLoudness", -60.0f,
-                                                         0.0f, -18.0f));
-  layout.add(std::make_unique<juce::AudioParameterBool>("normalize", "normalize", true));
-  
-  // Input calibration parameters
-  layout.add(std::make_unique<juce::AudioParameterBool>("calibrateInput", "calibrateInput", false));
-  layout.add(std::make_unique<juce::AudioParameterFloat>("inputCalibrationLevel", "inputCalibrationLevel", 
-                                                         -60.0f, 60.0f, 12.0f));
+  // Non-zero version hints are required for AU (Logic/GarageBand) parameter stability; see
+  // juce_AudioProcessor.cpp validateParameter() when JucePlugin_Build_AU is defined.
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"inputLevel", 1}, "inputLevel", 0.0f, 1.0f, 0.5f));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"toneBass", 2}, "toneBass", 0.01f, 10.0f, 5.0f));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"toneMid", 3}, "toneMid", 0.01f, 10.0f, 5.0f));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"toneTreble", 4}, "toneTreble", 0.01f, 10.0f, 5.0f));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"outputLevel", 5}, "outputLevel", 0.0f, 1.0f, 0.5f));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"gateThreshold", 6}, "gateThreshold", -100.0f, 0.0f, -80.0f));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"targetLoudness", 7}, "targetLoudness", -60.0f, 0.0f, -18.0f));
+  layout.add(std::make_unique<juce::AudioParameterBool>(
+      juce::ParameterID{"normalize", 8}, "normalize", true));
+  layout.add(std::make_unique<juce::AudioParameterBool>(
+      juce::ParameterID{"calibrateInput", 9}, "calibrateInput", false));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"inputCalibrationLevel", 10}, "inputCalibrationLevel", -60.0f, 60.0f, 12.0f));
 
   return layout;
 }
