@@ -4,11 +4,18 @@ A **JUCE-based VST3/AU plugin** that lets you load **Neural Amp Modeler (NAM)** 
 
 ## What it does
 
-- **Load NAM and IR from TONE3000** — Click the **+** icon to open the TONE3000 Select flow in an in-plugin window. Sign in with your TONE3000 account, pick a tone, and it’s added to your chain with the correct model/IR.
+- **Load NAM and IR from TONE3000** — Click the **+** icon to open the TONE3000 Select flow (`prompt=select_tone`, OAuth 2.0 + PKCE) in an in-plugin window. Sign in with your TONE3000 account, pick a tone, and it’s added to your chain with the correct model/IR.
 - **Build a signal chain** — Add multiple NAM and IR blocks, reorder them, switch between models per tone, and remove blocks.
 - **Cross-platform** — Same plugin on macOS, Windows, and Linux (desktop). UI is a React app served in a native WebView (WebView2 on Windows, WebKit elsewhere).
 
-The plugin uses **NeuralAmpModelerCore** (in-tree) for NAM processing, **AudioDSPTools** (in-tree) for resampling, and the [TONE3000 Select API](https://www.tone3000.com/api#select) for browsing and loading tones.
+The plugin uses **NeuralAmpModelerCore** (in-tree) for NAM processing, **AudioDSPTools** (in-tree) for resampling, and the [TONE3000 API](https://www.tone3000.com/api) for browsing and loading tones.
+
+### How the Select flow works in this plugin
+
+1. The user clicks **+**. JUCE opens a separate webview window pointing at the bundled `select.html`.
+2. `select.html` generates a PKCE challenge and redirects to `https://www.tone3000.com/api/v1/oauth/authorize?prompt=select_tone&...`. The user signs in (if needed) and picks a tone inside that webview.
+3. TONE3000 redirects back to `select.html?code=…&state=…&tone_id=…`. The webview exchanges the code for `{access_token, refresh_token}` and forwards `{tokens, toneId}` to the main webview over the JUCE bridge.
+4. The main webview calls `GET /api/v1/tones/{id}` and `GET /api/v1/models?tone_id=…`, hands the access token to the native side via the `setAccessToken` JUCE function, and then asks native to load the tone. The C++ download path attaches `Authorization: Bearer …` when fetching `model_url`.
 
 ---
 
@@ -35,6 +42,27 @@ cd ..
 ```
 
 Do this on all platforms (Linux, macOS, Windows) before building the C++ plugin.
+
+#### TONE3000 publishable key + redirect URIs
+
+Before the first build (or before running the dev server), set your TONE3000 publishable key — the bundled webview reads it at build time:
+
+```sh
+# ui/.env (or pass on the command line for a single build)
+VITE_T3K_PUBLISHABLE_KEY=t3k_pub_your_key_here
+# Optional — point at staging or self-hosted TONE3000:
+# VITE_T3K_API_DOMAIN=https://staging.tone3000.com
+```
+
+Then in TONE3000 → Settings → API Keys, add the redirect URIs the webview will use to your key:
+
+| Build         | Redirect URI                          |
+| ------------- | ------------------------------------- |
+| Vite dev      | `http://localhost:5173/select.html`   |
+| macOS / Linux | `juce://juce.backend/select.html`     |
+| Windows       | `https://juce.backend/select.html`    |
+
+Localhost origins are auto-allowed during development, so step 1 only matters for release builds.
 
 ### 2. Get submodules
 
@@ -152,5 +180,6 @@ It uses the **JUCE** framework, which has its own licensing (including optional 
 ## Links
 
 - [TONE3000](https://www.tone3000.com) — NAM captures and IRs.
-- [TONE3000 API — Select](https://www.tone3000.com/api#select) — Select flow and parameters.
+- [TONE3000 API](https://www.tone3000.com/api) — full API reference, including the Select flow (`prompt=select_tone`).
+- [TONE3000 API examples](https://github.com/tone-3000/api) — reference integrations + the `tone3000-client.ts` this plugin's client is adapted from.
 - [Neural Amp Modeler](https://github.com/sdatkinson/neural-amp-modeler) — Original NAM project (plugin uses in-tree **NeuralAmpModelerCore**).

@@ -3,8 +3,18 @@ export interface Model {
   name: string;
   model_url: string;
   created_at: string;
+  updated_at?: string;
   size: string;
   user_id: string;
+  tone_id?: number;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
 }
 
 export interface User {

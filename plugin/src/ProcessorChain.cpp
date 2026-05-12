@@ -251,25 +251,49 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, const j
     return;
   }
 
-  juce::ScopedLock lock(chainMutex);
+  const juce::String filename =
+      modelName + (type == ChainBlockType::NAM ? ".nam" : ".wav");
 
-  auto it = std::find_if(chainBlocks.begin(), chainBlocks.end(),
-                         [&blockId](const std::unique_ptr<ChainBlock>& block) {
-                           return block->id == blockId;
-                         });
+  double namPersistedSlimmable = 1.0;
+  {
+    juce::ScopedLock lock(chainMutex);
+    auto it = std::find_if(chainBlocks.begin(), chainBlocks.end(),
+                           [&blockId](const std::unique_ptr<ChainBlock>& block) {
+                             return block->id == blockId;
+                           });
 
-  if (it == chainBlocks.end()) {
-    DBG("[Background] Block not found: " << blockId);
-    return;
+    if (it == chainBlocks.end()) {
+      DBG("[Background] Block not found: " << blockId);
+      return;
+    }
+
+    ChainBlock* block = it->get();
+    namPersistedSlimmable = block->namSlimmableSize;
+    block->modelCache[firstModelId] = modelData;
   }
 
-  ChainBlock* block = it->get();
-  block->modelCache[firstModelId] = modelData;
+  PreparedBlockModel prepared =
+      prepareBlockModelOffThread(type, modelData, filename, namPersistedSlimmable);
 
-  juce::String filename = modelName + (type == ChainBlockType::NAM ? ".nam" : ".wav");
-  loadModelData(*block, modelData, filename);
+  {
+    juce::ScopedLock lock(chainMutex);
 
-  DBG("[Background] Successfully loaded tone for block: " << blockId);
+    auto it = std::find_if(chainBlocks.begin(), chainBlocks.end(),
+                           [&blockId](const std::unique_ptr<ChainBlock>& block) {
+                             return block->id == blockId;
+                           });
+
+    if (it == chainBlocks.end()) {
+      DBG("[Background] Block not found after prepare: " << blockId);
+      return;
+    }
+
+    ChainBlock* block = it->get();
+    applyPreparedModelToChainBlock(*block, prepared);
+
+    if (prepared.success)
+      DBG("[Background] Successfully loaded tone for block: " << blockId);
+  }
 }
 
 void TONE3000Processor::switchModelInBackground(const std::string& blockId, int modelId,
@@ -279,6 +303,8 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
 
   std::vector<uint8_t> modelData;
   bool needsFetch = false;
+  ChainBlockType blockTypeForPrepare = ChainBlockType::NAM;
+  double namPersistedSlimmable = 1.0;
 
   {
     juce::ScopedLock lock(chainMutex);
@@ -294,6 +320,8 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
     }
 
     ChainBlock* block = it->get();
+    blockTypeForPrepare = block->type;
+    namPersistedSlimmable = block->namSlimmableSize;
     auto cacheIt = block->modelCache.find(modelId);
 
     if (cacheIt != block->modelCache.end()) {
@@ -314,6 +342,12 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
     }
   }
 
+  const juce::String filename =
+      modelName + (blockTypeForPrepare == ChainBlockType::NAM ? ".nam" : ".wav");
+
+  PreparedBlockModel prepared = prepareBlockModelOffThread(blockTypeForPrepare, modelData, filename,
+                                                           namPersistedSlimmable);
+
   {
     juce::ScopedLock lock(chainMutex);
 
@@ -323,7 +357,7 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
                            });
 
     if (it == chainBlocks.end()) {
-      DBG("[Background] Block was removed during fetch");
+      DBG("[Background] Block was removed during fetch/install");
       return;
     }
 
@@ -332,12 +366,11 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
     if (needsFetch) {
       block->modelCache[modelId] = modelData;
     }
-
-    juce::String filename = modelName + (block->type == ChainBlockType::NAM ? ".nam" : ".wav");
-    loadModelData(*block, modelData, filename);
+    applyPreparedModelToChainBlock(*block, prepared);
   }
 
-  DBG("[Background] Successfully switched to model ID: " << modelId);
+  if (prepared.success)
+    DBG("[Background] Successfully switched to model ID: " << modelId);
 }
 
 juce::var TONE3000Processor::getChainStatus() const {
@@ -469,4 +502,15 @@ void TONE3000Processor::updateLatencyCompensation() {
   int newTotalLatency = calculateTotalLatency();
   setLatencySamples(newTotalLatency);
   DBG("Total plugin latency updated to: " << newTotalLatency << " samples");
+}
+
+void TONE3000Processor::setAccessToken(const juce::String& token) {
+  juce::ScopedLock lock(accessTokenMutex);
+  accessToken = token;
+  DBG("TONE3000 access token updated (" << token.length() << " chars)");
+}
+
+juce::String TONE3000Processor::getAccessToken() const {
+  juce::ScopedLock lock(accessTokenMutex);
+  return accessToken;
 }

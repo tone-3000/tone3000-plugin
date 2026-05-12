@@ -153,6 +153,20 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             completion(juce::var("Native function test successful"));
           })
       .withNativeFunction(
+          "setAccessToken",
+          [editor](const juce::Array<juce::var>& args,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            // Called by the main webview after the OAuth Select flow completes
+            // (and again on every refresh). Stored on the processor so that
+            // background model downloads can attach the Bearer header.
+            if (args.size() >= 1 && args[0].isString()) {
+              editor->processor.setAccessToken(args[0].toString());
+              completion(juce::var(true));
+            } else {
+              completion(juce::var(false));
+            }
+          })
+      .withNativeFunction(
           "showSelectView",
           [editor](const juce::Array<juce::var>& args,
                    juce::WebBrowserComponent::NativeFunctionCompletion completion) {

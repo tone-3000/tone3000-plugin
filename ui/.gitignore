@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Environment / secrets — keep `.env.example` checked in but never the real keys.
+.env
+.env.*
+!.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
