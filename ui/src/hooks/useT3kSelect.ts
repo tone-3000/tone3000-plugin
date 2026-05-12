@@ -1,71 +1,138 @@
-import { useEffect, useCallback, useRef } from 'react';
-import type { Tone } from '../types/tone';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { PUBLISHABLE_KEY, T3K_ARCHITECTURE, getRedirectUri } from '../t3k/config';
+import {
+  T3KClient,
+  startSelectFlow,
+  handleOAuthCallback,
+} from '../t3k/tone3000-client';
+import type { T3KTokens } from '../t3k/tone3000-client';
+import type { Model, Tone } from '../types/tone';
 
 interface UseT3kSelectOptions {
-  appId: string;
-  onToneSelected?: (tone: Tone) => void;
+  /** Called when a selection has been resolved into a Tone (with embedded models). */
+  onToneSelected?: (tone: Tone & { models: Model[] }, tokens: T3KTokens) => void;
+  /** Called whenever a fresh access token is available (initial + refresh). */
+  onAccessTokenUpdated?: (accessToken: string) => void;
 }
 
-export const useT3kSelect = ({ appId, onToneSelected }: UseT3kSelectOptions) => {
-  const processingRef = useRef(false);
+/**
+ * Drives the TONE3000 Select OAuth flow on behalf of the main webview.
+ *
+ * - In a desktop browser (i.e. no JUCE bridge present) it runs the OAuth flow
+ *   in the same window, exchanging the callback when we land back here.
+ * - Inside JUCE, the select webview runs the flow and hands tokens + toneId
+ *   back to the main view via the message bus — `applySelection` accepts that
+ *   payload and finishes the work (fetch tone metadata + models, fire the
+ *   callback).
+ *
+ * Either way, after a successful selection we hold a `T3KClient` with valid
+ * tokens that can be reused for follow-up requests (e.g. switching models).
+ */
+export const useT3kSelect = ({
+  onToneSelected,
+  onAccessTokenUpdated,
+}: UseT3kSelectOptions) => {
+  const tokenListenerRef = useRef(onAccessTokenUpdated);
+  tokenListenerRef.current = onAccessTokenUpdated;
 
-  // Handle the callback when user returns from TONE3000 select page (web browser only)
+  const client = useMemo(() => {
+    const c = new T3KClient(PUBLISHABLE_KEY, () => {
+      // If the refresh token is rejected we lose access — the user has to
+      // start the Select flow again from the +. Nothing to do automatically.
+      console.warn('TONE3000 session expired; re-auth required.');
+    });
+    // Forward initial token sets *and* automatic refreshes to the consumer
+    // so the native-side Bearer token always matches the live access token.
+    c.setTokenListener((tokens) => tokenListenerRef.current?.(tokens.access_token));
+    return c;
+  }, []);
+
+  const setTokens = useCallback(
+    (tokens: T3KTokens) => {
+      client.setTokens(tokens);
+    },
+    [client]
+  );
+
+  const fetchToneAndModels = useCallback(
+    async (toneId: string | number) => {
+      const [tone, modelsRes] = await Promise.all([
+        client.getTone(toneId),
+        // Filter by architecture so we only ever get models the plugin can run.
+        client.listModels(toneId, { architecture: T3K_ARCHITECTURE }),
+      ]);
+      return { ...tone, models: modelsRes.data } as Tone & { models: Model[] };
+    },
+    [client]
+  );
+
+  /**
+   * Called from the JUCE select webview message bridge: take the tokens +
+   * toneId we just received, store the tokens, fetch tone metadata + models,
+   * and forward the combined Tone object to the consumer.
+   */
+  const applySelection = useCallback(
+    async (payload: { tokens: T3KTokens; toneId: string | number }) => {
+      setTokens(payload.tokens);
+      const tone = await fetchToneAndModels(payload.toneId);
+      onToneSelected?.(tone, payload.tokens);
+    },
+    [setTokens, fetchToneAndModels, onToneSelected]
+  );
+
+  // For the standalone web-browser dev path: handle the OAuth callback if the
+  // page just landed back from tone3000.com.
+  const processedCallbackRef = useRef(false);
   useEffect(() => {
-    const handleCallback = async () => {
-      // Prevent duplicate processing
-      if (processingRef.current) {
-        return;
-      }
+    if (processedCallbackRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const isCallback =
+      params.has('code') ||
+      (params.has('error') && params.has('state')) ||
+      params.has('canceled');
+    if (!isCallback) return;
+    processedCallbackRef.current = true;
 
-      const urlParams = new URLSearchParams(window.location.search);
-      const toneUrl = urlParams.get('tone_url');
+    handleOAuthCallback(PUBLISHABLE_KEY, getRedirectUri())
+      .then(async (result) => {
+        const cleaned = new URL(window.location.href);
+        cleaned.search = '';
+        window.history.replaceState({}, '', cleaned.toString());
 
-      if (!toneUrl) {
-        return;
-      }
-
-      processingRef.current = true;
-
-      try {
-        console.log('Fetching tone from URL:', toneUrl);
-
-        const response = await fetch(toneUrl);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch tone: ${response.statusText}`);
+        if (!result.ok) {
+          if (result.error !== 'canceled') {
+            console.error('TONE3000 OAuth failed:', result.error);
+          }
+          return;
         }
 
-        const tone: Tone = await response.json();
-        console.log('Tone fetched successfully:', tone.title);
-
-        // Clean up URL by removing the tone_url parameter
-        const newUrl = new URL(window.location.href);
-        newUrl.searchParams.delete('tone_url');
-        window.history.replaceState({}, '', newUrl.toString());
-
-        // Call the callback with the tone data
-        if (onToneSelected) {
-          onToneSelected(tone);
+        setTokens(result.tokens);
+        if (result.toneId) {
+          const tone = await fetchToneAndModels(result.toneId);
+          onToneSelected?.(tone, result.tokens);
         }
-      } catch (error) {
-        console.error('Error loading tone from Select callback:', error);
-      } finally {
-        processingRef.current = false;
-      }
-    };
+      })
+      .catch((err) => console.error('TONE3000 callback error:', err));
+  }, [setTokens, fetchToneAndModels, onToneSelected]);
 
-    handleCallback();
-  }, [onToneSelected]);
-
-  // Function to initiate the Select flow (web browser only now)
-  const startSelectFlow = useCallback(() => {
-    const redirectUrl = encodeURIComponent(window.location.href);
-    const selectUrl = `https://www.tone3000.com/api/v1/select?app_id=${encodeURIComponent(appId)}&redirect_url=${redirectUrl}`;
-
-    console.log('Starting TONE3000 Select flow:', selectUrl);
-    window.location.href = selectUrl;
-  }, [appId]);
+  /** Kick off the Select flow in the current window (web-browser path). */
+  const startSelectFlowInBrowser = useCallback(() => {
+    if (!PUBLISHABLE_KEY) {
+      console.error(
+        'TONE3000 publishable key not configured. Set VITE_T3K_PUBLISHABLE_KEY at build time.'
+      );
+      return;
+    }
+    startSelectFlow(PUBLISHABLE_KEY, getRedirectUri(), {
+      menubar: true,
+      architecture: T3K_ARCHITECTURE,
+    });
+  }, []);
 
   return {
-    startSelectFlow,
+    client,
+    applySelection,
+    startSelectFlowInBrowser,
+    setTokens,
   };
 };

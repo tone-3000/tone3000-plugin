@@ -334,6 +334,7 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   if (numSamples <= 0 || numChannels <= 0) {
     DBG("Invalid buffer: samples=" << numSamples << ", channels=" << numChannels);
     buffer.clear();
+    outputMeterLevel.store(-60.0f);
     return;
   }
 
@@ -460,11 +461,15 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
             if (right) right[i] *= g;
           }
         } catch (const std::exception& e) {
-          DBG("Error in NAM processing setup for block " << block->id << ": " << e.what());
-          std::cout << "Error in NAM processing setup for block " << block->id << ": " << e.what()
+          DBG("Error in NAM processing for block " << block->id << ": " << e.what());
+          std::cout << "Error in NAM processing for block " << block->id << ": " << e.what()
                     << std::endl;
-          buffer.clear();
-          return;
+          block->loaded = false;
+          buffer.copyFrom(0, 0, tempDryBuffer, 0, 0, numSamples);
+          if (numChannels > 1) {
+            buffer.copyFrom(1, 0, tempDryBuffer, 1, 0, numSamples);
+          }
+          continue;
         }
       } else if (block->type == ChainBlockType::IR && block->convolverLeft != nullptr &&
                  block->convolverRight != nullptr) {

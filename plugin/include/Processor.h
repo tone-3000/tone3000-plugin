@@ -60,6 +60,12 @@ public:
   bool switchModel(const std::string& blockId, int modelId);
   bool removeChainBlock(const std::string& blockId);
   bool reorderChainBlocks(const std::vector<std::string>& newOrder);
+
+  // TONE3000 OAuth access token. Updated by the UI after the Select flow and
+  // again on every refresh. `fetchModelFromUrl` attaches it as a Bearer header
+  // because the new TONE3000 model_url endpoints reject anonymous requests.
+  void setAccessToken(const juce::String& token);
+  juce::String getAccessToken() const;
   
   // Background loading (called by thread pool jobs)
   void loadToneInBackground(const std::string& blockId, const juce::String& toneJson, 
@@ -92,12 +98,40 @@ private:
   
   // Tone loading helpers
   std::vector<uint8_t> fetchModelFromUrl(const juce::String& modelUrl);
-  void loadModelData(ChainBlock& block, const std::vector<uint8_t>& modelData, 
+  void loadModelData(ChainBlock& block, const std::vector<uint8_t>& modelData,
                      const juce::String& filename);
+
+  /** max(maxBlockSize, getBlockSize(), 1); avoids NamResampler prepare(0, …)→runtime errors. */
+  int computeEffectiveNamPrepareBlockSize() const noexcept;
+
+  struct PreparedBlockModel {
+    bool success = false;
+
+    std::unique_ptr<NamResampler> namResampler;
+    bool namIsSlimmable = false;
+    int namLatencySamples = 0;
+
+    std::unique_ptr<juce::dsp::Convolution> convolverLeft;
+    std::unique_ptr<juce::dsp::Convolution> convolverRight;
+    juce::File irTempFile;
+    float irNormalizationGainLinear = 1.0f;
+  };
+
+  /** CPU/file heavy; call without holding `chainMutex`. */
+  PreparedBlockModel prepareBlockModelOffThread(ChainBlockType type, const std::vector<uint8_t>& modelData,
+                                                const juce::String& filename,
+                                                double namPersistedSlimmableSize);
+  /** Short path under `chainMutex` only: swaps engines onto `block` and clears the opposite modality. */
+  void applyPreparedModelToChainBlock(ChainBlock& block, PreparedBlockModel& prepared);
 
   // Chain management
   std::vector<std::unique_ptr<ChainBlock>> chainBlocks;
   juce::CriticalSection chainMutex;
+
+  // TONE3000 OAuth access token (Bearer). Read by `fetchModelFromUrl` from any
+  // thread; written by the UI thread via `setAccessToken`.
+  juce::String accessToken;
+  mutable juce::CriticalSection accessTokenMutex;
   
   // Thread pool for background model loading
   juce::ThreadPool loadingThreadPool;

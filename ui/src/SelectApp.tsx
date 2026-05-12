@@ -1,20 +1,41 @@
 import React from 'react';
 import { SelectView } from './components/SelectView';
 import { useFunction } from './hooks/useFunction';
+import type { T3KTokens } from './t3k/tone3000-client';
 
-// This is the entry point for the select webview
+/**
+ * Entry point for the popup webview that JUCE opens when the user clicks
+ * the + icon. The popup's only job is to drive the TONE3000 OAuth Select
+ * flow and hand the resulting (tokens + tone_id) back to the main webview
+ * across the JUCE bridge — the main webview owns all chain state and does
+ * the actual tone/model fetches with the access token it receives.
+ */
 export const SelectApp: React.FC = () => {
   const sendMessageToMainView = useFunction<string>('sendMessageToMainView');
 
-  const handleToneSelected = async (toneUrl: string) => {
-    console.log('SelectApp: Sending tone URL to main view');
+  const handleSelectComplete = async (payload: {
+    tokens: T3KTokens;
+    toneId: string;
+  }) => {
     try {
-      await sendMessageToMainView.invoke('tone3000.toneSelected', toneUrl);
-      console.log('SelectApp: Message sent successfully');
+      await sendMessageToMainView.invoke('tone3000.toneSelected', payload);
     } catch (error) {
-      console.error('SelectApp: Failed to send message', error);
+      console.error('SelectApp: failed to relay selection to main view', error);
     }
   };
 
-  return <SelectView onToneSelected={handleToneSelected} />;
+  const handleSelectCancelled = async (reason: string) => {
+    try {
+      await sendMessageToMainView.invoke('tone3000.cancelled', reason);
+    } catch (error) {
+      console.error('SelectApp: failed to relay cancellation to main view', error);
+    }
+  };
+
+  return (
+    <SelectView
+      onSelectComplete={handleSelectComplete}
+      onSelectCancelled={handleSelectCancelled}
+    />
+  );
 };

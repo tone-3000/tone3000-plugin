@@ -17,6 +17,9 @@ jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runs-on }}
+    environment: builds
+    env:
+      VITE_T3K_PUBLISHABLE_KEY: ${{ vars.VITE_T3K_PUBLISHABLE_KEY }}
     strategy:
       fail-fast: false
       matrix:

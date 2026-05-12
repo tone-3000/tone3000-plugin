@@ -4,10 +4,11 @@ import { KnobControl } from './KnobControl';
 import { useParameter } from '../hooks/useParameter';
 import { useFunction } from '../hooks/useFunction';
 import { ChainView } from './ChainView';
-import type { ChainItem, Tone } from '../types/tone';
+import type { ChainItem, Model, Tone } from '../types/tone';
 import Settings from './Settings';
 import { DbMeter } from './DbMeter';
 import { useT3kSelect } from '../hooks/useT3kSelect';
+import type { T3KTokens } from '../t3k/tone3000-client';
 
 export const Plugin: React.FC = () => {
   // Plugin Parameters
@@ -29,6 +30,7 @@ export const Plugin: React.FC = () => {
   const removeChainBlock = useFunction<string>('removeChainBlock');
   const reorderChainBlocks = useFunction<boolean>('reorderChainBlocks');
   const testNativeFunction = useFunction<string>('testNativeFunction');
+  const setAccessToken = useFunction<boolean>('setAccessToken');
 
   // Load chain status from backend (includes insert block position)
   const loadChainStatus = async () => {
@@ -70,13 +72,32 @@ export const Plugin: React.FC = () => {
     }
   };
 
-  // Handle tone selection from TONE3000 Select flow
+  // Push the latest access token down to native so model downloads can attach
+  // the Bearer header. Called both right after the OAuth Select flow and
+  // again whenever T3KClient transparently refreshes the token.
+  const pushAccessTokenToNative = useCallback(
+    async (accessToken: string) => {
+      try {
+        await setAccessToken.invoke(accessToken);
+      } catch (error) {
+        console.error('Failed to push access token to native:', error);
+      }
+    },
+    [setAccessToken]
+  );
+
+  // Handle a fully-resolved tone (with embedded models) coming out of the
+  // Select flow — push it through native so it joins the chain.
   const handleToneSelected = useCallback(
-    async (tone: Tone) => {
+    async (tone: Tone & { models: Model[] }, tokens: T3KTokens) => {
       if (!tone.models || tone.models.length === 0) {
         console.error('Tone has no models');
         return;
       }
+
+      // Make sure native has the freshest access token before it tries to
+      // download the model from `model_url` (which now requires Bearer auth).
+      await pushAccessTokenToNative(tokens.access_token);
 
       console.log('Loading tone:', tone.title);
 
@@ -93,14 +114,14 @@ export const Plugin: React.FC = () => {
         console.error('Error loading tone:', error);
       }
     },
-    [loadTone, loadChainStatus]
+    [loadTone, loadChainStatus, pushAccessTokenToNative]
   );
 
   // TONE3000 Select integration
   const showSelectView = useFunction<string>('showSelectView');
-  const { startSelectFlow } = useT3kSelect({
-    appId: 'TONE3000-Plugin',
+  const { applySelection, startSelectFlowInBrowser } = useT3kSelect({
     onToneSelected: handleToneSelected,
+    onAccessTokenUpdated: pushAccessTokenToNative,
   });
 
   // Detect if we're in JUCE
@@ -113,38 +134,41 @@ export const Plugin: React.FC = () => {
 
       switch (event.data.type) {
         case 'tone3000.toneSelected': {
-          const toneUrl = event.data.data;
-          if (!toneUrl) return;
-
-          console.log('Plugin: Received tone URL from select webview:', toneUrl);
+          // The select webview now hands us { tokens, toneId } — it has
+          // already exchanged the OAuth code for tokens but does not fetch
+          // tone metadata itself; that happens here in the main view so the
+          // chain state and the live T3KClient stay in one place.
+          const payload = event.data.data as
+            | { tokens?: T3KTokens; toneId?: string | number }
+            | undefined;
+          if (!payload || !payload.tokens || payload.toneId === undefined) {
+            console.error('Plugin: malformed tone3000.toneSelected payload');
+            return;
+          }
 
           try {
-            // Fetch tone data from TONE3000
-            const response = await fetch(toneUrl);
-            if (!response.ok) {
-              throw new Error(`Failed to fetch tone: ${response.status}`);
-            }
-
-            const tone = await response.json();
-            console.log('Plugin: Tone fetched successfully:', tone.title);
-
-            // Load the tone
-            handleToneSelected(tone);
+            await applySelection({
+              tokens: payload.tokens,
+              toneId: payload.toneId,
+            });
           } catch (error) {
-            console.error('Plugin: Failed to fetch/load tone:', error);
+            console.error('Plugin: failed to apply TONE3000 selection:', error);
           }
           break;
         }
 
         case 'tone3000.cancelled':
-          console.log('Plugin: Select flow cancelled');
+          console.log(
+            'Plugin: Select flow cancelled:',
+            event.data.data ?? 'unknown'
+          );
           break;
       }
     };
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [handleToneSelected]);
+  }, [applySelection]);
 
   // Handle switching models within a block
   const handleSwitchModel = async (blockId: string, modelId: number) => {
@@ -171,7 +195,7 @@ export const Plugin: React.FC = () => {
       }
     } else {
       // In web browser: use redirect flow
-      startSelectFlow();
+      startSelectFlowInBrowser();
     }
   };
 
