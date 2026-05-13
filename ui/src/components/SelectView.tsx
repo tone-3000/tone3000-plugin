@@ -45,8 +45,10 @@ export const SelectView: React.FC<SelectViewProps> = ({
         setPhase('error');
         return;
       }
-      // First load — redirect into the TONE3000 OAuth Select flow. Restrict
-      // the catalog to architectures the plugin can actually run.
+      // First load — redirect into the TONE3000 OAuth Select flow. `architecture`
+      // limits platform=nam to v2 in the catalog; IR tones still appear. After
+      // selection, listModels also sends architecture only for platform=nam
+      // (see useT3kSelect.fetchToneAndModels).
       startSelectFlow(PUBLISHABLE_KEY, getRedirectUri(), {
         menubar: true,
         architecture: T3K_ARCHITECTURE,
@@ -121,11 +123,27 @@ export const SelectView: React.FC<SelectViewProps> = ({
 
   return (
     <div style={containerStyle}>
-      <div style={{ fontSize: 14, opacity: 0.7 }}>
-        {phase === 'exchanging'
-          ? 'Loading tone from TONE3000…'
-          : 'Connecting to TONE3000…'}
-      </div>
+      <style>
+        {`
+          @keyframes selectViewSpinner {
+            to { transform: rotate(360deg); }
+          }
+        `}
+      </style>
+      <div
+        role="status"
+        aria-busy="true"
+        aria-label="Loading"
+        style={{
+          width: 36,
+          height: 36,
+          border: '3px solid rgba(255, 255, 255, 0.08)',
+          borderTopColor: '#9ca3af',
+          borderRadius: '50%',
+          animation: 'selectViewSpinner 0.65s linear infinite',
+          flexShrink: 0,
+        }}
+      />
     </div>
   );
 };
