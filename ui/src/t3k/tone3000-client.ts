@@ -323,6 +323,10 @@ export class T3KClient {
     return res.json();
   }
 
+  /**
+   * List models for a tone. Pass `architecture` (e.g. `2` for NAM v2) only for
+   * `platform=nam` tones; omit for IR and other platforms.
+   */
   async listModels(
     toneId: number | string,
     options?: { page?: number; pageSize?: number; architecture?: string | number }
