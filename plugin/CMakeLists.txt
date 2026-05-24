@@ -74,7 +74,7 @@ target_include_directories(NAM PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/Dependencies/nlohmann
 )
 target_compile_options(NAM PRIVATE -fPIC)
-# A2 standard / A2 nano models use the hand-optimized path when config matches (see NeuralAmpModelerCore).
+# A2 full / A2 lite models use the hand-optimized path when config matches (see NeuralAmpModelerCore).
 target_compile_definitions(NAM PRIVATE NAM_ENABLE_A2_FAST)
 
 juce_add_plugin(${PROJECT_NAME}

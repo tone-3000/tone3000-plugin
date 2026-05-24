@@ -9,6 +9,7 @@ interface KnobControlProps {
   size?: number;
   labelSize?: number;
   labelBottom?: boolean;
+  innerColor?: string;
 }
 
 export const KnobControl: React.FC<KnobControlProps> = ({
@@ -18,6 +19,7 @@ export const KnobControl: React.FC<KnobControlProps> = ({
   size = 64,
   labelSize = 14,
   labelBottom = true,
+  innerColor = '#1C1C1E',
 }) => {
   // const angleDeg = value * 270 - 135; // -135..+135
   const knobRef = useRef<HTMLDivElement>(null);
@@ -121,7 +123,7 @@ export const KnobControl: React.FC<KnobControlProps> = ({
         }}
       >
         {/* New gradient knob design */}
-        <KnobInner value={value} size={size} />
+        <KnobInner value={value} size={size} innerColor={innerColor} />
 
         {/* Old knob image with rotation - commented out for easy revert */}
         {/* <img

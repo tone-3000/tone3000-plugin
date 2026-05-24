@@ -61,9 +61,9 @@ export interface ChainBlockData extends Tone {
   outputGain: number;
   mix: number;
   activeModelId: number;
-  /** NAM container / slimmable model: show Nano vs Std when true and loaded */
+  /** NAM container / slimmable model: show Lite vs Full when true and loaded */
   namSlimmable?: boolean;
-  /** 1 = std (full), 0.5 = nano */
+  /** 1 = full, 0.5 = lite */
   namSlimmableSize?: number;
 }
 

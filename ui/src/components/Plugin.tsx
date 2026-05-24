@@ -268,13 +268,13 @@ export const Plugin: React.FC = () => {
               height: '30px',
             }}
           />
-          <img
+          {/* <img
             src="/beta.svg"
             alt="Beta"
             style={{
               height: '12px',
             }}
-          />
+          /> */}
         </a>
         <button
           onClick={() => setShowSettings(true)}

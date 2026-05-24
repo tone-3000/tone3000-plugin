@@ -46,6 +46,11 @@ private:
   std::unique_ptr<BrowserWindow> browserWindow;
   juce::WebBrowserComponent::Options selectWebViewOptions;
 
+  // Guards against loading the main URL before the editor has a real
+  // top-level NSWindow (Standalone races; harmless in AU/VST3 hosts).
+  bool mainUrlLoaded = false;
+  void loadMainUrlIfNeeded();
+
   juce::WebControlParameterIndexReceiver controlParameterIndexReceiver;
 
   juce::WebSliderRelay inputLevelRelay{"inputLevel"};

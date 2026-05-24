@@ -124,11 +124,11 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, onRemove, onSwitc
   );
 
   const namSlimmable = block.namSlimmable === true;
-  const isNano = localNamSlimmableSize < 0.75;
+  const isLite = localNamSlimmableSize < 0.75;
 
   const handleNamSizeMode = useCallback(
-    (useNano: boolean) => {
-      const size = useNano ? 0.5 : 1.0;
+    (useLite: boolean) => {
+      const size = useLite ? 0.5 : 1.0;
       setLocalNamSlimmableSize(size);
       try {
         Promise.resolve(setBlockNamSlimmableSize(block.blockId, size)).catch(() => {});
@@ -166,9 +166,8 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, onRemove, onSwitc
         ...style,
         display: 'flex',
         flexDirection: 'column',
-        backgroundColor: '#000000',
         border: '1px solid rgba(84, 84, 88, 0.65)',
-        background: '#151517',
+        backgroundColor: '#151517',
         position: 'relative',
         transition: isDragging ? 'none' : 'all 0.2s ease',
         borderRadius: '16px',
@@ -435,15 +434,13 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, onRemove, onSwitc
 
         <div
           style={{
-            display: 'inline-flex',
+            display: 'flex',
             flexDirection: 'row',
             alignItems: 'flex-start',
             gap: '32px',
-            flex: '0 0 auto',
-            alignSelf: 'flex-start',
-            maxWidth: '100%',
+            width: '100%',
             minWidth: 0,
-            flexWrap: 'wrap',
+            flexWrap: 'nowrap',
             boxSizing: 'border-box',
           }}
         >
@@ -455,9 +452,8 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, onRemove, onSwitc
               flexDirection: 'column',
               alignItems: 'flex-start',
               gap: '12px',
-              flex: '0 1 auto',
+              flex: '1 1 auto',
               minWidth: 0,
-              maxWidth: '442px',
             }}
           >
             <div style={{ width: '100%', minWidth: 0 }}>
@@ -493,11 +489,11 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, onRemove, onSwitc
                     fontWeight: 700,
                     border: 'none',
                     cursor: 'pointer',
-                    backgroundColor: isNano ? 'rgba(235, 235, 245, 0.18)' : 'transparent',
+                    backgroundColor: isLite ? 'rgba(235, 235, 245, 0.18)' : 'transparent',
                     color: '#ffffff',
                   }}
                 >
-                  Nano
+                  LITE
                 </button>
                 <button
                   type="button"
@@ -509,11 +505,11 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, onRemove, onSwitc
                     border: 'none',
                     borderLeft: '1px solid rgba(84, 84, 88, 0.65)',
                     cursor: 'pointer',
-                    backgroundColor: !isNano ? 'rgba(235, 235, 245, 0.18)' : 'transparent',
+                    backgroundColor: !isLite ? 'rgba(235, 235, 245, 0.18)' : 'transparent',
                     color: '#ffffff',
                   }}
                 >
-                  Std
+                  FULL
                 </button>
               </div>
             )}
@@ -536,6 +532,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, onRemove, onSwitc
               size={46}
               labelSize={12}
               labelBottom={false}
+              innerColor="#151517"
             />
             <KnobControl
               label="Mix"
@@ -544,6 +541,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, onRemove, onSwitc
               size={46}
               labelSize={12}
               labelBottom={false}
+              innerColor="#151517"
             />
           </div>
         </div>
