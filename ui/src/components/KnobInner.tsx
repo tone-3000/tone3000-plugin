@@ -3,9 +3,10 @@ import React from 'react';
 interface KnobInnerProps {
   value: number; // 0 to 1
   size: number;
+  innerColor?: string;
 }
 
-export const KnobInner: React.FC<KnobInnerProps> = ({ value, size }) => {
+export const KnobInner: React.FC<KnobInnerProps> = ({ value, size, innerColor = '#1C1C1E' }) => {
   // Angle calculation: value 0 = -135°, value 0.5 = 0° (top), value 1 = +135°
   const angleDeg = value * 270 - 135;
   // Convert to radians, offset by -90 so 0° is at top
@@ -89,7 +90,7 @@ export const KnobInner: React.FC<KnobInnerProps> = ({ value, size }) => {
           width: innerRadius * 2,
           height: innerRadius * 2,
           borderRadius: '50%',
-          backgroundColor: '#1C1C1E',
+          backgroundColor: innerColor,
         }}
       />
 

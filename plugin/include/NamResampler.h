@@ -129,7 +129,7 @@ public:
     bool isSlimmableModel() const;
 
     /**
-     * Requested slimmable size (0.5 = nano, 1.0 = full). Clamped to [0.5, 1.0].
+     * Requested slimmable size (0.5 = lite, 1.0 = full). Clamped to [0.5, 1.0].
      * Applied in prepare() and immediately if already prepared.
      */
     void setSlimmableSize(double val);

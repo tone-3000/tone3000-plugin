@@ -7,6 +7,14 @@ void TONE3000Editor::parentHierarchyChanged() {
     window->centreWithSize(1024, 738);  // Add extra height for title bar
     setSize(1024, 710);
   }
+
+  // Trigger the WebView load only once the editor has a real top-level
+  // component (i.e. the NSWindow on macOS exists and is on-screen). In a DAW
+  // the editor is parented to the host's window before this is called, so the
+  // load happens immediately. In Standalone we have to wait until JUCE
+  // finishes wiring up the StandaloneFilterWindow — otherwise the WKWebView's
+  // NSView attaches to no NSWindow and renders blank on some Macs.
+  loadMainUrlIfNeeded();
 }
 
 TONE3000Editor::TONE3000Editor(TONE3000Processor& p) : AudioProcessorEditor(&p), processor(p) {
@@ -14,28 +22,14 @@ TONE3000Editor::TONE3000Editor(TONE3000Processor& p) : AudioProcessorEditor(&p),
   mainWebView =
       std::make_unique<juce::WebBrowserComponent>(EditorWebViewSetup::buildMainWebViewOptions(this));
 
+  // Attach the WebView synchronously so it inherits the editor's NSView/NSWindow
+  // as soon as the editor is parented. Deferring this via callAsync was
+  // racing with the Standalone window/mic-permission setup and leaving the
+  // WKWebView with `viewWindow=0x0` at load time.
+  mainWebView->setOpaque(true);
+  addAndMakeVisible(*mainWebView);
+
   setSize(1024, 710);
-
-  juce::MessageManager::callAsync([this]() {
-    // Add main webview (visible) - resized() will set bounds
-    addAndMakeVisible(*mainWebView);
-    
-    // Set background to black to prevent white flash
-    mainWebView->setOpaque(true);
-
-    // Load main UI
-    juce::String mainUrl;
-#ifdef JUCE_DEBUG
-    juce::Logger::writeToLog("Development mode: loading from localhost:5173");
-    mainUrl = "http://localhost:5173/";
-#else
-    juce::Logger::writeToLog("Release mode: loading from embedded resources");
-    mainUrl = juce::WebBrowserComponent::getResourceProviderRoot() + "index.html";
-#endif
-    mainWebView->goToURL(mainUrl);
-  });
-
-
 }
 
 TONE3000Editor::~TONE3000Editor() {
@@ -52,6 +46,42 @@ TONE3000Editor::~TONE3000Editor() {
 void TONE3000Editor::paint(juce::Graphics& g) {
   // Paint background black to eliminate white flash during loading
   g.fillAll(juce::Colours::black);
+}
+
+void TONE3000Editor::loadMainUrlIfNeeded() {
+  if (mainUrlLoaded || mainWebView == nullptr)
+    return;
+
+  // Require a real top-level component before kicking off the load. For
+  // Standalone this is the JUCEWindow / NSWindow; for plug-ins this is the
+  // host's window. Without a parent, WKWebView has nothing to render into.
+  if (getTopLevelComponent() == nullptr || getTopLevelComponent() == this)
+    return;
+
+  mainUrlLoaded = true;
+
+  juce::String mainUrl;
+#ifdef JUCE_DEBUG
+  juce::Logger::writeToLog("Development mode: loading from localhost:5173");
+  mainUrl = "http://localhost:5173/";
+#else
+  juce::Logger::writeToLog("Release mode: loading from embedded resources");
+  mainUrl = juce::WebBrowserComponent::getResourceProviderRoot() + "index.html";
+#endif
+  mainWebView->goToURL(mainUrl);
+
+  // Force a relayout shortly after the load fires. Some macOS builds leave
+  // the WKWebView's NSView with a stale layer-backed surface when its
+  // NSWindow finalizes after the load started; resetting bounds once kicks
+  // it into actually painting. Cheap insurance; harmless on Macs that work.
+  juce::Component::SafePointer<TONE3000Editor> safeThis{this};
+  juce::Timer::callAfterDelay(150, [safeThis]() {
+    if (auto* self = safeThis.getComponent()) {
+      self->resized();
+      if (self->mainWebView)
+        self->mainWebView->repaint();
+    }
+  });
 }
 
 void TONE3000Editor::resized() {
