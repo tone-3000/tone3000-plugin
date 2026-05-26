@@ -149,13 +149,14 @@ jobs:
       # ── macOS: import Developer ID certs into a temp keychain ───────────────
       # Bails out gracefully if signing secrets are not configured (e.g. PRs
       # from forks). In that case create-pkg.sh falls back to ad-hoc signing.
+      #
+      # Note: APPLE_APP_PASSWORD is reused as the .p12 import password because
+      # the .p12 files were exported using the same value.
       - name: Setup macOS signing keychain
         if: matrix.os == 'macos'
         env:
           MACOS_CERTIFICATE_APP: ${{ secrets.MACOS_CERTIFICATE_APP }}
-          MACOS_CERTIFICATE_APP_PWD: ${{ secrets.MACOS_CERTIFICATE_APP_PWD }}
           MACOS_CERTIFICATE_PKG: ${{ secrets.MACOS_CERTIFICATE_PKG }}
-          MACOS_CERTIFICATE_PKG_PWD: ${{ secrets.MACOS_CERTIFICATE_PKG_PWD }}
           KEYCHAIN_PWD: ${{ secrets.KEYCHAIN_PWD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -174,12 +175,12 @@ jobs:
 
           echo "$MACOS_CERTIFICATE_APP" | base64 --decode -o "$RUNNER_TEMP/app.p12"
           security import "$RUNNER_TEMP/app.p12" \
-            -P "$MACOS_CERTIFICATE_APP_PWD" \
+            -P "$APPLE_APP_PASSWORD" \
             -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
 
           echo "$MACOS_CERTIFICATE_PKG" | base64 --decode -o "$RUNNER_TEMP/pkg.p12"
           security import "$RUNNER_TEMP/pkg.p12" \
-            -P "$MACOS_CERTIFICATE_PKG_PWD" \
+            -P "$APPLE_APP_PASSWORD" \
             -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
 
           rm -f "$RUNNER_TEMP/app.p12" "$RUNNER_TEMP/pkg.p12"
