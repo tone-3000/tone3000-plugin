@@ -4,7 +4,7 @@ A **JUCE-based VST3/AU plugin** that lets you load **Neural Amp Modeler (NAM)** 
 
 ## What it does
 
-- **Load NAM and IR from TONE3000** — Click the **+** icon to open the TONE3000 Select flow (`prompt=select_tone`, OAuth 2.0 + PKCE) in an in-plugin window. Sign in with your TONE3000 account, pick a tone, and it’s added to your chain with the correct model/IR.
+- **Load NAM and IR from TONE3000** — Click the **+** icon to open the TONE3000 Select flow (`prompt=select_tone`, OAuth 2.0 + PKCE) in the plugin's WebView. Sign in with your TONE3000 account, pick a tone, and it's added to your chain with the correct model/IR.
 - **Build a signal chain** — Add multiple NAM and IR blocks, reorder them, switch between models per tone, and remove blocks.
 - **Cross-platform** — Same plugin on macOS, Windows, and Linux (desktop). UI is a React app served in a native WebView (WebView2 on Windows, WebKit elsewhere).
 
@@ -12,10 +12,9 @@ The plugin uses **NeuralAmpModelerCore** (in-tree) for NAM processing, **AudioDS
 
 ### How the Select flow works in this plugin
 
-1. The user clicks **+**. JUCE opens a separate webview window pointing at the bundled `select.html`.
-2. `select.html` generates a PKCE challenge and redirects to `https://www.tone3000.com/api/v1/oauth/authorize?prompt=select_tone&...`. The user signs in (if needed) and picks a tone inside that webview.
-3. TONE3000 redirects back to `select.html?code=…&state=…&tone_id=…`. The webview exchanges the code for `{access_token, refresh_token}` and forwards `{tokens, toneId}` to the main webview over the JUCE bridge.
-4. The main webview calls `GET /api/v1/tones/{id}` and `GET /api/v1/models?tone_id=…`, hands the access token to the native side via the `setAccessToken` JUCE function, and then asks native to load the tone. The C++ download path attaches `Authorization: Bearer …` when fetching `model_url`.
+1. The user clicks **+**. The plugin's single WebView generates a PKCE challenge and navigates to `https://www.tone3000.com/api/v1/oauth/authorize?prompt=select_tone&...`. The user signs in (if needed) and picks a tone right inside the plugin.
+2. TONE3000 redirects the WebView back to `index.html?code=…&state=…&tone_id=…`. React mounts again, exchanges the code for `{access_token, refresh_token}`, and (covered by a "Returning from TONE3000…" overlay while it works) fetches `GET /api/v1/tones/{id}` and `GET /api/v1/models?tone_id=…`.
+3. The React app hands the access token to the native side via the `setAccessToken` JUCE function, then asks native to load the tone. The C++ download path attaches `Authorization: Bearer …` when fetching `model_url`.
 
 ---
 
@@ -54,15 +53,15 @@ VITE_T3K_PUBLISHABLE_KEY=t3k_pub_your_key_here
 # VITE_T3K_API_DOMAIN=https://staging.tone3000.com
 ```
 
-Then in TONE3000 → Settings → API Keys, add the redirect URIs the webview will use to your key:
+Then in TONE3000 → Settings → API Keys, add the redirect URIs the WebView will use to your key. Because the Select flow now runs in the same single WebView that serves the main UI, the redirect URI is just the page React already loads from:
 
-| Build         | Redirect URI                          |
-| ------------- | ------------------------------------- |
-| Vite dev      | `http://localhost:5173/select.html`   |
-| macOS / Linux | `juce://juce.backend/select.html`     |
-| Windows       | `https://juce.backend/select.html`    |
+| Build         | Redirect URI                       |
+| ------------- | ---------------------------------- |
+| Vite dev      | `http://localhost:5173/`           |
+| macOS / Linux | `juce://juce.backend/index.html`   |
+| Windows       | `https://juce.backend/index.html`  |
 
-Localhost origins are auto-allowed during development, so step 1 only matters for release builds.
+Localhost origins are auto-allowed during development, so only the JUCE entries need to be registered for release builds.
 
 ### 2. Get submodules
 

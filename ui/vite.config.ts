@@ -38,8 +38,7 @@ export default defineConfig({
         assetsDir: 'assets',
         rollupOptions: {
           input: {
-            main: './index.html',
-            select: './select.html'
+            main: './index.html'
           },
           output: {
             format: 'es',

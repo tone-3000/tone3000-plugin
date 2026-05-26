@@ -6,6 +6,5 @@ class TONE3000Editor;
 namespace EditorWebViewSetup {
 
 juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* editor);
-juce::WebBrowserComponent::Options buildSelectWebViewOptions(TONE3000Editor* editor);
 
 }  // namespace EditorWebViewSetup

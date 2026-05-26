@@ -10,18 +10,9 @@
 #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
 #endif
 
-#include "BrowserWindow.h"
 #include "EditorWebViewSetup.h"
 #include "Processor.h"
 #include "BinaryData.h"  // Contains embedded Web UI assets (HTML/CSS/JS)
-
-// Restricts WebView loading to internal resources only
-struct SinglePageBrowser : juce::WebBrowserComponent {
-  using WebBrowserComponent::WebBrowserComponent;
-  bool pageAboutToLoad(const juce::String& newURL) override {
-    return newURL == juce::String("http://localhost:5173/") || newURL == getResourceProviderRoot();
-  }
-};
 
 class TONE3000Editor : public juce::AudioProcessorEditor {
 public:
@@ -43,8 +34,6 @@ private:
   // WebView UI
   //==============================================================================
   std::unique_ptr<juce::WebBrowserComponent> mainWebView;   // Main Plugin UI
-  std::unique_ptr<BrowserWindow> browserWindow;
-  juce::WebBrowserComponent::Options selectWebViewOptions;
 
   // Guards against loading the main URL before the editor has a real
   // top-level NSWindow (Standalone races; harmless in AU/VST3 hosts).
@@ -88,8 +77,6 @@ private:
 
   friend juce::WebBrowserComponent::Options
   EditorWebViewSetup::buildMainWebViewOptions(TONE3000Editor*);
-  friend juce::WebBrowserComponent::Options
-  EditorWebViewSetup::buildSelectWebViewOptions(TONE3000Editor*);
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TONE3000Editor)
 };

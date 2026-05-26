@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PUBLISHABLE_KEY, T3K_ARCHITECTURE, getRedirectUri } from '../t3k/config';
 import {
   T3KClient,
-  startSelectFlow,
+  startSelectFlow as startSelectFlowRedirect,
   handleOAuthCallback,
 } from '../t3k/tone3000-client';
 import type { T3KTokens } from '../t3k/tone3000-client';
@@ -16,17 +16,45 @@ interface UseT3kSelectOptions {
 }
 
 /**
- * Drives the TONE3000 Select OAuth flow on behalf of the main webview.
+ * Phase of the OAuth Select flow as far as the UI is concerned:
+ *   - 'idle'      → no flow in progress; main UI is interactive
+ *   - 'returning' → we just landed back on the page with ?code/?error/?canceled
+ *                   and are exchanging the code / fetching tone+models. The
+ *                   main UI should be covered by a spinner.
+ *   - 'error'     → the callback resolved with an error we want to surface;
+ *                   the consumer should show a message + a retry affordance.
+ */
+export type OAuthPhase = 'idle' | 'returning' | 'error';
+
+/**
+ * Return true synchronously if the current URL looks like an OAuth callback
+ * landing. Used to initialise the phase before the first render so the spinner
+ * overlay covers the main UI on the very first paint after the redirect.
+ */
+function detectInitialCallback(): boolean {
+  if (typeof window === 'undefined') return false;
+  const params = new URLSearchParams(window.location.search);
+  return (
+    params.has('code') ||
+    (params.has('error') && params.has('state')) ||
+    params.has('canceled')
+  );
+}
+
+/**
+ * Drives the TONE3000 Select OAuth flow for the single main webview.
  *
- * - In a desktop browser (i.e. no JUCE bridge present) it runs the OAuth flow
- *   in the same window, exchanging the callback when we land back here.
- * - Inside JUCE, the select webview runs the flow and hands tokens + toneId
- *   back to the main view via the message bus — `applySelection` accepts that
- *   payload and finishes the work (fetch tone metadata + models, fire the
- *   callback).
+ * Flow:
+ *   1. User clicks + → `startSelectFlow()` navigates the webview to
+ *      tone3000.com's authorize URL.
+ *   2. After the user picks (or cancels), TONE3000 redirects back to the
+ *      same page with `?code&state&tone_id` (or `?canceled=true` / `?error=`).
+ *   3. On mount the hook detects those params, exchanges the code for tokens,
+ *      fetches tone + models, and fires `onToneSelected`.
  *
- * Either way, after a successful selection we hold a `T3KClient` with valid
- * tokens that can be reused for follow-up requests (e.g. switching models).
+ * The `oauthPhase` return drives a spinner overlay in the main UI so the user
+ * doesn't see an empty React tree flash between landing back and the tone
+ * being loaded into the chain.
  */
 export const useT3kSelect = ({
   onToneSelected,
@@ -47,13 +75,6 @@ export const useT3kSelect = ({
     return c;
   }, []);
 
-  const setTokens = useCallback(
-    (tokens: T3KTokens) => {
-      client.setTokens(tokens);
-    },
-    [client]
-  );
-
   const fetchToneAndModels = useCallback(
     async (toneId: string | number) => {
       const tone = await client.getTone(toneId);
@@ -70,73 +91,87 @@ export const useT3kSelect = ({
     [client]
   );
 
-  /**
-   * Called from the JUCE select webview message bridge: take the tokens +
-   * toneId we just received, store the tokens, fetch tone metadata + models,
-   * and forward the combined Tone object to the consumer.
-   */
-  const applySelection = useCallback(
-    async (payload: { tokens: T3KTokens; toneId: string | number }) => {
-      setTokens(payload.tokens);
-      const tone = await fetchToneAndModels(payload.toneId);
-      onToneSelected?.(tone, payload.tokens);
-    },
-    [setTokens, fetchToneAndModels, onToneSelected]
+  // Initialise the phase synchronously from the URL so the first render of
+  // the consumer already has the overlay in place — otherwise the main UI
+  // briefly paints before the useEffect below sets 'returning'.
+  const [oauthPhase, setOauthPhase] = useState<OAuthPhase>(() =>
+    detectInitialCallback() ? 'returning' : 'idle'
   );
+  const [oauthError, setOauthError] = useState<string | null>(null);
 
-  // For the standalone web-browser dev path: handle the OAuth callback if the
-  // page just landed back from tone3000.com.
   const processedCallbackRef = useRef(false);
   useEffect(() => {
     if (processedCallbackRef.current) return;
-    const params = new URLSearchParams(window.location.search);
-    const isCallback =
-      params.has('code') ||
-      (params.has('error') && params.has('state')) ||
-      params.has('canceled');
-    if (!isCallback) return;
+    if (!detectInitialCallback()) return;
     processedCallbackRef.current = true;
 
     handleOAuthCallback(PUBLISHABLE_KEY, getRedirectUri())
       .then(async (result) => {
+        // Strip the OAuth params so a refresh doesn't try to re-redeem the code.
         const cleaned = new URL(window.location.href);
         cleaned.search = '';
         window.history.replaceState({}, '', cleaned.toString());
 
         if (!result.ok) {
-          if (result.error !== 'canceled') {
-            console.error('TONE3000 OAuth failed:', result.error);
+          if (result.error === 'canceled') {
+            setOauthPhase('idle');
+            return;
           }
+          console.error('TONE3000 OAuth failed:', result.error);
+          setOauthError(result.error);
+          setOauthPhase('error');
           return;
         }
 
-        setTokens(result.tokens);
+        client.setTokens(result.tokens);
         if (result.toneId) {
           const tone = await fetchToneAndModels(result.toneId);
           onToneSelected?.(tone, result.tokens);
         }
+        setOauthPhase('idle');
       })
-      .catch((err) => console.error('TONE3000 callback error:', err));
-  }, [setTokens, fetchToneAndModels, onToneSelected]);
+      .catch((err) => {
+        console.error('TONE3000 callback error:', err);
+        setOauthError(err instanceof Error ? err.message : String(err));
+        setOauthPhase('error');
+      });
+  }, [client, fetchToneAndModels, onToneSelected]);
 
-  /** Kick off the Select flow in the current window (web-browser path). */
-  const startSelectFlowInBrowser = useCallback(() => {
+  /**
+   * Kick off (or restart) the Select flow by navigating the main webview to
+   * the TONE3000 authorize URL. After the user picks a tone, TONE3000
+   * redirects back here and the effect above resolves the rest.
+   */
+  const startSelectFlow = useCallback(() => {
     if (!PUBLISHABLE_KEY) {
-      console.error(
-        'TONE3000 publishable key not configured. Set VITE_T3K_PUBLISHABLE_KEY at build time.'
-      );
+      const msg =
+        'TONE3000 publishable key not configured. Set VITE_T3K_PUBLISHABLE_KEY at build time.';
+      console.error(msg);
+      setOauthError(msg);
+      setOauthPhase('error');
       return;
     }
-    startSelectFlow(PUBLISHABLE_KEY, getRedirectUri(), {
+    setOauthError(null);
+    startSelectFlowRedirect(PUBLISHABLE_KEY, getRedirectUri(), {
       menubar: true,
       architecture: T3K_ARCHITECTURE,
+    }).catch((err) => {
+      console.error('Failed to start TONE3000 select flow', err);
+      setOauthError(err instanceof Error ? err.message : String(err));
+      setOauthPhase('error');
     });
   }, []);
 
+  /** Dismiss the current error state without restarting the flow. */
+  const clearOauthError = useCallback(() => {
+    setOauthError(null);
+    setOauthPhase('idle');
+  }, []);
+
   return {
-    client,
-    applySelection,
-    startSelectFlowInBrowser,
-    setTokens,
+    startSelectFlow,
+    oauthPhase,
+    oauthError,
+    clearOauthError,
   };
 };

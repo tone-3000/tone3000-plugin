@@ -8,10 +8,9 @@
  *   - Token refresh
  *   - Authenticated fetch helpers for the tone + models endpoints
  *
- * Tokens live in sessionStorage by default. JUCE WebView2/WKWebView instances
- * keep their own session-storage so the main webview and the select webview
- * don't share tokens — pass them across the bridge instead of relying on
- * shared storage.
+ * Tokens (and the PKCE verifier mid-flow) live in sessionStorage on the
+ * WebView's `juce.backend` origin, which persists across the same-window
+ * redirect away to tone3000.com and back.
  */
 
 import { T3K_API } from './config';
@@ -219,10 +218,10 @@ const STORAGE_KEY = 't3k_tokens';
 /**
  * T3KClient — authenticated API client with proactive token refresh.
  *
- * Tokens are persisted in sessionStorage so they survive a webview reload but
- * not a process restart. The plugin's main webview and select webview don't
- * share sessionStorage; pass tokens across the JUCE bridge after the select
- * flow finishes and call `setTokens()` in the receiving view.
+ * Tokens are persisted in sessionStorage so they survive the OAuth redirect
+ * round-trip and a WebView reload, but not a process restart. After the user
+ * comes back from tone3000.com, call `setTokens()` once with the freshly
+ * exchanged tokens to seed the client.
  */
 export class T3KClient {
   private refreshPromise: Promise<T3KTokens> | null = null;
@@ -256,10 +255,6 @@ export class T3KClient {
 
   clearTokens(): void {
     sessionStorage.removeItem(STORAGE_KEY);
-  }
-
-  isConnected(): boolean {
-    return this.getTokens() !== null;
   }
 
   /**

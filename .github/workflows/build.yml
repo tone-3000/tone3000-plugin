@@ -146,15 +146,98 @@ jobs:
         if: matrix.os != 'linux'
         run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
 
+      # ── macOS: import Developer ID certs into a temp keychain ───────────────
+      # Bails out gracefully if signing secrets are not configured (e.g. PRs
+      # from forks). In that case create-pkg.sh falls back to ad-hoc signing.
+      - name: Setup macOS signing keychain
+        if: matrix.os == 'macos'
+        env:
+          MACOS_CERTIFICATE_APP: ${{ secrets.MACOS_CERTIFICATE_APP }}
+          MACOS_CERTIFICATE_APP_PWD: ${{ secrets.MACOS_CERTIFICATE_APP_PWD }}
+          MACOS_CERTIFICATE_PKG: ${{ secrets.MACOS_CERTIFICATE_PKG }}
+          MACOS_CERTIFICATE_PKG_PWD: ${{ secrets.MACOS_CERTIFICATE_PKG_PWD }}
+          KEYCHAIN_PWD: ${{ secrets.KEYCHAIN_PWD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${MACOS_CERTIFICATE_APP:-}" || -z "${MACOS_CERTIFICATE_PKG:-}" ]]; then
+            echo "Signing secrets not configured — build will be ad-hoc signed."
+            exit 0
+          fi
+
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          security create-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain   -p "$KEYCHAIN_PWD" "$KEYCHAIN_PATH"
+
+          echo "$MACOS_CERTIFICATE_APP" | base64 --decode -o "$RUNNER_TEMP/app.p12"
+          security import "$RUNNER_TEMP/app.p12" \
+            -P "$MACOS_CERTIFICATE_APP_PWD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+
+          echo "$MACOS_CERTIFICATE_PKG" | base64 --decode -o "$RUNNER_TEMP/pkg.p12"
+          security import "$RUNNER_TEMP/pkg.p12" \
+            -P "$MACOS_CERTIFICATE_PKG_PWD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+
+          rm -f "$RUNNER_TEMP/app.p12" "$RUNNER_TEMP/pkg.p12"
+
+          # Let codesign / productbuild use the keys without UI prompts.
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign:,productbuild: \
+            -s -k "$KEYCHAIN_PWD" "$KEYCHAIN_PATH"
+
+          # Put our keychain at the front of the search list (keep the rest).
+          security list-keychain -d user -s "$KEYCHAIN_PATH" \
+            $(security list-keychain -d user | sed 's/[[:space:]"]//g')
+
+          echo "Cert identities now visible to codesign:"
+          security find-identity -v -p basic "$KEYCHAIN_PATH"
+
+          # Save notarytool credentials in our temp keychain (only used by us).
+          xcrun notarytool store-credentials "tone3000-notary" \
+            --apple-id  "$APPLE_ID" \
+            --team-id   "$APPLE_TEAM_ID" \
+            --password  "$APPLE_APP_PASSWORD" \
+            --keychain  "$KEYCHAIN_PATH"
+
+      - name: Build .pkg installer (macOS)
+        if: matrix.os == 'macos'
+        env:
+          SIGN_ID_APP: ${{ secrets.SIGN_ID_APP }}
+          SIGN_ID_PKG: ${{ secrets.SIGN_ID_PKG }}
+          NOTARY_PROFILE: tone3000-notary
+        run: |
+          set -euo pipefail
+          ./script/create-pkg.sh
+
+          # Rename per-arch so the two macOS matrix jobs don't clash if both
+          # are downloaded into the same dir (release uploads, etc.).
+          ARCH="${{ matrix.arch }}"
+          SRC=$(ls build/TONE3000-v*.pkg | head -n 1)
+          DEST="build/$(basename "${SRC%.pkg}")-${ARCH}.pkg"
+          mv "$SRC" "$DEST"
+          echo "Renamed installer → $DEST"
+
+      - name: Clean up macOS signing keychain
+        if: matrix.os == 'macos' && always()
+        env:
+          KEYCHAIN_PWD: ${{ secrets.KEYCHAIN_PWD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          if [[ -f "$KEYCHAIN_PATH" ]]; then
+            security delete-keychain "$KEYCHAIN_PATH" || true
+          fi
+
       - name: Upload artifacts (macOS)
         if: matrix.os == 'macos' && success()
         uses: actions/upload-artifact@v4
         with:
           name: TONE3000-${{ matrix.name }}-${{ env.BUILD_TYPE }}
-          path: |
-            build/plugin/TONE3000_artefacts/${{ env.BUILD_TYPE }}/Standalone
-            build/plugin/TONE3000_artefacts/${{ env.BUILD_TYPE }}/VST3
-            build/plugin/TONE3000_artefacts/${{ env.BUILD_TYPE }}/AU
+          path: build/TONE3000-v*-${{ matrix.arch }}.pkg
+          if-no-files-found: error
 
       - name: Upload artifacts (Windows)
         if: matrix.os == 'windows' && success()

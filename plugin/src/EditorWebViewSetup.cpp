@@ -1,6 +1,5 @@
 #include "EditorWebViewSetup.h"
 #include "Editor.h"
-#include "BrowserWindow.h"
 
 namespace EditorWebViewSetup {
 
@@ -146,13 +145,6 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             }
           })
       .withNativeFunction(
-          "testNativeFunction",
-          [](const juce::Array<juce::var>&,
-             juce::WebBrowserComponent::NativeFunctionCompletion completion) {
-            DBG("testNativeFunction called successfully");
-            completion(juce::var("Native function test successful"));
-          })
-      .withNativeFunction(
           "setAccessToken",
           [editor](const juce::Array<juce::var>& args,
                    juce::WebBrowserComponent::NativeFunctionCompletion completion) {
@@ -165,37 +157,6 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             } else {
               completion(juce::var(false));
             }
-          })
-      .withNativeFunction(
-          "showSelectView",
-          [editor](const juce::Array<juce::var>& args,
-                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
-            DBG("Showing floating browser window");
-            juce::MessageManager::callAsync([editor]() {
-              if (!editor->browserWindow) {
-                editor->browserWindow = std::make_unique<BrowserWindow>(
-                    editor->mainWebView.get(), editor->selectWebViewOptions);
-              }
-              auto browserBounds = editor->getScreenBounds();
-              editor->browserWindow->addToDesktop(
-                  juce::ComponentPeer::windowHasTitleBar |
-                  juce::ComponentPeer::windowHasDropShadow |
-                  juce::ComponentPeer::windowIsResizable |
-                  juce::ComponentPeer::windowHasCloseButton);
-              editor->browserWindow->setBounds(browserBounds);
-              editor->browserWindow->setVisible(true);
-              editor->browserWindow->setAlwaysOnTop(true);
-              juce::String selectUrl;
-#ifdef JUCE_DEBUG
-              selectUrl = "http://localhost:5173/select.html";
-#else
-              selectUrl =
-                  juce::WebBrowserComponent::getResourceProviderRoot() + "select.html";
-#endif
-              editor->browserWindow->getWebView()->goToURL(selectUrl);
-              DBG("  Browser window shown at: " << browserBounds.toString());
-            });
-            completion(juce::var("shown"));
           })
       .withNativeFunction(
           "getInputMeterLevel",
@@ -213,62 +174,6 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             document.documentElement.style.backgroundColor = '#000000';
             document.body.style.backgroundColor = '#000000';
             console.log("Main WebView: JUCE C++ Backend loaded");
-          )");
-}
-
-juce::WebBrowserComponent::Options buildSelectWebViewOptions(TONE3000Editor* editor) {
-  return juce::WebBrowserComponent::Options{}
-      .withNativeIntegrationEnabled()
-      .withBackend(juce::WebBrowserComponent::Options::Backend::webview2)
-      .withWinWebView2Options(
-          juce::WebBrowserComponent::Options::WinWebView2{}.withUserDataFolder(
-              juce::File::getSpecialLocation(juce::File::tempDirectory)))
-      .withResourceProvider(
-          [editor](const auto& url) { return editor->getResource(url); },
-          juce::URL{"http://localhost:5173/"}.getOrigin())
-      .withNativeFunction(
-          "sendMessageToMainView",
-          [editor](const juce::Array<juce::var>& args,
-                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
-            if (args.size() >= 2 && args[0].isString()) {
-              juce::String messageType = args[0].toString();
-              juce::var messageData = args[1];
-              DBG("✓ Message from select webview: " << messageType);
-
-              juce::String dataJson;
-              if (messageData.isString())
-                dataJson = "\"" + messageData.toString() + "\"";
-              else if (messageData.isObject())
-                dataJson = juce::JSON::toString(messageData, false);
-              else
-                dataJson = messageData.toString();
-
-              juce::String jsCode = "window.postMessage({ type: '" + messageType +
-                                   "', data: " + dataJson + " }, '*');";
-              editor->mainWebView->evaluateJavascript(jsCode);
-              DBG("✓ Forwarded message to main webview");
-
-              if (messageType == "tone3000.toneSelected" ||
-                  messageType == "tone3000.cancelled") {
-                juce::MessageManager::callAsync([editor]() {
-                  if (editor->browserWindow) {
-                    editor->browserWindow->setVisible(false);
-                    editor->browserWindow->removeFromDesktop();
-                  }
-                  editor->mainWebView->toFront(false);
-                  DBG("✓ Hid browser window");
-                });
-              }
-              completion(juce::var("success"));
-            } else {
-              DBG("✗ Invalid message format");
-              completion(juce::var("error: invalid message format"));
-            }
-          })
-      .withUserScript(R"(
-            document.documentElement.style.backgroundColor = '#000000';
-            document.body.style.backgroundColor = '#000000';
-            console.log("Select WebView: JUCE C++ Backend loaded");
           )");
 }
 

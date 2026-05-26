@@ -18,7 +18,6 @@ void TONE3000Editor::parentHierarchyChanged() {
 }
 
 TONE3000Editor::TONE3000Editor(TONE3000Processor& p) : AudioProcessorEditor(&p), processor(p) {
-  selectWebViewOptions = EditorWebViewSetup::buildSelectWebViewOptions(this);
   mainWebView =
       std::make_unique<juce::WebBrowserComponent>(EditorWebViewSetup::buildMainWebViewOptions(this));
 
@@ -33,10 +32,6 @@ TONE3000Editor::TONE3000Editor(TONE3000Processor& p) : AudioProcessorEditor(&p),
 }
 
 TONE3000Editor::~TONE3000Editor() {
-  if (browserWindow) {
-    browserWindow->removeFromDesktop();
-    browserWindow.reset();
-  }
   if (mainWebView) {
     removeChildComponent(mainWebView.get());
     mainWebView.reset();
@@ -85,17 +80,7 @@ void TONE3000Editor::loadMainUrlIfNeeded() {
 }
 
 void TONE3000Editor::resized() {
-  auto bounds = getLocalBounds();
-  
-  // Main webview always full size - stable!
-  mainWebView->setBounds(bounds);
-  
-  // Update browser window position if visible
-  if (browserWindow && browserWindow->isVisible()) {
-    int meterWidth = 40 * 2;
-    auto browserBounds = getScreenBounds().reduced(meterWidth, 0);
-    browserWindow->setBounds(browserBounds);
-  }
+  mainWebView->setBounds(getLocalBounds());
 }
 
 // Get the WebView UI resources from BinaryData

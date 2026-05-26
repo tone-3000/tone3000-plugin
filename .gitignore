@@ -8,3 +8,10 @@ output/
 .DS_Store
 plugin/webview/*
 xcode-build/
+.env
+.env.local
+.env.release
+TONE3000-CERTS/
+*.p12
+*.cer
+*.certSigningRequest

@@ -111,8 +111,6 @@ target_sources(${PROJECT_NAME}
 if (NOT HEADLESS)
     target_sources(${PROJECT_NAME}
         PRIVATE
-            include/BrowserWindow.h
-            src/BrowserWindow.cpp
             include/Editor.h
             src/Editor.cpp
             include/EditorWebViewSetup.h

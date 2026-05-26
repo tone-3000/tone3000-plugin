@@ -9,6 +9,7 @@ import Settings from './Settings';
 import { DbMeter } from './DbMeter';
 import { useT3kSelect } from '../hooks/useT3kSelect';
 import type { T3KTokens } from '../t3k/tone3000-client';
+import { OAuthOverlay } from './OAuthOverlay';
 
 export const Plugin: React.FC = () => {
   // Plugin Parameters
@@ -29,7 +30,6 @@ export const Plugin: React.FC = () => {
   const switchModel = useFunction<boolean>('switchModel');
   const removeChainBlock = useFunction<string>('removeChainBlock');
   const reorderChainBlocks = useFunction<boolean>('reorderChainBlocks');
-  const testNativeFunction = useFunction<string>('testNativeFunction');
   const setAccessToken = useFunction<boolean>('setAccessToken');
 
   // Load chain status from backend (includes insert block position)
@@ -117,58 +117,14 @@ export const Plugin: React.FC = () => {
     [loadTone, loadChainStatus, pushAccessTokenToNative]
   );
 
-  // TONE3000 Select integration
-  const showSelectView = useFunction<string>('showSelectView');
-  const { applySelection, startSelectFlowInBrowser } = useT3kSelect({
-    onToneSelected: handleToneSelected,
-    onAccessTokenUpdated: pushAccessTokenToNative,
-  });
-
-  // Detect if we're in JUCE
-  const isJuce = typeof (window as any).__JUCE__ !== 'undefined';
-
-  // Listen for messages from select webview
-  useEffect(() => {
-    const handleMessage = async (event: MessageEvent) => {
-      if (!event.data || !event.data.type) return;
-
-      switch (event.data.type) {
-        case 'tone3000.toneSelected': {
-          // The select webview now hands us { tokens, toneId } — it has
-          // already exchanged the OAuth code for tokens but does not fetch
-          // tone metadata itself; that happens here in the main view so the
-          // chain state and the live T3KClient stay in one place.
-          const payload = event.data.data as
-            | { tokens?: T3KTokens; toneId?: string | number }
-            | undefined;
-          if (!payload || !payload.tokens || payload.toneId === undefined) {
-            console.error('Plugin: malformed tone3000.toneSelected payload');
-            return;
-          }
-
-          try {
-            await applySelection({
-              tokens: payload.tokens,
-              toneId: payload.toneId,
-            });
-          } catch (error) {
-            console.error('Plugin: failed to apply TONE3000 selection:', error);
-          }
-          break;
-        }
-
-        case 'tone3000.cancelled':
-          console.log(
-            'Plugin: Select flow cancelled:',
-            event.data.data ?? 'unknown'
-          );
-          break;
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [applySelection]);
+  // TONE3000 Select integration. Single-webview redirect flow: clicking + on
+  // the chain navigates the main webview to tone3000.com; TONE3000 redirects
+  // back to index.html?code=…&tone_id=… and useT3kSelect resolves the rest.
+  const { startSelectFlow, oauthPhase, oauthError, clearOauthError } =
+    useT3kSelect({
+      onToneSelected: handleToneSelected,
+      onAccessTokenUpdated: pushAccessTokenToNative,
+    });
 
   // Handle switching models within a block
   const handleSwitchModel = async (blockId: string, modelId: number) => {
@@ -184,53 +140,20 @@ export const Plugin: React.FC = () => {
     }
   };
 
-  // Open TONE3000 Select flow for adding new model
-  const handleAddModel = async () => {
-    if (isJuce) {
-      // In JUCE: show select webview
-      try {
-        await showSelectView.invoke();
-      } catch (error) {
-        console.error('Failed to show select view:', error);
-      }
-    } else {
-      // In web browser: use redirect flow
-      startSelectFlowInBrowser();
-    }
+  const handleAddModel = () => {
+    startSelectFlow();
   };
 
-  // Load chain status on mount and periodically
   useEffect(() => {
-    const loadStatus = async () => {
-      await loadChainStatus();
-    };
-
-    // Test native function communication
-    const testNativeCommunication = async () => {
-      try {
-        console.log('Testing native function communication...');
-        const result = await testNativeFunction.invoke();
-        console.log('Native function test result:', result);
-      } catch (error) {
-        console.error('Native function communication failed:', error);
-      }
-    };
-
-    // Test native communication immediately
-    testNativeCommunication();
-
-    // Load status immediately
-    loadStatus();
-
-    // Load status every 2 seconds
-    const interval = setInterval(loadStatus, 2000);
-
+    loadChainStatus();
+    const interval = setInterval(loadChainStatus, 2000);
     return () => clearInterval(interval);
   }, []);
 
   return (
     <div
       style={{
+        position: 'relative',
         width: '100%',
         maxWidth: '100%',
         height: '710px',
@@ -384,6 +307,16 @@ export const Plugin: React.FC = () => {
 
       {/* Settings Modal */}
       <Settings isOpen={showSettings} onClose={() => setShowSettings(false)} />
+
+      {/* OAuth callback overlay — covers the chain UI while we resolve the
+          tokens + tone after returning from tone3000.com, and surfaces any
+          OAuth error with a retry affordance. */}
+      <OAuthOverlay
+        phase={oauthPhase}
+        error={oauthError}
+        onRetry={startSelectFlow}
+        onDismiss={clearOauthError}
+      />
     </div>
   );
 };
