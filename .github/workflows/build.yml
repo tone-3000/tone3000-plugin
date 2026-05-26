@@ -34,16 +34,18 @@ jobs:
             runs-on: macos-15-intel
             os: macos
             arch: x64
-          # Windows x64
-          - name: Windows x64
-            runs-on: windows-latest
-            os: windows
-            arch: x64
-          # Linux x64
-          - name: Linux x64
-            runs-on: ubuntu-24.04
-            os: linux
-            arch: x64
+          # NOTE: Windows + Linux builds temporarily disabled while iterating on
+          # the macOS signed-pkg release flow. Re-enable by uncommenting the
+          # matrix entries below — the per-platform steps elsewhere in this file
+          # remain in place and will activate automatically.
+          # - name: Windows x64
+          #   runs-on: windows-latest
+          #   os: windows
+          #   arch: x64
+          # - name: Linux x64
+          #   runs-on: ubuntu-24.04
+          #   os: linux
+          #   arch: x64
 
     steps:
       - name: Checkout
