@@ -195,6 +195,13 @@ if (APPLE AND NOT HEADLESS)
     )
 endif()
 
+# Enable the WKWebView Web Inspector in release builds (see root CMakeLists patch).
+# The JUCE module sources compile into this target, so defining the macro here
+# reaches juce_WebBrowserComponent_mac.mm. Disable with -DENABLE_WEBVIEW_DEVTOOLS=OFF.
+if (APPLE AND NOT HEADLESS AND ENABLE_WEBVIEW_DEVTOOLS)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC T3K_ENABLE_DEVTOOLS=1)
+endif()
+
 if (WIN32)
     # Prevent windows.h min/max macros from breaking std::min/std::max in AudioDSPTools and plugin code
     target_compile_definitions(${PROJECT_NAME} PUBLIC NOMINMAX)
