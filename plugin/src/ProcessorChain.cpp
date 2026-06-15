@@ -6,6 +6,24 @@
 // CHAIN MANAGEMENT
 // ####################
 
+// The chain the UI edits/adds to right now: Left in mono mode, or the active side in stereo.
+std::vector<std::unique_ptr<ChainBlock>>& TONE3000Processor::activeChain() {
+  if (stereoEnabled.load() && activeEditSide == ChainSide::Right)
+    return rightChainBlocks;
+  return chainBlocks;
+}
+
+// Find a block by id across both chains (ids are globally unique).
+ChainBlock* TONE3000Processor::findBlockById(const std::string& blockId) {
+  for (auto& b : chainBlocks)
+    if (b && b->id == blockId)
+      return b.get();
+  for (auto& b : rightChainBlocks)
+    if (b && b->id == blockId)
+      return b.get();
+  return nullptr;
+}
+
 std::string TONE3000Processor::loadTone(const juce::String& toneJsonString) {
   juce::ScopedLock lock(chainMutex);
 
@@ -57,27 +75,30 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString) {
   DBG("Created tone block: " << toneId << " (block: " << blockId << ")");
   DBG("Queueing first model for background loading: " << modelName);
 
+  // Add to whichever chain is currently being edited (Left in mono mode).
+  auto& chain = activeChain();
+
   // Insert new block at the insert block position, then move insert block to end
   auto insertIt = std::find_if(
-      chainBlocks.begin(), chainBlocks.end(),
+      chain.begin(), chain.end(),
       [](const std::unique_ptr<ChainBlock>& b) {
         return b && b->type == ChainBlockType::INSERT;
       });
-  if (insertIt != chainBlocks.end()) {
-    chainBlocks.insert(insertIt, std::move(block));
+  if (insertIt != chain.end()) {
+    chain.insert(insertIt, std::move(block));
     // Move insert block to end so it's always last after adding a tone
     insertIt = std::find_if(
-        chainBlocks.begin(), chainBlocks.end(),
+        chain.begin(), chain.end(),
         [](const std::unique_ptr<ChainBlock>& b) {
           return b && b->type == ChainBlockType::INSERT;
         });
-    if (insertIt != chainBlocks.end()) {
+    if (insertIt != chain.end()) {
       auto insertBlock = std::move(*insertIt);
-      chainBlocks.erase(insertIt);
-      chainBlocks.push_back(std::move(insertBlock));
+      chain.erase(insertIt);
+      chain.push_back(std::move(insertBlock));
     }
   } else {
-    chainBlocks.push_back(std::move(block));
+    chain.push_back(std::move(block));
   }
 
   struct LoadToneJob : public juce::ThreadPoolJob {
@@ -110,17 +131,11 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString) {
 bool TONE3000Processor::switchModel(const std::string& blockId, int modelId) {
   juce::ScopedLock lock(chainMutex);
 
-  auto it = std::find_if(chainBlocks.begin(), chainBlocks.end(),
-                         [&blockId](const std::unique_ptr<ChainBlock>& block) {
-                           return block->id == blockId;
-                         });
-
-  if (it == chainBlocks.end()) {
+  ChainBlock* block = findBlockById(blockId);
+  if (block == nullptr) {
     DBG("Block not found: " << blockId);
     return false;
   }
-
-  ChainBlock* block = it->get();
 
   juce::var toneVar = juce::JSON::parse(block->toneJson);
   if (!toneVar.isObject()) {
@@ -187,19 +202,24 @@ bool TONE3000Processor::switchModel(const std::string& blockId, int modelId) {
 bool TONE3000Processor::removeChainBlock(const std::string& blockId) {
   juce::ScopedLock lock(chainMutex);
 
-  if (blockId == INSERT_BLOCK_ID) {
+  if (blockId == INSERT_BLOCK_ID || blockId == INSERT_BLOCK_ID_RIGHT) {
     DBG("Cannot remove insert block");
     return false;
   }
 
-  auto it = std::find_if(
-      chainBlocks.begin(), chainBlocks.end(),
-      [&blockId](const std::unique_ptr<ChainBlock>& block) { return block->id == blockId; });
-
-  if (it != chainBlocks.end()) {
-    chainBlocks.erase(it);
-    DBG("Removed chain block: " << blockId);
-    return true;
+  for (auto* chain : {&chainBlocks, &rightChainBlocks}) {
+    auto it = std::find_if(
+        chain->begin(), chain->end(),
+        [&blockId](const std::unique_ptr<ChainBlock>& block) { return block->id == blockId; });
+    if (it != chain->end()) {
+      if ((*it)->type == ChainBlockType::INSERT) {
+        DBG("Cannot remove insert block");
+        return false;
+      }
+      chain->erase(it);
+      DBG("Removed chain block: " << blockId);
+      return true;
+    }
   }
 
   DBG("Failed to remove chain block: " << blockId << " (not found)");
@@ -209,15 +229,18 @@ bool TONE3000Processor::removeChainBlock(const std::string& blockId) {
 bool TONE3000Processor::reorderChainBlocks(const std::vector<std::string>& newOrder) {
   juce::ScopedLock lock(chainMutex);
 
-  if (newOrder.size() != chainBlocks.size()) {
+  // Reorder the chain currently being edited (Left in mono mode, active side in stereo).
+  auto& chain = activeChain();
+
+  if (newOrder.size() != chain.size()) {
     DBG("Failed to reorder chain blocks: size mismatch (got "
-        << newOrder.size() << ", expected " << chainBlocks.size() << ")");
+        << newOrder.size() << ", expected " << chain.size() << ")");
     return false;
   }
 
   std::vector<std::unique_ptr<ChainBlock>> reorderedBlocks;
-  reorderedBlocks.reserve(chainBlocks.size());
-  std::vector<std::unique_ptr<ChainBlock>> originalBlocks = std::move(chainBlocks);
+  reorderedBlocks.reserve(chain.size());
+  std::vector<std::unique_ptr<ChainBlock>> originalBlocks = std::move(chain);
 
   for (const std::string& blockId : newOrder) {
     auto it = std::find_if(
@@ -228,14 +251,14 @@ bool TONE3000Processor::reorderChainBlocks(const std::vector<std::string>& newOr
 
     if (it == originalBlocks.end()) {
       DBG("Failed to reorder chain blocks: block not found: " << blockId);
-      chainBlocks = std::move(originalBlocks);
+      chain = std::move(originalBlocks);
       return false;
     }
 
     reorderedBlocks.push_back(std::move(*it));
   }
 
-  chainBlocks = std::move(reorderedBlocks);
+  chain = std::move(reorderedBlocks);
   DBG("Successfully reordered chain blocks (including insert block)");
   return true;
 }
@@ -257,17 +280,12 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, const j
   double namPersistedSlimmable = 1.0;
   {
     juce::ScopedLock lock(chainMutex);
-    auto it = std::find_if(chainBlocks.begin(), chainBlocks.end(),
-                           [&blockId](const std::unique_ptr<ChainBlock>& block) {
-                             return block->id == blockId;
-                           });
-
-    if (it == chainBlocks.end()) {
+    ChainBlock* block = findBlockById(blockId);
+    if (block == nullptr) {
       DBG("[Background] Block not found: " << blockId);
       return;
     }
 
-    ChainBlock* block = it->get();
     namPersistedSlimmable = block->namSlimmableSize;
     block->modelCache[firstModelId] = modelData;
   }
@@ -278,17 +296,12 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, const j
   {
     juce::ScopedLock lock(chainMutex);
 
-    auto it = std::find_if(chainBlocks.begin(), chainBlocks.end(),
-                           [&blockId](const std::unique_ptr<ChainBlock>& block) {
-                             return block->id == blockId;
-                           });
-
-    if (it == chainBlocks.end()) {
+    ChainBlock* block = findBlockById(blockId);
+    if (block == nullptr) {
       DBG("[Background] Block not found after prepare: " << blockId);
       return;
     }
 
-    ChainBlock* block = it->get();
     applyPreparedModelToChainBlock(*block, prepared);
 
     if (prepared.success)
@@ -309,17 +322,12 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
   {
     juce::ScopedLock lock(chainMutex);
 
-    auto it = std::find_if(chainBlocks.begin(), chainBlocks.end(),
-                           [&blockId](const std::unique_ptr<ChainBlock>& block) {
-                             return block->id == blockId;
-                           });
-
-    if (it == chainBlocks.end()) {
+    ChainBlock* block = findBlockById(blockId);
+    if (block == nullptr) {
       DBG("[Background] Block not found: " << blockId);
       return;
     }
 
-    ChainBlock* block = it->get();
     blockTypeForPrepare = block->type;
     namPersistedSlimmable = block->namSlimmableSize;
     auto cacheIt = block->modelCache.find(modelId);
@@ -351,17 +359,11 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
   {
     juce::ScopedLock lock(chainMutex);
 
-    auto it = std::find_if(chainBlocks.begin(), chainBlocks.end(),
-                           [&blockId](const std::unique_ptr<ChainBlock>& block) {
-                             return block->id == blockId;
-                           });
-
-    if (it == chainBlocks.end()) {
+    ChainBlock* block = findBlockById(blockId);
+    if (block == nullptr) {
       DBG("[Background] Block was removed during fetch/install");
       return;
     }
-
-    ChainBlock* block = it->get();
 
     if (needsFetch) {
       block->modelCache[modelId] = modelData;
@@ -379,7 +381,11 @@ juce::var TONE3000Processor::getChainStatus() const {
   juce::DynamicObject::Ptr status = new juce::DynamicObject();
   juce::Array<juce::var> chainArray;
 
-  for (const auto& block : chainBlocks) {
+  // Report the chain currently being edited. Cast away const for the helper; we only read.
+  const auto& chain =
+      const_cast<TONE3000Processor*>(this)->activeChain();
+
+  for (const auto& block : chain) {
     if (block->type == ChainBlockType::INSERT) {
       juce::DynamicObject::Ptr blockStatus = new juce::DynamicObject();
       blockStatus->setProperty("blockId", juce::String(block->id));
@@ -431,7 +437,44 @@ juce::var TONE3000Processor::getChainStatus() const {
   }
 
   status->setProperty("chain", chainArray);
+  status->setProperty("stereoEnabled", stereoEnabled.load());
+  status->setProperty("activeSide",
+                      activeEditSide == ChainSide::Right ? "right" : "left");
   return status.get();
+}
+
+// ####################
+// STEREO MODE
+// ####################
+void TONE3000Processor::setStereoMode(bool enabled) {
+  juce::ScopedLock lock(chainMutex);
+
+  // Seed the right chain's insert placeholder the first time stereo is enabled.
+  if (enabled && rightChainBlocks.empty()) {
+    rightChainBlocks.push_back(
+        std::make_unique<ChainBlock>(INSERT_BLOCK_ID_RIGHT, ChainBlockType::INSERT));
+  }
+
+  stereoEnabled.store(enabled);
+
+  if (!enabled)
+    activeEditSide = ChainSide::Left;
+
+  // Make sure the right chain's engines are ready to run at the current rate/size.
+  const double sr = getSampleRate();
+  if (enabled && sr > 0.0 && maxBlockSize > 0)
+    prepareChain(rightChainBlocks, sr, maxBlockSize);
+
+  updateLatencyCompensation();
+  DBG("Stereo mode " << (enabled ? "enabled" : "disabled"));
+}
+
+void TONE3000Processor::setActiveEditChain(const juce::String& side) {
+  juce::ScopedLock lock(chainMutex);
+  if (side == "right")
+    activeEditSide = ChainSide::Right;
+  else if (side == "left")
+    activeEditSide = ChainSide::Left;
 }
 
 bool TONE3000Processor::isChainValid() const {
@@ -447,31 +490,22 @@ bool TONE3000Processor::isChainValid() const {
 
 void TONE3000Processor::setBlockOutputGain(const std::string& blockId, float normalizedGain) {
   juce::ScopedLock lock(chainMutex);
-  auto it = std::find_if(
-      chainBlocks.begin(), chainBlocks.end(),
-      [&blockId](const std::unique_ptr<ChainBlock>& b) { return b->id == blockId; });
-  if (it == chainBlocks.end()) return;
-  ChainBlock* block = it->get();
+  ChainBlock* block = findBlockById(blockId);
+  if (block == nullptr) return;
   block->outputGainNormalized = juce::jlimit(0.0f, 1.0f, normalizedGain);
 }
 
 void TONE3000Processor::setBlockMix(const std::string& blockId, float normalizedMix) {
   juce::ScopedLock lock(chainMutex);
-  auto it = std::find_if(
-      chainBlocks.begin(), chainBlocks.end(),
-      [&blockId](const std::unique_ptr<ChainBlock>& b) { return b->id == blockId; });
-  if (it == chainBlocks.end()) return;
-  ChainBlock* block = it->get();
+  ChainBlock* block = findBlockById(blockId);
+  if (block == nullptr) return;
   block->mixNormalized = juce::jlimit(0.0f, 1.0f, normalizedMix);
 }
 
 void TONE3000Processor::setBlockNamSlimmableSize(const std::string& blockId, double size) {
   juce::ScopedLock lock(chainMutex);
-  auto it = std::find_if(
-      chainBlocks.begin(), chainBlocks.end(),
-      [&blockId](const std::unique_ptr<ChainBlock>& b) { return b->id == blockId; });
-  if (it == chainBlocks.end()) return;
-  ChainBlock* block = it->get();
+  ChainBlock* block = findBlockById(blockId);
+  if (block == nullptr) return;
   if (block->type != ChainBlockType::NAM || !block->namIsSlimmable || block->namResampler == nullptr)
     return;
 
@@ -483,13 +517,20 @@ void TONE3000Processor::setBlockNamSlimmableSize(const std::string& blockId, dou
 int TONE3000Processor::calculateTotalLatency() const {
   juce::ScopedLock lock(chainMutex);
 
-  int totalLatency = 0;
-
-  for (const auto& block : chainBlocks) {
-    if (block->enabled && block->type == ChainBlockType::NAM && block->namResampler) {
-      totalLatency += block->latencySamples;
+  auto chainLatency = [](const std::vector<std::unique_ptr<ChainBlock>>& blocks) {
+    int latency = 0;
+    for (const auto& block : blocks) {
+      if (block->enabled && block->type == ChainBlockType::NAM && block->namResampler) {
+        latency += block->latencySamples;
+      }
     }
-  }
+    return latency;
+  };
+
+  // In stereo mode the two chains run in parallel, so the plugin latency is the larger of them.
+  int totalLatency = chainLatency(chainBlocks);
+  if (stereoEnabled.load())
+    totalLatency = juce::jmax(totalLatency, chainLatency(rightChainBlocks));
 
   if (!bypassResampling) {
     totalLatency += static_cast<int>(oversampler->getLatencyInSamples());

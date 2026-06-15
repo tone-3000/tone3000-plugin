@@ -201,38 +201,44 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
       }
 
       const size_t maxIrLength = 32768;
-      auto convolverL = std::make_unique<juce::dsp::Convolution>();
-      auto convolverR = std::make_unique<juce::dsp::Convolution>();
+      const int irNumChannels = juce::jlimit(1, 2, static_cast<int>(reader->numChannels));
 
       const double sampleRate = getSampleRate();
       const int convolutionBlockSize = effectiveBlockSize;
       juce::dsp::ProcessSpec spec{sampleRate, static_cast<juce::uint32>(convolutionBlockSize), 2};
 
-      convolverL->prepare(spec);
-      convolverR->prepare(spec);
+      // Mono fallback convolver: IR channel 0 applied to every audio channel.
+      auto convolverMono = std::make_unique<juce::dsp::Convolution>();
+      convolverMono->prepare(spec);
+      convolverMono->loadImpulseResponse(tempFile, juce::dsp::Convolution::Stereo::no,
+                                         juce::dsp::Convolution::Trim::yes, maxIrLength,
+                                         juce::dsp::Convolution::Normalise::no);
+      out.convolverMono = std::move(convolverMono);
 
-      convolverL->loadImpulseResponse(tempFile, juce::dsp::Convolution::Stereo::no,
-                                      juce::dsp::Convolution::Trim::yes, maxIrLength,
-                                      juce::dsp::Convolution::Normalise::no);
+      // True-stereo convolver: only meaningful when the file actually has 2 channels.
+      if (irNumChannels > 1) {
+        auto convolverStereo = std::make_unique<juce::dsp::Convolution>();
+        convolverStereo->prepare(spec);
+        convolverStereo->loadImpulseResponse(tempFile, juce::dsp::Convolution::Stereo::yes,
+                                             juce::dsp::Convolution::Trim::yes, maxIrLength,
+                                             juce::dsp::Convolution::Normalise::no);
+        out.convolverStereo = std::move(convolverStereo);
+      }
 
-      convolverR->loadImpulseResponse(tempFile, juce::dsp::Convolution::Stereo::no,
-                                      juce::dsp::Convolution::Trim::yes, maxIrLength,
-                                      juce::dsp::Convolution::Normalise::no);
-
+      out.irNumChannels = irNumChannels;
       out.irTempFile = tempFile;
       out.irNormalizationGainLinear = computeIrNormalizationGain(tempFile, maxIrLength);
-      out.convolverLeft = std::move(convolverL);
-      out.convolverRight = std::move(convolverR);
 
-      DBG("IR prepared successfully");
+      DBG("IR prepared successfully (" << irNumChannels << " channel"
+                                       << (irNumChannels > 1 ? "s" : "") << ")");
       out.success = true;
     }
   } catch (const std::exception& e) {
     DBG("Error preparing model data off-thread: " << e.what());
     out.success = false;
     out.namResampler.reset();
-    out.convolverLeft.reset();
-    out.convolverRight.reset();
+    out.convolverMono.reset();
+    out.convolverStereo.reset();
   }
 
   return out;
@@ -246,8 +252,9 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block,
   }
 
   if (block.type == ChainBlockType::NAM && prepared.namResampler != nullptr) {
-    block.convolverLeft.reset();
-    block.convolverRight.reset();
+    block.convolverMono.reset();
+    block.convolverStereo.reset();
+    block.irNumChannels = 1;
     block.irTempFile = juce::File();
 
     block.namResampler = std::move(prepared.namResampler);
@@ -259,13 +266,13 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block,
     block.latencySamples = prepared.namLatencySamples;
     block.loaded = true;
 
-  } else if (block.type == ChainBlockType::IR && prepared.convolverLeft != nullptr &&
-             prepared.convolverRight != nullptr) {
+  } else if (block.type == ChainBlockType::IR && prepared.convolverMono != nullptr) {
     block.namResampler.reset();
     block.latencySamples = 0;
 
-    block.convolverLeft = std::move(prepared.convolverLeft);
-    block.convolverRight = std::move(prepared.convolverRight);
+    block.convolverMono = std::move(prepared.convolverMono);
+    block.convolverStereo = std::move(prepared.convolverStereo);
+    block.irNumChannels = prepared.irNumChannels;
     block.irTempFile = prepared.irTempFile;
 
     prepared.irTempFile = juce::File();

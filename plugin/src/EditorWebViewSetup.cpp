@@ -145,6 +145,32 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             }
           })
       .withNativeFunction(
+          "setStereoMode",
+          [editor](const juce::Array<juce::var>& args,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            if (args.size() >= 1) {
+              const bool enabled = args[0].isBool()
+                                       ? static_cast<bool>(args[0])
+                                       : (args[0].isDouble() ? static_cast<double>(args[0]) > 0.5
+                                                             : args[0].toString() == "true");
+              editor->processor.setStereoMode(enabled);
+              completion(juce::var(true));
+            } else {
+              completion(juce::var(false));
+            }
+          })
+      .withNativeFunction(
+          "setActiveEditChain",
+          [editor](const juce::Array<juce::var>& args,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            if (args.size() >= 1 && args[0].isString()) {
+              editor->processor.setActiveEditChain(args[0].toString());
+              completion(juce::var(true));
+            } else {
+              completion(juce::var(false));
+            }
+          })
+      .withNativeFunction(
           "setAccessToken",
           [editor](const juce::Array<juce::var>& args,
                    juce::WebBrowserComponent::NativeFunctionCompletion completion) {
@@ -170,9 +196,82 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
                    juce::WebBrowserComponent::NativeFunctionCompletion completion) {
             completion(juce::var(editor->processor.getOutputMeterLevel()));
           })
+      .withNativeFunction(
+          "webLog",
+          [](const juce::Array<juce::var>& args,
+             juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            // Console output forwarded from the WebView so it lands in the
+            // on-disk log even in release builds (where the Web Inspector is
+            // disabled). See the user script below for the console.* shims.
+            const juce::String level = args.size() > 0 ? args[0].toString() : "log";
+            const juce::String msg = args.size() > 1 ? args[1].toString() : juce::String{};
+            juce::Logger::writeToLog("[webview:" + level + "] " + msg);
+            completion(juce::var{});
+          })
+      .withNativeFunction(
+          "copyLogs",
+          [](const juce::Array<juce::var>&,
+             juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            const juce::File logFile = TONE3000Processor::getLogFile();
+            if (!logFile.existsAsFile()) {
+              completion(juce::var(false));
+              return;
+            }
+            // Ship only the tail so we never dump a multi-MB file onto the clipboard.
+            juce::String text = logFile.loadFileAsString();
+            constexpr int maxChars = 200000;
+            if (text.length() > maxChars)
+              text = text.getLastCharacters(maxChars);
+            juce::SystemClipboard::copyTextToClipboard(text);
+            completion(juce::var(true));
+          })
+      .withNativeFunction(
+          "revealLogs",
+          [](const juce::Array<juce::var>&,
+             juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            const juce::File logFile = TONE3000Processor::getLogFile();
+            if (logFile.existsAsFile()) {
+              logFile.revealToUser();
+              completion(juce::var(logFile.getFullPathName()));
+            } else {
+              completion(juce::var(""));
+            }
+          })
       .withUserScript(R"(
             document.documentElement.style.backgroundColor = '#000000';
             document.body.style.backgroundColor = '#000000';
+
+            // Forward WebView console output to the native logger so it is
+            // captured in the on-disk log even in release builds.
+            (function () {
+              const forward = (level, parts) => {
+                try {
+                  const text = parts
+                    .map((p) => {
+                      if (typeof p === 'string') return p;
+                      try { return JSON.stringify(p); } catch (e) { return String(p); }
+                    })
+                    .join(' ');
+                  window.__JUCE__.backend.callFunction('webLog', [level, text]);
+                } catch (e) {
+                  /* backend not ready yet; drop this line */
+                }
+              };
+              ['log', 'info', 'warn', 'error', 'debug'].forEach((level) => {
+                const original = console[level] ? console[level].bind(console) : null;
+                console[level] = (...parts) => {
+                  if (original) original(...parts);
+                  forward(level, parts);
+                };
+              });
+              window.addEventListener('error', (e) => {
+                forward('error', [e.message + ' @ ' + e.filename + ':' + e.lineno]);
+              });
+              window.addEventListener('unhandledrejection', (e) => {
+                forward('error', ['Unhandled promise rejection: ' + (e.reason && e.reason.stack ? e.reason.stack : e.reason)]);
+              });
+            })();
+
             console.log("Main WebView: JUCE C++ Backend loaded");
           )");
 }

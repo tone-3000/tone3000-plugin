@@ -10,8 +10,13 @@
 // Chain block types
 enum class ChainBlockType { NAM, IR, INSERT };
 
-// Fixed ID for the insert/select placeholder block (pass-through, no audio effect)
+// Which chain is being processed/edited in stereo mode.
+enum class ChainSide { Left, Right };
+
+// Fixed IDs for the insert/select placeholder blocks (pass-through, no audio effect).
+// Each chain owns its own placeholder so block ids stay globally unique.
 constexpr const char* INSERT_BLOCK_ID = "select-insert";
+constexpr const char* INSERT_BLOCK_ID_RIGHT = "select-insert-right";
 
 // Chain block data structure
 struct ChainBlock {
@@ -35,9 +40,14 @@ struct ChainBlock {
   juce::LinearSmoothedValue<float> namNormalizationSmoother;
   int latencySamples = 0;
 
-  // IR-specific processing
-  std::unique_ptr<juce::dsp::Convolution> convolverLeft;
-  std::unique_ptr<juce::dsp::Convolution> convolverRight;
+  // IR-specific processing.
+  // convolverMono: IR channel 0 loaded with Stereo::no — applies the same (left) kernel to
+  //   every audio channel. Always present for a loaded IR; used as the mono fallback.
+  // convolverStereo: IR loaded with Stereo::yes — audio ch0 ⊗ IR ch0, audio ch1 ⊗ IR ch1.
+  //   Only created when the IR file actually has >= 2 channels (true stereo IR).
+  std::unique_ptr<juce::dsp::Convolution> convolverMono;
+  std::unique_ptr<juce::dsp::Convolution> convolverStereo;
+  int irNumChannels{1};  // channels in the loaded IR file (1 or 2)
   juce::File irTempFile;
   juce::LinearSmoothedValue<float> irNormalizationSmoother;
   float irNormalizationGainLinear{1.0f};
