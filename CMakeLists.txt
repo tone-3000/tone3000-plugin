@@ -11,8 +11,8 @@ include(cmake/cpm.cmake)
 # Download JUCE using CPM
 CPMAddPackage(
     NAME JUCE
-    GIT_TAG 8.0.7
-    VERSION 8.0.7
+    GIT_TAG 8.0.13
+    VERSION 8.0.13
     GITHUB_REPOSITORY juce-framework/JUCE
     SOURCE_DIR ${LIB_DIR}/juce
 )
@@ -41,6 +41,14 @@ if (APPLE AND ENABLE_WEBVIEW_DEVTOOLS)
                 "\n([ \t]*)if \\(const auto userAgent = browserOptions\\.getUserAgent\\(\\);"
                 "\n       #if JUCE_DEBUG || defined (T3K_ENABLE_DEVTOOLS)\n        if (@available (macOS 13.3, *))\n            [webView.get() setValue: @(true) forKey: @\"inspectable\"];\n       #endif\n\n\\1if (const auto userAgent = browserOptions.getUserAgent();"
                 _juce_webview_src "${_juce_webview_src}")
+            # Fail loudly if neither anchor matched (e.g. after a JUCE upgrade changed the
+            # source layout) so we never silently ship release builds without the inspector.
+            if (NOT _juce_webview_src MATCHES "T3K_ENABLE_DEVTOOLS")
+                message(FATAL_ERROR
+                    "ENABLE_WEBVIEW_DEVTOOLS: failed to patch ${_juce_webview_mm}. "
+                    "The JUCE source layout likely changed in this version. Update the patch "
+                    "regexes in CMakeLists.txt, or configure with -DENABLE_WEBVIEW_DEVTOOLS=OFF.")
+            endif()
             file(WRITE "${_juce_webview_mm}" "${_juce_webview_src}")
             message(STATUS "Patched JUCE WebBrowserComponent: Web Inspector enabled when T3K_ENABLE_DEVTOOLS is defined")
         endif()

@@ -64,19 +64,6 @@ void TONE3000Editor::loadMainUrlIfNeeded() {
   mainUrl = juce::WebBrowserComponent::getResourceProviderRoot() + "index.html";
 #endif
   mainWebView->goToURL(mainUrl);
-
-  // Force a relayout shortly after the load fires. Some macOS builds leave
-  // the WKWebView's NSView with a stale layer-backed surface when its
-  // NSWindow finalizes after the load started; resetting bounds once kicks
-  // it into actually painting. Cheap insurance; harmless on Macs that work.
-  juce::Component::SafePointer<TONE3000Editor> safeThis{this};
-  juce::Timer::callAfterDelay(150, [safeThis]() {
-    if (auto* self = safeThis.getComponent()) {
-      self->resized();
-      if (self->mainWebView)
-        self->mainWebView->repaint();
-    }
-  });
 }
 
 void TONE3000Editor::resized() {
