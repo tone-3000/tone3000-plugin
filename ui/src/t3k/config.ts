@@ -27,7 +27,7 @@ export const PUBLISHABLE_KEY =
   (import.meta.env.VITE_T3K_PUBLISHABLE_KEY as string | undefined) ?? '';
 
 // Model-architecture `2` — passed to the Select OAuth URL and to `GET /api/v1/models`
-// only when the tone is platform=nam. IR and other platforms omit the list-models filter.
+// only when the tone is format=nam. IR and other formats omit the list-models filter.
 // Hardcoded because the plugin runtime only loads v2 NAM weights.
 // TEMP: set to `undefined` to disable both filters while testing.
 export const T3K_ARCHITECTURE: number | undefined = 2;

@@ -6,6 +6,11 @@ namespace EditorWebViewSetup {
 juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* editor) {
   return juce::WebBrowserComponent::Options{}
       .withNativeIntegrationEnabled()
+      // If the UI ever goes blank after being hidden/re-shown (e.g. tabbing
+      // between panes in some DAWs), enable this. By default JUCE navigates the
+      // WebView to about:blank when hidden and some hosts/macOS versions fail to
+      // restore it. Left off for now; flip on only if we hit that issue.
+      // .withKeepPageLoadedWhenBrowserIsHidden()
       .withBackend(juce::WebBrowserComponent::Options::Backend::webview2)
       .withWinWebView2Options(
           juce::WebBrowserComponent::Options::WinWebView2{}.withUserDataFolder(

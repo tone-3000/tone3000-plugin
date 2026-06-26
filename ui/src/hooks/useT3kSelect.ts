@@ -79,10 +79,10 @@ export const useT3kSelect = ({
     async (toneId: string | number) => {
       const tone = await client.getTone(toneId);
       // Only NAM tones use `architecture=2` on list models (v2 weights the plugin
-      // loads). IR and other platforms are not NAM architectures — never pass it there.
-      const isNamPlatform = tone.platform?.toLowerCase() === 'nam';
+      // loads). IR and other formats are not NAM architectures — never pass it there.
+      const isNamFormat = tone.format?.toLowerCase() === 'nam';
       const modelsRes = await client.listModels(toneId, {
-        ...(isNamPlatform && T3K_ARCHITECTURE !== undefined
+        ...(isNamFormat && T3K_ARCHITECTURE !== undefined
           ? { architecture: T3K_ARCHITECTURE }
           : {}),
       });

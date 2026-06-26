@@ -40,7 +40,11 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString) {
   }
 
   int toneId = toneObj->getProperty("id");
-  juce::String platform = toneObj->getProperty("platform").toString().toLowerCase();
+  // The API renamed `platform` to `format`; fall back to `platform` for tone
+  // JSON persisted by older builds.
+  juce::String format = toneObj->getProperty("format").toString().toLowerCase();
+  if (format.isEmpty())
+    format = toneObj->getProperty("platform").toString().toLowerCase();
   juce::var modelsVar = toneObj->getProperty("models");
 
   if (!modelsVar.isArray() || modelsVar.getArray()->size() == 0) {
@@ -59,7 +63,7 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString) {
   juce::String modelUrl = firstModel->getProperty("model_url").toString();
   juce::String modelName = firstModel->getProperty("name").toString();
 
-  ChainBlockType type = (platform == "nam") ? ChainBlockType::NAM : ChainBlockType::IR;
+  ChainBlockType type = (format == "nam") ? ChainBlockType::NAM : ChainBlockType::IR;
 
   static std::random_device rd;
   static std::mt19937 gen(rd());

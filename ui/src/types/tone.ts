@@ -39,7 +39,7 @@ export interface Tone {
   images: string[];
   is_public: boolean;
   links: string[];
-  platform: string;
+  format: string;
   models_count: number;
   favorites_count: number;
   downloads_count: number;
