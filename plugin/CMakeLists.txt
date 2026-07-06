@@ -39,19 +39,16 @@ endif()
 
 add_subdirectory(NeuralAmpModelerCore)
 
-# NeuralAmpModelerCore/tools sets -Wno-error on some sources (GCC/Clang only);
-# MSVC rejects it as "invalid numeric argument '/Wno-error'" (D8021). Source file
-# properties are directory-scoped, so the override must target the tools dir
-# (where those targets are defined), not this dir.
+# The NAM dev tools (benchmarks, render, run_tests) are not needed to build the
+# plugin and are not MSVC-compatible: GCC/Clang-only flags like -Wno-error
+# (D8021), M_PI without _USE_MATH_DEFINES, and POSIX dlfcn.h in run_tests.
+# Keep them out of the default build on Windows; other platforms are unchanged.
 if(MSVC)
-    set_source_files_properties(
-        ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/Dependencies/AudioDSPTools/dsp/wav.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/NAM/dsp.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/NAM/conv1d.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/NAM/wavenet/model.cpp
-        DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/tools
-        PROPERTIES COMPILE_FLAGS ""
-    )
+    foreach(_nam_tool tools loadmodel benchmodel render benchmodel_bufsize bench_a2_fast run_tests)
+        if(TARGET ${_nam_tool})
+            set_target_properties(${_nam_tool} PROPERTIES EXCLUDE_FROM_ALL TRUE)
+        endif()
+    endforeach()
 endif()
 
 # NAM static library - built here (not in submodule) to keep submodule pristine.
