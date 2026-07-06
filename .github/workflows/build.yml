@@ -256,11 +256,25 @@ jobs:
           path: build/TONE3000-v*-setup.exe
           if-no-files-found: error
 
+      # ── Linux: tarball with install script (the usual convention on Linux) ──
+      - name: Package tarball (Linux)
+        if: matrix.os == 'linux'
+        run: |
+          set -euo pipefail
+          PKG="TONE3000-v0.0.1-linux-x64"
+          ARTEFACTS="build/plugin/TONE3000_artefacts/${{ env.BUILD_TYPE }}"
+          STAGE="build/${PKG}"
+          mkdir -p "$STAGE"
+          cp -r "$ARTEFACTS/VST3/TONE3000.vst3" "$STAGE/"
+          cp "$ARTEFACTS/Standalone/TONE3000" "$STAGE/"
+          install -m 755 script/installer/linux/install.sh "$STAGE/install.sh"
+          tar -czf "build/${PKG}.tar.gz" -C build "$PKG"
+          echo "Created build/${PKG}.tar.gz"
+
       - name: Upload artifacts (Linux)
         if: matrix.os == 'linux' && success()
         uses: actions/upload-artifact@v4
         with:
           name: TONE3000-${{ matrix.name }}-${{ env.BUILD_TYPE }}
-          path: |
-            build/plugin/TONE3000_artefacts/${{ env.BUILD_TYPE }}/Standalone
-            build/plugin/TONE3000_artefacts/${{ env.BUILD_TYPE }}/VST3
+          path: build/TONE3000-v*-linux-x64.tar.gz
+          if-no-files-found: error

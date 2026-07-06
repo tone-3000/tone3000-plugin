@@ -22,12 +22,6 @@ if (NOT HEADLESS)
         list(APPEND _plugin_formats "AAX")
     endif()
     set(VST3_MANIFEST TRUE)                     # Create moduleinfo.json for VST3
-    if (WIN32)
-        # juce_vst3_helper fails to load the freshly built VST3 on Windows CI,
-        # killing the build after "creating moduleinfo.json". The manifest is
-        # optional (hosts scan fine without it), so skip it on Windows.
-        set(VST3_MANIFEST FALSE)
-    endif()
     add_compile_definitions(HEADLESS=0)
     if (WIN32)
         set(NEEDS_WEBVIEW2_VALUE TRUE)
@@ -45,13 +39,17 @@ endif()
 
 add_subdirectory(NeuralAmpModelerCore)
 
-# NeuralAmpModelerCore/tools uses -Wno-error (GCC/Clang only). MSVC doesn't support it; clear it.
+# NeuralAmpModelerCore/tools sets -Wno-error on some sources (GCC/Clang only);
+# MSVC rejects it as "invalid numeric argument '/Wno-error'" (D8021). Source file
+# properties are directory-scoped, so the override must target the tools dir
+# (where those targets are defined), not this dir.
 if(MSVC)
     set_source_files_properties(
         ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/Dependencies/AudioDSPTools/dsp/wav.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/NAM/dsp.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/NAM/conv1d.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/NAM/wavenet/model.cpp
+        DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/tools
         PROPERTIES COMPILE_FLAGS ""
     )
 endif()
