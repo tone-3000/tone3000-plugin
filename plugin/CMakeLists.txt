@@ -22,6 +22,12 @@ if (NOT HEADLESS)
         list(APPEND _plugin_formats "AAX")
     endif()
     set(VST3_MANIFEST TRUE)                     # Create moduleinfo.json for VST3
+    if (WIN32)
+        # juce_vst3_helper fails to load the freshly built VST3 on Windows CI,
+        # killing the build after "creating moduleinfo.json". The manifest is
+        # optional (hosts scan fine without it), so skip it on Windows.
+        set(VST3_MANIFEST FALSE)
+    endif()
     add_compile_definitions(HEADLESS=0)
     if (WIN32)
         set(NEEDS_WEBVIEW2_VALUE TRUE)
@@ -142,7 +148,12 @@ target_link_libraries(${PROJECT_NAME}
         # NAM: force_load/whole-archive so static factory::Helper initializers
         # (ConvNet, LSTM, WaveNet) are not stripped by the linker
         $<$<PLATFORM_ID:Darwin>:-Wl,-force_load,$<TARGET_FILE:NAM>>
-        $<$<PLATFORM_ID:Linux>:-Wl,--whole-archive,NAM,-Wl,--no-whole-archive>
+        # Linux: flags and library must be separate link items. A single
+        # "-Wl,--whole-archive,NAM,-Wl,..." item gets comma-split by the GCC
+        # driver, passing a literal "-Wl" to ld ("unrecognized option '-Wl'").
+        $<$<PLATFORM_ID:Linux>:-Wl,--whole-archive>
+        $<$<PLATFORM_ID:Linux>:NAM>
+        $<$<PLATFORM_ID:Linux>:-Wl,--no-whole-archive>
         $<$<PLATFORM_ID:Windows>:NAM>
     PUBLIC
         juce::juce_recommended_config_flags
