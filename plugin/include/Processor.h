@@ -83,6 +83,12 @@ public:
   void setBlockMix(const std::string& blockId, float normalizedMix);
   void setBlockNamSlimmableSize(const std::string& blockId, double size);
 
+  // Stereo mode: two independent Left/Right chains.
+  void setStereoMode(bool enabled);
+  bool isStereoMode() const { return stereoEnabled.load(); }
+  // Which chain the UI is currently editing (Left/Right). No-op argument outside {"left","right"}.
+  void setActiveEditChain(const juce::String& side);
+
   // Latency management
   int calculateTotalLatency() const;
   void updateLatencyCompensation();
@@ -90,6 +96,11 @@ public:
   // Meter level getters for UI
   float getInputMeterLevel() const;
   float getOutputMeterLevel() const;
+
+  // Location of the on-disk diagnostic log. Single source of truth shared by the
+  // FileLogger setup and the UI's "copy/reveal logs" actions so they never drift.
+  // macOS: ~/Library/Logs/TONE3000/TONE3000.log, Windows: %APPDATA%/TONE3000/TONE3000.log
+  static juce::File getLogFile();
 
 private:
   // Helper methods
@@ -111,8 +122,9 @@ private:
     bool namIsSlimmable = false;
     int namLatencySamples = 0;
 
-    std::unique_ptr<juce::dsp::Convolution> convolverLeft;
-    std::unique_ptr<juce::dsp::Convolution> convolverRight;
+    std::unique_ptr<juce::dsp::Convolution> convolverMono;
+    std::unique_ptr<juce::dsp::Convolution> convolverStereo;
+    int irNumChannels = 1;
     juce::File irTempFile;
     float irNormalizationGainLinear = 1.0f;
   };
@@ -124,9 +136,39 @@ private:
   /** Short path under `chainMutex` only: swaps engines onto `block` and clears the opposite modality. */
   void applyPreparedModelToChainBlock(ChainBlock& block, PreparedBlockModel& prepared);
 
+  // Run one chain (the per-block loop) over the supplied working buffer. The buffer may have
+  // 1 channel (a single side in stereo mode) or 1-2 channels (mono mode). All per-channel work
+  // is keyed on buffer.getNumChannels(). Must be called while holding `chainMutex`.
+  void processChainOnBuffer(std::vector<std::unique_ptr<ChainBlock>>& blocks,
+                            juce::AudioBuffer<float>& buffer);
+
+  // Prepare every engine in a chain for the given sample rate / block size. Holds no lock.
+  void prepareChain(std::vector<std::unique_ptr<ChainBlock>>& blocks, double sampleRate,
+                    int samplesPerBlock);
+
+  // The chain the UI edits/adds to right now (Left in mono mode, or the active side in stereo).
+  std::vector<std::unique_ptr<ChainBlock>>& activeChain();
+
+  // Find a block by id across both chains (ids are globally unique). Returns nullptr if absent.
+  ChainBlock* findBlockById(const std::string& blockId);
+
+  // State (de)serialization helpers for a single chain.
+  void serializeChainToTree(const std::vector<std::unique_ptr<ChainBlock>>& blocks,
+                            juce::ValueTree& chainState);
+  void restoreChainFromTree(const juce::ValueTree& chainState,
+                            std::vector<std::unique_ptr<ChainBlock>>& target,
+                            const char* insertBlockId);
+
   // Chain management
-  std::vector<std::unique_ptr<ChainBlock>> chainBlocks;
+  std::vector<std::unique_ptr<ChainBlock>> chainBlocks;       // Left / primary chain
+  std::vector<std::unique_ptr<ChainBlock>> rightChainBlocks;  // Right chain (stereo mode)
+  std::atomic<bool> stereoEnabled{false};
+  ChainSide activeEditSide{ChainSide::Left};
   juce::CriticalSection chainMutex;
+
+  // Pre-allocated mono scratch buffers for per-side processing in stereo mode.
+  juce::AudioBuffer<float> stereoChainBufferL;
+  juce::AudioBuffer<float> stereoChainBufferR;
 
   // TONE3000 OAuth access token (Bearer). Read by `fetchModelFromUrl` from any
   // thread; written by the UI thread via `setAccessToken`.

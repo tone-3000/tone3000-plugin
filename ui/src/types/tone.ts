@@ -39,7 +39,7 @@ export interface Tone {
   images: string[];
   is_public: boolean;
   links: string[];
-  platform: string;
+  format: string;
   models_count: number;
   favorites_count: number;
   downloads_count: number;
@@ -81,6 +81,18 @@ export type ChainItem = ChainBlockData | ChainInsertBlock;
 
 export function isChainInsertBlock(item: ChainItem): item is ChainInsertBlock {
   return 'isInsertBlock' in item && item.isInsertBlock === true;
+}
+
+/** Which chain is being edited in stereo mode. */
+export type ChainSide = 'left' | 'right';
+
+/** Chain status returned by the native `getChainStatus` function. */
+export interface ChainStatus {
+  chain: ChainItem[];
+  /** True when stereo (dual Left/Right chain) mode is active. */
+  stereoEnabled: boolean;
+  /** The chain currently being edited; only meaningful when stereoEnabled. */
+  activeSide: ChainSide;
 }
 
 export interface T3kDownloadEvent {

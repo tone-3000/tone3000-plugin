@@ -9,10 +9,20 @@ import type { ChainBlockData } from '../types/tone';
 
 const GEAR_CAPTURE_MAP = {
   amp: 'Amp Head Capture',
-  'full-rig': 'Full Rig / Combo Capture',
+  'amp-cab': 'Full Rig / Combo Capture',
   pedal: 'Pedal Capture',
   outboard: 'Outboard Capture',
-  ir: 'Impulse Response',
+  cab: 'Cab Capture',
+  space: 'Space Capture',
+  experimental: 'Experimental Capture',
+};
+
+// IR is no longer a gear value — it's identified by `format=ir`. Show the
+// "Impulse Response" label for IR tones, otherwise fall back to the gear-based
+// capture description.
+const captureLabel = (gear: string, format: string): string => {
+  if (format?.toLowerCase() === 'ir') return 'Impulse Response';
+  return GEAR_CAPTURE_MAP[gear as keyof typeof GEAR_CAPTURE_MAP] ?? '';
 };
 
 const imageSize = 128;
@@ -319,7 +329,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, onRemove, onSwitc
                       fontWeight: '400',
                     }}
                   >
-                    {GEAR_CAPTURE_MAP[block.gear as keyof typeof GEAR_CAPTURE_MAP]}
+                    {captureLabel(block.gear, block.format)}
                   </span>
                   <span
                     style={{
@@ -332,7 +342,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, onRemove, onSwitc
                       borderRadius: '4px',
                     }}
                   >
-                    {block.platform.toUpperCase()}
+                    {block.format.toUpperCase()}
                   </span>
                 </div>
                 <div

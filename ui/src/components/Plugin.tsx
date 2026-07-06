@@ -4,7 +4,8 @@ import { KnobControl } from './KnobControl';
 import { useParameter } from '../hooks/useParameter';
 import { useFunction } from '../hooks/useFunction';
 import { ChainView } from './ChainView';
-import type { ChainItem, Model, Tone } from '../types/tone';
+import { StereoControls } from './StereoControls';
+import type { ChainItem, ChainSide, ChainStatus, Model, Tone } from '../types/tone';
 import Settings from './Settings';
 import { DbMeter } from './DbMeter';
 import { useT3kSelect } from '../hooks/useT3kSelect';
@@ -22,25 +23,56 @@ export const Plugin: React.FC = () => {
 
   // Chain state (full order from backend, includes insert block)
   const [chain, setChain] = useState<ChainItem[]>([]);
+  const [stereoEnabled, setStereoEnabled] = useState(false);
+  const [activeSide, setActiveSide] = useState<ChainSide>('left');
   const [showSettings, setShowSettings] = useState(false);
 
   // Native functions
-  const getChainStatus = useFunction<any>('getChainStatus');
+  const getChainStatus = useFunction<ChainStatus>('getChainStatus');
   const loadTone = useFunction<string>('loadTone');
   const switchModel = useFunction<boolean>('switchModel');
   const removeChainBlock = useFunction<string>('removeChainBlock');
   const reorderChainBlocks = useFunction<boolean>('reorderChainBlocks');
+  const setStereoModeFn = useFunction<boolean>('setStereoMode');
+  const setActiveEditChainFn = useFunction<boolean>('setActiveEditChain');
   const setAccessToken = useFunction<boolean>('setAccessToken');
 
-  // Load chain status from backend (includes insert block position)
+  // Load chain status from backend (includes insert block position + stereo state)
   const loadChainStatus = async () => {
     try {
       const status = await getChainStatus.invoke();
       if (status && status.chain) {
         setChain(status.chain as ChainItem[]);
+        if (typeof status.stereoEnabled === 'boolean') setStereoEnabled(status.stereoEnabled);
+        if (status.activeSide === 'left' || status.activeSide === 'right')
+          setActiveSide(status.activeSide);
       }
     } catch (error) {
       console.error('Error loading chain status:', error);
+    }
+  };
+
+  // Toggle stereo (dual-chain) mode, then refresh the chain for the active side.
+  const handleToggleStereo = async (enabled: boolean) => {
+    setStereoEnabled(enabled);
+    try {
+      await setStereoModeFn.invoke(enabled);
+      await loadChainStatus();
+    } catch (error) {
+      console.error('Error toggling stereo mode:', error);
+      await loadChainStatus();
+    }
+  };
+
+  // Switch which chain (Left / Right) is being edited.
+  const handleSelectSide = async (side: ChainSide) => {
+    setActiveSide(side);
+    try {
+      await setActiveEditChainFn.invoke(side);
+      await loadChainStatus();
+    } catch (error) {
+      console.error('Error switching edit chain:', error);
+      await loadChainStatus();
     }
   };
 
@@ -258,7 +290,14 @@ export const Plugin: React.FC = () => {
             padding: '24px 0',
           }}
         >
+          <StereoControls
+            stereoEnabled={stereoEnabled}
+            activeSide={activeSide}
+            onToggleStereo={handleToggleStereo}
+            onSelectSide={handleSelectSide}
+          />
           <ChainView
+            key={stereoEnabled ? activeSide : 'mono'}
             chain={chain}
             onAddModel={handleAddModel}
             onRemoveBlock={removeBlock}

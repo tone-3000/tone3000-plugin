@@ -90,7 +90,7 @@ function buildAuthorizeUrl(
  * `redirectUri` with `code`, `state`, and `tone_id` (or `canceled=true`).
  *
  * @param options.gears        underscore-separated gear filter (e.g. 'amp_pedal')
- * @param options.platform     single platform filter (e.g. 'nam', 'ir')
+ * @param options.format       single model-format filter (e.g. 'nam', 'ir')
  * @param options.architecture model architecture filter — restricts the
  *                             catalog to tones whose models match this
  *                             architecture. The plugin passes `2` because it
@@ -102,7 +102,7 @@ export async function startSelectFlow(
   redirectUri: string,
   options?: {
     gears?: string;
-    platform?: string;
+    format?: string;
     architecture?: string | number;
     menubar?: boolean;
     loginHint?: string;
@@ -111,7 +111,7 @@ export async function startSelectFlow(
   const pkce = await buildPkceParams();
   const extra: Record<string, string> = { prompt: 'select_tone' };
   if (options?.gears) extra.gears = options.gears;
-  if (options?.platform) extra.platform = options.platform;
+  if (options?.format) extra.format = options.format;
   if (options?.architecture !== undefined) extra.architecture = String(options.architecture);
   if (options?.menubar) extra.menubar = 'true';
   if (options?.loginHint) extra.login_hint = options.loginHint;
@@ -320,7 +320,7 @@ export class T3KClient {
 
   /**
    * List models for a tone. Pass `architecture` (e.g. `2` for NAM v2) only for
-   * `platform=nam` tones; omit for IR and other platforms.
+   * `format=nam` tones; omit for IR and other formats.
    */
   async listModels(
     toneId: number | string,

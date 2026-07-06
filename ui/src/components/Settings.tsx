@@ -1,5 +1,11 @@
 import React, { useCallback, useState } from 'react';
-import { X as XIcon, Settings as SettingsIcon, Volume2 } from 'lucide-react';
+import {
+  X as XIcon,
+  Settings as SettingsIcon,
+  Volume2,
+  ClipboardCopy,
+  FolderOpen,
+} from 'lucide-react';
 import { ToggleControl } from './ToggleControl';
 import { useParameter } from '../hooks/useParameter';
 import { useFunction } from '../hooks/useFunction';
@@ -29,6 +35,23 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   // State to track if we're in standalone mode
   const [isStandalone, setIsStandalone] = useState<boolean | null>(null);
   const showAudioSettings = useFunction<boolean>('showAudioSettings');
+
+  // Diagnostics: forward the on-disk log so users can share it for debugging.
+  const copyLogs = useFunction<boolean>('copyLogs');
+  const revealLogs = useFunction<string>('revealLogs');
+  const [logStatus, setLogStatus] = useState<string | null>(null);
+
+  const handleCopyLogs = useCallback(async () => {
+    const ok = await copyLogs.invoke();
+    setLogStatus(ok ? 'Logs copied to clipboard' : 'No log file found yet');
+    setTimeout(() => setLogStatus(null), 3000);
+  }, [copyLogs]);
+
+  const handleRevealLogs = useCallback(async () => {
+    const path = await revealLogs.invoke();
+    setLogStatus(path ? 'Revealed log file' : 'No log file found yet');
+    setTimeout(() => setLogStatus(null), 3000);
+  }, [revealLogs]);
 
   // Open native audio settings dialog (standalone only)
   const handleOpenAudioSettings = useCallback(async () => {
@@ -326,6 +349,89 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
               {isStandalone === false && (
                 <span style={{ color: '#ff6666', display: 'block', marginTop: '4px' }}>
                   Only available in standalone mode. Your DAW manages audio settings.
+                </span>
+              )}
+            </p>
+          </div>
+
+          {/* Diagnostics */}
+          <div
+            style={{
+              paddingTop: '20px',
+              marginTop: '20px',
+              borderTop: '1px solid #333333',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '8px',
+                gap: '8px',
+              }}
+            >
+              <label
+                style={{
+                  fontSize: '16px',
+                  fontWeight: '500',
+                  color: '#ffffff',
+                }}
+              >
+                Diagnostics
+              </label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={handleCopyLogs}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 16px',
+                    backgroundColor: '#222222',
+                    border: '1px solid #555555',
+                    borderRadius: '4px',
+                    color: '#ffffff',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <ClipboardCopy size={16} />
+                  Copy logs
+                </button>
+                <button
+                  onClick={handleRevealLogs}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 16px',
+                    backgroundColor: '#222222',
+                    border: '1px solid #555555',
+                    borderRadius: '4px',
+                    color: '#ffffff',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <FolderOpen size={16} />
+                  Reveal
+                </button>
+              </div>
+            </div>
+            <p
+              style={{
+                fontSize: '12px',
+                color: '#cccccc',
+                margin: 0,
+                lineHeight: '1.4',
+              }}
+            >
+              Copy recent diagnostic logs to the clipboard (paste them into a bug report) or reveal
+              the log file on disk.
+              {logStatus && (
+                <span style={{ color: '#88ff88', display: 'block', marginTop: '4px' }}>
+                  {logStatus}
                 </span>
               )}
             </p>
