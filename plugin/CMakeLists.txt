@@ -106,6 +106,8 @@ target_sources(${PROJECT_NAME}
         src/ProcessorModelLoader.cpp
         include/NamResampler.h
         src/NamResampler.cpp
+        include/TunerDetector.h
+        src/TunerDetector.cpp
 )
 # Include GUI for Desktop builds
 if (NOT HEADLESS)

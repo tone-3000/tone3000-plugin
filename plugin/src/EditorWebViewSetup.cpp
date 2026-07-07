@@ -202,6 +202,27 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             completion(juce::var(editor->processor.getOutputMeterLevel()));
           })
       .withNativeFunction(
+          "setTunerEnabled",
+          [editor](const juce::Array<juce::var>& args,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            if (args.size() >= 1) {
+              const bool enabled = args[0].isBool()
+                                       ? static_cast<bool>(args[0])
+                                       : (args[0].isDouble() ? static_cast<double>(args[0]) > 0.5
+                                                             : args[0].toString() == "true");
+              editor->processor.setTunerEnabled(enabled);
+              completion(juce::var(true));
+            } else {
+              completion(juce::var(false));
+            }
+          })
+      .withNativeFunction(
+          "getTunerReading",
+          [editor](const juce::Array<juce::var>& args,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            completion(editor->processor.getTunerReading());
+          })
+      .withNativeFunction(
           "webLog",
           [](const juce::Array<juce::var>& args,
              juce::WebBrowserComponent::NativeFunctionCompletion completion) {

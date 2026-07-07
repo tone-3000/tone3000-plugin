@@ -8,11 +8,29 @@ import { StereoControls } from './StereoControls';
 import type { ChainItem, ChainSide, ChainStatus, Model, Tone } from '../types/tone';
 import Settings from './Settings';
 import { DbMeter } from './DbMeter';
+import { TunerView } from './TunerView';
 import { useT3kSelect } from '../hooks/useT3kSelect';
 import { useInternetGate } from '../hooks/useInternetGate';
 import type { T3KTokens } from '../t3k/tone3000-client';
 import { OAuthOverlay } from './OAuthOverlay';
 import { OfflineModal } from './OfflineModal';
+
+// Lucide has no tuning fork, so this mimics its 24x24 stroke style.
+const TuningForkIcon: React.FC<{ size?: number }> = ({ size = 18 }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M8 3v7a4 4 0 0 0 8 0V3" />
+    <line x1="12" y1="14" x2="12" y2="21" />
+  </svg>
+);
 
 export const Plugin: React.FC = () => {
   // Plugin Parameters
@@ -28,6 +46,7 @@ export const Plugin: React.FC = () => {
   const [stereoEnabled, setStereoEnabled] = useState(false);
   const [activeSide, setActiveSide] = useState<ChainSide>('left');
   const [showSettings, setShowSettings] = useState(false);
+  const [showTuner, setShowTuner] = useState(false);
 
   // Native functions
   const getChainStatus = useFunction<ChainStatus>('getChainStatus');
@@ -38,6 +57,17 @@ export const Plugin: React.FC = () => {
   const setStereoModeFn = useFunction<boolean>('setStereoMode');
   const setActiveEditChainFn = useFunction<boolean>('setActiveEditChain');
   const setAccessToken = useFunction<boolean>('setAccessToken');
+  const setTunerEnabled = useFunction<boolean>('setTunerEnabled');
+
+  // Toggle the tuner screen; native only feeds the pitch detector while it's on.
+  const handleToggleTuner = async (show: boolean) => {
+    setShowTuner(show);
+    try {
+      await setTunerEnabled.invoke(show);
+    } catch (error) {
+      console.error('Error toggling tuner:', error);
+    }
+  };
 
   // Load chain status from backend (includes insert block position + stereo state)
   const loadChainStatus = async () => {
@@ -238,28 +268,48 @@ export const Plugin: React.FC = () => {
             }}
           /> */}
         </a>
-        <button
-          onClick={() => setShowSettings(true)}
-          title="Settings"
-          style={{
-            background: 'transparent',
-            // border: '1px solid #ffffff',
-            border: 'none',
-            color: '#ffffff',
-            // width: '32px',
-            // height: '32px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            borderRadius: '4px',
-          }}
-        >
-          <SettingsIcon size={18} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            onClick={() => handleToggleTuner(!showTuner)}
+            title="Tuner"
+            style={{
+              background: showTuner ? 'rgba(235, 235, 245, 0.18)' : 'transparent',
+              border: 'none',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              borderRadius: '4px',
+              padding: '5px',
+            }}
+          >
+            <TuningForkIcon size={18} />
+          </button>
+          <button
+            onClick={() => setShowSettings(true)}
+            title="Settings"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              borderRadius: '4px',
+              padding: '5px',
+            }}
+          >
+            <SettingsIcon size={18} />
+          </button>
+        </div>
       </div>
 
-      {/* Middle Section: Meters + Chain View */}
+      {/* Middle Section: Tuner (when toggled on) or Meters + Chain View */}
+      {showTuner ? (
+        <TunerView />
+      ) : (
       <div
         style={{
           display: 'flex',
@@ -327,6 +377,7 @@ export const Plugin: React.FC = () => {
           <DbMeter type="output" height={450} labelsPosition="right" />
         </div>
       </div>
+      )}
 
       {/* Pinned Knobs Row at Bottom - Full Width */}
       <div

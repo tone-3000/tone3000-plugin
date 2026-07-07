@@ -173,6 +173,8 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   inputBuffer.resize(maxBlockSize);
   outputBuffer.resize(maxBlockSize);
 
+  tuner.prepare(sampleRate);
+
   DBG("Preparing to play: sampleRate=" << sampleRate << ", samplesPerBlock=" << samplesPerBlock);
   DBG("Model sample rate set to: " << modelSampleRate);
 
@@ -568,6 +570,12 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   }
   float inputDb = inputPeak > 0.0f ? juce::Decibels::gainToDecibels(inputPeak) : -60.0f;
   inputMeterLevel.store(std::max(-60.0f, inputDb));
+
+  // Feed the tuner from the raw input (pre-gain, pre-gate) while the tuner
+  // screen is open. Channel 0 only: guitar sources are mono, and mixing
+  // channels risks phase cancellation.
+  if (tuner.isEnabled())
+    tuner.pushSamples(buffer.getReadPointer(0), numSamples);
 
   // Map normalized [0..1] to dB around unity: 0.5 => 0 dB, ±0.5 => ±12 dB
   const float inputGainDb = (cacheInputLevel - 0.5f) * 24.0f;  // -12 dB .. +12 dB

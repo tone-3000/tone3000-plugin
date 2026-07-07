@@ -17,6 +17,7 @@
 #include "NAM/wavenet/model.h"
 #include "ChainBlock.h"
 #include "NamResampler.h"
+#include "TunerDetector.h"
 
 class TONE3000Processor;
 
@@ -96,6 +97,11 @@ public:
   // Meter level getters for UI
   float getInputMeterLevel() const;
   float getOutputMeterLevel() const;
+
+  // Tuner: enabled by the UI while the tuner screen is visible. Reads the raw
+  // (pre-gain, pre-gate) input so gating never starves the pitch detector.
+  void setTunerEnabled(bool enabled) { tuner.setEnabled(enabled); }
+  juce::var getTunerReading() { return tuner.getReading(); }
 
   // Location of the on-disk diagnostic log. Single source of truth shared by the
   // FileLogger setup and the UI's "copy/reveal logs" actions so they never drift.
@@ -235,6 +241,9 @@ private:
   // Meter level tracking
   mutable std::atomic<float> inputMeterLevel{-60.0f};
   mutable std::atomic<float> outputMeterLevel{-60.0f};
+
+  // Tuner pitch detection (fed from processBlock when enabled)
+  TunerDetector tuner;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TONE3000Processor)
 };
