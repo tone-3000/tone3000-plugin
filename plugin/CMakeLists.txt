@@ -148,7 +148,13 @@ target_link_libraries(${PROJECT_NAME}
         $<$<PLATFORM_ID:Linux>:-Wl,--whole-archive>
         $<$<PLATFORM_ID:Linux>:NAM>
         $<$<PLATFORM_ID:Linux>:-Wl,--no-whole-archive>
+        # Windows (MSVC): /WHOLEARCHIVE is the equivalent — without it the
+        # linker drops the objects holding the self-registering config parsers
+        # ("No config parser registered for architecture ..." at NAM load).
+        # Leading '-' so CMake treats the item as a flag (a leading '/' parses
+        # as a path); MSVC's linker accepts either prefix.
         $<$<PLATFORM_ID:Windows>:NAM>
+        $<$<PLATFORM_ID:Windows>:-WHOLEARCHIVE:$<TARGET_FILE:NAM>>
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags
