@@ -39,17 +39,16 @@ endif()
 
 add_subdirectory(NeuralAmpModelerCore)
 
-# The NAM dev tools (benchmarks, render, run_tests) are not needed to build the
-# plugin and are not MSVC-compatible: GCC/Clang-only flags like -Wno-error
-# (D8021), M_PI without _USE_MATH_DEFINES, and POSIX dlfcn.h in run_tests.
-# Keep them out of the default build on Windows; other platforms are unchanged.
-if(MSVC)
-    foreach(_nam_tool tools loadmodel benchmodel render benchmodel_bufsize bench_a2_fast run_tests)
-        if(TARGET ${_nam_tool})
-            set_target_properties(${_nam_tool} PROPERTIES EXCLUDE_FROM_ALL TRUE)
-        endif()
-    endforeach()
-endif()
+# The NAM dev tools (benchmarks, render, run_tests) are only used by the
+# submodule's own CI; nothing in the plugin build needs them. They also don't
+# compile with MSVC (GCC/Clang-only flags, M_PI, POSIX dlfcn.h in run_tests),
+# and each one recompiles all NAM sources, wasting CI time. Keep them out of
+# the default build; build explicitly if needed: cmake --build build --target benchmodel
+foreach(_nam_tool tools loadmodel benchmodel render benchmodel_bufsize bench_a2_fast run_tests)
+    if(TARGET ${_nam_tool})
+        set_target_properties(${_nam_tool} PROPERTIES EXCLUDE_FROM_ALL TRUE)
+    endif()
+endforeach()
 
 # NAM static library - built here (not in submodule) to keep submodule pristine.
 # Must be linked with -force_load/--whole-archive so static factory::Helper

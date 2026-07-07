@@ -9,8 +9,10 @@ import type { ChainItem, ChainSide, ChainStatus, Model, Tone } from '../types/to
 import Settings from './Settings';
 import { DbMeter } from './DbMeter';
 import { useT3kSelect } from '../hooks/useT3kSelect';
+import { useInternetGate } from '../hooks/useInternetGate';
 import type { T3KTokens } from '../t3k/tone3000-client';
 import { OAuthOverlay } from './OAuthOverlay';
+import { OfflineModal } from './OfflineModal';
 
 export const Plugin: React.FC = () => {
   // Plugin Parameters
@@ -172,8 +174,13 @@ export const Plugin: React.FC = () => {
     }
   };
 
+  // Gate internet-dependent actions: the Select flow navigates the webview to
+  // tone3000.com, and doing that offline strands the user on a browser error
+  // page. Check connectivity first and show a modal if we're offline.
+  const internetGate = useInternetGate();
+
   const handleAddModel = () => {
-    startSelectFlow();
+    internetGate.requireInternet(() => startSelectFlow());
   };
 
   useEffect(() => {
@@ -355,6 +362,13 @@ export const Plugin: React.FC = () => {
         error={oauthError}
         onRetry={startSelectFlow}
         onDismiss={clearOauthError}
+      />
+
+      {/* Offline gate for internet-dependent actions (e.g. the + button). */}
+      <OfflineModal
+        open={internetGate.offlineModalOpen}
+        onRetry={internetGate.retry}
+        onDismiss={internetGate.dismiss}
       />
     </div>
   );

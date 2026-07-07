@@ -1,22 +1,9 @@
 #include "Processor.h"
+#include "json.hpp"
 #include <cmath>
 #include <cstring>
 #include <stdexcept>
 #include <string>
-
-namespace {
-
-/** Single path segment for tempDirectory.getChildFile: API names may contain '/' etc. */
-juce::String uniqueSafeTempLeafName(const juce::String& filename) {
-  juce::String leaf(filename);
-  leaf = leaf.replaceCharacters("/\\:", "___");
-  leaf = leaf.trim();
-  if (leaf.isEmpty())
-    leaf = "model.bin";
-  return juce::Uuid().toString() + "_" + leaf;
-}
-
-} // namespace
 
 // #####################################
 // MODEL LOADING HELPERS
@@ -84,7 +71,8 @@ std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& mo
   std::unique_ptr<juce::InputStream> stream(url.createInputStream(options));
 
   if (!stream) {
-    DBG("Failed to create input stream for URL: " << modelUrl);
+    juce::Logger::writeToLog("[ModelLoader] Failed to open stream for model URL (network down or "
+                             "unreachable): " + modelUrl);
     return {};
   }
 
@@ -102,7 +90,7 @@ std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& mo
   }
 
   if (memoryBlock.getSize() == 0) {
-    DBG("Downloaded 0 bytes from URL: " << modelUrl);
+    juce::Logger::writeToLog("[ModelLoader] Downloaded 0 bytes from model URL: " + modelUrl);
     return {};
   }
 
@@ -131,23 +119,22 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
     return out;
   }
 
-  DBG("Preparing model off-thread: " << filename << " (" << modelData.size() << " bytes)");
+  juce::Logger::writeToLog("[ModelLoader] Preparing " +
+                           juce::String(type == ChainBlockType::NAM ? "NAM" : "IR") + " model: " +
+                           filename + " (" + juce::String((juce::int64)modelData.size()) + " bytes)");
 
   const double srForNam = hostSampleRate;
   const int effectiveBlockSize = computeEffectiveNamPrepareBlockSize();
 
   try {
-    juce::File tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
-    juce::File tempFile = tempDir.getChildFile(uniqueSafeTempLeafName(filename));
-
-    if (!tempFile.replaceWithData(modelData.data(), modelData.size())) {
-      DBG("Failed to create temporary file");
-      return out;
-    }
-
     if (type == ChainBlockType::NAM) {
-      std::unique_ptr<nam::DSP> rawDsp =
-          nam::get_dsp(std::filesystem::path(tempFile.getFullPathName().toStdString()));
+      // Parse the .nam JSON directly from the downloaded bytes. Never round-trip
+      // through a temp file here: nam::get_dsp(std::filesystem::path) built from
+      // a JUCE UTF-8 string mis-decodes non-ASCII characters (model names, user
+      // temp dirs) on Windows and the load fails silently.
+      const nlohmann::json config =
+          nlohmann::json::parse(modelData.begin(), modelData.end());
+      std::unique_ptr<nam::DSP> rawDsp = nam::get_dsp(config);
 
       if (rawDsp) {
         if (rawDsp->NumInputChannels() != 1) {
@@ -174,28 +161,40 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
           resampler->prepare(srForNam, effectiveBlockSize);
           out.namLatencySamples = resampler->getLatencySamples();
         } else {
-          DBG("Deferring NamResampler::prepare until host sample rate / block size are valid");
-          tempFile.deleteFile();
+          juce::Logger::writeToLog(
+              "[ModelLoader] Deferring NamResampler::prepare — invalid sample rate/block size");
           return out;
         }
 
         out.namResampler = std::move(resampler);
-        DBG("NAM model prepared - Sample rate: " << out.namResampler->getModelSampleRate()
-                                               << ", Latency: " << out.namLatencySamples);
+        juce::Logger::writeToLog("[ModelLoader] NAM model prepared — sample rate: " +
+                                 juce::String(out.namResampler->getModelSampleRate()) +
+                                 ", latency: " + juce::String(out.namLatencySamples));
 
-        tempFile.deleteFile();
         out.success = true;
       } else {
-        DBG("Failed to load NAM model - null DSP returned");
-        tempFile.deleteFile();
+        juce::Logger::writeToLog("[ModelLoader] Failed to load NAM model — null DSP returned");
       }
     } else {
+      // IRs go through the JUCE convolution/format-reader API, which wants a
+      // file. Use a UUID-only leaf name (plus the right extension) so the
+      // model's display name — which may contain characters that are illegal
+      // in file names — never ends up in the path.
+      juce::File tempFile = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                .getChildFile(juce::Uuid().toString() + "_ir.wav");
+
+      if (!tempFile.replaceWithData(modelData.data(), modelData.size())) {
+        juce::Logger::writeToLog("[ModelLoader] Failed to create temporary IR file: " +
+                                 tempFile.getFullPathName());
+        return out;
+      }
+
       juce::AudioFormatManager formatManager;
       formatManager.registerBasicFormats();
       std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(tempFile));
 
       if (!reader) {
-        DBG("Failed to read IR file");
+        juce::Logger::writeToLog("[ModelLoader] Failed to read IR file: " + filename);
         tempFile.deleteFile();
         return out;
       }
@@ -234,7 +233,8 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
       out.success = true;
     }
   } catch (const std::exception& e) {
-    DBG("Error preparing model data off-thread: " << e.what());
+    juce::Logger::writeToLog("[ModelLoader] Error preparing model '" + filename +
+                             "': " + e.what());
     out.success = false;
     out.namResampler.reset();
     out.convolverMono.reset();

@@ -6,6 +6,12 @@
 #include <random>
 #include <cstring>
 
+// StandalonePluginHolder: used to inspect the audio device's active input
+// channels so we can detect a mono input source (see standaloneMonoInput).
+#if !HEADLESS && JucePlugin_Build_Standalone && ! JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP
+#include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
+#endif
+
 // ##############
 // MAIN PROCESSOR
 // ##############
@@ -184,6 +190,19 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   cacheInputCalibrationLevel = parameters.getRawParameterValue("inputCalibrationLevel")->load();
   DBG("Input calibration level loaded directly: " << cacheInputCalibrationLevel << " dBu");
   
+  // Detect a mono input source in the standalone app. The device restarts (and
+  // re-runs prepareToPlay) whenever the user changes the audio setup, so this
+  // stays in sync with the selected device. Hosts (VST3/AU) never take this
+  // path — channel layouts there come from the bus configuration.
+  standaloneMonoInput.store(false);
+#if !HEADLESS && JucePlugin_Build_Standalone && ! JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP
+  if (wrapperType == wrapperType_Standalone) {
+    if (auto* holder = juce::StandalonePluginHolder::getInstance())
+      if (auto* device = holder->deviceManager.getCurrentAudioDevice())
+        standaloneMonoInput.store(device->getActiveInputChannels().countNumberOfSetBits() == 1);
+  }
+#endif
+
   // Reset all chain blocks (both Left and Right chains)
   {
     juce::ScopedLock lock(chainMutex);
@@ -196,7 +215,6 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   midFilter.prepare(spec);
   trebleFilter.prepare(spec);
   dcBlockerLeft.prepare(spec);
-  dcBlockerRight.prepare(spec);
 
   // Temporary unity filters for boot
   *bassFilter.state =
@@ -206,13 +224,11 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   *trebleFilter.state =
       *juce::dsp::IIR::Coefficients<float>::makeHighShelf(sampleRate, 4000.0f, 1.0f, 1.0f);
   *dcBlockerLeft.state = *juce::dsp::IIR::Coefficients<float>::makeHighPass(sampleRate, 20.0f);
-  *dcBlockerRight.state = *juce::dsp::IIR::Coefficients<float>::makeHighPass(sampleRate, 20.0f);
 
   bassFilter.reset();
   midFilter.reset();
   trebleFilter.reset();
   dcBlockerLeft.reset();
-  dcBlockerRight.reset();
 
   // Oversampling prep
   oversampler = std::make_unique<juce::dsp::Oversampling<float>>(
@@ -258,7 +274,6 @@ void TONE3000Processor::releaseResources() {
   midFilter.reset();
   trebleFilter.reset();
   dcBlockerLeft.reset();
-  dcBlockerRight.reset();
 }
 
 bool TONE3000Processor::isBusesLayoutSupported(const BusesLayout& layouts) const {
@@ -445,9 +460,11 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
           if (right) right[i] *= g;
         }
       } catch (const std::exception& e) {
-        DBG("Error in NAM processing for block " << block->id << ": " << e.what());
-        std::cout << "Error in NAM processing for block " << block->id << ": " << e.what()
-                  << std::endl;
+        // Not RT-safe, but this is a one-shot failure path: loaded=false below
+        // stops the block from processing (and re-throwing) again. Without this
+        // a NAM failure is a silent bypass with nothing in the release log.
+        juce::Logger::writeToLog("[NAM] Processing failed for block " + juce::String(block->id) +
+                                 ": " + e.what() + " — disabling block");
         block->loaded = false;
         buffer.copyFrom(0, 0, tempDryBuffer, 0, 0, numSamples);
         if (numChannels > 1) {
@@ -529,6 +546,14 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
 
   updateCachedParameters();
 
+  // Standalone with a mono input device: the signal only arrives on channel 0,
+  // so mirror it to channel 1 up front. Otherwise the dry path (empty chain or
+  // IR-only chain) is heard on the left speaker only — NAM blocks used to mask
+  // this by copying L→R after processing.
+  if (standaloneMonoInput.load() && numChannels > 1) {
+    buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
+  }
+
   // #########################
   // Input + Noise Gate (always enabled)
   // #########################
@@ -585,11 +610,12 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // DC blocker
   // ##########
   {
+    // ProcessorDuplicator runs an independent filter instance per channel, so a
+    // single duplicator covers the whole (mono or stereo) buffer. Running a
+    // second one here would high-pass every channel twice.
     juce::dsp::AudioBlock<float> block(buffer);
     juce::dsp::ProcessContextReplacing<float> context(block);
     dcBlockerLeft.process(context);
-    if (numChannels > 1)
-      dcBlockerRight.process(context);
   }
 
   // Remove global normalization stage; handled per NAM block

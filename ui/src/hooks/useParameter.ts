@@ -67,12 +67,31 @@ export function useParameter<T extends ParameterType>(
       });
     }
 
+    // Close the initial-sync race: the backend's reply to the frontend's
+    // startup `requestInitialUpdate` can land before this listener exists (or
+    // be dropped entirely while the page is still loading — frequent on
+    // Windows WebView2), leaving the knob at its default. Re-read whatever
+    // state already arrived, then ask the backend to send it again now that
+    // we're subscribed.
+    const readCurrent = (): ParameterValueType[T] => {
+      switch (type) {
+        case 'toggle':
+          return (param as ParameterMap['toggle']).getValue() as ParameterValueType[T];
+        case 'comboBox':
+          return (param as ParameterMap['comboBox']).getChoiceIndex() as ParameterValueType[T];
+        default:
+          return (param as ParameterMap['slider']).getValue() as ParameterValueType[T];
+      }
+    };
+    setValue(readCurrent());
+    param.requestInitialUpdate?.();
+
     return () => {
       if (listenerId !== undefined && param.valueChangedEvent) {
         param.valueChangedEvent.removeListener(listenerId);
       }
     };
-  }, [param]);
+  }, [param, type]);
 
   return [value, updateValue];
 }

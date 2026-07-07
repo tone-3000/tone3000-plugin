@@ -26,12 +26,15 @@ export interface SliderParameter {
   getValue(): number;
   setValue(value: number): void;
   valueChangedEvent?: ValueChangeEvent<number>;
+  /** Ask the backend to re-send the current value/properties (safe to call any time). */
+  requestInitialUpdate?(): void;
 }
 
 export interface ToggleParameter {
   getValue(): boolean;
   setValue(value: boolean): void;
   valueChangedEvent?: ValueChangeEvent<boolean>;
+  requestInitialUpdate?(): void;
 }
 
 export interface ComboBoxParameter {
@@ -39,4 +42,5 @@ export interface ComboBoxParameter {
   setChoiceIndex(index: number): void;
   getChoices(): string[];
   valueChangedEvent?: ValueChangeEvent<number>;
+  requestInitialUpdate?(): void;
 }

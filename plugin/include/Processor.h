@@ -159,6 +159,13 @@ private:
                             std::vector<std::unique_ptr<ChainBlock>>& target,
                             const char* insertBlockId);
 
+  // True when running as the standalone app with a mono input device selected.
+  // Detected in prepareToPlay (device changes re-trigger it); processBlock then
+  // duplicates channel 0 into channel 1 so the dry path is heard on both
+  // speakers. Without this, a mono interface/mic only ever feeds the left
+  // channel and an empty (or IR-only) chain plays back one-sided.
+  std::atomic<bool> standaloneMonoInput{false};
+
   // Chain management
   std::vector<std::unique_ptr<ChainBlock>> chainBlocks;       // Left / primary chain
   std::vector<std::unique_ptr<ChainBlock>> rightChainBlocks;  // Right chain (stereo mode)
@@ -200,11 +207,10 @@ private:
 
   juce::LinearSmoothedValue<float> normalizationGainSmoother;
 
+  // DC blocker; ProcessorDuplicator runs one filter instance per channel, so a
+  // single duplicator handles mono and stereo buffers alike.
   juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>, juce::dsp::IIR::Coefficients<float>>
       dcBlockerLeft;
-  juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>, juce::dsp::IIR::Coefficients<float>>
-      dcBlockerRight;
-
 
 
   juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>, juce::dsp::IIR::Coefficients<float>>

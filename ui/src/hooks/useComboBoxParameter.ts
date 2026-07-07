@@ -26,6 +26,11 @@ export function useComboBoxParameter(identifier: string) {
       });
     }
 
+    // Re-sync after subscribing — the backend's one-shot initial update can
+    // arrive before this listener exists (see useParameter for details).
+    setValue(param.getChoiceIndex());
+    param.requestInitialUpdate?.();
+
     return () => {
       if (listenerId !== undefined && param.valueChangedEvent) {
         param.valueChangedEvent.removeListener(listenerId);

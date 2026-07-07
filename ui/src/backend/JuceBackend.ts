@@ -42,15 +42,52 @@ const juceMap: JuceGetterMap = {
   },
 };
 
+// Ask the backend relay to (re-)send propertiesChanged + valueChanged for a
+// state. The JUCE frontend emits this once at module load, but that single shot
+// races page load / React mount (notably on Windows WebView2) and the reply is
+// dropped if it lands before a listener is attached — so consumers re-request
+// after subscribing.
+function requestInitialUpdate(state: { identifier: string }): void {
+  const backend = (window as any).__JUCE__?.backend;
+  backend?.emitEvent(state.identifier, { eventType: 'requestInitialUpdate' });
+}
+
+type JuceControlState = Juce.SliderState | Juce.ToggleState | Juce.ComboBoxState;
+
+// Subscribe to both valueChanged and propertiesChanged: for sliders the
+// normalised value is derived from the range properties, and the two events
+// arrive separately (properties first) during the initial update.
+function addControlListener(state: JuceControlState, fn: () => void): number {
+  const valueId = state.valueChangedEvent.addListener(fn);
+  const propsId = state.propertiesChangedEvent.addListener(fn);
+  propsListenerIds.set(listenerKey(state, valueId), propsId);
+  return valueId;
+}
+
+function removeControlListener(state: JuceControlState, valueId: number): void {
+  state.valueChangedEvent.removeListener(valueId);
+  const key = listenerKey(state, valueId);
+  const propsId = propsListenerIds.get(key);
+  if (propsId !== undefined) {
+    state.propertiesChangedEvent.removeListener(propsId);
+    propsListenerIds.delete(key);
+  }
+}
+
+const propsListenerIds = new Map<string, number>();
+const listenerKey = (state: JuceControlState, valueId: number) =>
+  `${state.identifier}#${valueId}`;
+
 function adaptSlider(slider: Juce.SliderState): SliderParameter {
   return {
     getValue: () => slider.getNormalisedValue(),
     setValue: (value: number) => slider.setNormalisedValue(value),
     valueChangedEvent: {
       addListener: (fn: (val: number) => void) =>
-        slider.valueChangedEvent.addListener(() => fn(slider.getNormalisedValue())),
-      removeListener: (id: number) => slider.valueChangedEvent.removeListener(id),
+        addControlListener(slider, () => fn(slider.getNormalisedValue())),
+      removeListener: (id: number) => removeControlListener(slider, id),
     },
+    requestInitialUpdate: () => requestInitialUpdate(slider),
   };
 }
 
@@ -60,9 +97,10 @@ function adaptToggle(toggle: Juce.ToggleState): ToggleParameter {
     setValue: (value: boolean) => toggle.setValue(value),
     valueChangedEvent: {
       addListener: (fn: (val: boolean) => void) =>
-        toggle.valueChangedEvent.addListener(() => fn(toggle.getValue())),
-      removeListener: (id: number) => toggle.valueChangedEvent.removeListener(id),
+        addControlListener(toggle, () => fn(toggle.getValue())),
+      removeListener: (id: number) => removeControlListener(toggle, id),
     },
+    requestInitialUpdate: () => requestInitialUpdate(toggle),
   };
 }
 
@@ -73,8 +111,9 @@ function adaptComboBox(combo: Juce.ComboBoxState): ComboBoxParameter {
     getChoices: () => combo.properties.choices,
     valueChangedEvent: {
       addListener: (fn: (val: number) => void) =>
-        combo.valueChangedEvent.addListener(() => fn(combo.getChoiceIndex())),
-      removeListener: (id: number) => combo.valueChangedEvent.removeListener(id),
+        addControlListener(combo, () => fn(combo.getChoiceIndex())),
+      removeListener: (id: number) => removeControlListener(combo, id),
     },
+    requestInitialUpdate: () => requestInitialUpdate(combo),
   };
 }
