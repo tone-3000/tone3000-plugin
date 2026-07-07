@@ -220,6 +220,21 @@ if (WIN32)
         target_compile_definitions(${PROJECT_NAME}
             PUBLIC JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1  # This will enable WebView2 as the WebView backend on Windows
         )
+
+        # ASIO driver support in the standalone's audio settings. JUCE keeps
+        # ASIO off by default because it needs Steinberg's ASIO SDK headers,
+        # which are a separate (non-redistributable) download:
+        # https://www.steinberg.net/asiosdk — extract it and pass
+        # -DASIO_SDK_PATH=<dir> (CI does this automatically). Without the SDK
+        # the build still works, just without an ASIO option in the device list.
+        set(ASIO_SDK_PATH "" CACHE PATH "Path to the Steinberg ASIO SDK (enables JUCE_ASIO)")
+        if (ASIO_SDK_PATH AND EXISTS "${ASIO_SDK_PATH}/common/iasiodrv.h")
+            target_compile_definitions(${PROJECT_NAME} PUBLIC JUCE_ASIO=1)
+            target_include_directories(${PROJECT_NAME} PUBLIC "${ASIO_SDK_PATH}/common")
+            message(STATUS "ASIO enabled (SDK: ${ASIO_SDK_PATH})")
+        else()
+            message(STATUS "ASIO disabled — set ASIO_SDK_PATH to the Steinberg ASIO SDK to enable it")
+        endif()
     endif()
 endif()
 

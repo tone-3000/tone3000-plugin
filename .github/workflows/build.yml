@@ -84,13 +84,32 @@ jobs:
         if: matrix.os == 'windows'
         run: pwsh -File script/install-webview2.ps1
 
+      # Steinberg's ASIO SDK (headers only) — required for the ASIO driver
+      # option in the standalone's audio settings. Not redistributable, so it
+      # is fetched at build time rather than vendored in the repo.
+      - name: Download ASIO SDK (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          curl.exe -sSL -o asiosdk.zip https://www.steinberg.net/asiosdk
+          Expand-Archive asiosdk.zip -DestinationPath "$env:RUNNER_TEMP\asiosdk"
+          $sdk = (Get-ChildItem "$env:RUNNER_TEMP\asiosdk" -Directory | Select-Object -First 1).FullName
+          if (-not (Test-Path "$sdk\common\iasiodrv.h")) {
+            Write-Error "ASIO SDK layout unexpected — iasiodrv.h not found under $sdk"
+            exit 1
+          }
+          $sdk = $sdk -replace '\\', '/'   # forward slashes so CMake doesn't eat backslash escapes
+          "ASIO_SDK_PATH=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "ASIO SDK extracted to $sdk"
+
       - name: Configure CMake (Windows)
         if: matrix.os == 'windows'
         shell: bash
         run: |
           cmake -B build -S . \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
-            -DBUILD_AAX=OFF
+            -DBUILD_AAX=OFF \
+            -DASIO_SDK_PATH="$ASIO_SDK_PATH"
 
       - name: Configure CMake (Linux)
         if: matrix.os == 'linux'
@@ -121,7 +140,8 @@ jobs:
         run: |
           cmake -B build -S . \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
-            -DBUILD_AAX=OFF
+            -DBUILD_AAX=OFF \
+            -DASIO_SDK_PATH="$ASIO_SDK_PATH"
 
       - name: Reconfigure CMake (Linux)
         if: matrix.os == 'linux'
