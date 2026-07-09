@@ -246,6 +246,10 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
 
 void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block,
                                                        PreparedBlockModel& prepared) {
+  // Loaded state is part of what getChainState reports, so any outcome here
+  // must wake up the UI's revision-gated poll.
+  bumpChainRevision();
+
   if (!prepared.success) {
     block.loaded = false;
     return;

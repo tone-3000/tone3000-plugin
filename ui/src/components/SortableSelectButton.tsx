@@ -9,14 +9,17 @@ export const SELECT_BUTTON_ID = 'select-insert';
 interface SortableSelectButtonProps {
   onClick: () => void;
   routing?: 2 | 1 | -1;
+  /** Insert slot block id ('select-insert' or 'select-insert-right'). */
+  id?: string;
 }
 
 export const SortableSelectButton: React.FC<SortableSelectButtonProps> = ({
   onClick,
   routing,
+  id = SELECT_BUTTON_ID,
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: SELECT_BUTTON_ID,
+    id,
   });
 
   const style = {

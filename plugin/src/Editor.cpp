@@ -32,9 +32,11 @@ TONE3000Editor::TONE3000Editor(TONE3000Processor& p) : AudioProcessorEditor(&p),
 }
 
 TONE3000Editor::~TONE3000Editor() {
-  // The tuner is only useful while the UI is visible; stop feeding it when the
-  // editor goes away (the webview can't send the disable itself on teardown).
+  // The tuner and block spectrum analyzers are only useful while the UI is
+  // visible; stop feeding them when the editor goes away (the webview can't
+  // send the disables itself on teardown).
   processor.setTunerEnabled(false);
+  processor.disableAllBlockSpectrums();
   if (mainWebView) {
     removeChildComponent(mainWebView.get());
     mainWebView.reset();

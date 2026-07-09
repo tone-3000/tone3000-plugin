@@ -1,6 +1,7 @@
 import { Plugin } from './components/Plugin';
 import { AudioBackendContext } from './hooks/useAudioBackend';
 import { JuceBackend } from './backend/JuceBackend';
+import { MetersProvider } from './hooks/useMeters';
 
 function App() {
   // Create the JUCE backend - this should work for both development and JUCE
@@ -9,7 +10,10 @@ function App() {
 
   return (
     <AudioBackendContext.Provider value={backend}>
-      <Plugin />
+      {/* Single shared meter poll loop for every meter in the UI. */}
+      <MetersProvider>
+        <Plugin />
+      </MetersProvider>
     </AudioBackendContext.Provider>
   );
 }

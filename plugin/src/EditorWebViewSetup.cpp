@@ -42,6 +42,24 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             }
           })
       .withNativeFunction(
+          "swapTone",
+          [editor](const juce::Array<juce::var>& args,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            // Replace the tone of an existing block (Swap action). Keeps the
+            // block's chain position and user params.
+            if (args.size() >= 2) {
+              juce::String blockId = args[0].toString();
+              juce::String toneJsonString = args[1].toString();
+              DBG("Swapping tone on block " << blockId << " (" << toneJsonString.length()
+                  << " chars)");
+              bool success =
+                  editor->processor.swapTone(blockId.toStdString(), toneJsonString);
+              completion(juce::var(success));
+            } else {
+              completion(juce::var(false));
+            }
+          })
+      .withNativeFunction(
           "switchModel",
           [editor](const juce::Array<juce::var>& args,
                    juce::WebBrowserComponent::NativeFunctionCompletion completion) {
@@ -68,10 +86,15 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             }
           })
       .withNativeFunction(
-          "getChainStatus",
+          "getChainState",
           [editor](const juce::Array<juce::var>& args,
                    juce::WebBrowserComponent::NativeFunctionCompletion completion) {
-            completion(editor->processor.getChainStatus());
+            // Optional arg 0: last revision the UI saw; -1 forces a full state.
+            // JS numbers may arrive as int, int64 or double depending on backend.
+            const bool hasRevision = args.size() >= 1 &&
+                                     (args[0].isInt() || args[0].isInt64() || args[0].isDouble());
+            const int knownRevision = hasRevision ? static_cast<int>(args[0]) : -1;
+            completion(editor->processor.getChainState(knownRevision));
           })
       .withNativeFunction(
           "showAudioSettings",
@@ -106,47 +129,92 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             }
           })
       .withNativeFunction(
-          "setBlockOutputGain",
+          "setBlockParam",
           [editor](const juce::Array<juce::var>& args,
                    juce::WebBrowserComponent::NativeFunctionCompletion completion) {
-            if (args.size() >= 2) {
-              juce::String blockId = args[0].toString();
-              float normalizedGain = static_cast<float>(
-                  args[1].isDouble() ? static_cast<double>(args[1])
-                                    : args[1].toString().getDoubleValue());
-              editor->processor.setBlockOutputGain(blockId.toStdString(), normalizedGain);
-              completion(juce::var(true));
+            // Single entry point for per-block user params:
+            // (blockId, "enabled" | "inputGain" | "outputGain" | "mix" |
+            //  "namSlimmableSize", numeric value — booleans as 0/1).
+            if (args.size() >= 3) {
+              const juce::String blockId = args[0].toString();
+              const juce::String param = args[1].toString();
+              double value = 0.0;
+              if (args[2].isBool())
+                value = static_cast<bool>(args[2]) ? 1.0 : 0.0;
+              else if (args[2].isDouble() || args[2].isInt() || args[2].isInt64())
+                value = static_cast<double>(args[2]);
+              else
+                value = args[2].toString().getDoubleValue();
+              completion(juce::var(
+                  editor->processor.setBlockParam(blockId.toStdString(), param, value)));
             } else {
               completion(juce::var(false));
             }
           })
       .withNativeFunction(
-          "setBlockMix",
+          "setBlockEqBand",
           [editor](const juce::Array<juce::var>& args,
                    juce::WebBrowserComponent::NativeFunctionCompletion completion) {
-            if (args.size() >= 2) {
-              juce::String blockId = args[0].toString();
-              float normalizedMix = static_cast<float>(
-                  args[1].isDouble() ? static_cast<double>(args[1])
-                                    : args[1].toString().getDoubleValue());
-              editor->processor.setBlockMix(blockId.toStdString(), normalizedMix);
-              completion(juce::var(true));
+            // (blockId, bandIndex, { type, freqHz, gainDb, q }). Whole-band
+            // updates keep drags atomic and give undo/redo a clean unit later.
+            if (args.size() >= 3 && args[2].isObject()) {
+              const juce::String blockId = args[0].toString();
+              const int bandIndex = static_cast<int>(args[1]);
+              completion(juce::var(editor->processor.setBlockEqBand(blockId.toStdString(),
+                                                                    bandIndex, args[2])));
             } else {
               completion(juce::var(false));
             }
           })
       .withNativeFunction(
-          "setBlockNamSlimmableSize",
+          "setBlockEqEnabled",
           [editor](const juce::Array<juce::var>& args,
                    juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            // EQ power/bypass: band settings stay, processing is skipped.
             if (args.size() >= 2) {
-              juce::String blockId = args[0].toString();
-              const double size = args[1].isDouble() ? static_cast<double>(args[1])
-                                                     : args[1].toString().getDoubleValue();
-              editor->processor.setBlockNamSlimmableSize(blockId.toStdString(), size);
-              completion(juce::var(true));
+              completion(juce::var(editor->processor.setBlockEqEnabled(
+                  args[0].toString().toStdString(), static_cast<bool>(args[1]))));
             } else {
               completion(juce::var(false));
+            }
+          })
+      .withNativeFunction(
+          "resetBlockEq",
+          [editor](const juce::Array<juce::var>& args,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            if (args.size() >= 1) {
+              completion(juce::var(
+                  editor->processor.resetBlockEq(args[0].toString().toStdString())));
+            } else {
+              completion(juce::var(false));
+            }
+          })
+      .withNativeFunction(
+          "setBlockSpectrumEnabled",
+          [editor](const juce::Array<juce::var>& args,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            // The UI enables a block's analyzer only while its EQ view is
+            // open; otherwise the audio thread does no analyzer work for it.
+            if (args.size() >= 2) {
+              const bool enabled = args[1].isBool()
+                                       ? static_cast<bool>(args[1])
+                                       : (args[1].isDouble() ? static_cast<double>(args[1]) > 0.5
+                                                             : args[1].toString() == "true");
+              completion(juce::var(editor->processor.setBlockSpectrumEnabled(
+                  args[0].toString().toStdString(), enabled)));
+            } else {
+              completion(juce::var(false));
+            }
+          })
+      .withNativeFunction(
+          "getBlockSpectrum",
+          [editor](const juce::Array<juce::var>& args,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            // Polled ~30 Hz by an open EQ view. Returns 64 log-spaced dB bins.
+            if (args.size() >= 1) {
+              completion(editor->processor.getBlockSpectrum(args[0].toString().toStdString()));
+            } else {
+              completion(juce::var());
             }
           })
       .withNativeFunction(
@@ -190,16 +258,25 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             }
           })
       .withNativeFunction(
-          "getInputMeterLevel",
+          "getMeterLevels",
           [editor](const juce::Array<juce::var>& args,
                    juce::WebBrowserComponent::NativeFunctionCompletion completion) {
-            completion(juce::var(editor->processor.getInputMeterLevel()));
+            // One call per UI frame covers every meter in the plugin:
+            // { input, output, blocks: { blockId: { in, out } } } (dB).
+            completion(editor->processor.getMeterLevels());
           })
       .withNativeFunction(
-          "getOutputMeterLevel",
-          [editor](const juce::Array<juce::var>& args,
-                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
-            completion(juce::var(editor->processor.getOutputMeterLevel()));
+          "copyToClipboard",
+          [](const juce::Array<juce::var>& args,
+             juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            // Clipboard writes from the webview itself are unreliable across
+            // the JUCE webview backends, so the UI routes them through native.
+            if (args.size() >= 1) {
+              juce::SystemClipboard::copyTextToClipboard(args[0].toString());
+              completion(juce::var(true));
+            } else {
+              completion(juce::var(false));
+            }
           })
       .withNativeFunction(
           "setTunerEnabled",

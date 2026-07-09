@@ -1,10 +1,13 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
+#include <atomic>
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
+#include "BlockEq.h"
+#include "BlockSpectrum.h"
 #include "NamResampler.h"
 
 // Chain block types
@@ -53,10 +56,26 @@ struct ChainBlock {
   float irNormalizationGainLinear{1.0f};
 
   // Per-block controls (normalized 0..1)
+  float inputGainNormalized{0.5f};  // 0.5 = unity gain; drives the block harder/softer
+  juce::LinearSmoothedValue<float> inputGainSmoother;
   float outputGainNormalized{0.5f};  // 0.5 = unity gain
   juce::LinearSmoothedValue<float> outputGainSmoother;
   float mixNormalized{1.0f};  // 0 = dry, 1 = wet
   juce::LinearSmoothedValue<float> mixSmoother;
+
+  // Per-block meter levels (dB, -60 floor). Written by the audio thread every
+  // block, read by the UI via getMeterLevels(). Input is measured post
+  // input-gain (what the model actually receives), output post gain+mix.
+  std::atomic<float> inputMeterDb{-60.0f};
+  std::atomic<float> outputMeterDb{-60.0f};
+
+  // Post-block 6-band EQ (runs after output gain + mix). Flat by default, in
+  // which case processing is skipped entirely (single branch per audio block).
+  BlockEq eq;
+
+  // Spectrum analyzer for the EQ editor backdrop. Only fed by the audio thread
+  // while the UI has this block's EQ view open (atomic enabled flag).
+  BlockSpectrum spectrum;
 
   // NAM slimmable / container (A2): 1.0 = full, 0.5 = lite; only used when namIsSlimmable
   bool namIsSlimmable{false};

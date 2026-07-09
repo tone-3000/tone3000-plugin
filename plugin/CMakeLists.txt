@@ -98,6 +98,10 @@ juce_add_plugin(${PROJECT_NAME}
 
 target_sources(${PROJECT_NAME}
     PRIVATE
+        include/BlockEq.h
+        src/BlockEq.cpp
+        include/BlockSpectrum.h
+        src/BlockSpectrum.cpp
         include/ChainBlock.h
         include/Processor.h
         src/Processor.cpp

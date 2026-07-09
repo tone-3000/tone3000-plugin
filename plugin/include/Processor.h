@@ -58,6 +58,10 @@ public:
 
   // Chain management methods
   std::string loadTone(const juce::String& toneJsonString);
+  // Replace the tone of an existing block in place. Keeps the block's chain
+  // position and user params (enabled/gains/mix); the new tone's first model
+  // is queued for background loading.
+  bool swapTone(const std::string& blockId, const juce::String& toneJsonString);
   bool switchModel(const std::string& blockId, int modelId);
   bool removeChainBlock(const std::string& blockId);
   bool reorderChainBlocks(const std::vector<std::string>& newOrder);
@@ -75,14 +79,37 @@ public:
   void switchModelInBackground(const std::string& blockId, int modelId, 
                                const juce::String& modelUrl, const juce::String& modelName);
 
-  // Chain status methods
-  juce::var getChainStatus() const;
+  // Chain state for the UI. `knownRevision` is the last revision the caller
+  // saw (-1 for "give me everything"); when the chain hasn't changed since,
+  // a minimal { revision, unchanged: true } object is returned so the UI's
+  // poll loop stays cheap.
+  juce::var getChainState(int knownRevision) const;
   bool isChainValid() const;
 
-  // Per-block control setters
-  void setBlockOutputGain(const std::string& blockId, float normalizedGain);
-  void setBlockMix(const std::string& blockId, float normalizedMix);
-  void setBlockNamSlimmableSize(const std::string& blockId, double size);
+  // Single entry point for all per-block user params. Supported params:
+  // "enabled" (0/1), "inputGain", "outputGain", "mix" (normalized 0..1),
+  // "namSlimmableSize" (0.5 lite .. 1.0 full). Returns false for unknown
+  // blocks/params. Bumps the chain revision.
+  bool setBlockParam(const std::string& blockId, const juce::String& param, double value);
+
+  // All meter levels in one call: { input, output, blocks: { id: { in, out } } }.
+  // Values in dB with a -60 floor. Designed to be polled once per UI frame.
+  juce::var getMeterLevels() const;
+
+  // Per-block post EQ. setBlockEqBand takes { type, freqHz, gainDb, q } for one
+  // band — the mutation granularity a future undo stack wants. Both bump the
+  // chain revision (EQ params are part of params.eq in getChainState).
+  bool setBlockEqBand(const std::string& blockId, int bandIndex, const juce::var& bandVar);
+  bool setBlockEqEnabled(const std::string& blockId, bool enabled);
+  bool resetBlockEq(const std::string& blockId);
+
+  // Per-block spectrum for the EQ editor backdrop. The UI enables a block's
+  // analyzer while its EQ view is open and polls getBlockSpectrum (~30 Hz);
+  // when disabled the audio thread does no analyzer work for that block.
+  bool setBlockSpectrumEnabled(const std::string& blockId, bool enabled);
+  juce::var getBlockSpectrum(const std::string& blockId);
+  // Editor teardown: the webview can't send per-block disables while dying.
+  void disableAllBlockSpectrums();
 
   // Stereo mode: two independent Left/Right chains.
   void setStereoMode(bool enabled);
@@ -178,6 +205,18 @@ private:
   std::atomic<bool> stereoEnabled{false};
   ChainSide activeEditSide{ChainSide::Left};
   juce::CriticalSection chainMutex;
+
+  // Monotonic revision of everything getChainState() reports. Bumped on every
+  // chain mutation (structure, params, load completion, stereo/side changes)
+  // so the UI can cheaply skip resyncs when nothing changed.
+  std::atomic<juce::uint32> chainRevision{1};
+  void bumpChainRevision() { chainRevision.fetch_add(1); }
+
+  // Queue a background download+prepare of a tone's model for `blockId`.
+  // Shared by loadTone (new block) and swapTone (existing block).
+  void queueToneLoad(const std::string& blockId, const juce::String& toneJson, int modelId,
+                     const juce::String& modelUrl, const juce::String& modelName,
+                     ChainBlockType type);
 
   // Pre-allocated mono scratch buffers for per-side processing in stereo mode.
   juce::AudioBuffer<float> stereoChainBufferL;

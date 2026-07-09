@@ -13,10 +13,10 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { ChainBlock } from './ChainBlock';
-import type { ChainBlockData, ChainItem } from '../types/tone';
-import { isChainInsertBlock } from '../types/tone';
-import { SortableSelectButton, SELECT_BUTTON_ID } from './SortableSelectButton';
+import { ChainBlock, CARD_HEIGHT } from './ChainBlock';
+import type { BlockParamName, ChainItem, EqBand, ToneBlock } from '../types/chain';
+import { isInsertSlot } from '../types/chain';
+import { SortableSelectButton } from './SortableSelectButton';
 import { PlusCircle } from 'lucide-react';
 import { SelectButton } from './SelectButton';
 
@@ -24,16 +24,38 @@ interface ChainViewProps {
   chain: ChainItem[];
   onAddModel: () => void;
   onRemoveBlock: (id: string) => void;
+  onSwapBlock: (id: string) => void;
+  onShareBlock: (block: ToneBlock) => Promise<boolean>;
   onReorderItems: (orderedIds: string[]) => void;
   onSwitchModel?: (blockId: string, modelId: number) => Promise<void>;
+  onSetBlockParam: (blockId: string, param: BlockParamName, value: number | boolean) => void;
+  onSetBlockEqBand: (blockId: string, bandIndex: number, band: EqBand) => void;
+  onSetBlockEqEnabled: (blockId: string, enabled: boolean) => void;
+  onResetBlockEq: (blockId: string) => void;
+  sampleRate: number;
 }
+
+// Decorative connector geometry, derived from the card height so the ghost
+// plus-circles/lines stay aligned with the real cards (32px column gap).
+const BG_SPAN_HEIGHT = CARD_HEIGHT + 2;
+const BG_CIRCLE_RADIUS = 20;
+const BG_LINE_BOTTOM = BG_SPAN_HEIGHT / 2 - BG_CIRCLE_RADIUS;
+const BG_LINE_TOP = -(32 + BG_SPAN_HEIGHT / 2 - BG_CIRCLE_RADIUS);
+const BG_LINE_HEIGHT = BG_LINE_BOTTOM - BG_LINE_TOP;
 
 export const ChainView: React.FC<ChainViewProps> = ({
   chain,
   onAddModel,
   onRemoveBlock,
+  onSwapBlock,
+  onShareBlock,
   onReorderItems,
   onSwitchModel,
+  onSetBlockParam,
+  onSetBlockEqBand,
+  onSetBlockEqEnabled,
+  onResetBlockEq,
+  sampleRate,
 }) => {
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -101,18 +123,18 @@ export const ChainView: React.FC<ChainViewProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              height: 254 + 2,
+              height: BG_SPAN_HEIGHT,
               position: 'relative',
             }}
           >
             {i > 0 && (
               <div
                 style={{
-                  height: 252,
+                  height: BG_LINE_HEIGHT,
                   backgroundColor: '#ffffff',
                   width: '1px',
                   position: 'absolute',
-                  top: -142,
+                  top: BG_LINE_TOP,
                 }}
               />
             )}
@@ -143,12 +165,13 @@ export const ChainView: React.FC<ChainViewProps> = ({
               </>
             )}
             {chain.length > 1 && chain.map((item) => {
-              if (isChainInsertBlock(item)) {
-                const isFirst = sortableItems.indexOf(SELECT_BUTTON_ID) === 0;
-                const isLast = sortableItems.indexOf(SELECT_BUTTON_ID) === sortableItems.length - 1;
+              if (isInsertSlot(item)) {
+                const isFirst = sortableItems.indexOf(item.blockId) === 0;
+                const isLast = sortableItems.indexOf(item.blockId) === sortableItems.length - 1;
                 return (
                   <SortableSelectButton
-                    key={SELECT_BUTTON_ID}
+                    key={item.blockId}
+                    id={item.blockId}
                     onClick={onAddModel}
                     routing={isFirst ? -1 : isLast ? 1 : 2}
                   />
@@ -157,9 +180,16 @@ export const ChainView: React.FC<ChainViewProps> = ({
               return (
                 <ChainBlock
                   key={item.blockId}
-                  block={item as ChainBlockData}
+                  block={item}
                   onRemove={onRemoveBlock}
+                  onSwap={onSwapBlock}
+                  onShare={onShareBlock}
                   onSwitchModel={onSwitchModel}
+                  onSetParam={onSetBlockParam}
+                  onSetEqBand={onSetBlockEqBand}
+                  onSetEqEnabled={onSetBlockEqEnabled}
+                  onResetEq={onResetBlockEq}
+                  sampleRate={sampleRate}
                 />
               );
             })}

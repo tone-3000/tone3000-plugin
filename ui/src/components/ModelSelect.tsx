@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FolderClosed } from 'lucide-react';
 
 interface Option {
   id: string;
@@ -10,9 +10,15 @@ interface ModelSelectProps {
   options: Option[];
   value: string;
   onChange: (id: string) => void;
+  height?: number;
 }
 
-export const ModelSelect: React.FC<ModelSelectProps> = ({ options, value, onChange }) => {
+export const ModelSelect: React.FC<ModelSelectProps> = ({
+  options,
+  value,
+  onChange,
+  height = 46,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -58,17 +64,18 @@ export const ModelSelect: React.FC<ModelSelectProps> = ({ options, value, onChan
   }, [isOpen]);
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', width: '100%', maxWidth: '442px' }}>
+    <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
       <div
         style={{
           borderRadius: '8px',
           background: 'rgba(120, 120, 128, 0.36)',
-          height: '46px',
-          padding: '0 16px',
+          height: `${height}px`,
+          padding: '0 12px',
           display: 'flex',
           alignItems: 'center',
           width: '100%',
-          gap: '12px',
+          boxSizing: 'border-box',
+          gap: '10px',
           userSelect: 'none',
         }}
       >
@@ -137,16 +144,29 @@ export const ModelSelect: React.FC<ModelSelectProps> = ({ options, value, onChan
           <ChevronRight size={20} />
         </button>
 
-        {/* Position indicator */}
+        {/* Divider + model count */}
+        <div
+          style={{
+            width: '1px',
+            alignSelf: 'stretch',
+            margin: '8px 0',
+            backgroundColor: 'rgba(84, 84, 88, 0.65)',
+            flexShrink: 0,
+          }}
+        />
         <span
           style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
             color: 'rgba(255, 255, 255, 0.6)',
-            fontSize: '14px',
-            minWidth: '40px',
-            textAlign: 'right',
+            fontSize: '13px',
             fontWeight: '400',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
           }}
         >
+          <FolderClosed size={14} />
           {positionText}
         </span>
       </div>

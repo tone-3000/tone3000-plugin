@@ -145,11 +145,17 @@ void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& b
       DBG("IR convolvers re-prepared for block: " << block->id);
     }
 
-    // Initialize per-block smoothers (output gain and mix)
+    // Initialize per-block smoothers (input gain, output gain and mix)
+    block->inputGainSmoother.reset(sampleRate, 0.05f);
     block->outputGainSmoother.reset(sampleRate, 0.05f);
     block->mixSmoother.reset(sampleRate, 0.05f);
+    block->inputGainSmoother.setCurrentAndTargetValue(1.0f);   // updated on first process
     block->outputGainSmoother.setCurrentAndTargetValue(1.0f);  // updated on first process
     block->mixSmoother.setCurrentAndTargetValue(block->mixNormalized);
+
+    // Post-block EQ + spectrum analyzer need the sample rate for their math.
+    block->eq.prepare(sampleRate);
+    block->spectrum.prepare(sampleRate);
   }
 }
 
@@ -380,6 +386,14 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
       continue;  // Insert block is pass-through, no audio effect
     }
     if (!block->loaded || !block->enabled) {
+      // Not processing: park the block's meters at the floor. The EQ view can
+      // still be open, so keep its analyzer fed with the pass-through audio.
+      block->inputMeterDb.store(-60.0f);
+      block->outputMeterDb.store(-60.0f);
+      if (block->spectrum.isEnabled())
+        block->spectrum.pushSamples(buffer.getReadPointer(0),
+                                    numChannels > 1 ? buffer.getReadPointer(1) : nullptr,
+                                    numSamples);
       continue;
     }
 
@@ -389,6 +403,31 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
     tempDryBuffer.copyFrom(0, 0, buffer, 0, 0, numSamples);
     if (numChannels > 1) {
       tempDryBuffer.copyFrom(1, 0, buffer, 1, 0, numSamples);
+    }
+
+    // Per-block input gain (0.5 == unity, ±12 dB), applied after the dry copy
+    // so Mix still blends against the untouched signal — this drives the
+    // block's DSP harder/softer like a drive control. The block input meter
+    // reads the post-gain signal (what the model actually receives).
+    {
+      const float inputGainDbBlock = (block->inputGainNormalized - 0.5f) * 24.0f;
+      block->inputGainSmoother.setTargetValue(juce::Decibels::decibelsToGain(inputGainDbBlock));
+
+      float blockInputPeak = 0.0f;
+      auto* left = buffer.getWritePointer(0);
+      auto* right = numChannels > 1 ? buffer.getWritePointer(1) : nullptr;
+      for (int i = 0; i < numSamples; ++i) {
+        const float g = block->inputGainSmoother.getNextValue();
+        left[i] *= g;
+        blockInputPeak = std::max(blockInputPeak, std::abs(left[i]));
+        if (right) {
+          right[i] *= g;
+          blockInputPeak = std::max(blockInputPeak, std::abs(right[i]));
+        }
+      }
+      const float blockInputDb =
+          blockInputPeak > 0.0f ? juce::Decibels::gainToDecibels(blockInputPeak) : -60.0f;
+      block->inputMeterDb.store(std::max(-60.0f, blockInputDb));
     }
 
     if (block->type == ChainBlockType::NAM) {
@@ -514,18 +553,48 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
     block->outputGainSmoother.setTargetValue(targetLinear);
     block->mixSmoother.setTargetValue(juce::jlimit(0.0f, 1.0f, block->mixNormalized));
 
+    float blockOutputPeak = 0.0f;
     for (int i = 0; i < numSamples; ++i) {
       const float g = block->outputGainSmoother.getNextValue();
       const float m = block->mixSmoother.getNextValue();
       float wetL = buffer.getWritePointer(0)[i] * g;
       float dryL = tempDryBuffer.getReadPointer(0)[i];
       buffer.getWritePointer(0)[i] = dryL * (1.0f - m) + wetL * m;
+      blockOutputPeak = std::max(blockOutputPeak, std::abs(buffer.getWritePointer(0)[i]));
       if (numChannels > 1) {
         float wetR = buffer.getWritePointer(1)[i] * g;
         float dryR = tempDryBuffer.getReadPointer(1)[i];
         buffer.getWritePointer(1)[i] = dryR * (1.0f - m) + wetR * m;
+        blockOutputPeak = std::max(blockOutputPeak, std::abs(buffer.getWritePointer(1)[i]));
       }
     }
+
+    // Post-block EQ: the last stage of the block, applied after gain + mix so
+    // it shapes exactly what leaves the block. Skipped entirely when flat.
+    if (block->eq.isActive()) {
+      block->eq.process(buffer);
+      // The mix-loop peak is pre-EQ; re-measure so the meter reflects the
+      // block's true output.
+      blockOutputPeak = 0.0f;
+      for (int ch = 0; ch < numChannels; ++ch) {
+        const auto* data = buffer.getReadPointer(ch);
+        for (int i = 0; i < numSamples; ++i)
+          blockOutputPeak = std::max(blockOutputPeak, std::abs(data[i]));
+      }
+    }
+
+    // Block output meter: post gain + mix + EQ, i.e. what this block hands to
+    // the next one in the chain.
+    const float blockOutputDb =
+        blockOutputPeak > 0.0f ? juce::Decibels::gainToDecibels(blockOutputPeak) : -60.0f;
+    block->outputMeterDb.store(std::max(-60.0f, blockOutputDb));
+
+    // Feed the EQ editor's analyzer with the block's final output — only while
+    // that block's EQ view is actually open in the UI.
+    if (block->spectrum.isEnabled())
+      block->spectrum.pushSamples(buffer.getReadPointer(0),
+                                  numChannels > 1 ? buffer.getReadPointer(1) : nullptr,
+                                  numSamples);
   }
 }
 

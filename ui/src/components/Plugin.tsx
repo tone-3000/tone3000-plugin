@@ -1,19 +1,27 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Settings as SettingsIcon } from 'lucide-react';
 import { KnobControl } from './KnobControl';
 import { useParameter } from '../hooks/useParameter';
 import { useFunction } from '../hooks/useFunction';
+import { useChainState } from '../hooks/useChainState';
 import { ChainView } from './ChainView';
 import { StereoControls } from './StereoControls';
-import type { ChainItem, ChainSide, ChainStatus, Model, Tone } from '../types/tone';
+import type { Model, Tone } from '../types/tone';
+import type { ToneBlock } from '../types/chain';
 import Settings from './Settings';
 import { DbMeter } from './DbMeter';
 import { TunerView } from './TunerView';
 import { useT3kSelect } from '../hooks/useT3kSelect';
 import { useInternetGate } from '../hooks/useInternetGate';
+import { T3K_API } from '../t3k/config';
 import type { T3KTokens } from '../t3k/tone3000-client';
 import { OAuthOverlay } from './OAuthOverlay';
 import { OfflineModal } from './OfflineModal';
+
+// Swap targets must survive the Select flow's full-page OAuth redirect (the
+// webview navigates to tone3000.com and back, remounting React), so the
+// pending swap block id lives in sessionStorage rather than component state.
+const SWAP_STORAGE_KEY = 't3k.pendingSwapBlockId';
 
 // Lucide has no tuning fork, so this mimics its 24x24 stroke style.
 const TuningForkIcon: React.FC<{ size?: number }> = ({ size = 18 }) => (
@@ -41,23 +49,16 @@ export const Plugin: React.FC = () => {
   const [toneTreble, setToneTreble] = useParameter('toneTreble', 'slider');
   const [noiseGate, setNoiseGate] = useParameter('gateThreshold', 'slider');
 
-  // Chain state (full order from backend, includes insert block)
-  const [chain, setChain] = useState<ChainItem[]>([]);
-  const [stereoEnabled, setStereoEnabled] = useState(false);
-  const [activeSide, setActiveSide] = useState<ChainSide>('left');
   const [showSettings, setShowSettings] = useState(false);
   const [showTuner, setShowTuner] = useState(false);
 
-  // Native functions
-  const getChainStatus = useFunction<ChainStatus>('getChainStatus');
-  const loadTone = useFunction<string>('loadTone');
-  const switchModel = useFunction<boolean>('switchModel');
-  const removeChainBlock = useFunction<string>('removeChainBlock');
-  const reorderChainBlocks = useFunction<boolean>('reorderChainBlocks');
-  const setStereoModeFn = useFunction<boolean>('setStereoMode');
-  const setActiveEditChainFn = useFunction<boolean>('setActiveEditChain');
+  // Chain state: revision-gated polling + mutation actions, owned by one hook.
+  const { chain, stereoEnabled, activeSide, sampleRate, actions } = useChainState();
+
+  // One-shot native functions
   const setAccessToken = useFunction<boolean>('setAccessToken');
   const setTunerEnabled = useFunction<boolean>('setTunerEnabled');
+  const copyToClipboard = useFunction<boolean>('copyToClipboard');
 
   // Toggle the tuner screen; native only feeds the pitch detector while it's on.
   const handleToggleTuner = async (show: boolean) => {
@@ -69,72 +70,35 @@ export const Plugin: React.FC = () => {
     }
   };
 
-  // Load chain status from backend (includes insert block position + stereo state)
-  const loadChainStatus = async () => {
-    try {
-      const status = await getChainStatus.invoke();
-      if (status && status.chain) {
-        setChain(status.chain as ChainItem[]);
-        if (typeof status.stereoEnabled === 'boolean') setStereoEnabled(status.stereoEnabled);
-        if (status.activeSide === 'left' || status.activeSide === 'right')
-          setActiveSide(status.activeSide);
-      }
-    } catch (error) {
-      console.error('Error loading chain status:', error);
-    }
-  };
-
-  // Toggle stereo (dual-chain) mode, then refresh the chain for the active side.
-  const handleToggleStereo = async (enabled: boolean) => {
-    setStereoEnabled(enabled);
-    try {
-      await setStereoModeFn.invoke(enabled);
-      await loadChainStatus();
-    } catch (error) {
-      console.error('Error toggling stereo mode:', error);
-      await loadChainStatus();
-    }
-  };
-
-  // Switch which chain (Left / Right) is being edited.
-  const handleSelectSide = async (side: ChainSide) => {
-    setActiveSide(side);
-    try {
-      await setActiveEditChainFn.invoke(side);
-      await loadChainStatus();
-    } catch (error) {
-      console.error('Error switching edit chain:', error);
-      await loadChainStatus();
-    }
-  };
-
-  // Remove a block from the chain
-  const removeBlock = async (id: string) => {
-    try {
-      await removeChainBlock.invoke(id);
-      await loadChainStatus();
-    } catch (error) {
-      console.error('Error removing chain block:', error);
-    }
-  };
-
   // Reorder items (full order including insert block - backend is source of truth)
   const handleReorderItems = async (orderedIds: string[]) => {
-    try {
-      const currentOrder = chain.map((item) => item.blockId);
-      const orderChanged =
-        currentOrder.length !== orderedIds.length ||
-        currentOrder.some((id, i) => id !== orderedIds[i]);
+    const currentOrder = chain.map((item) => item.blockId);
+    const orderChanged =
+      currentOrder.length !== orderedIds.length ||
+      currentOrder.some((id, i) => id !== orderedIds[i]);
 
-      if (orderChanged) {
-        await reorderChainBlocks.invoke(orderedIds);
-        await loadChainStatus();
-      }
-    } catch (error) {
-      console.error('Error reordering chain items:', error);
-      await loadChainStatus();
+    if (orderChanged) {
+      await actions.reorderBlocks(orderedIds);
     }
   };
+
+  // Share: copy the tone's public TONE3000 page URL. Clipboard writes go
+  // through native (webview clipboard APIs are unreliable in JUCE), with the
+  // browser API as a dev-server fallback.
+  const handleShareBlock = useCallback(
+    async (block: ToneBlock): Promise<boolean> => {
+      const url = `${T3K_API}/tones/${block.tone.id}`;
+      const ok = await copyToClipboard.invoke(url);
+      if (ok) return true;
+      try {
+        await navigator.clipboard.writeText(url);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [copyToClipboard]
+  );
 
   // Push the latest access token down to native so model downloads can attach
   // the Bearer header. Called both right after the OAuth Select flow and
@@ -151,7 +115,9 @@ export const Plugin: React.FC = () => {
   );
 
   // Handle a fully-resolved tone (with embedded models) coming out of the
-  // Select flow — push it through native so it joins the chain.
+  // Select flow. If a swap was pending (user hit the swap button on a block
+  // before the redirect), replace that block in place; otherwise add the tone
+  // at the insert slot.
   const handleToneSelected = useCallback(
     async (tone: Tone & { models: Model[] }, tokens: T3KTokens) => {
       if (!tone.models || tone.models.length === 0) {
@@ -159,26 +125,29 @@ export const Plugin: React.FC = () => {
         return;
       }
 
+      // Consume the pending swap target up front so it can never leak into a
+      // later selection. (Add flows clear it before starting; see below.)
+      const swapBlockId = sessionStorage.getItem(SWAP_STORAGE_KEY);
+      sessionStorage.removeItem(SWAP_STORAGE_KEY);
+
       // Make sure native has the freshest access token before it tries to
       // download the model from `model_url` (which now requires Bearer auth).
       await pushAccessTokenToNative(tokens.access_token);
 
-      console.log('Loading tone:', tone.title);
+      const toneJson = JSON.stringify(tone);
 
-      try {
-        const blockId = await loadTone.invoke(JSON.stringify(tone));
-
-        if (blockId) {
-          console.log('Tone loaded successfully, block ID:', blockId);
-          await loadChainStatus();
-        } else {
-          console.error('Failed to load tone');
-        }
-      } catch (error) {
-        console.error('Error loading tone:', error);
+      if (swapBlockId) {
+        console.log('Swapping tone into block', swapBlockId, ':', tone.title);
+        const swapped = await actions.swapTone(swapBlockId, toneJson);
+        if (swapped) return;
+        console.warn('Swap target no longer exists; adding tone as a new block');
       }
+
+      console.log('Loading tone:', tone.title);
+      const blockId = await actions.loadTone(toneJson);
+      if (!blockId) console.error('Failed to load tone');
     },
-    [loadTone, loadChainStatus, pushAccessTokenToNative]
+    [actions, pushAccessTokenToNative]
   );
 
   // TONE3000 Select integration. Single-webview redirect flow: clicking + on
@@ -192,16 +161,8 @@ export const Plugin: React.FC = () => {
 
   // Handle switching models within a block
   const handleSwitchModel = async (blockId: string, modelId: number) => {
-    try {
-      const success = await switchModel.invoke(blockId, modelId);
-      if (success) {
-        await loadChainStatus();
-      } else {
-        console.error('Failed to switch model');
-      }
-    } catch (error) {
-      console.error('Error switching model:', error);
-    }
+    const success = await actions.switchModel(blockId, modelId);
+    if (!success) console.error('Failed to switch model');
   };
 
   // Gate internet-dependent actions: the Select flow navigates the webview to
@@ -210,14 +171,19 @@ export const Plugin: React.FC = () => {
   const internetGate = useInternetGate();
 
   const handleAddModel = () => {
-    internetGate.requireInternet(() => startSelectFlow());
+    internetGate.requireInternet(() => {
+      sessionStorage.removeItem(SWAP_STORAGE_KEY);
+      startSelectFlow();
+    });
   };
 
-  useEffect(() => {
-    loadChainStatus();
-    const interval = setInterval(loadChainStatus, 2000);
-    return () => clearInterval(interval);
-  }, []);
+  // Swap: remember the target block, then run the same Select flow as add.
+  const handleSwapBlock = (blockId: string) => {
+    internetGate.requireInternet(() => {
+      sessionStorage.setItem(SWAP_STORAGE_KEY, blockId);
+      startSelectFlow();
+    });
+  };
 
   return (
     <div
@@ -350,16 +316,23 @@ export const Plugin: React.FC = () => {
           <StereoControls
             stereoEnabled={stereoEnabled}
             activeSide={activeSide}
-            onToggleStereo={handleToggleStereo}
-            onSelectSide={handleSelectSide}
+            onToggleStereo={(enabled) => actions.setStereoMode(enabled)}
+            onSelectSide={(side) => actions.setActiveSide(side)}
           />
           <ChainView
             key={stereoEnabled ? activeSide : 'mono'}
             chain={chain}
             onAddModel={handleAddModel}
-            onRemoveBlock={removeBlock}
+            onRemoveBlock={(id) => actions.removeBlock(id)}
+            onSwapBlock={handleSwapBlock}
+            onShareBlock={handleShareBlock}
             onReorderItems={handleReorderItems}
             onSwitchModel={handleSwitchModel}
+            onSetBlockParam={actions.setBlockParam}
+            onSetBlockEqBand={actions.setBlockEqBand}
+            onSetBlockEqEnabled={(id, enabled) => actions.setBlockEqEnabled(id, enabled)}
+            onResetBlockEq={(id) => actions.resetBlockEq(id)}
+            sampleRate={sampleRate}
           />
         </div>
 

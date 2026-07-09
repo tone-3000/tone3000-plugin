@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { useFunction } from '../hooks/useFunction';
+import React, { useMemo } from 'react';
+import { useMeter } from '../hooks/useMeters';
+import { METER_MAX_DB, METER_MIN_DB, getGradientColor } from './meterColor';
 
 interface DbMeterProps {
   type: 'input' | 'output';
@@ -12,40 +13,13 @@ const BLOCK_GAP = 10;
 const INACTIVE_COLOR = '#8D8D93';
 const LABEL_COLOR = '#8D8D93';
 
-// Interpolate color along gradient: blue (bottom) → yellow (middle) → red (top)
-const getGradientColor = (position: number): string => {
-  // position: 0 = bottom (blue), 0.5 = middle (yellow), 1 = top (red)
-  let r: number, g: number, b: number;
-
-  if (position <= 0.5) {
-    // Bottom half: blue #0000FF → yellow #FFFF00
-    const t = position * 2;
-    r = Math.round(255 * t);
-    g = Math.round(255 * t);
-    b = Math.round(255 * (1 - t));
-  } else {
-    // Top half: yellow #FFFF00 → red #FF0000
-    const t = (position - 0.5) * 2;
-    r = 255;
-    g = Math.round(255 * (1 - t));
-    b = 0;
-  }
-
-  return `rgb(${r}, ${g}, ${b})`;
-};
-
 export const DbMeter: React.FC<DbMeterProps> = ({
   type,
   height = 200,
   labelsPosition = 'left',
 }) => {
-  const [dbLevel, setDbLevel] = useState(-60);
-  const animationFrameRef = useRef<number | undefined>(undefined);
-  const isRunningRef = useRef(false);
-
-  const getMeterLevel = useFunction<number>(
-    `get${type === 'input' ? 'Input' : 'Output'}MeterLevel`
-  );
+  // Fed by the shared meter store: one native call per frame for the whole UI.
+  const dbLevel = useMeter(type);
 
   // Calculate number of blocks that fit in the height
   const numBlocks = useMemo(() => {
@@ -57,9 +31,8 @@ export const DbMeter: React.FC<DbMeterProps> = ({
     return numBlocks * BLOCK_SIZE + (numBlocks - 1) * BLOCK_GAP;
   }, [numBlocks]);
 
-  // dB range: -60 to +12
-  const minDb = -60;
-  const maxDb = 12;
+  const minDb = METER_MIN_DB;
+  const maxDb = METER_MAX_DB;
 
   // Convert dB to block index (0 = bottom, numBlocks-1 = top)
   const dbToBlockIndex = (db: number): number => {
@@ -72,40 +45,6 @@ export const DbMeter: React.FC<DbMeterProps> = ({
     const normalized = (db - minDb) / (maxDb - minDb);
     return normalized * actualMeterHeight;
   };
-
-  useEffect(() => {
-    if (isRunningRef.current) return;
-    isRunningRef.current = true;
-
-    const updateMeter = async () => {
-      if (!isRunningRef.current) return;
-
-      try {
-        const level = await getMeterLevel.invoke();
-        if (!isRunningRef.current) return;
-
-        if (typeof level === 'number' && !isNaN(level)) {
-          setDbLevel(level);
-        }
-      } catch (error) {
-        // Silently handle errors
-      }
-
-      if (isRunningRef.current) {
-        animationFrameRef.current = requestAnimationFrame(updateMeter);
-      }
-    };
-
-    updateMeter();
-
-    return () => {
-      isRunningRef.current = false;
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = undefined;
-      }
-    };
-  }, [type]);
 
   const activeBlockIndex = dbToBlockIndex(dbLevel);
 

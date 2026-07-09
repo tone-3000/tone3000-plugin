@@ -19,6 +19,7 @@ void TONE3000Processor::serializeChainToTree(
     blockState.setProperty("id", juce::String(block->id), nullptr);
     blockState.setProperty("type", typeStr, nullptr);
     blockState.setProperty("enabled", block->enabled, nullptr);
+    blockState.setProperty("inputGain", block->inputGainNormalized, nullptr);
     blockState.setProperty("outputGain", block->outputGainNormalized, nullptr);
     blockState.setProperty("mix", block->mixNormalized, nullptr);
 
@@ -29,6 +30,8 @@ void TONE3000Processor::serializeChainToTree(
       blockState.setProperty("toneId", block->toneId, nullptr);
       blockState.setProperty("toneJson", block->toneJson, nullptr);
       blockState.setProperty("activeModelId", block->activeModelId, nullptr);
+
+      blockState.appendChild(block->eq.toValueTree(), nullptr);
 
       juce::ValueTree cacheState("ModelCache");
       for (const auto& [modelId, modelData] : block->modelCache) {
@@ -108,6 +111,10 @@ void TONE3000Processor::restoreChainFromTree(
 
     auto block = std::make_unique<ChainBlock>(blockId, type);
     block->enabled = enabled;
+    // inputGain arrived after the first release; older projects default to unity.
+    block->inputGainNormalized = blockState.hasProperty("inputGain")
+                                     ? static_cast<float>(blockState.getProperty("inputGain"))
+                                     : 0.5f;
     block->outputGainNormalized = outputGain;
     block->mixNormalized = mix;
 
@@ -126,6 +133,11 @@ void TONE3000Processor::restoreChainFromTree(
     block->toneId = toneId;
     block->toneJson = toneJson;
     block->activeModelId = activeModelId;
+
+    // EQ bands (defaults to flat when the child is missing — older projects).
+    block->eq.restoreFromValueTree(blockState.getChildWithName("Eq"));
+    if (const double sr = getSampleRate(); sr > 0.0)
+      block->eq.prepare(sr);
 
     juce::ValueTree cacheState = blockState.getChildWithName("ModelCache");
     if (cacheState.isValid()) {
@@ -221,6 +233,7 @@ void TONE3000Processor::setStateInformation(const void* data, int sizeInBytes) {
 
     stereoEnabled.store(restoredStereo);
     activeEditSide = ChainSide::Left;
+    bumpChainRevision();
   }
 
   updateLatencyCompensation();

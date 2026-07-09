@@ -1,5 +1,9 @@
 import React from 'react';
 import { PlusCircle } from 'lucide-react';
+import { CARD_HEIGHT, CARD_WIDTH } from './ChainBlock';
+
+// Routing line runs from the button edge to the plus-circle's edge.
+const ROUTING_LINE_HEIGHT = CARD_HEIGHT / 2 - 20;
 
 interface AddModelButtonProps {
   onClick: () => void;
@@ -27,15 +31,15 @@ export const SelectButton: React.FC<AddModelButtonProps> = ({ onClick, routing }
         fontSize: '12px',
         fontWeight: 'bold',
         transition: 'all 0.2s ease',
-        height: '254px',
-        width: '640px',
+        height: `${CARD_HEIGHT}px`,
+        width: `${CARD_WIDTH}px`,
         position: 'relative',
       }}
     >
       {(routing === 1 || routing === 2) && (
         <div
           style={{
-            height: 110,
+            height: ROUTING_LINE_HEIGHT,
             backgroundColor: '#ffffff',
             width: '1px',
             position: 'absolute',
@@ -55,7 +59,7 @@ export const SelectButton: React.FC<AddModelButtonProps> = ({ onClick, routing }
       {(routing === -1 || routing === 2) && (
         <div
           style={{
-            height: 110,
+            height: ROUTING_LINE_HEIGHT,
             backgroundColor: '#ffffff',
             width: '1px',
             position: 'absolute',

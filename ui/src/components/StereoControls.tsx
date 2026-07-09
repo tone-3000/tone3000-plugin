@@ -1,6 +1,6 @@
 import React from 'react';
 import { Headphones } from 'lucide-react';
-import type { ChainSide } from '../types/tone';
+import type { ChainSide } from '../types/chain';
 
 interface StereoControlsProps {
   stereoEnabled: boolean;
