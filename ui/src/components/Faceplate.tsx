@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, Power } from 'lucide-react';
+import React from 'react';
+import { Power } from 'lucide-react';
 import { KnobControl } from './KnobControl';
 import { useParameter } from '../hooks/useParameter';
 
@@ -8,16 +8,17 @@ import { useParameter } from '../hooks/useParameter';
  * stack. Gate + tone stack carry power switches (APVTS bool params, so they
  * automate and persist like everything else on the plate).
  *
- * Stereo gains: the L knob param ("inputLevel"/"outputLevel") is the main
- * value; when a stage is unlinked the R param takes over channel R and the
- * L/link/R toggle picks which one the knob edits. All four values + both
- * link flags are host parameters — presets/undo get them for free.
+ * Stereo gains: one main level knob per stage plus a small balance knob that
+ * trims L/R against each other (±12 dB opposing, center = off). The balance
+ * knob only appears when the stage actually runs stereo; the parameter is
+ * inert on mono buffers either way. All values are host parameters —
+ * presets/undo get them for free.
  */
 
 const KNOB_SIZE = 36;
+const BALANCE_KNOB_SIZE = 24;
 const PLATE_HEIGHT = 100;
 
-const MUTED = 'rgba(235, 235, 245, 0.60)';
 const BORDER = '1px solid rgba(84, 84, 88, 0.65)';
 
 /** Offset that vertically centers side-controls on the knob itself (the
@@ -52,97 +53,26 @@ const PowerButton: React.FC<{ on: boolean; title: string; onClick: () => void }>
   </button>
 );
 
-/** Vertical L / link / R selector for a stereo gain stage. */
-const ChannelToggle: React.FC<{
-  linked: boolean;
-  side: 'l' | 'r';
-  onSelect: (mode: 'l' | 'linked' | 'r') => void;
-}> = ({ linked, side, onSelect }) => {
-  const itemStyle = (active: boolean): React.CSSProperties => ({
-    width: '22px',
-    height: '20px',
-    border: 'none',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    padding: 0,
-    fontSize: '10px',
-    letterSpacing: '0.5px',
-    color: active ? '#ffffff' : MUTED,
-    backgroundColor: active ? 'rgba(235, 235, 245, 0.18)' : 'transparent',
-  });
-
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        borderRadius: '6px',
-        border: BORDER,
-        overflow: 'hidden',
-        flexShrink: 0,
-        transform: `translateY(${KNOB_CENTER_OFFSET}px)`,
-      }}
-    >
-      <button
-        onClick={() => onSelect('l')}
-        title="Left channel gain"
-        style={itemStyle(!linked && side === 'l')}
-      >
-        L
-      </button>
-      <button
-        onClick={() => onSelect('linked')}
-        title="Linked (both channels)"
-        style={{ ...itemStyle(linked), borderTop: BORDER, borderBottom: BORDER }}
-      >
-        <Link size={10} />
-      </button>
-      <button
-        onClick={() => onSelect('r')}
-        title="Right channel gain"
-        style={itemStyle(!linked && side === 'r')}
-      >
-        R
-      </button>
-    </div>
-  );
-};
-
 /**
- * Main gain knob. In stereo it grows the L/link/R toggle: linked edits the
- * main (L) value and the DSP mirrors it to both channels; unlinked edits the
- * selected channel's own parameter.
+ * Main gain knob for a stage (input/output). When the stage runs stereo, a
+ * smaller balance knob joins it: center = no effect, off-center trims L/R
+ * against each other by up to ±12 dB on top of the main level.
  */
 const MainGainKnob: React.FC<{
   label: string;
   type: 'input' | 'output';
   stereo: boolean;
-  /** Which side of the knob the channel toggle sits on. */
-  toggleSide: 'left' | 'right';
-}> = ({ label, type, stereo, toggleSide }) => {
+  /** Which side of the main knob the balance knob sits on. */
+  balanceSide: 'left' | 'right';
+}> = ({ label, type, stereo, balanceSide }) => {
   const [level, setLevel] = useParameter(`${type}Level`, 'slider');
-  const [levelR, setLevelR] = useParameter(`${type}LevelR`, 'slider');
-  const [linked, setLinked] = useParameter(`${type}Linked`, 'toggle');
-  const [side, setSide] = useState<'l' | 'r'>('l');
-
-  const editingRight = stereo && !linked && side === 'r';
-
-  const handleSelect = (mode: 'l' | 'linked' | 'r') => {
-    if (mode === 'linked') {
-      setLinked(true);
-    } else {
-      setLinked(false);
-      setSide(mode);
-    }
-  };
+  const [balance, setBalance] = useParameter(`${type}Balance`, 'slider');
 
   const knob = (
     <KnobControl
-      label={stereo && !linked ? `${label} ${side.toUpperCase()}` : label}
-      value={editingRight ? levelR : level}
-      onChange={editingRight ? setLevelR : setLevel}
+      label={label}
+      value={level}
+      onChange={setLevel}
       size={KNOB_SIZE}
       labelSize={12}
     />
@@ -150,12 +80,20 @@ const MainGainKnob: React.FC<{
 
   if (!stereo) return knob;
 
-  const toggle = <ChannelToggle linked={linked} side={side} onSelect={handleSelect} />;
+  const balanceKnob = (
+    <KnobControl
+      label="Bal"
+      value={balance}
+      onChange={setBalance}
+      size={BALANCE_KNOB_SIZE}
+      labelSize={10}
+    />
+  );
   return (
-    <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px' }}>
-      {toggleSide === 'left' && toggle}
+    <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end', gap: '10px' }}>
+      {balanceSide === 'left' && balanceKnob}
       {knob}
-      {toggleSide === 'right' && toggle}
+      {balanceSide === 'right' && balanceKnob}
     </div>
   );
 };
@@ -190,7 +128,7 @@ export const Faceplate: React.FC<FaceplateProps> = ({ stereoEnabled, stereoInput
         boxSizing: 'border-box',
       }}
     >
-      <MainGainKnob label="Input" type="input" stereo={stereoInput} toggleSide="right" />
+      <MainGainKnob label="Input" type="input" stereo={stereoInput} balanceSide="right" />
 
       {/* Gate + power */}
       <div
@@ -254,7 +192,7 @@ export const Faceplate: React.FC<FaceplateProps> = ({ stereoEnabled, stereoInput
         />
       </div>
 
-      <MainGainKnob label="Output" type="output" stereo={stereoEnabled} toggleSide="left" />
+      <MainGainKnob label="Output" type="output" stereo={stereoEnabled} balanceSide="left" />
     </div>
   );
 };

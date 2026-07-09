@@ -66,17 +66,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
   layout.add(std::make_unique<juce::AudioParameterBool>(
       juce::ParameterID{"toneEqEnabled", 12}, "toneEqEnabled", true));
 
-  // Per-channel main gains. inputLevel/outputLevel stay the left/main value
-  // (so old sessions restore unchanged); the R params only apply when the
-  // corresponding link is off. Linked (default) = both channels follow L.
+  // Stereo balance trims for the main gains: 0.5 = centered (no effect),
+  // otherwise an opposing ±12 dB trim between L and R on top of the main
+  // level. Only audible on stereo buffers; the UI hides the knobs otherwise.
   layout.add(std::make_unique<juce::AudioParameterFloat>(
-      juce::ParameterID{"inputLevelR", 13}, "inputLevelR", 0.0f, 1.0f, 0.5f));
+      juce::ParameterID{"inputBalance", 17}, "inputBalance", 0.0f, 1.0f, 0.5f));
   layout.add(std::make_unique<juce::AudioParameterFloat>(
-      juce::ParameterID{"outputLevelR", 14}, "outputLevelR", 0.0f, 1.0f, 0.5f));
-  layout.add(std::make_unique<juce::AudioParameterBool>(
-      juce::ParameterID{"inputLinked", 15}, "inputLinked", true));
-  layout.add(std::make_unique<juce::AudioParameterBool>(
-      juce::ParameterID{"outputLinked", 16}, "outputLinked", true));
+      juce::ParameterID{"outputBalance", 18}, "outputBalance", 0.0f, 1.0f, 0.5f));
 
   return layout;
 }
@@ -204,11 +200,9 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
 
   // Cached parameters
   cacheInputLevel = parameters.getRawParameterValue("inputLevel")->load();
-  cacheInputLevelR = parameters.getRawParameterValue("inputLevelR")->load();
   cacheOutputLevel = parameters.getRawParameterValue("outputLevel")->load();
-  cacheOutputLevelR = parameters.getRawParameterValue("outputLevelR")->load();
-  cacheInputLinked = parameters.getRawParameterValue("inputLinked")->load() > 0.5f;
-  cacheOutputLinked = parameters.getRawParameterValue("outputLinked")->load() > 0.5f;
+  cacheInputBalance = parameters.getRawParameterValue("inputBalance")->load();
+  cacheOutputBalance = parameters.getRawParameterValue("outputBalance")->load();
   cacheBassTone = parameters.getRawParameterValue("toneBass")->load();
   cacheMidTone = parameters.getRawParameterValue("toneMid")->load();
   cacheTrebleTone = parameters.getRawParameterValue("toneTreble")->load();
@@ -371,9 +365,9 @@ void TONE3000Processor::updateCachedParameters() {
   };
 
   updateFloat(cacheInputLevel, "inputLevel");
-  updateFloat(cacheInputLevelR, "inputLevelR");
   updateFloat(cacheOutputLevel, "outputLevel");
-  updateFloat(cacheOutputLevelR, "outputLevelR");
+  updateFloat(cacheInputBalance, "inputBalance");
+  updateFloat(cacheOutputBalance, "outputBalance");
   updateFloat(cacheBassTone, "toneBass");
   updateFloat(cacheMidTone, "toneMid");
   updateFloat(cacheTrebleTone, "toneTreble");
@@ -388,8 +382,15 @@ void TONE3000Processor::updateCachedParameters() {
   cacheCalibrateInput = loadBool("calibrateInput");
   cacheGateEnabled = loadBool("gateEnabled");
   cacheToneEqEnabled = loadBool("toneEqEnabled");
-  cacheInputLinked = loadBool("inputLinked");
-  cacheOutputLinked = loadBool("outputLinked");
+}
+
+// Per-channel gain for a main stage: main level ±12 dB, plus the balance
+// trim (0.5 = centered) which adds up to ±12 dB opposing between L and R.
+// Mono buffers pass ch == 0 only, so balance is inert there by construction.
+static float mainStageChannelGain(float level, float balance, int channel) {
+  const float levelDb = (level - 0.5f) * 24.0f;
+  const float trimDb = (balance - 0.5f) * 24.0f * (channel == 0 ? -1.0f : 1.0f);
+  return juce::Decibels::decibelsToGain(levelDb + trimDb);
 }
 
 
@@ -691,14 +692,12 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   if (tuner.isEnabled())
     tuner.pushSamples(buffer.getReadPointer(0), numSamples);
 
-  // Main input gain, per channel: L follows inputLevel; R follows inputLevelR
-  // unless linked (0.5 => unity, ±12 dB). The gate rides the same loop but
-  // only when its power switch is on.
+  // Main input gain per channel (level ±12 dB, balance trim ±12 dB opposing).
+  // The gate rides the same loop but only when its power switch is on.
   const float gateThresholdLinear = juce::Decibels::decibelsToGain(cacheGateThreshold);
   const bool gateOn = cacheGateEnabled;
   for (int ch = 0; ch < numChannels; ++ch) {
-    const float level = (ch == 0 || cacheInputLinked) ? cacheInputLevel : cacheInputLevelR;
-    const float gainLinear = juce::Decibels::decibelsToGain((level - 0.5f) * 24.0f);
+    const float gainLinear = mainStageChannelGain(cacheInputLevel, cacheInputBalance, ch);
     auto* channelData = buffer.getWritePointer(ch);
     for (int i = 0; i < numSamples; ++i) {
       float& sample = channelData[i];
@@ -769,15 +768,13 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   toneEqWasEnabled = cacheToneEqEnabled;
 
   // ###########
-  // Output gain, per channel: L follows outputLevel; R follows outputLevelR
-  // unless linked (0.5 => unity, ±12 dB). Per-channel output meters ride the
-  // same pass.
+  // Output gain per channel (level ±12 dB, balance trim ±12 dB opposing).
+  // Per-channel output meters ride the same pass.
   // ###########
   {
     float peakL = 0.0f, peakR = 0.0f;
     for (int ch = 0; ch < numChannels; ++ch) {
-      const float level = (ch == 0 || cacheOutputLinked) ? cacheOutputLevel : cacheOutputLevelR;
-      const float gainLinear = juce::Decibels::decibelsToGain((level - 0.5f) * 24.0f);
+      const float gainLinear = mainStageChannelGain(cacheOutputLevel, cacheOutputBalance, ch);
       float& peak = (ch == 0) ? peakL : peakR;
       auto* channelData = buffer.getWritePointer(ch);
       for (int i = 0; i < numSamples; ++i) {

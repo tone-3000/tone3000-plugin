@@ -43,11 +43,9 @@ private:
   juce::WebControlParameterIndexReceiver controlParameterIndexReceiver;
 
   juce::WebSliderRelay inputLevelRelay{"inputLevel"};
-  juce::WebSliderRelay inputLevelRRelay{"inputLevelR"};
   juce::WebSliderRelay outputLevelRelay{"outputLevel"};
-  juce::WebSliderRelay outputLevelRRelay{"outputLevelR"};
-  juce::WebToggleButtonRelay inputLinkedRelay{"inputLinked"};
-  juce::WebToggleButtonRelay outputLinkedRelay{"outputLinked"};
+  juce::WebSliderRelay inputBalanceRelay{"inputBalance"};
+  juce::WebSliderRelay outputBalanceRelay{"outputBalance"};
   juce::WebSliderRelay bassRelay{"toneBass"};
   juce::WebSliderRelay midRelay{"toneMid"};
   juce::WebSliderRelay trebleRelay{"toneTreble"};
@@ -61,16 +59,12 @@ private:
   // Attachments
   juce::WebSliderParameterAttachment inputLevelWebAttachment{
       *processor.parameters.getParameter("inputLevel"), inputLevelRelay, nullptr};
-  juce::WebSliderParameterAttachment inputLevelRWebAttachment{
-      *processor.parameters.getParameter("inputLevelR"), inputLevelRRelay, nullptr};
   juce::WebSliderParameterAttachment outputLevelWebAttachment{
       *processor.parameters.getParameter("outputLevel"), outputLevelRelay, nullptr};
-  juce::WebSliderParameterAttachment outputLevelRWebAttachment{
-      *processor.parameters.getParameter("outputLevelR"), outputLevelRRelay, nullptr};
-  juce::WebToggleButtonParameterAttachment inputLinkedWebAttachment{
-      *processor.parameters.getParameter("inputLinked"), inputLinkedRelay, nullptr};
-  juce::WebToggleButtonParameterAttachment outputLinkedWebAttachment{
-      *processor.parameters.getParameter("outputLinked"), outputLinkedRelay, nullptr};
+  juce::WebSliderParameterAttachment inputBalanceWebAttachment{
+      *processor.parameters.getParameter("inputBalance"), inputBalanceRelay, nullptr};
+  juce::WebSliderParameterAttachment outputBalanceWebAttachment{
+      *processor.parameters.getParameter("outputBalance"), outputBalanceRelay, nullptr};
   juce::WebToggleButtonParameterAttachment gateEnabledWebAttachment{
       *processor.parameters.getParameter("gateEnabled"), gateEnabledRelay, nullptr};
   juce::WebToggleButtonParameterAttachment toneEqEnabledWebAttachment{

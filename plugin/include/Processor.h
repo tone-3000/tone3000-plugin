@@ -307,11 +307,9 @@ private:
 
   // cache
   float cacheInputLevel;
-  float cacheInputLevelR;
   float cacheOutputLevel;
-  float cacheOutputLevelR;
-  bool cacheInputLinked = true;
-  bool cacheOutputLinked = true;
+  float cacheInputBalance = 0.5f;
+  float cacheOutputBalance = 0.5f;
   float cacheBassTone;
   float cacheMidTone;
   float cacheTrebleTone;
