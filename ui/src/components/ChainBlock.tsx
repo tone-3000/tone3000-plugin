@@ -158,7 +158,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
   const [slimmableSize, setSlimmableSize] = useState(params.namSlimmableSize ?? 1);
   const [isSwitchingModel, setIsSwitchingModel] = useState(false);
   const [showEq, setShowEq] = useState(false);
-  const [eqView, setEqView] = useState<EqViewMode>('graph');
+  const [eqView, setEqView] = useState<EqViewMode>('sliders');
   // Optimistic EQ power state (native converges via polling, like `enabled`).
   const [eqOn, setEqOn] = useState(params.eq?.enabled ?? true);
   const [copied, setCopied] = useState(false);

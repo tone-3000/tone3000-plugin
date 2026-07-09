@@ -16,9 +16,16 @@ import type { MeterLevels } from '../types/chain';
  * is mounted.
  */
 
-export type MeterId = 'input' | 'output' | `block:${string}:in` | `block:${string}:out`;
+export type MeterId =
+  | 'input'
+  | 'output'
+  | `${'input' | 'output'}:${'l' | 'r'}`
+  | `block:${string}:in`
+  | `block:${string}:out`;
 
 export const meterId = {
+  /** Per-channel main meter ('input'/'output' alone = max of both channels). */
+  main: (type: 'input' | 'output', channel: 'l' | 'r'): MeterId => `${type}:${channel}`,
   blockIn: (blockId: string): MeterId => `block:${blockId}:in`,
   blockOut: (blockId: string): MeterId => `block:${blockId}:out`,
 };
@@ -78,12 +85,21 @@ class MeterStore {
   }
 
   private apply(res: MeterLevels) {
-    this.update('input', res.input);
-    this.update('output', res.output);
+    this.applyMain('input', res.input);
+    this.applyMain('output', res.output);
     for (const [blockId, levels] of Object.entries(res.blocks ?? {})) {
       this.update(meterId.blockIn(blockId), levels.in);
       this.update(meterId.blockOut(blockId), levels.out);
     }
+  }
+
+  /** Fan an [L, R] pair out to :l / :r ids plus the combined mono id. */
+  private applyMain(type: 'input' | 'output', pair: [number, number]) {
+    const l = Array.isArray(pair) ? pair[0] : pair;
+    const r = Array.isArray(pair) ? pair[1] : pair;
+    this.update(meterId.main(type, 'l'), l);
+    this.update(meterId.main(type, 'r'), r);
+    this.update(type, Math.max(l, r));
   }
 
   private update(id: string, raw: number) {

@@ -60,6 +60,24 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
   layout.add(std::make_unique<juce::AudioParameterFloat>(
       juce::ParameterID{"inputCalibrationLevel", 10}, "inputCalibrationLevel", -60.0f, 60.0f, 12.0f));
 
+  // Faceplate power switches (gate + global 3-band tone stack).
+  layout.add(std::make_unique<juce::AudioParameterBool>(
+      juce::ParameterID{"gateEnabled", 11}, "gateEnabled", true));
+  layout.add(std::make_unique<juce::AudioParameterBool>(
+      juce::ParameterID{"toneEqEnabled", 12}, "toneEqEnabled", true));
+
+  // Per-channel main gains. inputLevel/outputLevel stay the left/main value
+  // (so old sessions restore unchanged); the R params only apply when the
+  // corresponding link is off. Linked (default) = both channels follow L.
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"inputLevelR", 13}, "inputLevelR", 0.0f, 1.0f, 0.5f));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"outputLevelR", 14}, "outputLevelR", 0.0f, 1.0f, 0.5f));
+  layout.add(std::make_unique<juce::AudioParameterBool>(
+      juce::ParameterID{"inputLinked", 15}, "inputLinked", true));
+  layout.add(std::make_unique<juce::AudioParameterBool>(
+      juce::ParameterID{"outputLinked", 16}, "outputLinked", true));
+
   return layout;
 }
 
@@ -186,11 +204,17 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
 
   // Cached parameters
   cacheInputLevel = parameters.getRawParameterValue("inputLevel")->load();
+  cacheInputLevelR = parameters.getRawParameterValue("inputLevelR")->load();
   cacheOutputLevel = parameters.getRawParameterValue("outputLevel")->load();
+  cacheOutputLevelR = parameters.getRawParameterValue("outputLevelR")->load();
+  cacheInputLinked = parameters.getRawParameterValue("inputLinked")->load() > 0.5f;
+  cacheOutputLinked = parameters.getRawParameterValue("outputLinked")->load() > 0.5f;
   cacheBassTone = parameters.getRawParameterValue("toneBass")->load();
   cacheMidTone = parameters.getRawParameterValue("toneMid")->load();
   cacheTrebleTone = parameters.getRawParameterValue("toneTreble")->load();
   cacheGateThreshold = parameters.getRawParameterValue("gateThreshold")->load();
+  cacheGateEnabled = parameters.getRawParameterValue("gateEnabled")->load() > 0.5f;
+  cacheToneEqEnabled = parameters.getRawParameterValue("toneEqEnabled")->load() > 0.5f;
   cacheTargetLoudness = parameters.getRawParameterValue("targetLoudness")->load();
   DBG("Debug parameter values: gateThreshold=" << cacheGateThreshold << ", targetLoudness=" << cacheTargetLoudness);
   cacheNormalize = parameters.getRawParameterValue("normalize")->load() > 0.5f;
@@ -210,6 +234,15 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
         standaloneMonoInput.store(device->getActiveInputChannels().countNumberOfSetBits() == 1);
   }
 #endif
+
+  // Stereo input detection: a stereo main bus that isn't a standalone mono
+  // device. The UI shows dual input meters + per-channel input gain when set.
+  // Reported through getChainState, so bump the revision on change.
+  {
+    const bool stereoIn = getMainBusNumInputChannels() >= 2 && !standaloneMonoInput.load();
+    if (stereoInputDetected.exchange(stereoIn) != stereoIn)
+      bumpChainRevision();
+  }
 
   // Reset all chain blocks (both Left and Right chains)
   {
@@ -338,24 +371,25 @@ void TONE3000Processor::updateCachedParameters() {
   };
 
   updateFloat(cacheInputLevel, "inputLevel");
+  updateFloat(cacheInputLevelR, "inputLevelR");
   updateFloat(cacheOutputLevel, "outputLevel");
+  updateFloat(cacheOutputLevelR, "outputLevelR");
   updateFloat(cacheBassTone, "toneBass");
   updateFloat(cacheMidTone, "toneMid");
   updateFloat(cacheTrebleTone, "toneTreble");
   updateFloat(cacheGateThreshold, "gateThreshold");
   updateFloat(cacheTargetLoudness, "targetLoudness");
   updateFloat(cacheInputCalibrationLevel, "inputCalibrationLevel");
-  
-  // Update boolean parameters
-  bool newNormalize = parameters.getRawParameterValue("normalize")->load() > 0.5f;
-  if (cacheNormalize != newNormalize) {
-    cacheNormalize = newNormalize;
-  }
-  
-  bool newCalibrateInput = parameters.getRawParameterValue("calibrateInput")->load() > 0.5f;
-  if (cacheCalibrateInput != newCalibrateInput) {
-    cacheCalibrateInput = newCalibrateInput;
-  }
+
+  auto loadBool = [&](const juce::String& paramID) -> bool {
+    return parameters.getRawParameterValue(paramID)->load() > 0.5f;
+  };
+  cacheNormalize = loadBool("normalize");
+  cacheCalibrateInput = loadBool("calibrateInput");
+  cacheGateEnabled = loadBool("gateEnabled");
+  cacheToneEqEnabled = loadBool("toneEqEnabled");
+  cacheInputLinked = loadBool("inputLinked");
+  cacheOutputLinked = loadBool("outputLinked");
 }
 
 
@@ -611,7 +645,8 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   if (numSamples <= 0 || numChannels <= 0) {
     DBG("Invalid buffer: samples=" << numSamples << ", channels=" << numChannels);
     buffer.clear();
-    outputMeterLevel.store(-60.0f);
+    outputMeterLevelL.store(-60.0f);
+    outputMeterLevelR.store(-60.0f);
     return;
   }
 
@@ -629,16 +664,26 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // Input + Noise Gate (always enabled)
   // #########################
   
-  // Calculate input meter level before processing
-  float inputPeak = 0.0f;
-  for (int ch = 0; ch < numChannels; ++ch) {
-    const auto* channelData = buffer.getReadPointer(ch);
-    for (int i = 0; i < numSamples; ++i) {
-      inputPeak = std::max(inputPeak, std::abs(channelData[i]));
+  // Per-channel input meters, captured before processing. Mono sources
+  // report the same level on both channels.
+  auto peakToDb = [](float peak) {
+    return peak > 0.0f ? std::max(-60.0f, juce::Decibels::gainToDecibels(peak)) : -60.0f;
+  };
+  {
+    float peakL = 0.0f, peakR = 0.0f;
+    const auto* l = buffer.getReadPointer(0);
+    for (int i = 0; i < numSamples; ++i)
+      peakL = std::max(peakL, std::abs(l[i]));
+    if (numChannels > 1) {
+      const auto* r = buffer.getReadPointer(1);
+      for (int i = 0; i < numSamples; ++i)
+        peakR = std::max(peakR, std::abs(r[i]));
+    } else {
+      peakR = peakL;
     }
+    inputMeterLevelL.store(peakToDb(peakL));
+    inputMeterLevelR.store(peakToDb(peakR));
   }
-  float inputDb = inputPeak > 0.0f ? juce::Decibels::gainToDecibels(inputPeak) : -60.0f;
-  inputMeterLevel.store(std::max(-60.0f, inputDb));
 
   // Feed the tuner from the raw input (pre-gain, pre-gate) while the tuner
   // screen is open. Channel 0 only: guitar sources are mono, and mixing
@@ -646,15 +691,19 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   if (tuner.isEnabled())
     tuner.pushSamples(buffer.getReadPointer(0), numSamples);
 
-  // Map normalized [0..1] to dB around unity: 0.5 => 0 dB, ±0.5 => ±12 dB
-  const float inputGainDb = (cacheInputLevel - 0.5f) * 24.0f;  // -12 dB .. +12 dB
-  const float inputGainLinear = juce::Decibels::decibelsToGain(inputGainDb);
+  // Main input gain, per channel: L follows inputLevel; R follows inputLevelR
+  // unless linked (0.5 => unity, ±12 dB). The gate rides the same loop but
+  // only when its power switch is on.
+  const float gateThresholdLinear = juce::Decibels::decibelsToGain(cacheGateThreshold);
+  const bool gateOn = cacheGateEnabled;
   for (int ch = 0; ch < numChannels; ++ch) {
+    const float level = (ch == 0 || cacheInputLinked) ? cacheInputLevel : cacheInputLevelR;
+    const float gainLinear = juce::Decibels::decibelsToGain((level - 0.5f) * 24.0f);
     auto* channelData = buffer.getWritePointer(ch);
     for (int i = 0; i < numSamples; ++i) {
       float& sample = channelData[i];
-      sample *= inputGainLinear;
-      if (std::abs(sample) < juce::Decibels::decibelsToGain(cacheGateThreshold))
+      sample *= gainLinear;
+      if (gateOn && std::abs(sample) < gateThresholdLinear)
         sample = 0.0f;
     }
   }
@@ -698,42 +747,49 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // Remove global normalization stage; handled per NAM block
 
   // ##########
-  // EQ section (always enabled)
+  // EQ section (global 3-band tone stack, skipped when powered off)
   // ##########
-  if (eqParamsDirty) {
-    updateEqCoefficients();
-    eqParamsDirty = false;
-  }
+  if (cacheToneEqEnabled) {
+    if (!toneEqWasEnabled) {
+      bassFilter.reset();
+      midFilter.reset();
+      trebleFilter.reset();
+    }
+    if (eqParamsDirty) {
+      updateEqCoefficients();
+      eqParamsDirty = false;
+    }
 
-  {
     juce::dsp::AudioBlock<float> eqBlock(buffer);
     juce::dsp::ProcessContextReplacing<float> eqContext(eqBlock);
     bassFilter.process(eqContext);
     midFilter.process(eqContext);
     trebleFilter.process(eqContext);
   }
+  toneEqWasEnabled = cacheToneEqEnabled;
 
   // ###########
-  // Output gain (0.5 => unity, ±12 dB range)
+  // Output gain, per channel: L follows outputLevel; R follows outputLevelR
+  // unless linked (0.5 => unity, ±12 dB). Per-channel output meters ride the
+  // same pass.
   // ###########
-  const float outputGainDb = (cacheOutputLevel - 0.5f) * 24.0f;  // -12 dB .. +12 dB
-  const float outputGainLinear = juce::Decibels::decibelsToGain(outputGainDb);
-  for (int ch = 0; ch < numChannels; ++ch) {
-    auto* channelData = buffer.getWritePointer(ch);
-    for (int i = 0; i < numSamples; ++i)
-      channelData[i] *= outputGainLinear;
-  }
-
-  // Calculate output meter level after final processing
-  float outputPeak = 0.0f;
-  for (int ch = 0; ch < numChannels; ++ch) {
-    const auto* channelData = buffer.getReadPointer(ch);
-    for (int i = 0; i < numSamples; ++i) {
-      outputPeak = std::max(outputPeak, std::abs(channelData[i]));
+  {
+    float peakL = 0.0f, peakR = 0.0f;
+    for (int ch = 0; ch < numChannels; ++ch) {
+      const float level = (ch == 0 || cacheOutputLinked) ? cacheOutputLevel : cacheOutputLevelR;
+      const float gainLinear = juce::Decibels::decibelsToGain((level - 0.5f) * 24.0f);
+      float& peak = (ch == 0) ? peakL : peakR;
+      auto* channelData = buffer.getWritePointer(ch);
+      for (int i = 0; i < numSamples; ++i) {
+        channelData[i] *= gainLinear;
+        peak = std::max(peak, std::abs(channelData[i]));
+      }
     }
+    if (numChannels < 2)
+      peakR = peakL;
+    outputMeterLevelL.store(peakToDb(peakL));
+    outputMeterLevelR.store(peakToDb(peakR));
   }
-  float outputDb = outputPeak > 0.0f ? juce::Decibels::gainToDecibels(outputPeak) : -60.0f;
-  outputMeterLevel.store(std::max(-60.0f, outputDb));
 }
 
 // ##################
@@ -762,11 +818,11 @@ juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() {
 // METER LEVEL GETTERS
 // #########################
 float TONE3000Processor::getInputMeterLevel() const {
-  return inputMeterLevel.load();
+  return std::max(inputMeterLevelL.load(), inputMeterLevelR.load());
 }
 
 float TONE3000Processor::getOutputMeterLevel() const {
-  return outputMeterLevel.load();
+  return std::max(outputMeterLevelL.load(), outputMeterLevelR.load());
 }
 
 // #########################

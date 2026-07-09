@@ -117,6 +117,9 @@ export interface ChainState {
   revision: number;
   stereoEnabled: boolean;
   activeSide: ChainSide;
+  /** True when a real stereo source feeds the plugin (stereo host bus or a
+      stereo standalone input device). Drives the dual input meter/gain UI. */
+  stereoInput: boolean;
   /** Host sample rate — the EQ curve math needs it to mirror the audio exactly. */
   sampleRate: number;
   chain: ChainItem[];
@@ -137,9 +140,10 @@ export function isUnchanged(res: ChainStateResponse): res is ChainStateUnchanged
 /** Param names accepted by the native `setBlockParam` function. */
 export type BlockParamName = 'enabled' | 'inputGain' | 'outputGain' | 'mix' | 'namSlimmableSize';
 
-/** Payload of the native `getMeterLevels` function (all values dB, -60 floor). */
+/** Payload of the native `getMeterLevels` function (all values dB, -60 floor).
+    Main meters ship as [L, R] pairs; mono sources report L == R. */
 export interface MeterLevels {
-  input: number;
-  output: number;
+  input: [number, number];
+  output: [number, number];
   blocks: Record<string, { in: number; out: number }>;
 }

@@ -21,6 +21,7 @@ const EMPTY_STATE: ChainState = {
   revision: -1,
   stereoEnabled: false,
   activeSide: 'left',
+  stereoInput: false,
   sampleRate: 48000,
   chain: [],
 };
@@ -149,6 +150,7 @@ export function useChainState() {
     chain: state.chain,
     stereoEnabled: state.stereoEnabled,
     activeSide: state.activeSide,
+    stereoInput: state.stereoInput ?? false,
     sampleRate: state.sampleRate || 48000,
     refresh,
     actions,

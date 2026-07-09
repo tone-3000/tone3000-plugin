@@ -121,7 +121,7 @@ public:
   int calculateTotalLatency() const;
   void updateLatencyCompensation();
 
-  // Meter level getters for UI
+  // Meter level getters for UI (max of the two channels)
   float getInputMeterLevel() const;
   float getOutputMeterLevel() const;
 
@@ -234,14 +234,23 @@ private:
   std::vector<double> inputBuffer, outputBuffer;
   int maxBlockSize = 0;
   bool eqParamsDirty = true;
+  // Tracks the tone stack's power switch across blocks so re-enabling can
+  // reset the filters (stale biquad state would otherwise ring).
+  bool toneEqWasEnabled = true;
 
   // cache
   float cacheInputLevel;
+  float cacheInputLevelR;
   float cacheOutputLevel;
+  float cacheOutputLevelR;
+  bool cacheInputLinked = true;
+  bool cacheOutputLinked = true;
   float cacheBassTone;
   float cacheMidTone;
   float cacheTrebleTone;
   float cacheGateThreshold;
+  bool cacheGateEnabled = true;
+  bool cacheToneEqEnabled = true;
   float cacheTargetLoudness;
   bool cacheNormalize;
   bool cacheCalibrateInput;
@@ -277,9 +286,17 @@ private:
   double hostSampleRate = 48000.0;  // Default, updated dynamically in prepareToPlay
   bool bypassResampling = true;     // Default to bypass unless model requires specific rate
 
-  // Meter level tracking
-  mutable std::atomic<float> inputMeterLevel{-60.0f};
-  mutable std::atomic<float> outputMeterLevel{-60.0f};
+  // Meter level tracking, per channel (mono sources report L == R).
+  mutable std::atomic<float> inputMeterLevelL{-60.0f};
+  mutable std::atomic<float> inputMeterLevelR{-60.0f};
+  mutable std::atomic<float> outputMeterLevelL{-60.0f};
+  mutable std::atomic<float> outputMeterLevelR{-60.0f};
+
+  // True when the plugin is being fed a real stereo source (stereo bus in a
+  // host, or a stereo input device in the standalone app). Drives the UI's
+  // dual input meter + L/link/R input gain controls. Reported via
+  // getChainState; detection lives in prepareToPlay.
+  std::atomic<bool> stereoInputDetected{false};
 
   // Tuner pitch detection (fed from processBlock when enabled)
   TunerDetector tuner;

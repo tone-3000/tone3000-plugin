@@ -1,18 +1,84 @@
 import React from 'react';
-import { Headphones } from 'lucide-react';
+import { Circle } from 'lucide-react';
 import type { ChainSide } from '../types/chain';
 
-interface StereoControlsProps {
+/**
+ * Stereo (dual-chain) mode controls, split in two:
+ * - StereoModeToggle: mono/stereo pill switch that lives in the top bar.
+ * - ChainSideSelector: LEFT/RIGHT chain picker pinned above the chain while
+ *   stereo mode is on.
+ */
+
+// Two overlapping circles (no lucide equivalent) — drawn to match lucide's
+// stroke style so it sits next to Circle seamlessly.
+const StereoCirclesIcon: React.FC<{ size?: number }> = ({ size = 14 }) => (
+  <svg
+    width={(size * 18) / 12}
+    height={size}
+    viewBox="0 0 18 12"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+  >
+    <circle cx="6" cy="6" r="5" />
+    <circle cx="12" cy="6" r="5" />
+  </svg>
+);
+
+export const StereoModeToggle: React.FC<{
   stereoEnabled: boolean;
-  activeSide: ChainSide;
-  onToggleStereo: (enabled: boolean) => void;
-  onSelectSide: (side: ChainSide) => void;
-}
+  onToggle: (enabled: boolean) => void;
+}> = ({ stereoEnabled, onToggle }) => {
+  const segmentStyle = (active: boolean): React.CSSProperties => ({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '32px',
+    height: '24px',
+    border: 'none',
+    borderRadius: '12px',
+    cursor: 'pointer',
+    padding: 0,
+    color: active ? '#ffffff' : '#8D8D93',
+    backgroundColor: active ? 'rgba(235, 235, 245, 0.24)' : 'transparent',
+  });
+
+  return (
+    <div
+      title={stereoEnabled ? 'Stereo mode (dual chains)' : 'Mono mode (single chain)'}
+      style={{
+        display: 'flex',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: '2px',
+        padding: '2px',
+        borderRadius: '14px',
+        backgroundColor: '#1C1C1E',
+        flexShrink: 0,
+      }}
+    >
+      <button
+        onClick={() => onToggle(false)}
+        title="Mono (single chain)"
+        style={segmentStyle(!stereoEnabled)}
+      >
+        <Circle size={12} strokeWidth={1.75} />
+      </button>
+      <button
+        onClick={() => onToggle(true)}
+        title="Stereo (independent L/R chains)"
+        style={segmentStyle(stereoEnabled)}
+      >
+        <StereoCirclesIcon size={12} />
+      </button>
+    </div>
+  );
+};
 
 const segmentBase: React.CSSProperties = {
   padding: '6px 18px',
   fontSize: '12px',
-  fontWeight: 700,
   border: 'none',
   cursor: 'pointer',
   color: '#ffffff',
@@ -20,83 +86,49 @@ const segmentBase: React.CSSProperties = {
   letterSpacing: '0.04em',
 };
 
-/**
- * Control strip pinned above the chain. Enables stereo (dual-chain) mode and, when on,
- * toggles which chain (Left / Right) is being edited below.
- */
-export const StereoControls: React.FC<StereoControlsProps> = ({
-  stereoEnabled,
-  activeSide,
-  onToggleStereo,
-  onSelectSide,
-}) => {
-  return (
+export const ChainSideSelector: React.FC<{
+  activeSide: ChainSide;
+  onSelectSide: (side: ChainSide) => void;
+}> = ({ activeSide, onSelectSide }) => (
+  <div
+    style={{
+      width: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '12px',
+    }}
+  >
     <div
       style={{
-        width: '100%',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: '16px',
-        padding: '12px',
+        flexDirection: 'row',
+        borderRadius: '8px',
+        border: '1px solid rgba(84, 84, 88, 0.65)',
+        overflow: 'hidden',
       }}
     >
       <button
         type="button"
-        onClick={() => onToggleStereo(!stereoEnabled)}
-        title={stereoEnabled ? 'Disable stereo mode' : 'Enable stereo mode'}
+        onClick={() => onSelectSide('left')}
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          padding: '6px 14px',
-          fontSize: '12px',
-          fontWeight: 700,
-          letterSpacing: '0.04em',
-          borderRadius: '8px',
-          border: '1px solid rgba(84, 84, 88, 0.65)',
-          cursor: 'pointer',
-          color: '#ffffff',
-          backgroundColor: stereoEnabled ? 'rgba(235, 235, 245, 0.18)' : 'transparent',
+          ...segmentBase,
+          backgroundColor: activeSide === 'left' ? 'rgba(235, 235, 245, 0.18)' : 'transparent',
         }}
       >
-        <Headphones size={16} />
-        STEREO {stereoEnabled ? 'ON' : 'OFF'}
+        LEFT
       </button>
-
-      {stereoEnabled && (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'row',
-            borderRadius: '8px',
-            border: '1px solid rgba(84, 84, 88, 0.65)',
-            overflow: 'hidden',
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => onSelectSide('left')}
-            style={{
-              ...segmentBase,
-              backgroundColor: activeSide === 'left' ? 'rgba(235, 235, 245, 0.18)' : 'transparent',
-            }}
-          >
-            LEFT
-          </button>
-          <button
-            type="button"
-            onClick={() => onSelectSide('right')}
-            style={{
-              ...segmentBase,
-              borderLeft: '1px solid rgba(84, 84, 88, 0.65)',
-              backgroundColor: activeSide === 'right' ? 'rgba(235, 235, 245, 0.18)' : 'transparent',
-            }}
-          >
-            RIGHT
-          </button>
-        </div>
-      )}
+      <button
+        type="button"
+        onClick={() => onSelectSide('right')}
+        style={{
+          ...segmentBase,
+          borderLeft: '1px solid rgba(84, 84, 88, 0.65)',
+          backgroundColor: activeSide === 'right' ? 'rgba(235, 235, 245, 0.18)' : 'transparent',
+        }}
+      >
+        RIGHT
+      </button>
     </div>
-  );
-};
+  </div>
+);

@@ -511,6 +511,9 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
   state->setProperty("chain", chainArray);
   state->setProperty("stereoEnabled", stereoEnabled.load());
   state->setProperty("activeSide", activeEditSide == ChainSide::Right ? "right" : "left");
+  // True when a real stereo source feeds the plugin (stereo host bus or a
+  // stereo standalone input device) — drives the dual input meter/gain UI.
+  state->setProperty("stereoInput", stereoInputDetected.load());
   // The EQ editor mirrors the biquad math client-side; it needs the real
   // sample rate for the drawn curve to match the audio exactly.
   const double sr = getSampleRate();
@@ -520,8 +523,16 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
 
 juce::var TONE3000Processor::getMeterLevels() const {
   juce::DynamicObject::Ptr root = new juce::DynamicObject();
-  root->setProperty("input", inputMeterLevel.load());
-  root->setProperty("output", outputMeterLevel.load());
+  // Main meters ship as [L, R] pairs (mono sources report L == R). The UI
+  // store derives the combined mono value as max(L, R).
+  auto channelPair = [](float l, float r) {
+    juce::Array<juce::var> pair;
+    pair.add(l);
+    pair.add(r);
+    return juce::var(pair);
+  };
+  root->setProperty("input", channelPair(inputMeterLevelL.load(), inputMeterLevelR.load()));
+  root->setProperty("output", channelPair(outputMeterLevelL.load(), outputMeterLevelR.load()));
 
   juce::DynamicObject::Ptr blocks = new juce::DynamicObject();
   {

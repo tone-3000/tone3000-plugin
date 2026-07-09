@@ -1,11 +1,10 @@
 import React, { useState, useCallback } from 'react';
 import { Settings as SettingsIcon } from 'lucide-react';
-import { KnobControl } from './KnobControl';
-import { useParameter } from '../hooks/useParameter';
 import { useFunction } from '../hooks/useFunction';
 import { useChainState } from '../hooks/useChainState';
 import { ChainView } from './ChainView';
-import { StereoControls } from './StereoControls';
+import { Faceplate } from './Faceplate';
+import { StereoModeToggle, ChainSideSelector } from './StereoControls';
 import type { Model, Tone } from '../types/tone';
 import type { ToneBlock } from '../types/chain';
 import Settings from './Settings';
@@ -41,19 +40,12 @@ const TuningForkIcon: React.FC<{ size?: number }> = ({ size = 18 }) => (
 );
 
 export const Plugin: React.FC = () => {
-  // Plugin Parameters
-  const [inputLevel, setInputLevel] = useParameter('inputLevel', 'slider');
-  const [outputLevel, setOutputLevel] = useParameter('outputLevel', 'slider');
-  const [toneBass, setToneBass] = useParameter('toneBass', 'slider');
-  const [toneMid, setToneMid] = useParameter('toneMid', 'slider');
-  const [toneTreble, setToneTreble] = useParameter('toneTreble', 'slider');
-  const [noiseGate, setNoiseGate] = useParameter('gateThreshold', 'slider');
-
   const [showSettings, setShowSettings] = useState(false);
   const [showTuner, setShowTuner] = useState(false);
 
   // Chain state: revision-gated polling + mutation actions, owned by one hook.
-  const { chain, stereoEnabled, activeSide, sampleRate, actions } = useChainState();
+  const { chain, stereoEnabled, activeSide, stereoInput, sampleRate, actions } =
+    useChainState();
 
   // One-shot native functions
   const setAccessToken = useFunction<boolean>('setAccessToken');
@@ -235,6 +227,10 @@ export const Plugin: React.FC = () => {
           /> */}
         </a>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <StereoModeToggle
+            stereoEnabled={stereoEnabled}
+            onToggle={(enabled) => actions.setStereoMode(enabled)}
+          />
           <button
             onClick={() => handleToggleTuner(!showTuner)}
             title="Tuner"
@@ -299,7 +295,7 @@ export const Plugin: React.FC = () => {
             backgroundColor: '#000000',
           }}
         >
-          <DbMeter type="input" height={450} />
+          <DbMeter type="input" stereo={stereoInput} height={450} />
         </div>
 
         {/* Chain View - Center */}
@@ -313,12 +309,12 @@ export const Plugin: React.FC = () => {
             padding: '24px 0',
           }}
         >
-          <StereoControls
-            stereoEnabled={stereoEnabled}
-            activeSide={activeSide}
-            onToggleStereo={(enabled) => actions.setStereoMode(enabled)}
-            onSelectSide={(side) => actions.setActiveSide(side)}
-          />
+          {stereoEnabled && (
+            <ChainSideSelector
+              activeSide={activeSide}
+              onSelectSide={(side) => actions.setActiveSide(side)}
+            />
+          )}
           <ChainView
             key={stereoEnabled ? activeSide : 'mono'}
             chain={chain}
@@ -347,33 +343,18 @@ export const Plugin: React.FC = () => {
             backgroundColor: '#000000',
           }}
         >
-          <DbMeter type="output" height={450} labelsPosition="right" />
+          <DbMeter
+            type="output"
+            stereo={stereoEnabled}
+            height={450}
+            labelsPosition="right"
+          />
         </div>
       </div>
       )}
 
-      {/* Pinned Knobs Row at Bottom - Full Width */}
-      <div
-        style={{
-          width: '100%',
-          height: '142px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          flexShrink: 0,
-          borderTop: '1px solid rgba(84, 84, 88, 0.65)',
-          background: '#1C1C1E',
-          padding: '0 24px',
-        }}
-      >
-        <KnobControl label="Input" value={inputLevel} onChange={setInputLevel} />
-        <KnobControl label="Gate" value={noiseGate} onChange={setNoiseGate} />
-        <div style={{ display: 'flex', flexDirection: 'row', gap: 32 }}>
-          <KnobControl label="Bass" value={toneBass} onChange={setToneBass} />
-          <KnobControl label="Middle" value={toneMid} onChange={setToneMid} />
-          <KnobControl label="Treble" value={toneTreble} onChange={setToneTreble} />
-        </div>
-        <KnobControl label="Output" value={outputLevel} onChange={setOutputLevel} />
-      </div>
+      {/* Pinned faceplate at the bottom (gains, gate, tone stack) */}
+      <Faceplate stereoEnabled={stereoEnabled} stereoInput={stereoInput} />
 
       {/* Settings Modal */}
       <Settings isOpen={showSettings} onClose={() => setShowSettings(false)} />
