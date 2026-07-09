@@ -27,22 +27,6 @@ const KNOB_SIZE = 30;
 /** Mini meter height in the side rails (meter sits centered above its knob). */
 const RAIL_METER_HEIGHT = 88;
 
-const GEAR_CAPTURE_MAP = {
-  amp: 'Amp Head',
-  'amp-cab': 'Full Rig / Combo',
-  pedal: 'Pedal',
-  outboard: 'Outboard',
-  cab: 'Cab',
-  space: 'Space',
-  experimental: 'Experimental',
-};
-
-// IR is identified by `format=ir`; otherwise describe the captured gear.
-const captureLabel = (gear: string, format: string): string => {
-  if (format?.toLowerCase() === 'ir') return 'Impulse Response';
-  return GEAR_CAPTURE_MAP[gear as keyof typeof GEAR_CAPTURE_MAP] ?? '';
-};
-
 const MUTED = 'rgba(235, 235, 245, 0.60)';
 const BORDER = '1px solid rgba(84, 84, 88, 0.65)';
 
@@ -230,8 +214,12 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
     }
   };
 
-  const formatBadge =
-    `${tone.format?.toUpperCase() ?? ''}${block.namSlimmable ? ' A2' : ''}`.trim();
+  const isNam = tone.format?.toLowerCase() === 'nam';
+  // architecture=2 NAM models are always A2/slimmable — no need to wait on
+  // the native capability flag that used to gate this after model load.
+  const formatBadge = isNam
+    ? 'NAM A2'
+    : (tone.format?.toUpperCase() ?? '');
 
   // EQ is shaping this block's audio: powered on and not flat (a flat or
   // bypassed EQ is skipped natively). Uses the optimistic power state so the
@@ -292,8 +280,8 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
           <Power size={14} />
         </button>
 
-        {/* LITE/FULL for slimmable NAM models, in the left header group */}
-        {block.namSlimmable && (
+        {/* LITE/FULL for every NAM block (architecture=2 = always A2). */}
+        {isNam && (
           <div
             style={{
               display: 'flex',
@@ -549,9 +537,11 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
               </span>
 
               <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
-                <span style={{ fontSize: '13px', color: MUTED, fontWeight: '400' }}>
-                  {captureLabel(tone.gear, tone.format)}
-                </span>
+                {tone.gear && (
+                  <span style={{ fontSize: '13px', color: MUTED, fontWeight: '400' }}>
+                    {tone.gear}
+                  </span>
+                )}
                 {formatBadge && (
                   <span
                     style={{

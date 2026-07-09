@@ -17,6 +17,7 @@
 #include "NAM/wavenet/model.h"
 #include "ChainBlock.h"
 #include "ChainHistory.h"
+#include "Doubler.h"
 #include "NamResampler.h"
 #include "PresetManager.h"
 #include "TunerDetector.h"
@@ -310,6 +311,9 @@ private:
   float cacheOutputLevel;
   float cacheInputBalance = 0.5f;
   float cacheOutputBalance = 0.5f;
+  bool cacheDoublerEnabled = false;
+  float cacheDoublerSpread = 0.5f;
+  float cacheDoublerJitter = 0.25f;
   float cacheBassTone;
   float cacheMidTone;
   float cacheTrebleTone;
@@ -365,6 +369,12 @@ private:
 
   // Tuner pitch detection (fed from processBlock when enabled)
   TunerDetector tuner;
+
+  // Mono-mode stereo doubler (post-chain). `doublerWasActive` mirrors the
+  // tone stack's re-engage pattern: transitioning from bypassed to active
+  // resets the delay line so stale audio never plays back.
+  Doubler doubler;
+  bool doublerWasActive = false;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TONE3000Processor)
 };

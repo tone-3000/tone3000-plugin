@@ -74,6 +74,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
   layout.add(std::make_unique<juce::AudioParameterFloat>(
       juce::ParameterID{"outputBalance", 18}, "outputBalance", 0.0f, 1.0f, 0.5f));
 
+  // Mono-mode doubler (see Doubler.h): spread = base R-channel delay
+  // (0..24 ms), jitter = ± per-note random variation (0..12 ms). Both stored
+  // normalized like the gains; the DSP maps to ms. Inert in stereo mode.
+  layout.add(std::make_unique<juce::AudioParameterBool>(
+      juce::ParameterID{"doublerEnabled", 19}, "doublerEnabled", false));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"doublerSpread", 20}, "doublerSpread", 0.0f, 1.0f, 0.5f));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"doublerJitter", 21}, "doublerJitter", 0.0f, 1.0f, 0.25f));
+
   return layout;
 }
 
@@ -203,6 +213,9 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   cacheOutputLevel = parameters.getRawParameterValue("outputLevel")->load();
   cacheInputBalance = parameters.getRawParameterValue("inputBalance")->load();
   cacheOutputBalance = parameters.getRawParameterValue("outputBalance")->load();
+  cacheDoublerEnabled = parameters.getRawParameterValue("doublerEnabled")->load() > 0.5f;
+  cacheDoublerSpread = parameters.getRawParameterValue("doublerSpread")->load();
+  cacheDoublerJitter = parameters.getRawParameterValue("doublerJitter")->load();
   cacheBassTone = parameters.getRawParameterValue("toneBass")->load();
   cacheMidTone = parameters.getRawParameterValue("toneMid")->load();
   cacheTrebleTone = parameters.getRawParameterValue("toneTreble")->load();
@@ -250,6 +263,7 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   midFilter.prepare(spec);
   trebleFilter.prepare(spec);
   dcBlockerLeft.prepare(spec);
+  doubler.prepare(sampleRate, samplesPerBlock);
 
   // Temporary unity filters for boot
   *bassFilter.state =
@@ -368,6 +382,8 @@ void TONE3000Processor::updateCachedParameters() {
   updateFloat(cacheOutputLevel, "outputLevel");
   updateFloat(cacheInputBalance, "inputBalance");
   updateFloat(cacheOutputBalance, "outputBalance");
+  updateFloat(cacheDoublerSpread, "doublerSpread");
+  updateFloat(cacheDoublerJitter, "doublerJitter");
   updateFloat(cacheBassTone, "toneBass");
   updateFloat(cacheMidTone, "toneMid");
   updateFloat(cacheTrebleTone, "toneTreble");
@@ -382,6 +398,7 @@ void TONE3000Processor::updateCachedParameters() {
   cacheCalibrateInput = loadBool("calibrateInput");
   cacheGateEnabled = loadBool("gateEnabled");
   cacheToneEqEnabled = loadBool("toneEqEnabled");
+  cacheDoublerEnabled = loadBool("doublerEnabled");
 }
 
 // Per-channel gain for a main stage: main level ±12 dB, plus the balance
@@ -729,6 +746,23 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     } else {
       processChainOnBuffer(chainBlocks, buffer);
     }
+  }
+
+  // ##########
+  // Doubler (mono mode only): replace ch 1 with a delayed copy of the chain
+  // output for a stereo double. Runs before the downstream stereo stages
+  // (DC / tone stack / output balance + meters) so they see the real double.
+  // ##########
+  {
+    const bool doublerActive =
+        cacheDoublerEnabled && !stereoEnabled.load() && numChannels >= 2;
+    if (doublerActive) {
+      if (!doublerWasActive)
+        doubler.reset();  // stale delay contents from the last engage
+      doubler.setParams(cacheDoublerSpread, cacheDoublerJitter);
+      doubler.process(buffer);
+    }
+    doublerWasActive = doublerActive;
   }
 
   // ##########

@@ -4,9 +4,11 @@ import { useFunction } from '../hooks/useFunction';
 import { useChainState } from '../hooks/useChainState';
 import { usePresets } from '../hooks/usePresets';
 import { ChainView } from './ChainView';
+import { DoublerControls } from './DoublerControls';
 import { Faceplate } from './Faceplate';
 import { PresetBar } from './PresetBar';
 import { StereoModeToggle, ChainSideSelector } from './StereoControls';
+import { useParameter } from '../hooks/useParameter';
 import type { Model, Tone } from '../types/tone';
 import type { ToneBlock } from '../types/chain';
 import Settings from './Settings';
@@ -62,6 +64,11 @@ export const Plugin: React.FC = () => {
   // Internal presets. Mutations resync the chain state immediately (loading a
   // preset replaces the chain; saving/renaming changes the active preset).
   const presetStore = usePresets(refresh);
+
+  // Mono-mode doubler: while it's on the output stage is effectively stereo,
+  // so the output meter + balance knob switch to their stereo forms.
+  const [doublerEnabled] = useParameter('doublerEnabled', 'toggle');
+  const stereoOutput = stereoEnabled || doublerEnabled;
 
   // One-shot native functions
   const setAccessToken = useFunction<boolean>('setAccessToken');
@@ -371,11 +378,13 @@ export const Plugin: React.FC = () => {
             padding: '24px 0',
           }}
         >
-          {stereoEnabled && (
+          {stereoEnabled ? (
             <ChainSideSelector
               activeSide={activeSide}
               onSelectSide={(side) => actions.setActiveSide(side)}
             />
+          ) : (
+            <DoublerControls />
           )}
           <ChainView
             key={stereoEnabled ? activeSide : 'mono'}
@@ -407,7 +416,7 @@ export const Plugin: React.FC = () => {
         >
           <DbMeter
             type="output"
-            stereo={stereoEnabled}
+            stereo={stereoOutput}
             height={450}
             labelsPosition="right"
           />
@@ -416,7 +425,7 @@ export const Plugin: React.FC = () => {
       )}
 
       {/* Pinned faceplate at the bottom (gains, gate, tone stack) */}
-      <Faceplate stereoEnabled={stereoEnabled} stereoInput={stereoInput} />
+      <Faceplate stereoOutput={stereoOutput} stereoInput={stereoInput} />
 
       {/* Settings Modal */}
       <Settings isOpen={showSettings} onClose={() => setShowSettings(false)} />

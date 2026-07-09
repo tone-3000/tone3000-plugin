@@ -46,6 +46,9 @@ private:
   juce::WebSliderRelay outputLevelRelay{"outputLevel"};
   juce::WebSliderRelay inputBalanceRelay{"inputBalance"};
   juce::WebSliderRelay outputBalanceRelay{"outputBalance"};
+  juce::WebToggleButtonRelay doublerEnabledRelay{"doublerEnabled"};
+  juce::WebSliderRelay doublerSpreadRelay{"doublerSpread"};
+  juce::WebSliderRelay doublerJitterRelay{"doublerJitter"};
   juce::WebSliderRelay bassRelay{"toneBass"};
   juce::WebSliderRelay midRelay{"toneMid"};
   juce::WebSliderRelay trebleRelay{"toneTreble"};
@@ -65,6 +68,12 @@ private:
       *processor.parameters.getParameter("inputBalance"), inputBalanceRelay, nullptr};
   juce::WebSliderParameterAttachment outputBalanceWebAttachment{
       *processor.parameters.getParameter("outputBalance"), outputBalanceRelay, nullptr};
+  juce::WebToggleButtonParameterAttachment doublerEnabledWebAttachment{
+      *processor.parameters.getParameter("doublerEnabled"), doublerEnabledRelay, nullptr};
+  juce::WebSliderParameterAttachment doublerSpreadWebAttachment{
+      *processor.parameters.getParameter("doublerSpread"), doublerSpreadRelay, nullptr};
+  juce::WebSliderParameterAttachment doublerJitterWebAttachment{
+      *processor.parameters.getParameter("doublerJitter"), doublerJitterRelay, nullptr};
   juce::WebToggleButtonParameterAttachment gateEnabledWebAttachment{
       *processor.parameters.getParameter("gateEnabled"), gateEnabledRelay, nullptr};
   juce::WebToggleButtonParameterAttachment toneEqEnabledWebAttachment{

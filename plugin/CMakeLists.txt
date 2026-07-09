@@ -104,6 +104,8 @@ target_sources(${PROJECT_NAME}
         src/BlockSpectrum.cpp
         include/ChainBlock.h
         include/ChainHistory.h
+        include/Doubler.h
+        src/Doubler.cpp
         include/PresetManager.h
         src/PresetManager.cpp
         include/Processor.h

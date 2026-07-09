@@ -99,13 +99,14 @@ const MainGainKnob: React.FC<{
 };
 
 interface FaceplateProps {
-  /** Stereo (dual-chain) mode — enables per-channel output gain. */
-  stereoEnabled: boolean;
-  /** Plugin is fed a real stereo source — enables per-channel input gain. */
+  /** Output stage runs stereo (stereo mode or mono-mode doubler) — shows the
+      output balance knob. */
+  stereoOutput: boolean;
+  /** Plugin is fed a real stereo source — shows the input balance knob. */
   stereoInput: boolean;
 }
 
-export const Faceplate: React.FC<FaceplateProps> = ({ stereoEnabled, stereoInput }) => {
+export const Faceplate: React.FC<FaceplateProps> = ({ stereoOutput, stereoInput }) => {
   const [toneBass, setToneBass] = useParameter('toneBass', 'slider');
   const [toneMid, setToneMid] = useParameter('toneMid', 'slider');
   const [toneTreble, setToneTreble] = useParameter('toneTreble', 'slider');
@@ -192,7 +193,7 @@ export const Faceplate: React.FC<FaceplateProps> = ({ stereoEnabled, stereoInput
         />
       </div>
 
-      <MainGainKnob label="Output" type="output" stereo={stereoEnabled} balanceSide="left" />
+      <MainGainKnob label="Output" type="output" stereo={stereoOutput} balanceSide="left" />
     </div>
   );
 };

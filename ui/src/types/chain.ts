@@ -102,7 +102,8 @@ export interface ToneBlock {
   activeModelId: number;
   /** True when the active model is downloaded, prepared and processing. */
   loaded: boolean;
-  /** Capability: NAM slimmable (A2) model loaded — enables the LITE/FULL control. */
+  /** Capability flag from native (model is a SlimmableContainer). UI no longer
+      gates on this — architecture=2 NAM tones always show LITE/FULL. */
   namSlimmable: boolean;
   params: BlockParams;
 }
