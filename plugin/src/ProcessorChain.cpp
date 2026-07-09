@@ -529,6 +529,13 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
   // together with a revision bump (mutation, undo/redo or a state load).
   state->setProperty("canUndo", chainHistory.canUndo());
   state->setProperty("canRedo", chainHistory.canRedo());
+  // Active preset for the top-bar pill (only changes with a revision bump).
+  if (activePresetId.isNotEmpty()) {
+    juce::DynamicObject::Ptr preset = new juce::DynamicObject();
+    preset->setProperty("id", activePresetId);
+    preset->setProperty("name", activePresetName);
+    state->setProperty("preset", juce::var(preset.get()));
+  }
   state->setProperty("stereoEnabled", stereoEnabled.load());
   state->setProperty("activeSide", activeEditSide == ChainSide::Right ? "right" : "left");
   // True when a real stereo source feeds the plugin (stereo host bus or a

@@ -18,6 +18,7 @@
 #include "ChainBlock.h"
 #include "ChainHistory.h"
 #include "NamResampler.h"
+#include "PresetManager.h"
 #include "TunerDetector.h"
 
 class TONE3000Processor;
@@ -127,6 +128,18 @@ public:
   bool undoChain();
   bool redoChain();
 
+  // ── Internal presets (ProcessorPresets.cpp) ──
+  // A preset = chain snapshot (with embedded model bytes, so it loads
+  // offline) + the faceplate parameter values (kPresetParameterIds). The
+  // active preset { id, name } rides getChainState — it only ever changes
+  // together with a revision bump. Preset files live in the shared user
+  // presets folder (see PresetManager).
+  juce::var getPresetList() const;    // { presets: [{ id, name, factory }] }
+  juce::var savePreset(const juce::String& name);  // { id, name } or void var on failure
+  bool loadPreset(const juce::String& presetId);   // undoable (chain part)
+  bool renamePreset(const juce::String& presetId, const juce::String& newName);
+  bool deletePreset(const juce::String& presetId);
+
   // Latency management
   int calculateTotalLatency() const;
   void updateLatencyCompensation();
@@ -209,9 +222,10 @@ private:
                             const char* insertBlockId);
 
   // ── Undo/redo internals (ProcessorHistory.cpp) ──
-  // Snapshot both chains + stereo mode as a settings-only ValueTree (no model
-  // bytes). Caller must hold chainMutex.
-  juce::ValueTree captureChainSnapshot() const;
+  // Snapshot both chains + stereo mode as a ValueTree. History snapshots stay
+  // settings-only; presets embed the model bytes so they load offline.
+  // Caller must hold chainMutex.
+  juce::ValueTree captureChainSnapshot(bool includeModelData = false) const;
   // Record the pre-mutation state before a chain edit. `coalesceKey` groups a
   // continuous gesture (knob/EQ drags) into a single undo step; pass an empty
   // string for discrete edits. Caller must hold chainMutex.
@@ -230,6 +244,20 @@ private:
   void queueActiveModelLoad(const ChainBlock& block);
 
   ChainHistory chainHistory;
+
+  // ── Preset internals (ProcessorPresets.cpp) ──
+  // The faceplate parameters a preset carries. Explicitly scoped: rig
+  // calibration (calibrateInput, inputCalibrationLevel) and global loudness
+  // preferences (normalize, targetLoudness) describe the user's setup, not
+  // the tone, so they stay out of presets.
+  static const std::vector<juce::String>& presetParameterIds();
+  void setActivePreset(const juce::String& id, const juce::String& name);
+
+  PresetManager presetManager;
+  // Shown in the preset pill; guarded by chainMutex (written on the message
+  // thread, read by getChainState).
+  juce::String activePresetId;
+  juce::String activePresetName;
 
   // True when running as the standalone app with a mono input device selected.
   // Detected in prepareToPlay (device changes re-trigger it); processBlock then

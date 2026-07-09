@@ -224,6 +224,57 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             }
           })
       .withNativeFunction(
+          "getPresetList",
+          [editor](const juce::Array<juce::var>&,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            // Fetched on demand (browser open, after mutations) — the active
+            // preset itself rides the revision-gated getChainState poll.
+            completion(editor->processor.getPresetList());
+          })
+      .withNativeFunction(
+          "savePreset",
+          [editor](const juce::Array<juce::var>& args,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            // Saves the current chain + faceplate params under a name; a
+            // same-name user preset is overwritten (that's the update path).
+            if (args.size() >= 1 && args[0].isString()) {
+              completion(editor->processor.savePreset(args[0].toString()));
+            } else {
+              completion(juce::var());
+            }
+          })
+      .withNativeFunction(
+          "loadPreset",
+          [editor](const juce::Array<juce::var>& args,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            if (args.size() >= 1 && args[0].isString()) {
+              completion(juce::var(editor->processor.loadPreset(args[0].toString())));
+            } else {
+              completion(juce::var(false));
+            }
+          })
+      .withNativeFunction(
+          "renamePreset",
+          [editor](const juce::Array<juce::var>& args,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            if (args.size() >= 2 && args[0].isString() && args[1].isString()) {
+              completion(juce::var(
+                  editor->processor.renamePreset(args[0].toString(), args[1].toString())));
+            } else {
+              completion(juce::var(false));
+            }
+          })
+      .withNativeFunction(
+          "deletePreset",
+          [editor](const juce::Array<juce::var>& args,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            if (args.size() >= 1 && args[0].isString()) {
+              completion(juce::var(editor->processor.deletePreset(args[0].toString())));
+            } else {
+              completion(juce::var(false));
+            }
+          })
+      .withNativeFunction(
           "undoChain",
           [editor](const juce::Array<juce::var>&,
                    juce::WebBrowserComponent::NativeFunctionCompletion completion) {

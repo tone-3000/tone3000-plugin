@@ -91,6 +91,9 @@ void TONE3000Processor::getStateInformation(juce::MemoryBlock& destData) {
   {
     juce::ScopedLock lock(chainMutex);
 
+    state.setProperty("activePresetId", activePresetId, nullptr);
+    state.setProperty("activePresetName", activePresetName, nullptr);
+
     juce::ValueTree chainState("ChainBlocks");
     serializeChainToTree(chainBlocks, chainState, true);
     state.appendChild(chainState, nullptr);
@@ -231,6 +234,8 @@ void TONE3000Processor::setStateInformation(const void* data, int sizeInBytes) {
 
     stereoEnabled.store(restoredStereo);
     activeEditSide = ChainSide::Left;
+    activePresetId = state.getProperty("activePresetId").toString();
+    activePresetName = state.getProperty("activePresetName").toString();
     // A project/state load replaces the whole session; undoing across it
     // would resurrect chains the user never saw in this session.
     chainHistory.clear();

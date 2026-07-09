@@ -13,16 +13,16 @@
 // few property writes, while undoing a structural edit only reloads the
 // blocks that actually changed.
 
-juce::ValueTree TONE3000Processor::captureChainSnapshot() const {
+juce::ValueTree TONE3000Processor::captureChainSnapshot(bool includeModelData) const {
   juce::ValueTree snapshot("ChainSnapshot");
   snapshot.setProperty("stereoEnabled", stereoEnabled.load(), nullptr);
 
   juce::ValueTree left("ChainBlocks");
-  serializeChainToTree(chainBlocks, left, false);
+  serializeChainToTree(chainBlocks, left, includeModelData);
   snapshot.appendChild(left, nullptr);
 
   juce::ValueTree right("RightChainBlocks");
-  serializeChainToTree(rightChainBlocks, right, false);
+  serializeChainToTree(rightChainBlocks, right, includeModelData);
   snapshot.appendChild(right, nullptr);
 
   return snapshot;
@@ -122,6 +122,22 @@ void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState
     // goes through the background loader — cache-first, network fallback.
     if (modelChanged || !block->loaded) {
       block->loaded = false;
+      // Presets embed model bytes; seed the in-memory cache so the loader
+      // never needs the network. Only the active model is decoded.
+      if (block->modelCache.find(activeModelId) == block->modelCache.end()) {
+        const juce::ValueTree cacheState = blockState.getChildWithName("ModelCache");
+        for (int j = 0; j < cacheState.getNumChildren(); ++j) {
+          const juce::ValueTree cachedModel = cacheState.getChild(j);
+          if (static_cast<int>(cachedModel.getProperty("modelId")) != activeModelId)
+            continue;
+          juce::MemoryOutputStream decoded;
+          if (juce::Base64::convertFromBase64(decoded, cachedModel.getProperty("data").toString())) {
+            const auto* bytes = static_cast<const uint8_t*>(decoded.getData());
+            block->modelCache[activeModelId].assign(bytes, bytes + decoded.getDataSize());
+          }
+          break;
+        }
+      }
       queueActiveModelLoad(*block);
     }
 

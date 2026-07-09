@@ -113,12 +113,28 @@ export function isInsertSlot(item: ChainItem): item is InsertSlot {
   return item.kind === 'insert';
 }
 
+/** One entry in the native preset store (see getPresetList). */
+export interface PresetInfo {
+  id: string;
+  name: string;
+  /** Bundled TONE3000 preset — read-only (no rename/delete). */
+  factory: boolean;
+}
+
+/** The preset shown in the top-bar pill. */
+export interface ActivePreset {
+  id: string;
+  name: string;
+}
+
 export interface ChainState {
   revision: number;
   /** Chain edit history (undo/redo). Native flips these together with a
       revision bump, so pollers always see them fresh. */
   canUndo: boolean;
   canRedo: boolean;
+  /** Active preset, absent when none is loaded. Changes with revision bumps. */
+  preset?: ActivePreset;
   stereoEnabled: boolean;
   activeSide: ChainSide;
   /** True when a real stereo source feeds the plugin (stereo host bus or a

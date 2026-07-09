@@ -157,6 +157,7 @@ export function useChainState() {
     chain: state.chain,
     canUndo: state.canUndo ?? false,
     canRedo: state.canRedo ?? false,
+    activePreset: state.preset ?? null,
     stereoEnabled: state.stereoEnabled,
     activeSide: state.activeSide,
     stereoInput: state.stereoInput ?? false,

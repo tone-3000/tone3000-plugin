@@ -2,8 +2,10 @@ import React, { useState, useCallback } from 'react';
 import { Settings as SettingsIcon, Undo2, Redo2 } from 'lucide-react';
 import { useFunction } from '../hooks/useFunction';
 import { useChainState } from '../hooks/useChainState';
+import { usePresets } from '../hooks/usePresets';
 import { ChainView } from './ChainView';
 import { Faceplate } from './Faceplate';
+import { PresetBar } from './PresetBar';
 import { StereoModeToggle, ChainSideSelector } from './StereoControls';
 import type { Model, Tone } from '../types/tone';
 import type { ToneBlock } from '../types/chain';
@@ -48,12 +50,18 @@ export const Plugin: React.FC = () => {
     chain,
     canUndo,
     canRedo,
+    activePreset,
     stereoEnabled,
     activeSide,
     stereoInput,
     sampleRate,
+    refresh,
     actions,
   } = useChainState();
+
+  // Internal presets. Mutations resync the chain state immediately (loading a
+  // preset replaces the chain; saving/renaming changes the active preset).
+  const presetStore = usePresets(refresh);
 
   // One-shot native functions
   const setAccessToken = useFunction<boolean>('setAccessToken');
@@ -235,6 +243,14 @@ export const Plugin: React.FC = () => {
           /> */}
         </a>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <PresetBar
+            active={activePreset}
+            presets={presetStore.presets}
+            onSave={presetStore.actions.save}
+            onLoad={presetStore.actions.load}
+            onRename={presetStore.actions.rename}
+            onDelete={presetStore.actions.remove}
+          />
           <StereoModeToggle
             stereoEnabled={stereoEnabled}
             onToggle={(enabled) => actions.setStereoMode(enabled)}
