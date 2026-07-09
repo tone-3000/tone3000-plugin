@@ -16,6 +16,7 @@
 #include "NAM/util.h"
 #include "NAM/wavenet/model.h"
 #include "ChainBlock.h"
+#include "ChainHistory.h"
 #include "NamResampler.h"
 #include "TunerDetector.h"
 
@@ -115,7 +116,16 @@ public:
   void setStereoMode(bool enabled);
   bool isStereoMode() const { return stereoEnabled.load(); }
   // Which chain the UI is currently editing (Left/Right). No-op argument outside {"left","right"}.
+  // Pure view navigation — not part of undo history.
   void setActiveEditChain(const juce::String& side);
+
+  // Undo/redo over chain edits (structure, tones, params, EQ, stereo mode).
+  // Snapshot-based: every mutator captures the pre-mutation chain settings
+  // (see ChainHistory); undo/redo restore by reconciling against the live
+  // chains so loaded engines are reused whenever the tone/model still match.
+  // Both return false when there is nothing to undo/redo.
+  bool undoChain();
+  bool redoChain();
 
   // Latency management
   int calculateTotalLatency() const;
@@ -185,12 +195,41 @@ private:
   // Find a block by id across both chains (ids are globally unique). Returns nullptr if absent.
   ChainBlock* findBlockById(const std::string& blockId);
 
-  // State (de)serialization helpers for a single chain.
-  void serializeChainToTree(const std::vector<std::unique_ptr<ChainBlock>>& blocks,
-                            juce::ValueTree& chainState);
+  // State (de)serialization helpers.
+  // serializeBlockSettings/applyBlockSettings cover everything user-editable
+  // on a block (identity, tone refs, gains, mix, EQ) — the single source of
+  // truth shared by plugin state persistence and undo/redo snapshots. Model
+  // bytes are only included when `includeModelData` is set (project files).
+  static juce::ValueTree serializeBlockSettings(const ChainBlock& block);
+  void applyBlockSettings(ChainBlock& block, const juce::ValueTree& blockState);
+  static void serializeChainToTree(const std::vector<std::unique_ptr<ChainBlock>>& blocks,
+                                   juce::ValueTree& chainState, bool includeModelData);
   void restoreChainFromTree(const juce::ValueTree& chainState,
                             std::vector<std::unique_ptr<ChainBlock>>& target,
                             const char* insertBlockId);
+
+  // ── Undo/redo internals (ProcessorHistory.cpp) ──
+  // Snapshot both chains + stereo mode as a settings-only ValueTree (no model
+  // bytes). Caller must hold chainMutex.
+  juce::ValueTree captureChainSnapshot() const;
+  // Record the pre-mutation state before a chain edit. `coalesceKey` groups a
+  // continuous gesture (knob/EQ drags) into a single undo step; pass an empty
+  // string for discrete edits. Caller must hold chainMutex.
+  void pushChainHistory(const juce::String& coalesceKey = {});
+  // Restore a snapshot by reconciling against the live chains: blocks whose
+  // tone/model still match keep their loaded engines (undoing a knob tweak
+  // never reloads a model); everything else is rebuilt and queued for a
+  // background load. Caller must hold chainMutex.
+  void restoreChainSnapshot(const juce::ValueTree& snapshot);
+  void reconcileChainFromTree(const juce::ValueTree& chainState,
+                              std::vector<std::unique_ptr<ChainBlock>>& target,
+                              const char* insertBlockId);
+  // Queue a background download+prepare of `block`'s active model, resolving
+  // url/name from its tone JSON. Used by undo/redo when a restored block's
+  // model isn't cached in memory anymore.
+  void queueActiveModelLoad(const ChainBlock& block);
+
+  ChainHistory chainHistory;
 
   // True when running as the standalone app with a mono input device selected.
   // Detected in prepareToPlay (device changes re-trigger it); processBlock then

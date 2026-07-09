@@ -13,6 +13,21 @@
 // Chain block types
 enum class ChainBlockType { NAM, IR, INSERT };
 
+inline juce::String chainBlockTypeToString(ChainBlockType type) {
+  switch (type) {
+    case ChainBlockType::NAM: return "nam";
+    case ChainBlockType::INSERT: return "insert";
+    case ChainBlockType::IR: break;
+  }
+  return "ir";
+}
+
+inline ChainBlockType chainBlockTypeFromString(const juce::String& s) {
+  if (s == "nam") return ChainBlockType::NAM;
+  if (s == "insert") return ChainBlockType::INSERT;
+  return ChainBlockType::IR;
+}
+
 // Which chain is being processed/edited in stereo mode.
 enum class ChainSide { Left, Right };
 

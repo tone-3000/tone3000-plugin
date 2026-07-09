@@ -115,6 +115,10 @@ export function isInsertSlot(item: ChainItem): item is InsertSlot {
 
 export interface ChainState {
   revision: number;
+  /** Chain edit history (undo/redo). Native flips these together with a
+      revision bump, so pollers always see them fresh. */
+  canUndo: boolean;
+  canRedo: boolean;
   stereoEnabled: boolean;
   activeSide: ChainSide;
   /** True when a real stereo source feeds the plugin (stereo host bus or a

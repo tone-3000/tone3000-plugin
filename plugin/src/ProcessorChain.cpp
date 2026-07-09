@@ -109,6 +109,8 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString) {
   if (!parsed.valid)
     return "";
 
+  pushChainHistory();
+
   static std::random_device rd;
   static std::mt19937 gen(rd());
   static std::uniform_int_distribution<> dis(1000, 9999);
@@ -168,6 +170,8 @@ bool TONE3000Processor::swapTone(const std::string& blockId, const juce::String&
   const ParsedTone parsed = parseToneForLoading(toneJsonString);
   if (!parsed.valid)
     return false;
+
+  pushChainHistory();
 
   // Replace the tone in place: same block id (chain position preserved), same
   // user params (enabled/gains/mix). Engines stay until the new model swaps in
@@ -235,6 +239,8 @@ bool TONE3000Processor::switchModel(const std::string& blockId, int modelId) {
 
   DBG("Queueing model switch: " << modelName << " (ID: " << modelId << ")");
 
+  pushChainHistory();
+
   block->activeModelId = modelId;
   block->loaded = false;
   bumpChainRevision();
@@ -279,6 +285,7 @@ bool TONE3000Processor::removeChainBlock(const std::string& blockId) {
         DBG("Cannot remove insert block");
         return false;
       }
+      pushChainHistory();
       chain->erase(it);
       bumpChainRevision();
       DBG("Removed chain block: " << blockId);
@@ -302,6 +309,22 @@ bool TONE3000Processor::reorderChainBlocks(const std::vector<std::string>& newOr
     return false;
   }
 
+  // Validate that newOrder is a permutation of the chain up front, so history
+  // is only recorded for reorders that actually happen.
+  {
+    std::vector<std::string> chainIds, orderIds = newOrder;
+    for (const auto& block : chain)
+      chainIds.push_back(block->id);
+    std::sort(chainIds.begin(), chainIds.end());
+    std::sort(orderIds.begin(), orderIds.end());
+    if (chainIds != orderIds) {
+      DBG("Failed to reorder chain blocks: order is not a permutation of the chain");
+      return false;
+    }
+  }
+
+  pushChainHistory();
+
   std::vector<std::unique_ptr<ChainBlock>> reorderedBlocks;
   reorderedBlocks.reserve(chain.size());
   std::vector<std::unique_ptr<ChainBlock>> originalBlocks = std::move(chain);
@@ -312,13 +335,6 @@ bool TONE3000Processor::reorderChainBlocks(const std::vector<std::string>& newOr
         [&blockId](const std::unique_ptr<ChainBlock>& block) {
           return block && block->id == blockId;
         });
-
-    if (it == originalBlocks.end()) {
-      DBG("Failed to reorder chain blocks: block not found: " << blockId);
-      chain = std::move(originalBlocks);
-      return false;
-    }
-
     reorderedBlocks.push_back(std::move(*it));
   }
 
@@ -509,6 +525,10 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
 
   state->setProperty("revision", static_cast<int>(revision));
   state->setProperty("chain", chainArray);
+  // History flags ride along with the chain state: they only ever change
+  // together with a revision bump (mutation, undo/redo or a state load).
+  state->setProperty("canUndo", chainHistory.canUndo());
+  state->setProperty("canRedo", chainHistory.canRedo());
   state->setProperty("stereoEnabled", stereoEnabled.load());
   state->setProperty("activeSide", activeEditSide == ChainSide::Right ? "right" : "left");
   // True when a real stereo source feeds the plugin (stereo host bus or a
@@ -561,6 +581,11 @@ juce::var TONE3000Processor::getMeterLevels() const {
 void TONE3000Processor::setStereoMode(bool enabled) {
   juce::ScopedLock lock(chainMutex);
 
+  if (stereoEnabled.load() == enabled)
+    return;
+
+  pushChainHistory();
+
   // Seed the right chain's insert placeholder the first time stereo is enabled.
   if (enabled && rightChainBlocks.empty()) {
     rightChainBlocks.push_back(
@@ -609,6 +634,22 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
   if (block == nullptr || block->type == ChainBlockType::INSERT)
     return false;
 
+  // Validate before recording history, so failed calls never leave an entry.
+  const bool isContinuous = param == "inputGain" || param == "outputGain" || param == "mix";
+  const bool isKnown = isContinuous || param == "enabled" || param == "namSlimmableSize";
+  if (!isKnown) {
+    DBG("setBlockParam: unknown param: " << param);
+    return false;
+  }
+  if (param == "namSlimmableSize" &&
+      (block->type != ChainBlockType::NAM || !block->namIsSlimmable ||
+       block->namResampler == nullptr))
+    return false;
+
+  // Continuous params coalesce a whole knob drag into one undo step.
+  pushChainHistory(isContinuous ? "param:" + juce::String(blockId) + ":" + param
+                                : juce::String());
+
   if (param == "enabled") {
     const bool enabled = value > 0.5;
     if (block->enabled != enabled) {
@@ -623,15 +664,9 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
   } else if (param == "mix") {
     block->mixNormalized = juce::jlimit(0.0f, 1.0f, static_cast<float>(value));
   } else if (param == "namSlimmableSize") {
-    if (block->type != ChainBlockType::NAM || !block->namIsSlimmable ||
-        block->namResampler == nullptr)
-      return false;
     const double clamped = juce::jlimit(0.5, 1.0, value);
     block->namSlimmableSize = clamped;
     block->namResampler->setSlimmableSize(clamped);
-  } else {
-    DBG("setBlockParam: unknown param: " << param);
-    return false;
   }
 
   bumpChainRevision();
@@ -647,6 +682,11 @@ bool TONE3000Processor::setBlockEqBand(const std::string& blockId, int bandIndex
   ChainBlock* block = findBlockById(blockId);
   if (block == nullptr || block->type == ChainBlockType::INSERT)
     return false;
+  if (!bandVar.isObject() || bandIndex < 0 || bandIndex >= BlockEq::kNumBands)
+    return false;
+
+  // A whole dot/slider drag coalesces into one undo step.
+  pushChainHistory("eq:" + juce::String(blockId) + ":" + juce::String(bandIndex));
 
   if (!block->eq.setBandFromVar(bandIndex, bandVar))
     return false;
@@ -660,7 +700,10 @@ bool TONE3000Processor::setBlockEqEnabled(const std::string& blockId, bool enabl
   ChainBlock* block = findBlockById(blockId);
   if (block == nullptr || block->type == ChainBlockType::INSERT)
     return false;
+  if (block->eq.isEnabled() == enabled)
+    return true;
 
+  pushChainHistory();
   block->eq.setEnabled(enabled);
   bumpChainRevision();
   return true;
@@ -672,6 +715,7 @@ bool TONE3000Processor::resetBlockEq(const std::string& blockId) {
   if (block == nullptr || block->type == ChainBlockType::INSERT)
     return false;
 
+  pushChainHistory();
   block->eq.resetToDefault();
   bumpChainRevision();
   return true;

@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Settings as SettingsIcon } from 'lucide-react';
+import { Settings as SettingsIcon, Undo2, Redo2 } from 'lucide-react';
 import { useFunction } from '../hooks/useFunction';
 import { useChainState } from '../hooks/useChainState';
 import { ChainView } from './ChainView';
@@ -44,8 +44,16 @@ export const Plugin: React.FC = () => {
   const [showTuner, setShowTuner] = useState(false);
 
   // Chain state: revision-gated polling + mutation actions, owned by one hook.
-  const { chain, stereoEnabled, activeSide, stereoInput, sampleRate, actions } =
-    useChainState();
+  const {
+    chain,
+    canUndo,
+    canRedo,
+    stereoEnabled,
+    activeSide,
+    stereoInput,
+    sampleRate,
+    actions,
+  } = useChainState();
 
   // One-shot native functions
   const setAccessToken = useFunction<boolean>('setAccessToken');
@@ -247,6 +255,44 @@ export const Plugin: React.FC = () => {
             }}
           >
             <TuningForkIcon size={18} />
+          </button>
+          <button
+            onClick={() => actions.undo()}
+            disabled={!canUndo}
+            title="Undo"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#ffffff',
+              opacity: canUndo ? 1 : 0.3,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: canUndo ? 'pointer' : 'default',
+              borderRadius: '4px',
+              padding: '5px',
+            }}
+          >
+            <Undo2 size={18} />
+          </button>
+          <button
+            onClick={() => actions.redo()}
+            disabled={!canRedo}
+            title="Redo"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#ffffff',
+              opacity: canRedo ? 1 : 0.3,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: canRedo ? 'pointer' : 'default',
+              borderRadius: '4px',
+              padding: '5px',
+            }}
+          >
+            <Redo2 size={18} />
           </button>
           <button
             onClick={() => setShowSettings(true)}

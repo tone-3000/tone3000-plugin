@@ -103,9 +103,11 @@ target_sources(${PROJECT_NAME}
         include/BlockSpectrum.h
         src/BlockSpectrum.cpp
         include/ChainBlock.h
+        include/ChainHistory.h
         include/Processor.h
         src/Processor.cpp
         src/ProcessorChain.cpp
+        src/ProcessorHistory.cpp
         src/ProcessorState.cpp
         src/ProcessorModelLoader.cpp
         include/NamResampler.h

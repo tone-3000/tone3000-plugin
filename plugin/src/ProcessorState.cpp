@@ -5,34 +5,60 @@
 // STATE PERSISTENCE
 // #############################
 
+juce::ValueTree TONE3000Processor::serializeBlockSettings(const ChainBlock& block) {
+  juce::ValueTree blockState("ChainBlock");
+
+  blockState.setProperty("id", juce::String(block.id), nullptr);
+  blockState.setProperty("type", chainBlockTypeToString(block.type), nullptr);
+  blockState.setProperty("enabled", block.enabled, nullptr);
+  blockState.setProperty("inputGain", block.inputGainNormalized, nullptr);
+  blockState.setProperty("outputGain", block.outputGainNormalized, nullptr);
+  blockState.setProperty("mix", block.mixNormalized, nullptr);
+
+  if (block.type == ChainBlockType::NAM)
+    blockState.setProperty("namSlimmableSize", block.namSlimmableSize, nullptr);
+
+  if (block.type != ChainBlockType::INSERT) {
+    blockState.setProperty("toneId", block.toneId, nullptr);
+    blockState.setProperty("toneJson", block.toneJson, nullptr);
+    blockState.setProperty("activeModelId", block.activeModelId, nullptr);
+    blockState.appendChild(block.eq.toValueTree(), nullptr);
+  }
+
+  return blockState;
+}
+
+void TONE3000Processor::applyBlockSettings(ChainBlock& block, const juce::ValueTree& blockState) {
+  block.enabled = static_cast<bool>(blockState.getProperty("enabled", true));
+  // inputGain arrived after the first release; older projects default to unity.
+  block.inputGainNormalized = blockState.hasProperty("inputGain")
+                                  ? static_cast<float>(blockState.getProperty("inputGain"))
+                                  : 0.5f;
+  block.outputGainNormalized = static_cast<float>(blockState.getProperty("outputGain", 0.5f));
+  block.mixNormalized = static_cast<float>(blockState.getProperty("mix", 1.0f));
+
+  if (block.type == ChainBlockType::NAM && blockState.hasProperty("namSlimmableSize")) {
+    block.namSlimmableSize =
+        juce::jlimit(0.5, 1.0, static_cast<double>(blockState.getProperty("namSlimmableSize")));
+    if (block.namIsSlimmable && block.namResampler != nullptr)
+      block.namResampler->setSlimmableSize(block.namSlimmableSize);
+  }
+
+  if (block.type != ChainBlockType::INSERT) {
+    // EQ bands (defaults to flat when the child is missing — older projects).
+    block.eq.restoreFromValueTree(blockState.getChildWithName("Eq"));
+    if (const double sr = getSampleRate(); sr > 0.0)
+      block.eq.prepare(sr);
+  }
+}
+
 void TONE3000Processor::serializeChainToTree(
-    const std::vector<std::unique_ptr<ChainBlock>>& blocks, juce::ValueTree& chainState) {
+    const std::vector<std::unique_ptr<ChainBlock>>& blocks, juce::ValueTree& chainState,
+    bool includeModelData) {
   for (const auto& block : blocks) {
-    juce::ValueTree blockState("ChainBlock");
+    juce::ValueTree blockState = serializeBlockSettings(*block);
 
-    juce::String typeStr = "ir";
-    if (block->type == ChainBlockType::NAM)
-      typeStr = "nam";
-    else if (block->type == ChainBlockType::INSERT)
-      typeStr = "insert";
-
-    blockState.setProperty("id", juce::String(block->id), nullptr);
-    blockState.setProperty("type", typeStr, nullptr);
-    blockState.setProperty("enabled", block->enabled, nullptr);
-    blockState.setProperty("inputGain", block->inputGainNormalized, nullptr);
-    blockState.setProperty("outputGain", block->outputGainNormalized, nullptr);
-    blockState.setProperty("mix", block->mixNormalized, nullptr);
-
-    if (block->type == ChainBlockType::NAM)
-      blockState.setProperty("namSlimmableSize", block->namSlimmableSize, nullptr);
-
-    if (block->type != ChainBlockType::INSERT) {
-      blockState.setProperty("toneId", block->toneId, nullptr);
-      blockState.setProperty("toneJson", block->toneJson, nullptr);
-      blockState.setProperty("activeModelId", block->activeModelId, nullptr);
-
-      blockState.appendChild(block->eq.toValueTree(), nullptr);
-
+    if (includeModelData && block->type != ChainBlockType::INSERT) {
       juce::ValueTree cacheState("ModelCache");
       for (const auto& [modelId, modelData] : block->modelCache) {
         juce::ValueTree cachedModel("CachedModel");
@@ -66,11 +92,11 @@ void TONE3000Processor::getStateInformation(juce::MemoryBlock& destData) {
     juce::ScopedLock lock(chainMutex);
 
     juce::ValueTree chainState("ChainBlocks");
-    serializeChainToTree(chainBlocks, chainState);
+    serializeChainToTree(chainBlocks, chainState, true);
     state.appendChild(chainState, nullptr);
 
     juce::ValueTree rightChainState("RightChainBlocks");
-    serializeChainToTree(rightChainBlocks, rightChainState);
+    serializeChainToTree(rightChainBlocks, rightChainState, true);
     state.appendChild(rightChainState, nullptr);
   }
 
@@ -94,50 +120,22 @@ void TONE3000Processor::restoreChainFromTree(
       continue;
 
     std::string blockId = blockState.getProperty("id").toString().toStdString();
-    std::string typeStr = blockState.getProperty("type").toString().toStdString();
-    bool enabled = blockState.getProperty("enabled");
-    float outputGain = blockState.getProperty("outputGain");
-    float mix = blockState.getProperty("mix");
+    ChainBlockType type = chainBlockTypeFromString(blockState.getProperty("type").toString());
 
-    ChainBlockType type = ChainBlockType::IR;
-    if (typeStr == "nam")
-      type = ChainBlockType::NAM;
-    else if (typeStr == "insert")
-      type = ChainBlockType::INSERT;
+    auto block = std::make_unique<ChainBlock>(blockId, type);
+    applyBlockSettings(*block, blockState);
 
     if (type == ChainBlockType::INSERT) {
       hasInsertBlock = true;
-    }
-
-    auto block = std::make_unique<ChainBlock>(blockId, type);
-    block->enabled = enabled;
-    // inputGain arrived after the first release; older projects default to unity.
-    block->inputGainNormalized = blockState.hasProperty("inputGain")
-                                     ? static_cast<float>(blockState.getProperty("inputGain"))
-                                     : 0.5f;
-    block->outputGainNormalized = outputGain;
-    block->mixNormalized = mix;
-
-    if (type == ChainBlockType::NAM && blockState.hasProperty("namSlimmableSize"))
-      block->namSlimmableSize = juce::jlimit(
-          0.5, 1.0, static_cast<double>(blockState.getProperty("namSlimmableSize")));
-
-    if (type == ChainBlockType::INSERT) {
       target.push_back(std::move(block));
       continue;
     }
 
     int toneId = blockState.getProperty("toneId");
-    juce::String toneJson = blockState.getProperty("toneJson");
     int activeModelId = blockState.getProperty("activeModelId");
     block->toneId = toneId;
-    block->toneJson = toneJson;
+    block->toneJson = blockState.getProperty("toneJson").toString();
     block->activeModelId = activeModelId;
-
-    // EQ bands (defaults to flat when the child is missing — older projects).
-    block->eq.restoreFromValueTree(blockState.getChildWithName("Eq"));
-    if (const double sr = getSampleRate(); sr > 0.0)
-      block->eq.prepare(sr);
 
     juce::ValueTree cacheState = blockState.getChildWithName("ModelCache");
     if (cacheState.isValid()) {
@@ -233,6 +231,9 @@ void TONE3000Processor::setStateInformation(const void* data, int sizeInBytes) {
 
     stereoEnabled.store(restoredStereo);
     activeEditSide = ChainSide::Left;
+    // A project/state load replaces the whole session; undoing across it
+    // would resurrect chains the user never saw in this session.
+    chainHistory.clear();
     bumpChainRevision();
   }
 

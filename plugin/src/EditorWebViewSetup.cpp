@@ -224,6 +224,18 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             }
           })
       .withNativeFunction(
+          "undoChain",
+          [editor](const juce::Array<juce::var>&,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            completion(juce::var(editor->processor.undoChain()));
+          })
+      .withNativeFunction(
+          "redoChain",
+          [editor](const juce::Array<juce::var>&,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            completion(juce::var(editor->processor.redoChain()));
+          })
+      .withNativeFunction(
           "setStereoMode",
           [editor](const juce::Array<juce::var>& args,
                    juce::WebBrowserComponent::NativeFunctionCompletion completion) {

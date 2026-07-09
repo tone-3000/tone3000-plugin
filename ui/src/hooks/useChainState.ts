@@ -19,6 +19,8 @@ const POLL_INTERVAL_MS = 500;
 
 const EMPTY_STATE: ChainState = {
   revision: -1,
+  canUndo: false,
+  canRedo: false,
   stereoEnabled: false,
   activeSide: 'left',
   stereoInput: false,
@@ -54,6 +56,8 @@ export function useChainState() {
       resetBlockEq: backend.getPluginFunction('resetBlockEq'),
       setStereoMode: backend.getPluginFunction('setStereoMode'),
       setActiveEditChain: backend.getPluginFunction('setActiveEditChain'),
+      undoChain: backend.getPluginFunction('undoChain'),
+      redoChain: backend.getPluginFunction('redoChain'),
     }),
     [backend]
   );
@@ -142,12 +146,17 @@ export function useChainState() {
       /** Back to flat defaults (and native skips EQ processing again). */
       resetBlockEq: (blockId: string) =>
         run<boolean>('resetBlockEq', () => native.resetBlockEq(blockId)),
+      /** Step the chain edit history. No-ops (false) at the stack ends. */
+      undo: () => run<boolean>('undoChain', () => native.undoChain()),
+      redo: () => run<boolean>('redoChain', () => native.redoChain()),
     }),
     [native, run]
   );
 
   return {
     chain: state.chain,
+    canUndo: state.canUndo ?? false,
+    canRedo: state.canRedo ?? false,
     stereoEnabled: state.stereoEnabled,
     activeSide: state.activeSide,
     stereoInput: state.stereoInput ?? false,

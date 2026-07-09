@@ -164,9 +164,14 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
   const [copied, setCopied] = useState(false);
   const copiedTimeoutRef = useRef<number | undefined>(undefined);
 
-  // Enabled and slimmable size can change from outside (state restore, other
-  // editor window); follow the backend when it reports a new value.
+  // Params can change from outside (undo/redo, state restore, other editor
+  // window); follow the backend when it reports a new value. Mid-drag the
+  // polled value trails the optimistic one by at most a poll interval and
+  // converges to it, so knobs never visibly fight the pointer.
   useEffect(() => setEnabled(params.enabled), [params.enabled]);
+  useEffect(() => setInputGain(params.inputGain ?? 0.5), [params.inputGain]);
+  useEffect(() => setOutputGain(params.outputGain ?? 0.5), [params.outputGain]);
+  useEffect(() => setMix(params.mix ?? 1.0), [params.mix]);
   useEffect(() => setEqOn(params.eq?.enabled ?? true), [params.eq?.enabled]);
   useEffect(() => setSlimmableSize(params.namSlimmableSize ?? 1), [blockId, params.namSlimmableSize]);
   useEffect(() => () => window.clearTimeout(copiedTimeoutRef.current), []);
