@@ -314,6 +314,11 @@ private:
   bool cacheDoublerEnabled = false;
   float cacheDoublerSpread = 0.5f;
   float cacheDoublerJitter = 0.25f;
+  float cacheChainPanLeft = 0.0f;
+  float cacheChainPanRight = 1.0f;
+  bool cacheStereoOffsetEnabled = false;
+  float cacheStereoOffsetSpread = 0.5f;
+  float cacheStereoOffsetJitter = 0.25f;
   float cacheBassTone;
   float cacheMidTone;
   float cacheTrebleTone;
@@ -370,11 +375,18 @@ private:
   // Tuner pitch detection (fed from processBlock when enabled)
   TunerDetector tuner;
 
-  // Mono-mode stereo doubler (post-chain). `doublerWasActive` mirrors the
-  // tone stack's re-engage pattern: transitioning from bypassed to active
-  // resets the delay line so stale audio never plays back.
+  // Post-chain delay engine, shared by the mono doubler and the stereo
+  // offset (mode-exclusive — only one can be active). Any transition of use
+  // (engage, mode flip) resets the delay line so stale audio never plays.
+  enum class DoublerUse { None, MonoDouble, StereoOffset };
   Doubler doubler;
-  bool doublerWasActive = false;
+  DoublerUse doublerUse{DoublerUse::None};
+
+  // Stereo chain-pan blend gains (constant-power), smoothed so pan moves
+  // don't zipper. LtoR = how much of the Left chain lands in the Right
+  // output, etc. At the hard-panned default the blend is the identity and
+  // processBlock skips the mix loop entirely.
+  juce::SmoothedValue<float> panGainLtoL, panGainLtoR, panGainRtoL, panGainRtoR;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TONE3000Processor)
 };

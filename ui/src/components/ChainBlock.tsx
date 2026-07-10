@@ -18,9 +18,8 @@ import type { EqViewMode } from './BlockEqView';
 import { meterId } from '../hooks/useMeters';
 import type { BlockParamName, EqBand, ToneBlock } from '../types/chain';
 import { isEqFlat } from '../types/chain';
+import { CARD_WIDTH, CARD_HEIGHT } from './chainLayout';
 
-export const CARD_WIDTH = 640;
-export const CARD_HEIGHT = 216;
 const HEADER_HEIGHT = 40;
 const IMAGE_SIZE = 92;
 const KNOB_SIZE = 30;

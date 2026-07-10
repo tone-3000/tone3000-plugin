@@ -1,25 +1,29 @@
 import React from 'react';
 import { Power } from 'lucide-react';
+import { ChainContentRow } from './chainLayout';
 import { KnobControl } from './KnobControl';
 import { useParameter } from '../hooks/useParameter';
 
 /**
- * Mono-mode stereo doubler, pinned above the chain (the same slot the
- * LEFT/RIGHT selector uses in stereo mode). Label + spread/jitter knobs +
- * power switch, always visible — matches the faceplate gate/EQ pattern.
+ * Delay-based width controls, shared between the two mode-exclusive features:
+ * - DoublerControls: mono-mode doubler, pinned above the chain (the same slot
+ *   the stereo controls row uses in stereo mode).
+ * - DoublerGroup: the reusable pill (label + two knobs + power switch), also
+ *   used by the stereo OFFSET group in StereoControls.
  */
 
-const BORDER = '1px solid rgba(84, 84, 88, 0.65)';
-const MUTED = 'rgba(235, 235, 245, 0.60)';
+export const PILL_BORDER = '1px solid rgba(84, 84, 88, 0.65)';
 const KNOB_SIZE = 30;
-/** Vertically center the power btn on the knob column (knob + label). */
-const KNOB_CENTER_OFFSET = -11;
+/** Vertically center inline elements on the knob column (knob + label). */
+export const KNOB_CENTER_OFFSET = -11;
 
-const PowerButton: React.FC<{ on: boolean; title: string; onClick: () => void }> = ({
-  on,
-  title,
-  onClick,
-}) => (
+/** Small square icon toggle that sits inline with knobs in a control pill. */
+export const PillIconButton: React.FC<{
+  on: boolean;
+  title: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}> = ({ on, title, onClick, children }) => (
   <button
     onClick={onClick}
     title={title}
@@ -39,68 +43,83 @@ const PowerButton: React.FC<{ on: boolean; title: string; onClick: () => void }>
       transform: `translateY(${KNOB_CENTER_OFFSET}px)`,
     }}
   >
-    <Power size={12} />
+    {children}
   </button>
 );
 
-export const DoublerControls: React.FC = () => {
-  const [enabled, setEnabled] = useParameter('doublerEnabled', 'toggle');
-  const [spread, setSpread] = useParameter('doublerSpread', 'slider');
-  const [jitter, setJitter] = useParameter('doublerJitter', 'slider');
+interface DoublerGroupProps {
+  /** Feature name, used only in the power button tooltip. */
+  label: string;
+  enabledParam: string;
+  spreadParam: string;
+  jitterParam: string;
+  spreadLabel: string;
+  jitterLabel: string;
+}
+
+export const DoublerGroup: React.FC<DoublerGroupProps> = ({
+  label,
+  enabledParam,
+  spreadParam,
+  jitterParam,
+  spreadLabel,
+  jitterLabel,
+}) => {
+  const [enabled, setEnabled] = useParameter(enabledParam, 'toggle');
+  const [spread, setSpread] = useParameter(spreadParam, 'slider');
+  const [jitter, setJitter] = useParameter(jitterParam, 'slider');
 
   return (
     <div
       style={{
-        width: '100%',
         display: 'flex',
+        flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        padding: '12px',
+        gap: '16px',
+        opacity: enabled ? 1 : 0.55,
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: '16px',
-          padding: '8px 16px',
-          borderRadius: '8px',
-          border: BORDER,
-          opacity: enabled ? 1 : 0.55,
-        }}
+      <KnobControl
+        label={spreadLabel}
+        value={spread}
+        onChange={setSpread}
+        size={KNOB_SIZE}
+        labelSize={10}
+      />
+      <KnobControl
+        label={jitterLabel}
+        value={jitter}
+        onChange={setJitter}
+        size={KNOB_SIZE}
+        labelSize={10}
+      />
+      <PillIconButton
+        on={enabled}
+        title={enabled ? `Turn ${label.toLowerCase()} off` : `Turn ${label.toLowerCase()} on`}
+        onClick={() => setEnabled(!enabled)}
       >
-        <span
-          style={{
-            fontSize: '12px',
-            letterSpacing: '0.04em',
-            color: enabled ? '#ffffff' : MUTED,
-            flexShrink: 0,
-            transform: `translateY(${KNOB_CENTER_OFFSET}px)`,
-          }}
-        >
-          DOUBLER
-        </span>
-        <KnobControl
-          label="Spread"
-          value={spread}
-          onChange={setSpread}
-          size={KNOB_SIZE}
-          labelSize={10}
-        />
-        <KnobControl
-          label="Jitter"
-          value={jitter}
-          onChange={setJitter}
-          size={KNOB_SIZE}
-          labelSize={10}
-        />
-        <PowerButton
-          on={enabled}
-          title={enabled ? 'Turn doubler off' : 'Turn doubler on'}
-          onClick={() => setEnabled(!enabled)}
-        />
-      </div>
+        <Power size={12} />
+      </PillIconButton>
     </div>
   );
 };
+
+export const DoublerControls: React.FC = () => (
+  <ChainContentRow
+    style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+      padding: '12px 0',
+    }}
+  >
+    <DoublerGroup
+      label="DOUBLER"
+      enabledParam="doublerEnabled"
+      spreadParam="doublerSpread"
+      jitterParam="doublerJitter"
+      spreadLabel="Spread"
+      jitterLabel="Jitter"
+    />
+  </ChainContentRow>
+);

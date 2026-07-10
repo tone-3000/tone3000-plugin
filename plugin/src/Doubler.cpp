@@ -53,12 +53,14 @@ void Doubler::retargetDelay() {
   delaySamples.setTargetValue(static_cast<float>(totalMs * 0.001 * sampleRate));
 }
 
-void Doubler::process(juce::AudioBuffer<float>& buffer) {
+void Doubler::process(juce::AudioBuffer<float>& buffer, int sourceChannel) {
   if (buffer.getNumChannels() < 2)
     return;
 
   const int numSamples = buffer.getNumSamples();
-  const float* src = buffer.getReadPointer(0);
+  // src may alias dst (in-place stereo offset); each sample is read before
+  // its slot is overwritten, so the aliasing is safe.
+  const float* src = buffer.getReadPointer(juce::jlimit(0, 1, sourceChannel));
   float* dst = buffer.getWritePointer(1);
 
   for (int i = 0; i < numSamples; ++i) {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { PlusCircle } from 'lucide-react';
-import { CARD_HEIGHT, CARD_WIDTH } from './ChainBlock';
+import { CARD_HEIGHT, CARD_WIDTH } from './chainLayout';
 
 // Routing line runs from the button edge to the plus-circle's edge.
 const ROUTING_LINE_HEIGHT = CARD_HEIGHT / 2 - 20;

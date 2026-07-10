@@ -3,9 +3,14 @@
 #include <juce_dsp/juce_dsp.h>
 
 /**
- * Mono-chain stereo doubler. Replaces the right channel with a short delayed
- * copy of the left (post-chain) signal — a classic slap double. Two controls:
+ * Short per-note delay engine behind two mode-exclusive features:
  *
+ * - Mono doubler (sourceChannel 0): replaces the right channel with a
+ *   delayed copy of the left post-chain signal — a classic slap double.
+ * - Stereo offset (sourceChannel 1): delays the right chain in place,
+ *   shifting it against the left chain for width.
+ *
+ * Two controls:
  * - spread: base delay in ms (0..kMaxSpreadMs).
  * - jitter: ± range of random per-note variation. A lightweight envelope
  *   onset detector re-rolls the offset at each note/chord attack, so every
@@ -27,14 +32,16 @@ public:
   void prepare(double sampleRate, int maxBlockSize);
 
   /** Clear delay contents + detector state (call when re-engaging after
-      bypass so stale audio never leaks out of the delay line). */
+      bypass — or switching modes — so stale audio never leaks out). */
   void reset();
 
   /** Per-block parameter update, normalized 0..1 (knob values). */
   void setParams(float spreadNorm, float jitterNorm);
 
-  /** Requires >= 2 channels: reads ch 0, overwrites ch 1 with the double. */
-  void process(juce::AudioBuffer<float>& buffer);
+  /** Requires >= 2 channels: overwrites ch 1 with a delayed copy of
+      `sourceChannel` (0 = mono double, 1 = in-place stereo offset). Onsets
+      are detected on the source signal. */
+  void process(juce::AudioBuffer<float>& buffer, int sourceChannel);
 
 private:
   void retargetDelay();

@@ -7,7 +7,7 @@ import { ChainView } from './ChainView';
 import { DoublerControls } from './DoublerControls';
 import { Faceplate } from './Faceplate';
 import { PresetBar } from './PresetBar';
-import { StereoModeToggle, ChainSideSelector } from './StereoControls';
+import { StereoModeToggle, StereoChainControls } from './StereoControls';
 import { useParameter } from '../hooks/useParameter';
 import type { Model, Tone } from '../types/tone';
 import type { ToneBlock } from '../types/chain';
@@ -379,7 +379,7 @@ export const Plugin: React.FC = () => {
           }}
         >
           {stereoEnabled ? (
-            <ChainSideSelector
+            <StereoChainControls
               activeSide={activeSide}
               onSelectSide={(side) => actions.setActiveSide(side)}
             />

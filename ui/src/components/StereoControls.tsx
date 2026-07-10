@@ -1,12 +1,17 @@
 import React from 'react';
-import { Circle } from 'lucide-react';
+import { Circle, Link } from 'lucide-react';
 import type { ChainSide } from '../types/chain';
+import { ChainContentRow } from './chainLayout';
+import { KnobControl } from './KnobControl';
+import { useParameter } from '../hooks/useParameter';
+import { DoublerGroup, PillIconButton, PILL_BORDER } from './DoublerControls';
 
 /**
- * Stereo (dual-chain) mode controls, split in two:
+ * Stereo (dual-chain) mode controls:
  * - StereoModeToggle: mono/stereo pill switch that lives in the top bar.
- * - ChainSideSelector: LEFT/RIGHT chain picker pinned above the chain while
- *   stereo mode is on.
+ * - StereoChainControls: the row pinned above the chain while stereo mode is
+ *   on — chain pans (linked by default), LEFT/RIGHT chain picker, and the
+ *   OFFSET group (delay-based width, same engine as the mono doubler).
  */
 
 // Two overlapping circles (no lucide equivalent) — drawn to match lucide's
@@ -86,49 +91,124 @@ const segmentBase: React.CSSProperties = {
   letterSpacing: '0.04em',
 };
 
-export const ChainSideSelector: React.FC<{
+const ChainSideSelector: React.FC<{
   activeSide: ChainSide;
   onSelectSide: (side: ChainSide) => void;
 }> = ({ activeSide, onSelectSide }) => (
   <div
     style={{
-      width: '100%',
       display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '12px',
+      flexDirection: 'row',
+      borderRadius: '8px',
+      border: PILL_BORDER,
+      overflow: 'hidden',
+      flexShrink: 0,
     }}
   >
+    <button
+      type="button"
+      onClick={() => onSelectSide('left')}
+      style={{
+        ...segmentBase,
+        backgroundColor: activeSide === 'left' ? 'rgba(235, 235, 245, 0.18)' : 'transparent',
+      }}
+    >
+      LEFT
+    </button>
+    <button
+      type="button"
+      onClick={() => onSelectSide('right')}
+      style={{
+        ...segmentBase,
+        borderLeft: PILL_BORDER,
+        backgroundColor: activeSide === 'right' ? 'rgba(235, 235, 245, 0.18)' : 'transparent',
+      }}
+    >
+      RIGHT
+    </button>
+  </div>
+);
+
+/**
+ * Chain pan pair. Constant-power positions (0 = hard left, 1 = hard right);
+ * defaults keep the classic hard-panned dual-chain image. Linked (default)
+ * mirrors the knobs around center so width changes stay symmetric; unlink for
+ * uneven images. Mirroring is a UI gesture — the DSP just reads two pans.
+ */
+const ChainPanControls: React.FC = () => {
+  const [panLeft, setPanLeft] = useParameter('chainPanLeft', 'slider');
+  const [panRight, setPanRight] = useParameter('chainPanRight', 'slider');
+  const [linked, setLinked] = useParameter('chainPanLinked', 'toggle');
+
+  const handlePanLeft = (value: number) => {
+    setPanLeft(value);
+    if (linked) setPanRight(1 - value);
+  };
+  const handlePanRight = (value: number) => {
+    setPanRight(value);
+    if (linked) setPanLeft(1 - value);
+  };
+  const handleToggleLink = () => {
+    const next = !linked;
+    setLinked(next);
+    // Re-linking snaps back to a symmetric image, anchored on the left pan.
+    if (next) setPanRight(1 - panLeft);
+  };
+
+  return (
     <div
       style={{
         display: 'flex',
         flexDirection: 'row',
-        borderRadius: '8px',
-        border: '1px solid rgba(84, 84, 88, 0.65)',
-        overflow: 'hidden',
+        alignItems: 'center',
+        gap: '12px',
       }}
     >
-      <button
-        type="button"
-        onClick={() => onSelectSide('left')}
-        style={{
-          ...segmentBase,
-          backgroundColor: activeSide === 'left' ? 'rgba(235, 235, 245, 0.18)' : 'transparent',
-        }}
+      <KnobControl label="Pan L" value={panLeft} onChange={handlePanLeft} size={30} labelSize={10} />
+      <PillIconButton
+        on={linked}
+        title={linked ? 'Unlink pans (uneven image)' : 'Link pans (mirrored)'}
+        onClick={handleToggleLink}
       >
-        LEFT
-      </button>
-      <button
-        type="button"
-        onClick={() => onSelectSide('right')}
-        style={{
-          ...segmentBase,
-          borderLeft: '1px solid rgba(84, 84, 88, 0.65)',
-          backgroundColor: activeSide === 'right' ? 'rgba(235, 235, 245, 0.18)' : 'transparent',
-        }}
-      >
-        RIGHT
-      </button>
+        <Link size={12} />
+      </PillIconButton>
+      <KnobControl
+        label="Pan R"
+        value={panRight}
+        onChange={handlePanRight}
+        size={30}
+        labelSize={10}
+      />
     </div>
-  </div>
+  );
+};
+
+export const StereoChainControls: React.FC<{
+  activeSide: ChainSide;
+  onSelectSide: (side: ChainSide) => void;
+}> = ({ activeSide, onSelectSide }) => (
+  <ChainContentRow
+    style={{
+      display: 'flex',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: '20px',
+      padding: '12px 0',
+    }}
+  >
+    <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }}>
+      <ChainPanControls />
+    </div>
+    <ChainSideSelector activeSide={activeSide} onSelectSide={onSelectSide} />
+    <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
+      <DoublerGroup
+        label="OFFSET"
+        enabledParam="stereoOffsetEnabled"
+        spreadParam="stereoOffsetSpread"
+        jitterParam="stereoOffsetJitter"
+        spreadLabel="Offset"
+        jitterLabel="Jitter"
+      />
+    </div>
+  </ChainContentRow>
 );

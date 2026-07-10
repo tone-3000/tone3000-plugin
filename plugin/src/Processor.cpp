@@ -84,6 +84,27 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
   layout.add(std::make_unique<juce::AudioParameterFloat>(
       juce::ParameterID{"doublerJitter", 21}, "doublerJitter", 0.0f, 1.0f, 0.25f));
 
+  // Stereo-mode chain pans: constant-power positions for the Left/Right
+  // chain outputs (0 = hard left, 1 = hard right). Defaults keep the classic
+  // hard-panned dual-chain image, which the DSP detects and skips entirely.
+  // chainPanLinked is a UI behavior flag (mirrored knob moves); persisted as
+  // a parameter so sessions/presets restore the linked state.
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"chainPanLeft", 22}, "chainPanLeft", 0.0f, 1.0f, 0.0f));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"chainPanRight", 23}, "chainPanRight", 0.0f, 1.0f, 1.0f));
+  layout.add(std::make_unique<juce::AudioParameterBool>(
+      juce::ParameterID{"chainPanLinked", 24}, "chainPanLinked", true));
+
+  // Stereo-mode offset: same delay engine as the doubler, but shifting the
+  // right chain in place against the left. Inert in mono mode.
+  layout.add(std::make_unique<juce::AudioParameterBool>(
+      juce::ParameterID{"stereoOffsetEnabled", 25}, "stereoOffsetEnabled", false));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"stereoOffsetSpread", 26}, "stereoOffsetSpread", 0.0f, 1.0f, 0.5f));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"stereoOffsetJitter", 27}, "stereoOffsetJitter", 0.0f, 1.0f, 0.25f));
+
   return layout;
 }
 
@@ -183,6 +204,13 @@ void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& b
   }
 }
 
+// Constant-power pan gains for a chain at position `pan` (0 = hard left,
+// 1 = hard right): cos into the left output, sin into the right.
+static std::pair<float, float> constantPowerPanGains(float pan) {
+  const float angle = juce::jlimit(0.0f, 1.0f, pan) * juce::MathConstants<float>::halfPi;
+  return {std::cos(angle), std::sin(angle)};
+}
+
 // #############################
 // PREPARATIONS BEFORE RT THREAD
 // #############################
@@ -216,6 +244,11 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   cacheDoublerEnabled = parameters.getRawParameterValue("doublerEnabled")->load() > 0.5f;
   cacheDoublerSpread = parameters.getRawParameterValue("doublerSpread")->load();
   cacheDoublerJitter = parameters.getRawParameterValue("doublerJitter")->load();
+  cacheChainPanLeft = parameters.getRawParameterValue("chainPanLeft")->load();
+  cacheChainPanRight = parameters.getRawParameterValue("chainPanRight")->load();
+  cacheStereoOffsetEnabled = parameters.getRawParameterValue("stereoOffsetEnabled")->load() > 0.5f;
+  cacheStereoOffsetSpread = parameters.getRawParameterValue("stereoOffsetSpread")->load();
+  cacheStereoOffsetJitter = parameters.getRawParameterValue("stereoOffsetJitter")->load();
   cacheBassTone = parameters.getRawParameterValue("toneBass")->load();
   cacheMidTone = parameters.getRawParameterValue("toneMid")->load();
   cacheTrebleTone = parameters.getRawParameterValue("toneTreble")->load();
@@ -264,6 +297,19 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   trebleFilter.prepare(spec);
   dcBlockerLeft.prepare(spec);
   doubler.prepare(sampleRate, samplesPerBlock);
+
+  // Chain-pan blend gains: 20 ms ramps, primed from the current parameters
+  // so a restored session doesn't fade in from the wrong image.
+  {
+    const auto [gLtoL, gLtoR] = constantPowerPanGains(cacheChainPanLeft);
+    const auto [gRtoL, gRtoR] = constantPowerPanGains(cacheChainPanRight);
+    for (auto* smoother : {&panGainLtoL, &panGainLtoR, &panGainRtoL, &panGainRtoR})
+      smoother->reset(sampleRate, 0.02);
+    panGainLtoL.setCurrentAndTargetValue(gLtoL);
+    panGainLtoR.setCurrentAndTargetValue(gLtoR);
+    panGainRtoL.setCurrentAndTargetValue(gRtoL);
+    panGainRtoR.setCurrentAndTargetValue(gRtoR);
+  }
 
   // Temporary unity filters for boot
   *bassFilter.state =
@@ -384,6 +430,10 @@ void TONE3000Processor::updateCachedParameters() {
   updateFloat(cacheOutputBalance, "outputBalance");
   updateFloat(cacheDoublerSpread, "doublerSpread");
   updateFloat(cacheDoublerJitter, "doublerJitter");
+  updateFloat(cacheChainPanLeft, "chainPanLeft");
+  updateFloat(cacheChainPanRight, "chainPanRight");
+  updateFloat(cacheStereoOffsetSpread, "stereoOffsetSpread");
+  updateFloat(cacheStereoOffsetJitter, "stereoOffsetJitter");
   updateFloat(cacheBassTone, "toneBass");
   updateFloat(cacheMidTone, "toneMid");
   updateFloat(cacheTrebleTone, "toneTreble");
@@ -399,6 +449,7 @@ void TONE3000Processor::updateCachedParameters() {
   cacheGateEnabled = loadBool("gateEnabled");
   cacheToneEqEnabled = loadBool("toneEqEnabled");
   cacheDoublerEnabled = loadBool("doublerEnabled");
+  cacheStereoOffsetEnabled = loadBool("stereoOffsetEnabled");
 }
 
 // Per-channel gain for a main stage: main level ±12 dB, plus the balance
@@ -749,20 +800,57 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   }
 
   // ##########
-  // Doubler (mono mode only): replace ch 1 with a delayed copy of the chain
-  // output for a stereo double. Runs before the downstream stereo stages
-  // (DC / tone stack / output balance + meters) so they see the real double.
+  // Post-chain stereo image, before the downstream stereo stages (DC / tone
+  // stack / output balance + meters) so they see the real image:
+  //  - Mono doubler: replace ch 1 with a delayed copy of the chain output.
+  //  - Stereo offset: delay the right chain in place against the left.
+  //  - Stereo chain pan: constant-power blend of the two chains across the
+  //    output bus. Hard-panned defaults are the identity and skip the loop.
   // ##########
   {
-    const bool doublerActive =
-        cacheDoublerEnabled && !stereoEnabled.load() && numChannels >= 2;
-    if (doublerActive) {
-      if (!doublerWasActive)
-        doubler.reset();  // stale delay contents from the last engage
-      doubler.setParams(cacheDoublerSpread, cacheDoublerJitter);
-      doubler.process(buffer);
+    const bool isStereo = stereoEnabled.load() && numChannels >= 2;
+    const DoublerUse use = isStereo
+        ? (cacheStereoOffsetEnabled ? DoublerUse::StereoOffset : DoublerUse::None)
+        : (cacheDoublerEnabled && numChannels >= 2 ? DoublerUse::MonoDouble : DoublerUse::None);
+    if (use != DoublerUse::None) {
+      if (use != doublerUse)
+        doubler.reset();  // stale delay contents from the last engage / mode
+      if (use == DoublerUse::MonoDouble) {
+        doubler.setParams(cacheDoublerSpread, cacheDoublerJitter);
+        doubler.process(buffer, 0);
+      } else {
+        doubler.setParams(cacheStereoOffsetSpread, cacheStereoOffsetJitter);
+        doubler.process(buffer, 1);
+      }
     }
-    doublerWasActive = doublerActive;
+    doublerUse = use;
+
+    if (isStereo) {
+      const auto [gLtoL, gLtoR] = constantPowerPanGains(cacheChainPanLeft);
+      const auto [gRtoL, gRtoR] = constantPowerPanGains(cacheChainPanRight);
+      panGainLtoL.setTargetValue(gLtoL);
+      panGainLtoR.setTargetValue(gLtoR);
+      panGainRtoL.setTargetValue(gRtoL);
+      panGainRtoR.setTargetValue(gRtoR);
+
+      const bool smoothing = panGainLtoL.isSmoothing() || panGainLtoR.isSmoothing() ||
+                             panGainRtoL.isSmoothing() || panGainRtoR.isSmoothing();
+      const bool identity = gLtoL >= 0.9999f && gRtoR >= 0.9999f;
+      if (smoothing || !identity) {
+        auto* l = buffer.getWritePointer(0);
+        auto* r = buffer.getWritePointer(1);
+        for (int i = 0; i < numSamples; ++i) {
+          const float ll = panGainLtoL.getNextValue();
+          const float lr = panGainLtoR.getNextValue();
+          const float rl = panGainRtoL.getNextValue();
+          const float rr = panGainRtoR.getNextValue();
+          const float chainL = l[i];
+          const float chainR = r[i];
+          l[i] = chainL * ll + chainR * rl;
+          r[i] = chainL * lr + chainR * rr;
+        }
+      }
+    }
   }
 
   // ##########

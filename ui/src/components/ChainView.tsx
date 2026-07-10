@@ -13,7 +13,8 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { ChainBlock, CARD_HEIGHT } from './ChainBlock';
+import { ChainBlock } from './ChainBlock';
+import { CARD_HEIGHT } from './chainLayout';
 import type { BlockParamName, ChainItem, EqBand, ToneBlock } from '../types/chain';
 import { isInsertSlot } from '../types/chain';
 import { SortableSelectButton } from './SortableSelectButton';
