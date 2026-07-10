@@ -1,17 +1,18 @@
 import React from 'react';
-import { Circle, Link } from 'lucide-react';
+import { ArrowRightLeft, Circle, Link } from 'lucide-react';
 import type { ChainSide } from '../types/chain';
 import { ChainContentRow } from './chainLayout';
 import { KnobControl } from './KnobControl';
 import { useParameter } from '../hooks/useParameter';
-import { DoublerGroup, PillIconButton, PILL_BORDER } from './DoublerControls';
+import { SpreadGroup, PillIconButton, PILL_BORDER } from './SpreadControls';
 
 /**
  * Stereo (dual-chain) mode controls:
  * - StereoModeToggle: mono/stereo pill switch that lives in the top bar.
  * - StereoChainControls: the row pinned above the chain while stereo mode is
- *   on — chain pans (linked by default), LEFT/RIGHT chain picker, and the
- *   OFFSET group (delay-based width, same engine as the mono doubler).
+ *   on — chain pans (linked by default) on the left, LEFT/RIGHT chain picker
+ *   + whole-chain swap in the center, and the shared spread group on the
+ *   right (see SpreadControls).
  */
 
 // Two overlapping circles (no lucide equivalent) — drawn to match lucide's
@@ -130,10 +131,12 @@ const ChainSideSelector: React.FC<{
 );
 
 /**
- * Chain pan pair. Constant-power positions (0 = hard left, 1 = hard right);
- * defaults keep the classic hard-panned dual-chain image. Linked (default)
- * mirrors the knobs around center so width changes stay symmetric; unlink for
- * uneven images. Mirroring is a UI gesture — the DSP just reads two pans.
+ * Chain pan pair. Constant-power positions (0 = hard left, 1 = hard right):
+ * the Left chain's knob covers hard left..center on a half track, the Right
+ * chain's covers center..hard right, so each side can only narrow toward
+ * center. Linked (default) mirrors the knobs so width changes stay
+ * symmetric; unlink for uneven images. Mirroring is a UI gesture — the DSP
+ * just reads two absolute pan positions.
  */
 const ChainPanControls: React.FC = () => {
   const [panLeft, setPanLeft] = useParameter('chainPanLeft', 'slider');
@@ -164,7 +167,16 @@ const ChainPanControls: React.FC = () => {
         gap: '12px',
       }}
     >
-      <KnobControl label="Pan L" value={panLeft} onChange={handlePanLeft} size={30} labelSize={10} />
+      <KnobControl
+        label="Pan L"
+        value={panLeft}
+        onChange={handlePanLeft}
+        variant="panLeft"
+        min={0}
+        max={0.5}
+        size={30}
+        labelSize={10}
+      />
       <PillIconButton
         on={linked}
         title={linked ? 'Unlink pans (uneven image)' : 'Link pans (mirrored)'}
@@ -176,6 +188,9 @@ const ChainPanControls: React.FC = () => {
         label="Pan R"
         value={panRight}
         onChange={handlePanRight}
+        variant="panRight"
+        min={0.5}
+        max={1}
         size={30}
         labelSize={10}
       />
@@ -186,7 +201,8 @@ const ChainPanControls: React.FC = () => {
 export const StereoChainControls: React.FC<{
   activeSide: ChainSide;
   onSelectSide: (side: ChainSide) => void;
-}> = ({ activeSide, onSelectSide }) => (
+  onSwapChains: () => void;
+}> = ({ activeSide, onSelectSide, onSwapChains }) => (
   <ChainContentRow
     style={{
       display: 'flex',
@@ -199,16 +215,31 @@ export const StereoChainControls: React.FC<{
     <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }}>
       <ChainPanControls />
     </div>
-    <ChainSideSelector activeSide={activeSide} onSelectSide={onSelectSide} />
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+      <ChainSideSelector activeSide={activeSide} onSelectSide={onSelectSide} />
+      <button
+        onClick={onSwapChains}
+        title="Swap Left and Right chains"
+        style={{
+          width: '24px',
+          height: '24px',
+          borderRadius: '6px',
+          border: 'none',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          padding: 0,
+          flexShrink: 0,
+          color: 'rgba(235, 235, 245, 0.60)',
+          background: 'transparent',
+        }}
+      >
+        <ArrowRightLeft size={14} />
+      </button>
+    </div>
     <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
-      <DoublerGroup
-        label="OFFSET"
-        enabledParam="stereoOffsetEnabled"
-        spreadParam="stereoOffsetSpread"
-        jitterParam="stereoOffsetJitter"
-        spreadLabel="Offset"
-        jitterLabel="Jitter"
-      />
+      <SpreadGroup />
     </div>
   </ChainContentRow>
 );

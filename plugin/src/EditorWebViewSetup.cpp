@@ -23,15 +23,12 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
       .withOptionsFrom(editor->outputLevelRelay)
       .withOptionsFrom(editor->inputBalanceRelay)
       .withOptionsFrom(editor->outputBalanceRelay)
-      .withOptionsFrom(editor->doublerEnabledRelay)
-      .withOptionsFrom(editor->doublerSpreadRelay)
-      .withOptionsFrom(editor->doublerJitterRelay)
+      .withOptionsFrom(editor->spreadEnabledRelay)
+      .withOptionsFrom(editor->spreadAmountRelay)
+      .withOptionsFrom(editor->spreadJitterRelay)
       .withOptionsFrom(editor->chainPanLeftRelay)
       .withOptionsFrom(editor->chainPanRightRelay)
       .withOptionsFrom(editor->chainPanLinkedRelay)
-      .withOptionsFrom(editor->stereoOffsetEnabledRelay)
-      .withOptionsFrom(editor->stereoOffsetSpreadRelay)
-      .withOptionsFrom(editor->stereoOffsetJitterRelay)
       .withOptionsFrom(editor->bassRelay)
       .withOptionsFrom(editor->midRelay)
       .withOptionsFrom(editor->trebleRelay)
@@ -307,6 +304,24 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             } else {
               completion(juce::var(false));
             }
+          })
+      .withNativeFunction(
+          "setInputMode",
+          [editor](const juce::Array<juce::var>& args,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            if (args.size() >= 1 && args[0].isString()) {
+              editor->processor.setStandaloneInputMode(
+                  TONE3000Processor::inputModeFromString(args[0].toString()));
+              completion(juce::var(true));
+            } else {
+              completion(juce::var(false));
+            }
+          })
+      .withNativeFunction(
+          "swapChains",
+          [editor](const juce::Array<juce::var>&,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            completion(juce::var(editor->processor.swapChains()));
           })
       .withNativeFunction(
           "setActiveEditChain",

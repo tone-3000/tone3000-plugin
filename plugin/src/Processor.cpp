@@ -74,36 +74,31 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
   layout.add(std::make_unique<juce::AudioParameterFloat>(
       juce::ParameterID{"outputBalance", 18}, "outputBalance", 0.0f, 1.0f, 0.5f));
 
-  // Mono-mode doubler (see Doubler.h): spread = base R-channel delay
-  // (0..24 ms), jitter = ± per-note random variation (0..12 ms). Both stored
-  // normalized like the gains; the DSP maps to ms. Inert in stereo mode.
+  // Spread (see Spread.h): one parameter set for both modes (mono double /
+  // stereo chain shift — mode-exclusive). Amount is bipolar: 0.5 = center =
+  // 0 ms (processing skipped); below center delays the left channel, above
+  // center the right (0..24 ms). Jitter is ± per-note random variation
+  // (0..12 ms, 0 = off). Stored normalized; SpreadParams decodes to ms.
   layout.add(std::make_unique<juce::AudioParameterBool>(
-      juce::ParameterID{"doublerEnabled", 19}, "doublerEnabled", false));
+      juce::ParameterID{"spreadEnabled", 19}, "spreadEnabled", false));
   layout.add(std::make_unique<juce::AudioParameterFloat>(
-      juce::ParameterID{"doublerSpread", 20}, "doublerSpread", 0.0f, 1.0f, 0.5f));
+      juce::ParameterID{"spreadAmount", 20}, "spreadAmount", 0.0f, 1.0f, 0.5f));
   layout.add(std::make_unique<juce::AudioParameterFloat>(
-      juce::ParameterID{"doublerJitter", 21}, "doublerJitter", 0.0f, 1.0f, 0.25f));
+      juce::ParameterID{"spreadJitter", 21}, "spreadJitter", 0.0f, 1.0f, 0.0f));
 
   // Stereo-mode chain pans: constant-power positions for the Left/Right
-  // chain outputs (0 = hard left, 1 = hard right). Defaults keep the classic
-  // hard-panned dual-chain image, which the DSP detects and skips entirely.
-  // chainPanLinked is a UI behavior flag (mirrored knob moves); persisted as
-  // a parameter so sessions/presets restore the linked state.
+  // chain outputs (0 = hard left, 1 = hard right). The UI constrains the
+  // Left chain to [0, 0.5] and the Right chain to [0.5, 1] (each knob spans
+  // hard side <-> center); the DSP takes any absolute position. Defaults keep
+  // the classic hard-panned dual-chain image, which the DSP detects and
+  // skips entirely. chainPanLinked is a UI behavior flag (mirrored knob
+  // moves); persisted as a parameter so sessions/presets restore it.
   layout.add(std::make_unique<juce::AudioParameterFloat>(
       juce::ParameterID{"chainPanLeft", 22}, "chainPanLeft", 0.0f, 1.0f, 0.0f));
   layout.add(std::make_unique<juce::AudioParameterFloat>(
       juce::ParameterID{"chainPanRight", 23}, "chainPanRight", 0.0f, 1.0f, 1.0f));
   layout.add(std::make_unique<juce::AudioParameterBool>(
       juce::ParameterID{"chainPanLinked", 24}, "chainPanLinked", true));
-
-  // Stereo-mode offset: same delay engine as the doubler, but shifting the
-  // right chain in place against the left. Inert in mono mode.
-  layout.add(std::make_unique<juce::AudioParameterBool>(
-      juce::ParameterID{"stereoOffsetEnabled", 25}, "stereoOffsetEnabled", false));
-  layout.add(std::make_unique<juce::AudioParameterFloat>(
-      juce::ParameterID{"stereoOffsetSpread", 26}, "stereoOffsetSpread", 0.0f, 1.0f, 0.5f));
-  layout.add(std::make_unique<juce::AudioParameterFloat>(
-      juce::ParameterID{"stereoOffsetJitter", 27}, "stereoOffsetJitter", 0.0f, 1.0f, 0.25f));
 
   return layout;
 }
@@ -211,6 +206,26 @@ static std::pair<float, float> constantPowerPanGains(float pan) {
   return {std::cos(angle), std::sin(angle)};
 }
 
+// Stereo input = stereo main bus, minus the standalone cases where it isn't
+// really: a mono input device, or the input mode set to a single channel.
+// The UI shows dual input meters + balance when set; reported through
+// getChainState, so bump the revision on change.
+void TONE3000Processor::updateStereoInputDetection() {
+  bool stereoIn = getMainBusNumInputChannels() >= 2 && !standaloneMonoInput.load();
+  if (isStandalone() &&
+      standaloneInputMode.load() != static_cast<int>(InputMode::Stereo))
+    stereoIn = false;
+  if (stereoInputDetected.exchange(stereoIn) != stereoIn)
+    bumpChainRevision();
+}
+
+void TONE3000Processor::setStandaloneInputMode(InputMode mode) {
+  standaloneInputMode.store(static_cast<int>(mode));
+  updateStereoInputDetection();
+  bumpChainRevision();
+  DBG("Standalone input mode: " << inputModeToString(mode));
+}
+
 // #############################
 // PREPARATIONS BEFORE RT THREAD
 // #############################
@@ -241,14 +256,11 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   cacheOutputLevel = parameters.getRawParameterValue("outputLevel")->load();
   cacheInputBalance = parameters.getRawParameterValue("inputBalance")->load();
   cacheOutputBalance = parameters.getRawParameterValue("outputBalance")->load();
-  cacheDoublerEnabled = parameters.getRawParameterValue("doublerEnabled")->load() > 0.5f;
-  cacheDoublerSpread = parameters.getRawParameterValue("doublerSpread")->load();
-  cacheDoublerJitter = parameters.getRawParameterValue("doublerJitter")->load();
+  cacheSpreadEnabled = parameters.getRawParameterValue("spreadEnabled")->load() > 0.5f;
+  cacheSpreadAmount = parameters.getRawParameterValue("spreadAmount")->load();
+  cacheSpreadJitter = parameters.getRawParameterValue("spreadJitter")->load();
   cacheChainPanLeft = parameters.getRawParameterValue("chainPanLeft")->load();
   cacheChainPanRight = parameters.getRawParameterValue("chainPanRight")->load();
-  cacheStereoOffsetEnabled = parameters.getRawParameterValue("stereoOffsetEnabled")->load() > 0.5f;
-  cacheStereoOffsetSpread = parameters.getRawParameterValue("stereoOffsetSpread")->load();
-  cacheStereoOffsetJitter = parameters.getRawParameterValue("stereoOffsetJitter")->load();
   cacheBassTone = parameters.getRawParameterValue("toneBass")->load();
   cacheMidTone = parameters.getRawParameterValue("toneMid")->load();
   cacheTrebleTone = parameters.getRawParameterValue("toneTreble")->load();
@@ -275,14 +287,7 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   }
 #endif
 
-  // Stereo input detection: a stereo main bus that isn't a standalone mono
-  // device. The UI shows dual input meters + per-channel input gain when set.
-  // Reported through getChainState, so bump the revision on change.
-  {
-    const bool stereoIn = getMainBusNumInputChannels() >= 2 && !standaloneMonoInput.load();
-    if (stereoInputDetected.exchange(stereoIn) != stereoIn)
-      bumpChainRevision();
-  }
+  updateStereoInputDetection();
 
   // Reset all chain blocks (both Left and Right chains)
   {
@@ -296,7 +301,7 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   midFilter.prepare(spec);
   trebleFilter.prepare(spec);
   dcBlockerLeft.prepare(spec);
-  doubler.prepare(sampleRate, samplesPerBlock);
+  spread.prepare(sampleRate, samplesPerBlock);
 
   // Chain-pan blend gains: 20 ms ramps, primed from the current parameters
   // so a restored session doesn't fade in from the wrong image.
@@ -428,12 +433,10 @@ void TONE3000Processor::updateCachedParameters() {
   updateFloat(cacheOutputLevel, "outputLevel");
   updateFloat(cacheInputBalance, "inputBalance");
   updateFloat(cacheOutputBalance, "outputBalance");
-  updateFloat(cacheDoublerSpread, "doublerSpread");
-  updateFloat(cacheDoublerJitter, "doublerJitter");
+  updateFloat(cacheSpreadAmount, "spreadAmount");
+  updateFloat(cacheSpreadJitter, "spreadJitter");
   updateFloat(cacheChainPanLeft, "chainPanLeft");
   updateFloat(cacheChainPanRight, "chainPanRight");
-  updateFloat(cacheStereoOffsetSpread, "stereoOffsetSpread");
-  updateFloat(cacheStereoOffsetJitter, "stereoOffsetJitter");
   updateFloat(cacheBassTone, "toneBass");
   updateFloat(cacheMidTone, "toneMid");
   updateFloat(cacheTrebleTone, "toneTreble");
@@ -448,8 +451,7 @@ void TONE3000Processor::updateCachedParameters() {
   cacheCalibrateInput = loadBool("calibrateInput");
   cacheGateEnabled = loadBool("gateEnabled");
   cacheToneEqEnabled = loadBool("toneEqEnabled");
-  cacheDoublerEnabled = loadBool("doublerEnabled");
-  cacheStereoOffsetEnabled = loadBool("stereoOffsetEnabled");
+  cacheSpreadEnabled = loadBool("spreadEnabled");
 }
 
 // Per-channel gain for a main stage: main level ±12 dB, plus the balance
@@ -721,12 +723,22 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
 
   updateCachedParameters();
 
-  // Standalone with a mono input device: the signal only arrives on channel 0,
-  // so mirror it to channel 1 up front. Otherwise the dry path (empty chain or
-  // IR-only chain) is heard on the left speaker only — NAM blocks used to mask
-  // this by copying L→R after processing.
-  if (standaloneMonoInput.load() && numChannels > 1) {
-    buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
+  // Standalone input fold-down, up front so everything downstream (meters,
+  // tuner, chains, spread detection) sees the real source:
+  // - Mono input device: signal only arrives on channel 0 — mirror it.
+  // - Stereo device with a mono input mode selected (guitar in one jack of a
+  //   line 1+2 pair): duplicate the chosen channel onto both, exactly like a
+  //   host feeding a mono source to a stereo bus.
+  if (numChannels > 1) {
+    if (standaloneMonoInput.load()) {
+      buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
+    } else if (isStandalone()) {
+      const auto mode = static_cast<InputMode>(standaloneInputMode.load());
+      if (mode == InputMode::Input1)
+        buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
+      else if (mode == InputMode::Input2)
+        buffer.copyFrom(0, 0, buffer, 1, 0, numSamples);
+    }
   }
 
   // #########################
@@ -775,6 +787,15 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     }
   }
 
+  // Spread parameter sync + onset analysis, pre-chain: the detector must see
+  // the raw picked signal (post-gain/gate) — amp/IR processing compresses
+  // pick attacks into mush and its noise floor fakes constant onsets. The
+  // delay itself runs post-chain (below).
+  spread.setTarget(SpreadParams::fromNormalized(cacheSpreadAmount, cacheSpreadJitter),
+                   cacheSpreadEnabled && numChannels >= 2);
+  if (spread.isRunning())
+    spread.analyzeOnsets(buffer.getReadPointer(0), numSamples);
+
   // ####################
   // MODULAR CHAIN PROCESSING
   // ####################
@@ -801,29 +822,24 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
 
   // ##########
   // Post-chain stereo image, before the downstream stereo stages (DC / tone
-  // stack / output balance + meters) so they see the real image:
-  //  - Mono doubler: replace ch 1 with a delayed copy of the chain output.
-  //  - Stereo offset: delay the right chain in place against the left.
+  // stack / output balance + meters) so they see the real image. Order
+  // matters: spread runs first so the delay always shifts one full chain,
+  // then the pan blend mixes the (possibly shifted) chains.
+  //  - Spread (both modes, one engine): delays the chosen side. Mono seeds
+  //    ch 1 with the chain output first (the classic double); stereo delays
+  //    that side's chain in place. Runs whenever the power switch is on
+  //    (0 ms = identity, transitions glide through zero — see Spread.h);
+  //    fully skipped once the glide-out after power-off completes.
   //  - Stereo chain pan: constant-power blend of the two chains across the
   //    output bus. Hard-panned defaults are the identity and skip the loop.
   // ##########
   {
     const bool isStereo = stereoEnabled.load() && numChannels >= 2;
-    const DoublerUse use = isStereo
-        ? (cacheStereoOffsetEnabled ? DoublerUse::StereoOffset : DoublerUse::None)
-        : (cacheDoublerEnabled && numChannels >= 2 ? DoublerUse::MonoDouble : DoublerUse::None);
-    if (use != DoublerUse::None) {
-      if (use != doublerUse)
-        doubler.reset();  // stale delay contents from the last engage / mode
-      if (use == DoublerUse::MonoDouble) {
-        doubler.setParams(cacheDoublerSpread, cacheDoublerJitter);
-        doubler.process(buffer, 0);
-      } else {
-        doubler.setParams(cacheStereoOffsetSpread, cacheStereoOffsetJitter);
-        doubler.process(buffer, 1);
-      }
+    if (spread.isRunning()) {
+      if (!isStereo && numChannels >= 2)
+        buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);  // seed the double
+      spread.process(buffer);
     }
-    doublerUse = use;
 
     if (isStereo) {
       const auto [gLtoL, gLtoR] = constantPowerPanGains(cacheChainPanLeft);

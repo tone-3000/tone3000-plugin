@@ -4,7 +4,7 @@ import { useFunction } from '../hooks/useFunction';
 import { useChainState } from '../hooks/useChainState';
 import { usePresets } from '../hooks/usePresets';
 import { ChainView } from './ChainView';
-import { DoublerControls } from './DoublerControls';
+import { SpreadControls } from './SpreadControls';
 import { Faceplate } from './Faceplate';
 import { PresetBar } from './PresetBar';
 import { StereoModeToggle, StereoChainControls } from './StereoControls';
@@ -56,6 +56,8 @@ export const Plugin: React.FC = () => {
     stereoEnabled,
     activeSide,
     stereoInput,
+    standalone,
+    inputMode,
     sampleRate,
     refresh,
     actions,
@@ -65,10 +67,10 @@ export const Plugin: React.FC = () => {
   // preset replaces the chain; saving/renaming changes the active preset).
   const presetStore = usePresets(refresh);
 
-  // Mono-mode doubler: while it's on the output stage is effectively stereo,
+  // Mono-mode spread: while it's on the output stage is effectively stereo,
   // so the output meter + balance knob switch to their stereo forms.
-  const [doublerEnabled] = useParameter('doublerEnabled', 'toggle');
-  const stereoOutput = stereoEnabled || doublerEnabled;
+  const [spreadEnabled] = useParameter('spreadEnabled', 'toggle');
+  const stereoOutput = stereoEnabled || spreadEnabled;
 
   // One-shot native functions
   const setAccessToken = useFunction<boolean>('setAccessToken');
@@ -382,9 +384,10 @@ export const Plugin: React.FC = () => {
             <StereoChainControls
               activeSide={activeSide}
               onSelectSide={(side) => actions.setActiveSide(side)}
+              onSwapChains={() => actions.swapChains()}
             />
           ) : (
-            <DoublerControls />
+            <SpreadControls />
           )}
           <ChainView
             key={stereoEnabled ? activeSide : 'mono'}
@@ -428,7 +431,13 @@ export const Plugin: React.FC = () => {
       <Faceplate stereoOutput={stereoOutput} stereoInput={stereoInput} />
 
       {/* Settings Modal */}
-      <Settings isOpen={showSettings} onClose={() => setShowSettings(false)} />
+      <Settings
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        standalone={standalone}
+        inputMode={inputMode}
+        onSetInputMode={(mode) => actions.setInputMode(mode)}
+      />
 
       {/* OAuth callback overlay — covers the chain UI while we resolve the
           tokens + tone after returning from tone3000.com, and surfaces any

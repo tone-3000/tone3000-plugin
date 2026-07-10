@@ -9,13 +9,30 @@ import {
 import { ToggleControl } from './ToggleControl';
 import { useParameter } from '../hooks/useParameter';
 import { useFunction } from '../hooks/useFunction';
+import type { InputMode } from '../types/chain';
 
 interface SettingsProps {
   isOpen: boolean;
   onClose: () => void;
+  /** True in the standalone app — shows standalone-only settings. */
+  standalone: boolean;
+  inputMode: InputMode;
+  onSetInputMode: (mode: InputMode) => void;
 }
 
-export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
+const INPUT_MODE_OPTIONS: { value: InputMode; label: string }[] = [
+  { value: 'input1', label: 'INPUT 1' },
+  { value: 'input2', label: 'INPUT 2' },
+  { value: 'stereo', label: 'STEREO' },
+];
+
+export const Settings: React.FC<SettingsProps> = ({
+  isOpen,
+  onClose,
+  standalone,
+  inputMode,
+  onSetInputMode,
+}) => {
   // Use JUCE parameters for all settings
   const [normalizationEnabled, setNormalizationEnabled] = useParameter('normalize', 'toggle');
   const [calibrationEnabled, setCalibrationEnabled] = useParameter('calibrateInput', 'toggle');
@@ -142,6 +159,72 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
 
         {/* Settings Content */}
         <div style={{ padding: '20px' }}>
+          {/* Input channel mode (standalone only): interfaces expose stereo
+              pairs even when only one jack is plugged in, so the user picks
+              what actually carries signal. */}
+          {standalone && (
+            <div style={{ marginBottom: '30px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '8px',
+                }}
+              >
+                <label
+                  style={{
+                    fontSize: '16px',
+                    fontWeight: '500',
+                    color: '#ffffff',
+                  }}
+                >
+                  Input
+                </label>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    borderRadius: '4px',
+                    border: '1px solid #555555',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {INPUT_MODE_OPTIONS.map((option, i) => (
+                    <button
+                      key={option.value}
+                      onClick={() => onSetInputMode(option.value)}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '12px',
+                        border: 'none',
+                        borderLeft: i > 0 ? '1px solid #555555' : 'none',
+                        cursor: 'pointer',
+                        color: '#ffffff',
+                        letterSpacing: '0.04em',
+                        backgroundColor:
+                          inputMode === option.value ? 'rgba(235, 235, 245, 0.18)' : '#222222',
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p
+                style={{
+                  fontSize: '12px',
+                  color: '#cccccc',
+                  margin: 0,
+                  lineHeight: '1.4',
+                }}
+              >
+                Which input channel carries your signal. Use a mono input for a single
+                instrument cable (e.g. guitar into input 1); stereo uses both channels.
+              </p>
+            </div>
+          )}
+
           {/* Normalization Setting */}
           <div style={{ marginBottom: '30px' }}>
             <div

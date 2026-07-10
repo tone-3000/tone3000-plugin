@@ -141,10 +141,18 @@ export interface ChainState {
   /** True when a real stereo source feeds the plugin (stereo host bus or a
       stereo standalone input device). Drives the dual input meter/gain UI. */
   stereoInput: boolean;
+  /** True in the standalone app — gates standalone-only settings (input mode). */
+  standalone: boolean;
+  /** Standalone input channel mode. Interfaces expose stereo pairs even with
+      one jack plugged in, so the user picks what actually carries signal. */
+  inputMode: InputMode;
   /** Host sample rate — the EQ curve math needs it to mirror the audio exactly. */
   sampleRate: number;
   chain: ChainItem[];
 }
+
+/** Standalone input channel mode (mirrors Processor::InputMode). */
+export type InputMode = 'input1' | 'input2' | 'stereo';
 
 /** Minimal reply when the caller's revision is still current. */
 export interface ChainStateUnchanged {

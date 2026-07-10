@@ -17,7 +17,7 @@
 #include "NAM/wavenet/model.h"
 #include "ChainBlock.h"
 #include "ChainHistory.h"
-#include "Doubler.h"
+#include "Spread.h"
 #include "NamResampler.h"
 #include "PresetManager.h"
 #include "TunerDetector.h"
@@ -117,9 +117,33 @@ public:
   // Stereo mode: two independent Left/Right chains.
   void setStereoMode(bool enabled);
   bool isStereoMode() const { return stereoEnabled.load(); }
+
+  // Standalone input channel mode. Interfaces usually expose stereo pairs
+  // (line 1+2) even when only one jack is plugged in, so the standalone app
+  // lets the user pick which channel actually carries signal — the industry
+  // pattern for amp-sim standalones. Mono modes fold the chosen channel onto
+  // both up front; hosts always route explicitly, so this is standalone-only
+  // and defaults to Input 1 (a guitar in the first input).
+  enum class InputMode { Input1 = 0, Input2 = 1, Stereo = 2 };
+  void setStandaloneInputMode(InputMode mode);
+  static InputMode inputModeFromString(const juce::String& s) {
+    if (s == "input2") return InputMode::Input2;
+    if (s == "stereo") return InputMode::Stereo;
+    return InputMode::Input1;
+  }
+  static juce::String inputModeToString(InputMode mode) {
+    switch (mode) {
+      case InputMode::Input2: return "input2";
+      case InputMode::Stereo: return "stereo";
+      case InputMode::Input1: break;
+    }
+    return "input1";
+  }
   // Which chain the UI is currently editing (Left/Right). No-op argument outside {"left","right"}.
   // Pure view navigation — not part of undo history.
   void setActiveEditChain(const juce::String& side);
+  // Swap the Left and Right chains wholesale (stereo mode only). Undoable.
+  bool swapChains();
 
   // Undo/redo over chain edits (structure, tones, params, EQ, stereo mode).
   // Snapshot-based: every mutator captures the pre-mutation chain settings
@@ -311,14 +335,11 @@ private:
   float cacheOutputLevel;
   float cacheInputBalance = 0.5f;
   float cacheOutputBalance = 0.5f;
-  bool cacheDoublerEnabled = false;
-  float cacheDoublerSpread = 0.5f;
-  float cacheDoublerJitter = 0.25f;
+  bool cacheSpreadEnabled = false;
+  float cacheSpreadAmount = 0.5f;  // bipolar: 0.5 = center = off
+  float cacheSpreadJitter = 0.0f;
   float cacheChainPanLeft = 0.0f;
   float cacheChainPanRight = 1.0f;
-  bool cacheStereoOffsetEnabled = false;
-  float cacheStereoOffsetSpread = 0.5f;
-  float cacheStereoOffsetJitter = 0.25f;
   float cacheBassTone;
   float cacheMidTone;
   float cacheTrebleTone;
@@ -367,20 +388,25 @@ private:
   mutable std::atomic<float> outputMeterLevelR{-60.0f};
 
   // True when the plugin is being fed a real stereo source (stereo bus in a
-  // host, or a stereo input device in the standalone app). Drives the UI's
-  // dual input meter + L/link/R input gain controls. Reported via
-  // getChainState; detection lives in prepareToPlay.
+  // host, or a stereo input device in the standalone app with the input mode
+  // set to stereo). Drives the UI's dual input meter + balance controls.
+  // Reported via getChainState; see updateStereoInputDetection().
   std::atomic<bool> stereoInputDetected{false};
+
+  // Standalone input channel mode (see InputMode). Atomic: written by the
+  // message thread (settings UI / state restore), read by the audio thread.
+  std::atomic<int> standaloneInputMode{static_cast<int>(InputMode::Input1)};
+  bool isStandalone() const { return wrapperType == wrapperType_Standalone; }
+  void updateStereoInputDetection();
 
   // Tuner pitch detection (fed from processBlock when enabled)
   TunerDetector tuner;
 
-  // Post-chain delay engine, shared by the mono doubler and the stereo
-  // offset (mode-exclusive — only one can be active). Any transition of use
-  // (engage, mode flip) resets the delay line so stale audio never plays.
-  enum class DoublerUse { None, MonoDouble, StereoOffset };
-  Doubler doubler;
-  DoublerUse doublerUse{DoublerUse::None};
+  // Post-chain spread engine (one instance + one parameter set serves both
+  // the mono double and the stereo chain shift — the modes are exclusive).
+  // While the power switch is on it always runs (0 ms delay = identity), so
+  // knob moves never hard-toggle DSP; all transitions glide through zero.
+  Spread spread;
 
   // Stereo chain-pan blend gains (constant-power), smoothed so pan moves
   // don't zipper. LtoR = how much of the Left chain lands in the Right

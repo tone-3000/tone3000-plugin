@@ -46,15 +46,12 @@ private:
   juce::WebSliderRelay outputLevelRelay{"outputLevel"};
   juce::WebSliderRelay inputBalanceRelay{"inputBalance"};
   juce::WebSliderRelay outputBalanceRelay{"outputBalance"};
-  juce::WebToggleButtonRelay doublerEnabledRelay{"doublerEnabled"};
-  juce::WebSliderRelay doublerSpreadRelay{"doublerSpread"};
-  juce::WebSliderRelay doublerJitterRelay{"doublerJitter"};
+  juce::WebToggleButtonRelay spreadEnabledRelay{"spreadEnabled"};
+  juce::WebSliderRelay spreadAmountRelay{"spreadAmount"};
+  juce::WebSliderRelay spreadJitterRelay{"spreadJitter"};
   juce::WebSliderRelay chainPanLeftRelay{"chainPanLeft"};
   juce::WebSliderRelay chainPanRightRelay{"chainPanRight"};
   juce::WebToggleButtonRelay chainPanLinkedRelay{"chainPanLinked"};
-  juce::WebToggleButtonRelay stereoOffsetEnabledRelay{"stereoOffsetEnabled"};
-  juce::WebSliderRelay stereoOffsetSpreadRelay{"stereoOffsetSpread"};
-  juce::WebSliderRelay stereoOffsetJitterRelay{"stereoOffsetJitter"};
   juce::WebSliderRelay bassRelay{"toneBass"};
   juce::WebSliderRelay midRelay{"toneMid"};
   juce::WebSliderRelay trebleRelay{"toneTreble"};
@@ -74,24 +71,18 @@ private:
       *processor.parameters.getParameter("inputBalance"), inputBalanceRelay, nullptr};
   juce::WebSliderParameterAttachment outputBalanceWebAttachment{
       *processor.parameters.getParameter("outputBalance"), outputBalanceRelay, nullptr};
-  juce::WebToggleButtonParameterAttachment doublerEnabledWebAttachment{
-      *processor.parameters.getParameter("doublerEnabled"), doublerEnabledRelay, nullptr};
-  juce::WebSliderParameterAttachment doublerSpreadWebAttachment{
-      *processor.parameters.getParameter("doublerSpread"), doublerSpreadRelay, nullptr};
-  juce::WebSliderParameterAttachment doublerJitterWebAttachment{
-      *processor.parameters.getParameter("doublerJitter"), doublerJitterRelay, nullptr};
+  juce::WebToggleButtonParameterAttachment spreadEnabledWebAttachment{
+      *processor.parameters.getParameter("spreadEnabled"), spreadEnabledRelay, nullptr};
+  juce::WebSliderParameterAttachment spreadAmountWebAttachment{
+      *processor.parameters.getParameter("spreadAmount"), spreadAmountRelay, nullptr};
+  juce::WebSliderParameterAttachment spreadJitterWebAttachment{
+      *processor.parameters.getParameter("spreadJitter"), spreadJitterRelay, nullptr};
   juce::WebSliderParameterAttachment chainPanLeftWebAttachment{
       *processor.parameters.getParameter("chainPanLeft"), chainPanLeftRelay, nullptr};
   juce::WebSliderParameterAttachment chainPanRightWebAttachment{
       *processor.parameters.getParameter("chainPanRight"), chainPanRightRelay, nullptr};
   juce::WebToggleButtonParameterAttachment chainPanLinkedWebAttachment{
       *processor.parameters.getParameter("chainPanLinked"), chainPanLinkedRelay, nullptr};
-  juce::WebToggleButtonParameterAttachment stereoOffsetEnabledWebAttachment{
-      *processor.parameters.getParameter("stereoOffsetEnabled"), stereoOffsetEnabledRelay, nullptr};
-  juce::WebSliderParameterAttachment stereoOffsetSpreadWebAttachment{
-      *processor.parameters.getParameter("stereoOffsetSpread"), stereoOffsetSpreadRelay, nullptr};
-  juce::WebSliderParameterAttachment stereoOffsetJitterWebAttachment{
-      *processor.parameters.getParameter("stereoOffsetJitter"), stereoOffsetJitterRelay, nullptr};
   juce::WebToggleButtonParameterAttachment gateEnabledWebAttachment{
       *processor.parameters.getParameter("gateEnabled"), gateEnabledRelay, nullptr};
   juce::WebToggleButtonParameterAttachment toneEqEnabledWebAttachment{

@@ -541,6 +541,12 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
   // True when a real stereo source feeds the plugin (stereo host bus or a
   // stereo standalone input device) — drives the dual input meter/gain UI.
   state->setProperty("stereoInput", stereoInputDetected.load());
+  // Standalone-only input channel picker (Settings). Hosts route explicitly,
+  // so the UI hides the control unless `standalone` is set.
+  state->setProperty("standalone", isStandalone());
+  state->setProperty(
+      "inputMode",
+      inputModeToString(static_cast<InputMode>(standaloneInputMode.load())));
   // The EQ editor mirrors the biquad math client-side; it needs the real
   // sample rate for the drawn curve to match the audio exactly.
   const double sr = getSampleRate();
@@ -621,6 +627,32 @@ void TONE3000Processor::setActiveEditChain(const juce::String& side) {
   else if (side == "left")
     activeEditSide = ChainSide::Left;
   bumpChainRevision();
+}
+
+bool TONE3000Processor::swapChains() {
+  juce::ScopedLock lock(chainMutex);
+
+  if (!stereoEnabled.load())
+    return false;
+
+  pushChainHistory();
+  std::swap(chainBlocks, rightChainBlocks);
+
+  // Keep the insert placeholder ids side-invariant: they are fixed per-side
+  // keys used by the UI and by snapshot reconciliation, so they must not
+  // travel with the swap.
+  auto claimInsert = [](std::vector<std::unique_ptr<ChainBlock>>& chain, const char* id) {
+    for (auto& block : chain)
+      if (block->type == ChainBlockType::INSERT)
+        block->id = id;
+  };
+  claimInsert(chainBlocks, INSERT_BLOCK_ID);
+  claimInsert(rightChainBlocks, INSERT_BLOCK_ID_RIGHT);
+
+  updateLatencyCompensation();
+  bumpChainRevision();
+  DBG("Swapped Left/Right chains");
+  return true;
 }
 
 bool TONE3000Processor::isChainValid() const {

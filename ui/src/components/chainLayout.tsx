@@ -2,7 +2,7 @@ import React from 'react';
 
 /**
  * Shared chain-column layout: tone card dimensions plus the fixed-width row
- * wrapper used by the toolbars pinned above the chain (doubler / stereo
+ * wrapper used by the toolbars pinned above the chain (spread / stereo
  * controls), so their edges line up with the cards. Lives in its own module
  * (no component imports) to keep the dependency graph acyclic.
  */

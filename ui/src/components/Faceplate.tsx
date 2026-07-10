@@ -75,6 +75,7 @@ const MainGainKnob: React.FC<{
       onChange={setLevel}
       size={KNOB_SIZE}
       labelSize={12}
+      innerColor="#1C1C1E"
     />
   );
 
@@ -87,6 +88,7 @@ const MainGainKnob: React.FC<{
       onChange={setBalance}
       size={BALANCE_KNOB_SIZE}
       labelSize={10}
+      innerColor="#1C1C1E"
     />
   );
   return (
@@ -99,7 +101,7 @@ const MainGainKnob: React.FC<{
 };
 
 interface FaceplateProps {
-  /** Output stage runs stereo (stereo mode or mono-mode doubler) — shows the
+  /** Output stage runs stereo (stereo mode or mono-mode spread) — shows the
       output balance knob. */
   stereoOutput: boolean;
   /** Plugin is fed a real stereo source — shows the input balance knob. */
@@ -147,6 +149,7 @@ export const Faceplate: React.FC<FaceplateProps> = ({ stereoOutput, stereoInput 
           onChange={setNoiseGate}
           size={KNOB_SIZE}
           labelSize={12}
+          innerColor="#1C1C1E"
         />
         <PowerButton
           on={gateEnabled}
@@ -171,6 +174,7 @@ export const Faceplate: React.FC<FaceplateProps> = ({ stereoOutput, stereoInput 
           onChange={setToneBass}
           size={KNOB_SIZE}
           labelSize={12}
+          innerColor="#1C1C1E"
         />
         <KnobControl
           label="Middle"
@@ -178,6 +182,7 @@ export const Faceplate: React.FC<FaceplateProps> = ({ stereoOutput, stereoInput 
           onChange={setToneMid}
           size={KNOB_SIZE}
           labelSize={12}
+          innerColor="#1C1C1E"
         />
         <KnobControl
           label="Treble"
@@ -185,6 +190,7 @@ export const Faceplate: React.FC<FaceplateProps> = ({ stereoOutput, stereoInput 
           onChange={setToneTreble}
           size={KNOB_SIZE}
           labelSize={12}
+          innerColor="#1C1C1E"
         />
         <PowerButton
           on={toneEqEnabled}

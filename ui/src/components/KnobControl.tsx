@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { KnobHeadless } from 'react-knob-headless';
 import { KnobInner } from './KnobInner';
+import type { KnobVariant } from './KnobInner';
 
 interface KnobControlProps {
   label: string;
@@ -10,7 +11,22 @@ interface KnobControlProps {
   labelSize?: number;
   labelBottom?: boolean;
   innerColor?: string;
+  /** Visual/geometry variant (see KnobInner). Bipolar knobs snap to exact
+      center so the zero detent genuinely means zero. */
+  variant?: KnobVariant;
+  /** Drag range (defaults 0..1). Pan halves pass 0..0.5 / 0.5..1 so the
+      param keeps absolute positions while the knob covers its half track. */
+  min?: number;
+  max?: number;
 }
+
+/** Bipolar center detent: values within the snap window collapse to exactly
+    0.5 so the DSP's "center = skip processing" branch is actually reachable
+    by drag (not just by precise pixel luck). */
+const roundKnobValue = (x: number, snapCenter: boolean) => {
+  if (snapCenter && Math.abs(x - 0.5) < 0.02) return 0.5;
+  return Math.round(x * 100) / 100;
+};
 
 export const KnobControl: React.FC<KnobControlProps> = ({
   label,
@@ -19,7 +35,10 @@ export const KnobControl: React.FC<KnobControlProps> = ({
   size = 64,
   labelSize = 14,
   labelBottom = true,
-  innerColor = '#1C1C1E',
+  innerColor = '#000000',
+  variant = 'full',
+  min = 0,
+  max = 1,
 }) => {
   // const angleDeg = value * 270 - 135; // -135..+135
   const knobRef = useRef<HTMLDivElement>(null);
@@ -104,10 +123,10 @@ export const KnobControl: React.FC<KnobControlProps> = ({
         ref={knobRef}
         aria-label={label}
         valueRaw={value}
-        valueMin={0}
-        valueMax={1}
+        valueMin={min}
+        valueMax={max}
         dragSensitivity={0.006}
-        valueRawRoundFn={(x) => Math.round(x * 100) / 100}
+        valueRawRoundFn={(x) => roundKnobValue(x, variant === 'bipolar')}
         valueRawDisplayFn={(x) => `${x.toFixed(2)}`}
         onValueRawChange={onChange}
         className="knob"
@@ -123,7 +142,7 @@ export const KnobControl: React.FC<KnobControlProps> = ({
         }}
       >
         {/* New gradient knob design */}
-        <KnobInner value={value} size={size} innerColor={innerColor} />
+        <KnobInner value={value} size={size} innerColor={innerColor} variant={variant} />
 
         {/* Old knob image with rotation - commented out for easy revert */}
         {/* <img

@@ -87,6 +87,9 @@ void TONE3000Processor::getStateInformation(juce::MemoryBlock& destData) {
   state.appendChild(parameterState, nullptr);
 
   state.setProperty("stereoEnabled", stereoEnabled.load(), nullptr);
+  // Standalone input channel mode (harmless no-op in hosts, but the
+  // standalone app persists its state through here across launches).
+  state.setProperty("standaloneInputMode", standaloneInputMode.load(), nullptr);
 
   {
     juce::ScopedLock lock(chainMutex);
@@ -209,6 +212,12 @@ void TONE3000Processor::setStateInformation(const void* data, int sizeInBytes) {
   const bool restoredStereo =
       state.hasProperty("stereoEnabled") ? static_cast<bool>(state.getProperty("stereoEnabled"))
                                          : false;
+
+  if (state.hasProperty("standaloneInputMode")) {
+    standaloneInputMode.store(
+        juce::jlimit(0, 2, static_cast<int>(state.getProperty("standaloneInputMode"))));
+    updateStereoInputDetection();
+  }
 
   juce::ValueTree chainState = state.getChildWithName("ChainBlocks");
   juce::ValueTree rightChainState = state.getChildWithName("RightChainBlocks");
