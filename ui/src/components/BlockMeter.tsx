@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { useMeter } from '../hooks/useMeters';
+import { useMeter, useMeterClip } from '../hooks/useMeters';
 import { METER_MAX_DB, METER_MIN_DB, getGradientColor } from './meterColor';
 
 interface BlockMeterProps {
@@ -13,18 +13,17 @@ const DOT_GAP = 5;
 
 /**
  * Minimal per-block level meter: a vertical column of dots that always shows
- * the color scale (dimmed) and lights up to the current level.
+ * the color scale (dimmed) and lights up to the current level. Dots span
+ * METER_MIN_DB..0 dBFS; the top dot is a latching clip LED (click to clear).
  */
 export const BlockMeter: React.FC<BlockMeterProps> = ({ meterId, height = 140 }) => {
   const db = useMeter(meterId);
+  const [clipped, clearClip] = useMeterClip(meterId);
 
   const numDots = useMemo(
-    () => Math.max(1, Math.floor((height + DOT_GAP) / (DOT_SIZE + DOT_GAP))),
+    () => Math.max(2, Math.floor((height + DOT_GAP) / (DOT_SIZE + DOT_GAP))),
     [height]
   );
-
-  const normalized = (db - METER_MIN_DB) / (METER_MAX_DB - METER_MIN_DB);
-  const activeIndex = Math.floor(normalized * numDots);
 
   return (
     <div
@@ -38,17 +37,24 @@ export const BlockMeter: React.FC<BlockMeterProps> = ({ meterId, height = 140 })
       }}
     >
       {Array.from({ length: numDots }, (_, index) => {
-        const position = numDots > 1 ? index / (numDots - 1) : 0;
-        const isActive = index <= activeIndex;
+        // Dot i sits at an exact dB threshold; the top dot is exactly 0 dBFS
+        // and doubles as the latching clip LED.
+        const position = index / (numDots - 1);
+        const dotDb = METER_MIN_DB + position * (METER_MAX_DB - METER_MIN_DB);
+        const isClipDot = index === numDots - 1;
+        const isActive = isClipDot ? clipped : db >= dotDb;
         return (
           <div
             key={index}
+            onClick={isClipDot && clipped ? clearClip : undefined}
+            title={isClipDot && clipped ? 'Clipped — click to clear' : undefined}
             style={{
               width: `${DOT_SIZE}px`,
               height: `${DOT_SIZE}px`,
               borderRadius: '50%',
               backgroundColor: getGradientColor(position),
               opacity: isActive ? 1 : 0.22,
+              cursor: isClipDot && clipped ? 'pointer' : undefined,
               flexShrink: 0,
             }}
           />

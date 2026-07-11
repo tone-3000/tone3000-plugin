@@ -154,7 +154,7 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
         if (!out.namIsSlimmable)
           slimPersistForPrepare = 1.0;
         const double clampedSlim =
-            out.namIsSlimmable ? juce::jlimit(0.5, 1.0, slimPersistForPrepare) : 1.0;
+            out.namIsSlimmable ? juce::jlimit(0.0, 1.0, slimPersistForPrepare) : 1.0;
         resampler->setSlimmableSize(clampedSlim);
 
         if (srForNam > 0.0 && effectiveBlockSize > 0) {

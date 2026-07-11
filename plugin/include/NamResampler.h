@@ -129,7 +129,10 @@ public:
     bool isSlimmableModel() const;
 
     /**
-     * Requested slimmable size (0.5 = lite, 1.0 = full). Clamped to [0.5, 1.0].
+     * Requested slimmable size (0.0 = lite, 1.0 = full). Clamped to [0.0, 1.0].
+     * NAM tier mappers assign the boundary value to the tier above (a two-tier
+     * container selects lite for [0, 0.5) and full for [0.5, 1.0]), so the lite
+     * request must be 0.0 — 0.5 would select full.
      * Applied in prepare() and immediately if already prepared.
      */
     void setSlimmableSize(double val);

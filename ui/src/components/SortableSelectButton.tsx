@@ -39,23 +39,25 @@ export const SortableSelectButton: React.FC<SortableSelectButtonProps> = ({
         alignItems: 'center',
       }}
     >
+      {/* Grip mirrors the chain block header's: same 24px hit box at the same
+          top-left inset (8px down, 12px in), just floating over the card. */}
       <div
         {...attributes}
         {...listeners}
         style={{
           cursor: 'grab',
-          background: '#2C2C2E',
+          background: 'transparent',
           border: 'none',
-          color: '#ffffff',
-          width: '32px',
-          height: '32px',
-          borderRadius: '32px',
+          color: '#8D8D93',
+          width: '24px',
+          height: '24px',
+          borderRadius: '6px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           position: 'absolute',
-          top: '-16px',
-          left: '-16px',
+          top: '8px',
+          left: '12px',
           zIndex: 1,
         }}
         title="Drag to reorder"

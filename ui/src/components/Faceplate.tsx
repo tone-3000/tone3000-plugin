@@ -25,11 +25,14 @@ const BORDER = '1px solid rgba(84, 84, 88, 0.65)';
     knob column is knob + gap + label; the label pulls its center down). */
 const KNOB_CENTER_OFFSET = -11;
 
-const PowerButton: React.FC<{ on: boolean; title: string; onClick: () => void }> = ({
-  on,
-  title,
-  onClick,
-}) => (
+const PowerButton: React.FC<{
+  on: boolean;
+  title: string;
+  onClick: () => void;
+  /** Vertical nudge; defaults to centering on a lone knob. Pass 0 when the
+      button sits inside a pre-positioned stack. */
+  offsetY?: number;
+}> = ({ on, title, onClick, offsetY = KNOB_CENTER_OFFSET }) => (
   <button
     onClick={onClick}
     title={title}
@@ -46,10 +49,35 @@ const PowerButton: React.FC<{ on: boolean; title: string; onClick: () => void }>
       flexShrink: 0,
       color: on ? '#ffffff' : '#8D8D93',
       backgroundColor: on ? 'transparent' : 'rgba(235, 235, 245, 0.18)',
-      transform: `translateY(${KNOB_CENTER_OFFSET}px)`,
+      transform: `translateY(${offsetY}px)`,
     }}
   >
     <Power size={12} />
+  </button>
+);
+
+/** PRE/POST position toggle for the tone stack: lit pill = EQ before the
+    chain, dimmed = after (default). Same grayscale language as PowerButton. */
+const PreButton: React.FC<{ on: boolean; onClick: () => void }> = ({ on, onClick }) => (
+  <button
+    onClick={onClick}
+    title={on ? 'EQ runs before the chain — click for post' : 'EQ runs after the chain — click for pre'}
+    style={{
+      height: '15px',
+      padding: '0 5px',
+      borderRadius: '4px',
+      border: on ? '1px solid rgba(255, 255, 255, 0.85)' : BORDER,
+      background: on ? 'rgba(235, 235, 245, 0.18)' : 'transparent',
+      color: on ? '#ffffff' : '#8D8D93',
+      fontSize: '8px',
+      fontWeight: 700,
+      letterSpacing: '0.8px',
+      lineHeight: 1,
+      cursor: 'pointer',
+      flexShrink: 0,
+    }}
+  >
+    PRE
   </button>
 );
 
@@ -115,6 +143,7 @@ export const Faceplate: React.FC<FaceplateProps> = ({ stereoOutput, stereoInput 
   const [noiseGate, setNoiseGate] = useParameter('gateThreshold', 'slider');
   const [gateEnabled, setGateEnabled] = useParameter('gateEnabled', 'toggle');
   const [toneEqEnabled, setToneEqEnabled] = useParameter('toneEqEnabled', 'toggle');
+  const [toneEqPre, setToneEqPre] = useParameter('toneEqPre', 'toggle');
 
   return (
     <div
@@ -192,11 +221,34 @@ export const Faceplate: React.FC<FaceplateProps> = ({ stereoOutput, stereoInput 
           labelSize={12}
           innerColor="#1C1C1E"
         />
-        <PowerButton
-          on={toneEqEnabled}
-          title={toneEqEnabled ? 'Turn EQ off' : 'Turn EQ on'}
-          onClick={() => setToneEqEnabled(!toneEqEnabled)}
-        />
+        {/* Power sits exactly where the other power buttons do; PRE hangs
+            below it out-of-flow so it never shifts the power position. */}
+        <div
+          style={{
+            position: 'relative',
+            width: '22px',
+            height: '22px',
+            flexShrink: 0,
+            transform: `translateY(${KNOB_CENTER_OFFSET}px)`,
+          }}
+        >
+          <PowerButton
+            on={toneEqEnabled}
+            title={toneEqEnabled ? 'Turn EQ off' : 'Turn EQ on'}
+            onClick={() => setToneEqEnabled(!toneEqEnabled)}
+            offsetY={0}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              top: 'calc(100% + 5px)',
+              left: '50%',
+              transform: 'translateX(-50%)',
+            }}
+          >
+            <PreButton on={toneEqPre} onClick={() => setToneEqPre(!toneEqPre)} />
+          </div>
+        </div>
       </div>
 
       <MainGainKnob label="Output" type="output" stereo={stereoOutput} balanceSide="left" />

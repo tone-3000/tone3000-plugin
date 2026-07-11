@@ -31,6 +31,8 @@ export const meterId = {
 };
 
 const FLOOR_DB = -60;
+/** Levels at/above this latch the meter's clip indicator until cleared. */
+const CLIP_DB = 0;
 /** Quantize to 0.5 dB so imperceptible changes don't cause re-renders. */
 const QUANTIZE = 2;
 /**
@@ -42,6 +44,8 @@ const MIN_FETCH_INTERVAL_MS = 33;
 
 class MeterStore {
   private levels = new Map<string, number>();
+  /** Meter ids that have hit CLIP_DB; latched until clearClip(). */
+  private clips = new Set<string>();
   private listeners = new Map<string, Set<() => void>>();
   private subscriberCount = 0;
   private running = false;
@@ -70,6 +74,13 @@ class MeterStore {
   };
 
   get = (id: string): number => this.levels.get(id) ?? FLOOR_DB;
+
+  getClip = (id: string): boolean => this.clips.has(id);
+
+  clearClip = (id: string): void => {
+    if (!this.clips.delete(id)) return;
+    this.listeners.get(id)?.forEach((callback) => callback());
+  };
 
   private start() {
     this.running = true;
@@ -114,11 +125,17 @@ class MeterStore {
   }
 
   private update(id: string, raw: number) {
-    const value =
-      typeof raw === 'number' && Number.isFinite(raw)
-        ? Math.round(Math.max(FLOOR_DB, raw) * QUANTIZE) / QUANTIZE
-        : FLOOR_DB;
-    if (this.levels.get(id) === value) return;
+    const finite = typeof raw === 'number' && Number.isFinite(raw);
+
+    // Latch clips on the raw value so a one-frame overshoot can't slip past
+    // the quantized/steady-value short-circuit below.
+    const clipped = finite && raw >= CLIP_DB && !this.clips.has(id);
+    if (clipped) this.clips.add(id);
+
+    const value = finite
+      ? Math.round(Math.max(FLOOR_DB, raw) * QUANTIZE) / QUANTIZE
+      : FLOOR_DB;
+    if (this.levels.get(id) === value && !clipped) return;
     this.levels.set(id, value);
     this.listeners.get(id)?.forEach((callback) => callback());
   }
@@ -148,4 +165,24 @@ export function useMeter(id: MeterId | string): number {
   const getSnapshot = useCallback(() => store.get(id), [store, id]);
 
   return useSyncExternalStore(subscribe, getSnapshot);
+}
+
+/**
+ * Latched clip state for a meter id (level hit 0 dBFS since last clear).
+ * Latching happens in the store on raw poll values, so clips register even if
+ * the level has already fallen by the next render. Returns [clipped, clear].
+ */
+export function useMeterClip(id: MeterId | string): [boolean, () => void] {
+  const store = useContext(MeterStoreContext);
+  if (!store) throw new Error('useMeterClip must be used within a MetersProvider');
+
+  const subscribe = useCallback(
+    (callback: () => void) => store.subscribe(id, callback),
+    [store, id]
+  );
+  const getSnapshot = useCallback(() => store.getClip(id), [store, id]);
+  const clipped = useSyncExternalStore(subscribe, getSnapshot);
+  const clear = useCallback(() => store.clearClip(id), [store, id]);
+
+  return [clipped, clear];
 }

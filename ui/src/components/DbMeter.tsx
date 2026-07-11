@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { useMeter, meterId } from '../hooks/useMeters';
+import { useMeter, useMeterClip, meterId } from '../hooks/useMeters';
 import { METER_MAX_DB, METER_MIN_DB, getGradientColor } from './meterColor';
 
 interface DbMeterProps {
@@ -12,18 +12,23 @@ interface DbMeterProps {
 
 const DOT_SIZE = 6;
 const DOT_GAP = 10;
+/** Gap between the L and R columns in stereo. */
+const COLUMN_GAP = 5;
+/** Gap between the label rail and the dot column(s). */
+const LABEL_GAP = 10;
 const LABEL_COLOR = '#8D8D93';
 
 /**
  * Main input/output meter: vertical dot column(s) in the block-meter style —
  * the full color scale is always visible (dimmed) and lights to the level.
+ * The scale tops out at 0 dBFS; the topmost dot is a clip LED that lights only
+ * when the level hits 0 dB, latches red, and clears on click.
  * Each column subscribes to its own meter id, so a channel only re-renders
  * for its own (quantized) changes.
  */
 const DotColumn: React.FC<{ id: string; numDots: number }> = ({ id, numDots }) => {
   const db = useMeter(id);
-  const normalized = (db - METER_MIN_DB) / (METER_MAX_DB - METER_MIN_DB);
-  const activeIndex = Math.floor(normalized * numDots);
+  const [clipped, clearClip] = useMeterClip(id);
 
   return (
     <div
@@ -35,17 +40,24 @@ const DotColumn: React.FC<{ id: string; numDots: number }> = ({ id, numDots }) =
       }}
     >
       {Array.from({ length: numDots }, (_, index) => {
+        // Dot i sits at an exact dB threshold on the label scale; the top dot
+        // is exactly 0 dBFS and doubles as the latching clip LED.
         const position = numDots > 1 ? index / (numDots - 1) : 0;
-        const isActive = index <= activeIndex;
+        const dotDb = METER_MIN_DB + position * (METER_MAX_DB - METER_MIN_DB);
+        const isClipDot = index === numDots - 1;
+        const isActive = isClipDot ? clipped : db >= dotDb;
         return (
           <div
             key={index}
+            onClick={isClipDot && clipped ? clearClip : undefined}
+            title={isClipDot && clipped ? 'Clipped — click to clear' : undefined}
             style={{
               width: `${DOT_SIZE}px`,
               height: `${DOT_SIZE}px`,
               borderRadius: '50%',
               backgroundColor: getGradientColor(position),
               opacity: isActive ? 1 : 0.22,
+              cursor: isClipDot && clipped ? 'pointer' : undefined,
               flexShrink: 0,
             }}
           />
@@ -64,24 +76,25 @@ export const DbMeter: React.FC<DbMeterProps> = ({
   const numDots = useMemo(() => Math.floor(height / (DOT_SIZE + DOT_GAP)), [height]);
   const actualMeterHeight = numDots * DOT_SIZE + (numDots - 1) * DOT_GAP;
 
-  // Convert dB to pixel position from bottom
+  // Label centers align with dot centers: MIN at the bottom dot, MAX (0 dB)
+  // at the top (clip) dot.
   const dbToPixelPosition = (db: number): number => {
     const normalized = (db - METER_MIN_DB) / (METER_MAX_DB - METER_MIN_DB);
-    return normalized * actualMeterHeight;
+    return DOT_SIZE / 2 + normalized * (actualMeterHeight - DOT_SIZE);
   };
 
-  const scaleMarks = [-60, -48, -36, -24, -18, -12, -6, -3, 0, +3, +6, +12];
+  const scaleMarks = [-60, -48, -36, -24, -18, -12, -9, -6, -3, 0];
 
   const labels = (
     <div
       style={{
         position: 'relative',
         height: `${actualMeterHeight}px`,
-        fontSize: '10px',
+        fontSize: '8px',
         fontWeight: '500',
         color: LABEL_COLOR,
         flexShrink: 0,
-        width: '20px',
+        width: '18px',
       }}
     >
       {scaleMarks.map((db) => (
@@ -93,12 +106,12 @@ export const DbMeter: React.FC<DbMeterProps> = ({
             right: 0,
             transform: 'translateY(50%)',
             textAlign: 'right',
-            width: '24px',
+            width: '18px',
             lineHeight: 1,
             fontFamily: 'monospace',
           }}
         >
-          {db > 0 ? `+${db}` : db}
+          {db}
         </div>
       ))}
     </div>
@@ -115,13 +128,22 @@ export const DbMeter: React.FC<DbMeterProps> = ({
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'flex-end',
-        gap: '12px',
+        gap: `${LABEL_GAP}px`,
       }}
     >
       {labelsPosition === 'left' && labels}
-      {columns.map((id) => (
-        <DotColumn key={id} id={id} numDots={numDots} />
-      ))}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'flex-end',
+          gap: `${COLUMN_GAP}px`,
+        }}
+      >
+        {columns.map((id) => (
+          <DotColumn key={id} id={id} numDots={numDots} />
+        ))}
+      </div>
       {labelsPosition === 'right' && labels}
     </div>
   );

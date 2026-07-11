@@ -190,10 +190,12 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
     }
   }, [block, onShare]);
 
-  const isLite = slimmableSize < 0.75;
+  // NAM tier mappers select the bottom tier for values in [0, 0.5) — the
+  // boundary itself belongs to the tier above — so LITE must send 0.0, not 0.5.
+  const isLite = slimmableSize < 0.5;
   const handleNamSizeMode = useCallback(
     (useLite: boolean) => {
-      const size = useLite ? 0.5 : 1.0;
+      const size = useLite ? 0.0 : 1.0;
       setSlimmableSize(size);
       setParam('namSlimmableSize', size);
     },

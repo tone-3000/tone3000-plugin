@@ -65,6 +65,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
       juce::ParameterID{"gateEnabled", 11}, "gateEnabled", true));
   layout.add(std::make_unique<juce::AudioParameterBool>(
       juce::ParameterID{"toneEqEnabled", 12}, "toneEqEnabled", true));
+  // Tone stack position: false = after the chain (default), true = before it.
+  layout.add(std::make_unique<juce::AudioParameterBool>(
+      juce::ParameterID{"toneEqPre", 25}, "toneEqPre", false));
 
   // Stereo balance trims for the main gains: 0.5 = centered (no effect),
   // otherwise an opposing ±12 dB trim between L and R on top of the main
@@ -267,6 +270,7 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   cacheGateThreshold = parameters.getRawParameterValue("gateThreshold")->load();
   cacheGateEnabled = parameters.getRawParameterValue("gateEnabled")->load() > 0.5f;
   cacheToneEqEnabled = parameters.getRawParameterValue("toneEqEnabled")->load() > 0.5f;
+  cacheToneEqPre = parameters.getRawParameterValue("toneEqPre")->load() > 0.5f;
   cacheTargetLoudness = parameters.getRawParameterValue("targetLoudness")->load();
   DBG("Debug parameter values: gateThreshold=" << cacheGateThreshold << ", targetLoudness=" << cacheTargetLoudness);
   cacheNormalize = parameters.getRawParameterValue("normalize")->load() > 0.5f;
@@ -408,6 +412,33 @@ void TONE3000Processor::updateEqCoefficients() {
   *trebleFilter.state = *trebleCoeffs;
 }
 
+// ######################
+// GLOBAL 3-BAND TONE STACK
+// ######################
+// One call site runs per block — before the chain when toneEqPre is set,
+// after it otherwise. Skipped entirely while powered off; filters reset on
+// re-enable so no stale state rings in.
+void TONE3000Processor::processToneStack(juce::AudioBuffer<float>& buffer) {
+  if (cacheToneEqEnabled) {
+    if (!toneEqWasEnabled) {
+      bassFilter.reset();
+      midFilter.reset();
+      trebleFilter.reset();
+    }
+    if (eqParamsDirty) {
+      updateEqCoefficients();
+      eqParamsDirty = false;
+    }
+
+    juce::dsp::AudioBlock<float> eqBlock(buffer);
+    juce::dsp::ProcessContextReplacing<float> eqContext(eqBlock);
+    bassFilter.process(eqContext);
+    midFilter.process(eqContext);
+    trebleFilter.process(eqContext);
+  }
+  toneEqWasEnabled = cacheToneEqEnabled;
+}
+
 // ####################
 // UPDATE CACHED PARAMS
 // ####################
@@ -451,6 +482,7 @@ void TONE3000Processor::updateCachedParameters() {
   cacheCalibrateInput = loadBool("calibrateInput");
   cacheGateEnabled = loadBool("gateEnabled");
   cacheToneEqEnabled = loadBool("toneEqEnabled");
+  cacheToneEqPre = loadBool("toneEqPre");
   cacheSpreadEnabled = loadBool("spreadEnabled");
 }
 
@@ -796,6 +828,11 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   if (spread.isRunning())
     spread.analyzeOnsets(buffer.getReadPointer(0), numSamples);
 
+  // Tone stack in the PRE position: shape the signal before it hits the
+  // chain (after the onset detector, which wants the raw picked signal).
+  if (cacheToneEqPre)
+    processToneStack(buffer);
+
   // ####################
   // MODULAR CHAIN PROCESSING
   // ####################
@@ -884,26 +921,12 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // Remove global normalization stage; handled per NAM block
 
   // ##########
-  // EQ section (global 3-band tone stack, skipped when powered off)
+  // EQ section (global 3-band tone stack) — post-chain position (default).
+  // The pre-chain position runs before the modular chain above; see
+  // processToneStack().
   // ##########
-  if (cacheToneEqEnabled) {
-    if (!toneEqWasEnabled) {
-      bassFilter.reset();
-      midFilter.reset();
-      trebleFilter.reset();
-    }
-    if (eqParamsDirty) {
-      updateEqCoefficients();
-      eqParamsDirty = false;
-    }
-
-    juce::dsp::AudioBlock<float> eqBlock(buffer);
-    juce::dsp::ProcessContextReplacing<float> eqContext(eqBlock);
-    bassFilter.process(eqContext);
-    midFilter.process(eqContext);
-    trebleFilter.process(eqContext);
-  }
-  toneEqWasEnabled = cacheToneEqEnabled;
+  if (!cacheToneEqPre)
+    processToneStack(buffer);
 
   // ###########
   // Output gain per channel (level ±12 dB, balance trim ±12 dB opposing).

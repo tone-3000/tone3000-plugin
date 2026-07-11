@@ -39,7 +39,7 @@ void TONE3000Processor::applyBlockSettings(ChainBlock& block, const juce::ValueT
 
   if (block.type == ChainBlockType::NAM && blockState.hasProperty("namSlimmableSize")) {
     block.namSlimmableSize =
-        juce::jlimit(0.5, 1.0, static_cast<double>(blockState.getProperty("namSlimmableSize")));
+        juce::jlimit(0.0, 1.0, static_cast<double>(blockState.getProperty("namSlimmableSize")));
     if (block.namIsSlimmable && block.namResampler != nullptr)
       block.namResampler->setSlimmableSize(block.namSlimmableSize);
   }

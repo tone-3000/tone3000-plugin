@@ -703,7 +703,7 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
   } else if (param == "mix") {
     block->mixNormalized = juce::jlimit(0.0f, 1.0f, static_cast<float>(value));
   } else if (param == "namSlimmableSize") {
-    const double clamped = juce::jlimit(0.5, 1.0, value);
+    const double clamped = juce::jlimit(0.0, 1.0, value);
     block->namSlimmableSize = clamped;
     block->namResampler->setSlimmableSize(clamped);
   }

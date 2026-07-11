@@ -86,6 +86,7 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
       .withOptionsFrom(editor->gateThresholdRelay)
       .withOptionsFrom(editor->gateEnabledRelay)
       .withOptionsFrom(editor->toneEqEnabledRelay)
+      .withOptionsFrom(editor->toneEqPreRelay)
       .withOptionsFrom(editor->normalizeRelay)
       .withOptionsFrom(editor->calibrateInputRelay)
       .withOptionsFrom(editor->inputCalibrationLevelRelay)

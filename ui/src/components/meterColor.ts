@@ -1,7 +1,8 @@
 /** Shared meter scale + color ramp for DbMeter and BlockMeter. */
 
 export const METER_MIN_DB = -60;
-export const METER_MAX_DB = 12;
+/** Top of the scale = 0 dBFS: the last dot lights exactly at clipping. */
+export const METER_MAX_DB = 0;
 
 /** Interpolate color along gradient: blue (bottom) → yellow (middle) → red (top). */
 export const getGradientColor = (position: number): string => {

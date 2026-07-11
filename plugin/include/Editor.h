@@ -63,6 +63,7 @@ private:
   juce::WebSliderRelay gateThresholdRelay{"gateThreshold"};
   juce::WebToggleButtonRelay gateEnabledRelay{"gateEnabled"};
   juce::WebToggleButtonRelay toneEqEnabledRelay{"toneEqEnabled"};
+  juce::WebToggleButtonRelay toneEqPreRelay{"toneEqPre"};
   juce::WebToggleButtonRelay normalizeRelay{"normalize"};
   juce::WebToggleButtonRelay calibrateInputRelay{"calibrateInput"};
   juce::WebSliderRelay inputCalibrationLevelRelay{"inputCalibrationLevel"};
@@ -92,6 +93,8 @@ private:
       *processor.parameters.getParameter("gateEnabled"), gateEnabledRelay, nullptr};
   juce::WebToggleButtonParameterAttachment toneEqEnabledWebAttachment{
       *processor.parameters.getParameter("toneEqEnabled"), toneEqEnabledRelay, nullptr};
+  juce::WebToggleButtonParameterAttachment toneEqPreWebAttachment{
+      *processor.parameters.getParameter("toneEqPre"), toneEqPreRelay, nullptr};
   juce::WebSliderParameterAttachment bassWebAttachment{
       *processor.parameters.getParameter("toneBass"), bassRelay, nullptr};
   juce::WebSliderParameterAttachment midWebAttachment{*processor.parameters.getParameter("toneMid"),

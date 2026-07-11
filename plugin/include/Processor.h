@@ -91,7 +91,7 @@ public:
 
   // Single entry point for all per-block user params. Supported params:
   // "enabled" (0/1), "inputGain", "outputGain", "mix" (normalized 0..1),
-  // "namSlimmableSize" (0.5 lite .. 1.0 full). Returns false for unknown
+  // "namSlimmableSize" (0.0 lite .. 1.0 full). Returns false for unknown
   // blocks/params. Bumps the chain revision.
   bool setBlockParam(const std::string& blockId, const juce::String& param, double value);
 
@@ -346,6 +346,7 @@ private:
   float cacheGateThreshold;
   bool cacheGateEnabled = true;
   bool cacheToneEqEnabled = true;
+  bool cacheToneEqPre = false;  // tone stack before (true) or after (false) the chain
   float cacheTargetLoudness;
   bool cacheNormalize;
   bool cacheCalibrateInput;
@@ -353,6 +354,7 @@ private:
 
   void updateEqCoefficients();
   void updateCachedParameters();
+  void processToneStack(juce::AudioBuffer<float>& buffer);
 
   juce::LinearSmoothedValue<float> normalizationGainSmoother;
 

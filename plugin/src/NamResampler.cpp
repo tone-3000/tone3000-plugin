@@ -83,7 +83,7 @@ bool NamResampler::isSlimmableModel() const {
 }
 
 void NamResampler::setSlimmableSize(double val) {
-    requestedSlimmableSize = juce::jlimit(0.5, 1.0, val);
+    requestedSlimmableSize = juce::jlimit(0.0, 1.0, val);
     if (!isPrepared)
         return;
     if (auto* slimmable = dynamic_cast<nam::SlimmableModel*>(wrappedModel.get()))
