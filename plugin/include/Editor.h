@@ -10,6 +10,7 @@
 #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
 #endif
 
+#include "DarkLookAndFeel.h"
 #include "EditorWebViewSetup.h"
 #include "Processor.h"
 #include "BinaryData.h"  // Contains embedded Web UI assets (HTML/CSS/JS)
@@ -29,6 +30,10 @@ public:
 
 private:
   TONE3000Processor& processor;
+
+  // One shared dark theme for JUCE-drawn surfaces (standalone settings dialog
+  // etc.); installed as the default LookAndFeel in the editor constructor.
+  juce::SharedResourcePointer<DarkLookAndFeel> darkLookAndFeel;
 
   //==============================================================================
   // WebView UI

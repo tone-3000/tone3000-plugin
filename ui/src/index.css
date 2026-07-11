@@ -4,6 +4,17 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  /* Native-app feel: no rubber-band overscroll, no double-tap zoom, no
+     accidental text selection or I-beam cursors. Text inputs opt back in. */
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
 body {
   font-family: 'Arial', monospace;
   -webkit-font-smoothing: antialiased;
@@ -12,6 +23,22 @@ body {
   color: #ffffff;
   font-weight: 600;
   letter-spacing: 0.5px;
+}
+
+input,
+textarea,
+[contenteditable='true'] {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+/* No ghost-image dragging of artwork/icons (also prevents drag-initiated
+   navigation attempts). */
+img,
+svg {
+  -webkit-user-drag: none;
+  user-drag: none;
 }
 
 #root {

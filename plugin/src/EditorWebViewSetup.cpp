@@ -3,6 +3,52 @@
 
 namespace EditorWebViewSetup {
 
+bool GuardedWebView::isAllowedUrl(const juce::String& url) {
+  // JUCE swaps in about:blank while the component is hidden; must stay allowed.
+  if (url == "about:blank")
+    return true;
+  // Embedded UI served through the resource provider (juce://juce.backend/ on
+  // macOS/Linux, https://juce.backend/ on Windows).
+  if (url.startsWith(juce::WebBrowserComponent::getResourceProviderRoot()))
+    return true;
+  // Vite dev server.
+  if (url.startsWith("http://localhost:") || url.startsWith("http://127.0.0.1:"))
+    return true;
+  // The OAuth Select flow navigates the view to tone3000.com and back.
+  const juce::String domain = juce::URL(url).getDomain();
+  if (url.startsWith("https://") &&
+      (domain == "tone3000.com" || domain.endsWith(".tone3000.com")))
+    return true;
+  return false;
+}
+
+bool GuardedWebView::pageAboutToLoad(const juce::String& newUrl) {
+  if (isAllowedUrl(newUrl))
+    return true;
+  juce::Logger::writeToLog("Blocked webview navigation to: " + newUrl);
+  if (newUrl.startsWith("http://") || newUrl.startsWith("https://"))
+    juce::URL(newUrl).launchInDefaultBrowser();
+  return false;
+}
+
+void GuardedWebView::newWindowAttemptingToLoad(const juce::String& newUrl) {
+  // target=_blank / window.open: never spawn a second view, use the system browser.
+  if (newUrl.startsWith("http://") || newUrl.startsWith("https://"))
+    juce::URL(newUrl).launchInDefaultBrowser();
+}
+
+// WebView2's cache/storage folder (Windows only). A stable per-user location
+// instead of the temp dir: temp cleaners can purge it mid-session, and a
+// persistent cache makes editor cold-opens faster. Matches the app-data root
+// used by PresetManager.
+static juce::File webView2DataFolder() {
+  const auto folder = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                          .getChildFile("TONE3000")
+                          .getChildFile("WebView2");
+  folder.createDirectory();
+  return folder;
+}
+
 juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* editor) {
   return juce::WebBrowserComponent::Options{}
       .withNativeIntegrationEnabled()
@@ -13,8 +59,13 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
       // .withKeepPageLoadedWhenBrowserIsHidden()
       .withBackend(juce::WebBrowserComponent::Options::Backend::webview2)
       .withWinWebView2Options(
-          juce::WebBrowserComponent::Options::WinWebView2{}.withUserDataFolder(
-              juce::File::getSpecialLocation(juce::File::tempDirectory)))
+          juce::WebBrowserComponent::Options::WinWebView2{}
+              .withUserDataFolder(webView2DataFolder())
+              // Match the UI theme before the first page paints (no white flash).
+              .withBackgroundColour(juce::Colours::black)
+              // No link-hover status bar / Edge error page inside the plugin.
+              .withStatusBarDisabled()
+              .withBuiltInErrorPageDisabled())
       .withResourceProvider(
           [editor](const auto& url) { return editor->getResource(url); },
           juce::URL{"http://localhost:5173/"}.getOrigin())

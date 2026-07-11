@@ -33,6 +33,12 @@ export const meterId = {
 const FLOOR_DB = -60;
 /** Quantize to 0.5 dB so imperceptible changes don't cause re-renders. */
 const QUANTIZE = 2;
+/**
+ * Minimum time between bridge fetches. rAF fires at display refresh (120 Hz on
+ * ProMotion), but ~30 Hz is indistinguishable for meter ballistics — this caps
+ * bridge traffic without changing perceived smoothness.
+ */
+const MIN_FETCH_INTERVAL_MS = 33;
 
 class MeterStore {
   private levels = new Map<string, number>();
@@ -67,13 +73,18 @@ class MeterStore {
 
   private start() {
     this.running = true;
+    let lastFetch = 0;
     const tick = async () => {
       if (!this.running) return;
-      try {
-        const res = await this.fetchLevels();
-        if (res && this.running) this.apply(res);
-      } catch {
-        // Backend not ready yet; keep polling.
+      const now = performance.now();
+      if (now - lastFetch >= MIN_FETCH_INTERVAL_MS) {
+        lastFetch = now;
+        try {
+          const res = await this.fetchLevels();
+          if (res && this.running) this.apply(res);
+        } catch {
+          // Backend not ready yet; keep polling.
+        }
       }
       if (this.running) requestAnimationFrame(tick);
     };

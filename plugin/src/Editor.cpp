@@ -18,8 +18,13 @@ void TONE3000Editor::parentHierarchyChanged() {
 }
 
 TONE3000Editor::TONE3000Editor(TONE3000Processor& p) : AudioProcessorEditor(&p), processor(p) {
-  mainWebView =
-      std::make_unique<juce::WebBrowserComponent>(EditorWebViewSetup::buildMainWebViewOptions(this));
+  // Dark-theme every JUCE-drawn surface (standalone audio settings dialog,
+  // dialog backgrounds). The web UI itself is unaffected. SharedResourcePointer
+  // keeps one instance across plugin instances in the same process.
+  juce::LookAndFeel::setDefaultLookAndFeel(&darkLookAndFeel.get());
+
+  mainWebView = std::make_unique<EditorWebViewSetup::GuardedWebView>(
+      EditorWebViewSetup::buildMainWebViewOptions(this));
 
   // Attach the WebView synchronously so it inherits the editor's NSView/NSWindow
   // as soon as the editor is parented. Deferring this via callAsync was
