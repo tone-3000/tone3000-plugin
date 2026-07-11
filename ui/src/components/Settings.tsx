@@ -1,15 +1,16 @@
-import React, { useCallback, useState } from 'react';
-import {
-  X as XIcon,
-  Settings as SettingsIcon,
-  Volume2,
-  ClipboardCopy,
-  FolderOpen,
-} from 'lucide-react';
-import { ToggleControl } from './ToggleControl';
+import React, { useCallback, useEffect, useState } from 'react';
+import { X as XIcon, ArrowLeft, Info, ChevronDown } from 'lucide-react';
 import { useParameter } from '../hooks/useParameter';
 import { useFunction } from '../hooks/useFunction';
 import type { InputMode } from '../types/chain';
+
+/**
+ * Settings: full-window takeover with a main screen (section cards that open
+ * the JUCE audio settings or the Advanced sub-screen) and an Advanced screen
+ * (normalization / calibration / diagnostics). Audio settings — including
+ * the input channel picker — only exist in the standalone app; hosts manage
+ * routing and buffers themselves.
+ */
 
 interface SettingsProps {
   isOpen: boolean;
@@ -21,10 +22,106 @@ interface SettingsProps {
 }
 
 const INPUT_MODE_OPTIONS: { value: InputMode; label: string }[] = [
-  { value: 'input1', label: 'INPUT 1' },
-  { value: 'input2', label: 'INPUT 2' },
-  { value: 'stereo', label: 'STEREO' },
+  { value: 'input1', label: 'Input 1 (mono)' },
+  { value: 'input2', label: 'Input 2 (mono)' },
+  { value: 'stereo', label: 'Stereo (inputs 1 + 2)' },
 ];
+
+const MUTED = 'rgba(235, 235, 245, 0.60)';
+const SUBTLE = 'rgba(235, 235, 245, 0.40)';
+const FIELD_BORDER = '1px solid rgba(84, 84, 88, 0.65)';
+
+const sectionLabelStyle: React.CSSProperties = {
+  fontSize: '15px',
+  fontWeight: 600,
+  color: '#ffffff',
+};
+
+const descriptionStyle: React.CSSProperties = {
+  fontSize: '13px',
+  color: MUTED,
+  margin: '6px 0 0',
+  lineHeight: 1.45,
+};
+
+const ctaButtonStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '12px 16px',
+  borderRadius: '10px',
+  border: '1px solid #ffffff',
+  backgroundColor: 'transparent',
+  color: '#ffffff',
+  fontSize: '15px',
+  cursor: 'pointer',
+  textAlign: 'center',
+};
+
+const fieldLabelStyle: React.CSSProperties = {
+  fontSize: '12px',
+  color: SUBTLE,
+  display: 'block',
+  marginBottom: '6px',
+};
+
+/** Grayscale pill switch (iOS-style, on brand: black/white/gray only). */
+const PillToggle: React.FC<{ value: boolean; onChange: (value: boolean) => void }> = ({
+  value,
+  onChange,
+}) => (
+  <button
+    role="switch"
+    aria-checked={value}
+    onClick={() => onChange(!value)}
+    style={{
+      width: '44px',
+      height: '26px',
+      borderRadius: '13px',
+      border: 'none',
+      padding: '2px',
+      cursor: 'pointer',
+      backgroundColor: value ? '#ffffff' : '#2C2C2E',
+      display: 'flex',
+      justifyContent: value ? 'flex-end' : 'flex-start',
+      flexShrink: 0,
+      transition: 'background-color 0.15s ease',
+    }}
+  >
+    <span
+      style={{
+        width: '22px',
+        height: '22px',
+        borderRadius: '50%',
+        backgroundColor: value ? '#000000' : '#8D8D93',
+        transition: 'background-color 0.15s ease',
+      }}
+    />
+  </button>
+);
+
+/** Section label with a pill toggle on the right, description underneath. */
+const ToggleRow: React.FC<{
+  label: string;
+  description: React.ReactNode;
+  value: boolean;
+  onChange: (value: boolean) => void;
+  children?: React.ReactNode;
+}> = ({ label, description, value, onChange, children }) => (
+  <div style={{ marginBottom: '32px' }}>
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '16px',
+      }}
+    >
+      <span style={sectionLabelStyle}>{label}</span>
+      <PillToggle value={value} onChange={onChange} />
+    </div>
+    <p style={descriptionStyle}>{description}</p>
+    {children}
+  </div>
+);
 
 export const Settings: React.FC<SettingsProps> = ({
   isOpen,
@@ -33,7 +130,8 @@ export const Settings: React.FC<SettingsProps> = ({
   inputMode,
   onSetInputMode,
 }) => {
-  // Use JUCE parameters for all settings
+  const [screen, setScreen] = useState<'main' | 'advanced'>('main');
+
   const [normalizationEnabled, setNormalizationEnabled] = useParameter('normalize', 'toggle');
   const [calibrationEnabled, setCalibrationEnabled] = useParameter('calibrateInput', 'toggle');
   const [dbuValueNormalized, setDbuValueNormalized] = useParameter(
@@ -41,16 +139,14 @@ export const Settings: React.FC<SettingsProps> = ({
     'slider'
   );
 
-  // Convert between normalized (0-1) and actual dBu values (-60 to +60 dBu)
-  // JUCE WebView normalizes all slider parameters to 0-1 regardless of their defined range
-  const dbuValue = dbuValueNormalized * 120 - 60; // Convert 0-1 to -60 to +60
+  // Convert between normalized (0-1) and actual dBu values (-60 to +60 dBu):
+  // JUCE WebView normalizes all slider parameters to 0-1 regardless of range.
+  const dbuValue = dbuValueNormalized * 120 - 60;
   const setDbuValue = (value: number) => {
-    const normalized = (value + 60) / 120; // Convert -60 to +60 to 0-1
-    setDbuValueNormalized(Math.max(0, Math.min(1, normalized))); // Clamp to 0-1
+    const normalized = (value + 60) / 120;
+    setDbuValueNormalized(Math.max(0, Math.min(1, normalized)));
   };
 
-  // State to track if we're in standalone mode
-  const [isStandalone, setIsStandalone] = useState<boolean | null>(null);
   const showAudioSettings = useFunction<boolean>('showAudioSettings');
 
   // Diagnostics: forward the on-disk log so users can share it for debugging.
@@ -70,23 +166,221 @@ export const Settings: React.FC<SettingsProps> = ({
     setTimeout(() => setLogStatus(null), 3000);
   }, [revealLogs]);
 
-  // Open native audio settings dialog (standalone only)
-  const handleOpenAudioSettings = useCallback(async () => {
-    try {
-      const result = await showAudioSettings.invoke();
-      // If result is false, we're not in standalone mode
-      if (result === false) {
-        setIsStandalone(false);
-      } else {
-        setIsStandalone(true);
-      }
-    } catch (error) {
-      console.error('Failed to open audio settings:', error);
-      setIsStandalone(false);
-    }
-  }, [showAudioSettings]);
+  // Always land on the main screen when (re)opened.
+  useEffect(() => {
+    if (isOpen) setScreen('main');
+  }, [isOpen]);
 
   if (!isOpen) return null;
+
+  const header = (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '28px',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        {screen === 'advanced' && (
+          <button
+            onClick={() => setScreen('main')}
+            title="Back to settings"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#ffffff',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              padding: 0,
+            }}
+          >
+            <ArrowLeft size={20} />
+          </button>
+        )}
+        <span style={{ fontSize: '22px', fontWeight: 700, color: '#ffffff' }}>
+          {screen === 'advanced' ? 'Advanced' : 'Settings'}
+        </span>
+      </div>
+      <button
+        onClick={onClose}
+        title="Close settings"
+        style={{
+          background: 'transparent',
+          border: 'none',
+          color: MUTED,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          padding: '4px',
+        }}
+      >
+        <XIcon size={20} />
+      </button>
+    </div>
+  );
+
+  const mainScreen = (
+    <>
+      {standalone && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '10px',
+            marginBottom: '32px',
+          }}
+        >
+          <Info size={16} style={{ color: MUTED, flexShrink: 0, marginTop: '1px' }} />
+          <p style={{ ...descriptionStyle, margin: 0 }}>
+            Experiencing latency? Lower your "Audio Buffer Size" to 256 samples or less in Audio
+            Settings.
+          </p>
+        </div>
+      )}
+
+      {standalone && (
+        <div style={{ marginBottom: '36px' }}>
+          <span style={sectionLabelStyle}>Audio Settings</span>
+          <p style={{ ...descriptionStyle, marginBottom: '16px' }}>
+            Configure your interface, sample rate, buffer size and more.
+          </p>
+
+          {/* Input channel picker: interfaces expose stereo pairs even when
+              only one jack is plugged in, so pick what carries signal. */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={fieldLabelStyle}>Input Channels</label>
+            <div style={{ position: 'relative' }}>
+              <select
+                value={inputMode}
+                onChange={(e) => onSetInputMode(e.target.value as InputMode)}
+                style={{
+                  width: '100%',
+                  padding: '12px 40px 12px 16px',
+                  borderRadius: '10px',
+                  border: FIELD_BORDER,
+                  backgroundColor: '#111111',
+                  color: '#ffffff',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  appearance: 'none',
+                  WebkitAppearance: 'none',
+                }}
+              >
+                {INPUT_MODE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                size={16}
+                style={{
+                  position: 'absolute',
+                  right: '14px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: MUTED,
+                  pointerEvents: 'none',
+                }}
+              />
+            </div>
+            <p style={{ ...descriptionStyle, fontSize: '12px' }}>
+              Use a mono input for a single instrument cable (e.g. guitar into input 1).
+            </p>
+          </div>
+
+          <button onClick={() => showAudioSettings.invoke()} style={ctaButtonStyle}>
+            Audio Settings
+          </button>
+        </div>
+      )}
+
+      <div style={{ marginBottom: '36px' }}>
+        <span style={sectionLabelStyle}>Advanced</span>
+        <p style={{ ...descriptionStyle, marginBottom: '16px' }}>
+          Normalization, calibration and diagnostics.
+        </p>
+        <button onClick={() => setScreen('advanced')} style={ctaButtonStyle}>
+          Advanced
+        </button>
+      </div>
+    </>
+  );
+
+  const advancedScreen = (
+    <>
+      <ToggleRow
+        label="Normalization"
+        description="Levels output across different NAM captures for consistent volume. Recommended on."
+        value={normalizationEnabled}
+        onChange={setNormalizationEnabled}
+      />
+
+      <ToggleRow
+        label="Calibration"
+        description="Matches your input level to the level the capture was made at, for accurate gain staging."
+        value={calibrationEnabled}
+        onChange={setCalibrationEnabled}
+      >
+        {calibrationEnabled && (
+          <div style={{ marginTop: '14px' }}>
+            <input
+              type="number"
+              value={dbuValue.toFixed(1)}
+              onChange={(e) => setDbuValue(parseFloat(e.target.value) || 0)}
+              step="0.1"
+              min="-60"
+              max="60"
+              placeholder="Value"
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                padding: '12px 16px',
+                borderRadius: '10px',
+                border: FIELD_BORDER,
+                backgroundColor: '#111111',
+                color: '#ffffff',
+                fontSize: '14px',
+              }}
+            />
+            <p style={{ ...descriptionStyle, fontSize: '12px', marginTop: '8px' }}>
+              Set the dBu level that matches your DAW's max digital level. Typical values: +12 dBu
+              (professional gear), +4 dBu (semi-pro).
+            </p>
+          </div>
+        )}
+      </ToggleRow>
+
+      <div>
+        <span style={sectionLabelStyle}>Diagnostics</span>
+        <p style={{ ...descriptionStyle, marginBottom: '16px' }}>
+          Copy recent diagnostic logs to the clipboard and paste them into a bug report.
+        </p>
+        <button onClick={handleCopyLogs} style={ctaButtonStyle}>
+          Copy Logs
+        </button>
+        <button
+          onClick={handleRevealLogs}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: SUBTLE,
+            fontSize: '12px',
+            cursor: 'pointer',
+            padding: '10px 0 0',
+          }}
+        >
+          Reveal log file on disk
+        </button>
+        {logStatus && (
+          <p style={{ ...descriptionStyle, fontSize: '12px', marginTop: '8px' }}>{logStatus}</p>
+        )}
+      </div>
+    </>
+  );
 
   return (
     <div
@@ -96,430 +390,21 @@ export const Settings: React.FC<SettingsProps> = ({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.9)',
-        backdropFilter: 'blur(4px)',
+        backgroundColor: '#000000',
         zIndex: 2000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        overflow: 'auto',
       }}
     >
       <div
         style={{
-          backgroundColor: '#000000',
-          border: '2px solid #ffffff',
-          borderRadius: '8px',
-          width: '400px',
-          maxWidth: '90vw',
-          maxHeight: '80vh',
-          overflow: 'auto',
+          maxWidth: '460px',
+          margin: '0 auto',
+          padding: '48px 24px 40px',
           color: '#ffffff',
         }}
       >
-        {/* Header */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '20px',
-            borderBottom: '1px solid #ffffff',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              fontSize: '18px',
-              fontWeight: 'bold',
-            }}
-          >
-            <SettingsIcon size={20} />
-            Settings
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'transparent',
-              border: '1px solid #ffffff',
-              color: '#ffffff',
-              width: '32px',
-              height: '32px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              borderRadius: '4px',
-            }}
-          >
-            <XIcon size={18} />
-          </button>
-        </div>
-
-        {/* Settings Content */}
-        <div style={{ padding: '20px' }}>
-          {/* Input channel mode (standalone only): interfaces expose stereo
-              pairs even when only one jack is plugged in, so the user picks
-              what actually carries signal. */}
-          {standalone && (
-            <div style={{ marginBottom: '30px' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: '8px',
-                }}
-              >
-                <label
-                  style={{
-                    fontSize: '16px',
-                    fontWeight: '500',
-                    color: '#ffffff',
-                  }}
-                >
-                  Input
-                </label>
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'row',
-                    borderRadius: '4px',
-                    border: '1px solid #555555',
-                    overflow: 'hidden',
-                  }}
-                >
-                  {INPUT_MODE_OPTIONS.map((option, i) => (
-                    <button
-                      key={option.value}
-                      onClick={() => onSetInputMode(option.value)}
-                      style={{
-                        padding: '6px 12px',
-                        fontSize: '12px',
-                        border: 'none',
-                        borderLeft: i > 0 ? '1px solid #555555' : 'none',
-                        cursor: 'pointer',
-                        color: '#ffffff',
-                        letterSpacing: '0.04em',
-                        backgroundColor:
-                          inputMode === option.value ? 'rgba(235, 235, 245, 0.18)' : '#222222',
-                      }}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <p
-                style={{
-                  fontSize: '12px',
-                  color: '#cccccc',
-                  margin: 0,
-                  lineHeight: '1.4',
-                }}
-              >
-                Which input channel carries your signal. Use a mono input for a single
-                instrument cable (e.g. guitar into input 1); stereo uses both channels.
-              </p>
-            </div>
-          )}
-
-          {/* Normalization Setting */}
-          <div style={{ marginBottom: '30px' }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: '8px',
-              }}
-            >
-              <label
-                style={{
-                  fontSize: '16px',
-                  fontWeight: '500',
-                  color: '#ffffff',
-                }}
-              >
-                Normalization
-              </label>
-              <ToggleControl
-                label=""
-                value={normalizationEnabled}
-                onChange={setNormalizationEnabled}
-                accentColor="#0000ff"
-              />
-            </div>
-            <p
-              style={{
-                fontSize: '12px',
-                color: '#cccccc',
-                margin: 0,
-                lineHeight: '1.4',
-              }}
-            >
-              Automatically normalize audio levels for consistent output across different models.
-            </p>
-          </div>
-
-          {/* Calibration Setting */}
-          <div style={{ marginBottom: '20px' }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: '8px',
-              }}
-            >
-              <label
-                style={{
-                  fontSize: '16px',
-                  fontWeight: '500',
-                  color: '#ffffff',
-                }}
-              >
-                Calibration
-              </label>
-              <ToggleControl
-                label=""
-                value={calibrationEnabled}
-                onChange={setCalibrationEnabled}
-                accentColor="#ff0000"
-              />
-            </div>
-            <p
-              style={{
-                fontSize: '12px',
-                color: '#cccccc',
-                margin: '0 0 12px 0',
-                lineHeight: '1.4',
-              }}
-            >
-              Enable to match analog signal strength for accurate gain staging.
-              <br />
-              Set the dBu value that corresponds to your DAW's maximum digital level.
-            </p>
-
-            {/* dBu Input Field */}
-            {calibrationEnabled && (
-              <div
-                style={{
-                  marginTop: '12px',
-                  padding: '12px',
-                  backgroundColor: '#111111',
-                  border: '1px solid #333333',
-                  borderRadius: '4px',
-                }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    marginBottom: '8px',
-                  }}
-                >
-                  <label
-                    style={{
-                      fontSize: '14px',
-                      color: '#ffffff',
-                      minWidth: '80px',
-                    }}
-                  >
-                    dBu Value:
-                  </label>
-                  <input
-                    type="number"
-                    value={dbuValue.toFixed(1)}
-                    onChange={(e) => setDbuValue(parseFloat(e.target.value) || 0)}
-                    step="0.1"
-                    min="-60"
-                    max="60"
-                    style={{
-                      backgroundColor: '#222222',
-                      border: '1px solid #555555',
-                      color: '#ffffff',
-                      padding: '6px 10px',
-                      borderRadius: '4px',
-                      fontSize: '14px',
-                      width: '80px',
-                    }}
-                  />
-                  <span
-                    style={{
-                      fontSize: '14px',
-                      color: '#cccccc',
-                    }}
-                  >
-                    dBu
-                  </span>
-                </div>
-                <p
-                  style={{
-                    fontSize: '11px',
-                    color: '#999999',
-                    margin: 0,
-                    lineHeight: '1.3',
-                  }}
-                >
-                  Typical values: +12 dBu for professional gear, +4 dBu for semi-pro.
-                  <br />
-                  See NAM documentation for measurement instructions.
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Audio Settings (Standalone only) */}
-          <div
-            style={{
-              paddingTop: '20px',
-              borderTop: '1px solid #333333',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: '8px',
-              }}
-            >
-              <label
-                style={{
-                  fontSize: '16px',
-                  fontWeight: '500',
-                  color: '#ffffff',
-                }}
-              >
-                Audio Settings
-              </label>
-              <button
-                onClick={handleOpenAudioSettings}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '8px 16px',
-                  backgroundColor: '#222222',
-                  border: '1px solid #555555',
-                  borderRadius: '4px',
-                  color: '#ffffff',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                }}
-              >
-                <Volume2 size={16} />
-                Open
-              </button>
-            </div>
-            <p
-              style={{
-                fontSize: '12px',
-                color: '#cccccc',
-                margin: 0,
-                lineHeight: '1.4',
-              }}
-            >
-              Configure audio device, sample rate, and buffer size.
-              {isStandalone === true && (
-                <span style={{ color: '#88ff88', display: 'block', marginTop: '4px' }}>
-                  Use the menu bar: Options → Audio/MIDI Settings
-                </span>
-              )}
-              {isStandalone === false && (
-                <span style={{ color: '#ff6666', display: 'block', marginTop: '4px' }}>
-                  Only available in standalone mode. Your DAW manages audio settings.
-                </span>
-              )}
-            </p>
-          </div>
-
-          {/* Diagnostics */}
-          <div
-            style={{
-              paddingTop: '20px',
-              marginTop: '20px',
-              borderTop: '1px solid #333333',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: '8px',
-                gap: '8px',
-              }}
-            >
-              <label
-                style={{
-                  fontSize: '16px',
-                  fontWeight: '500',
-                  color: '#ffffff',
-                }}
-              >
-                Diagnostics
-              </label>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  onClick={handleCopyLogs}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '8px 16px',
-                    backgroundColor: '#222222',
-                    border: '1px solid #555555',
-                    borderRadius: '4px',
-                    color: '#ffffff',
-                    fontSize: '14px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <ClipboardCopy size={16} />
-                  Copy logs
-                </button>
-                <button
-                  onClick={handleRevealLogs}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '8px 16px',
-                    backgroundColor: '#222222',
-                    border: '1px solid #555555',
-                    borderRadius: '4px',
-                    color: '#ffffff',
-                    fontSize: '14px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <FolderOpen size={16} />
-                  Reveal
-                </button>
-              </div>
-            </div>
-            <p
-              style={{
-                fontSize: '12px',
-                color: '#cccccc',
-                margin: 0,
-                lineHeight: '1.4',
-              }}
-            >
-              Copy recent diagnostic logs to the clipboard (paste them into a bug report) or reveal
-              the log file on disk.
-              {logStatus && (
-                <span style={{ color: '#88ff88', display: 'block', marginTop: '4px' }}>
-                  {logStatus}
-                </span>
-              )}
-            </p>
-          </div>
-        </div>
+        {header}
+        {screen === 'advanced' ? advancedScreen : mainScreen}
       </div>
     </div>
   );
