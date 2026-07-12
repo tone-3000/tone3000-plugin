@@ -144,6 +144,30 @@ Built artefacts: **Debug** → `build/plugin/TONE3000_artefacts/Debug/VST3/TONE3
 
 ---
 
+## Linux runtime dependencies
+
+Unlike Windows (WebView2 statically linked) and macOS (WKWebView built into the OS), the Linux build renders its UI in the **system WebKitGTK**, which JUCE loads dynamically at runtime. If it's missing, the plugin window shows a **black screen**.
+
+Required runtime libraries: WebKitGTK **4.1** (or 4.0), GTK3, ALSA, FreeType.
+
+```sh
+# Ubuntu / Debian
+sudo apt install libwebkit2gtk-4.1-0
+
+# Fedora
+sudo dnf install webkit2gtk4.1
+
+# Arch
+sudo pacman -S webkit2gtk-4.1
+
+# openSUSE
+sudo zypper install libwebkit2gtk-4_1-0
+```
+
+The release tarball's `install.sh` checks for these automatically and offers to install anything missing (`./install.sh --check` to verify without installing).
+
+---
+
 ## Installing plugins with script
 
 From the repo root, run **`./script/cp-VST3.sh`** or **`./script/cp-AU.sh`** (macOS only) to copy the built plugin into your system plugin folder. Add `Debug` to install the Debug build: `./script/cp-VST3.sh Debug`. Then rescan plugins in your DAW. Other scripts: `create-dmg.sh` (macOS disk image), `install-webview2.ps1` (Windows WebView2, run once).

@@ -288,6 +288,7 @@ jobs:
           cp -r "$ARTEFACTS/VST3/TONE3000.vst3" "$STAGE/"
           cp "$ARTEFACTS/Standalone/TONE3000" "$STAGE/"
           install -m 755 script/installer/linux/install.sh "$STAGE/install.sh"
+          install -m 644 script/installer/linux/README.txt "$STAGE/README.txt"
           tar -czf "build/${PKG}.tar.gz" -C build "$PKG"
           echo "Created build/${PKG}.tar.gz"
 
