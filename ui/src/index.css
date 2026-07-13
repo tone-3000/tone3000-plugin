@@ -90,6 +90,20 @@ body.dragging {
   -ms-user-select: none !important;
 }
 
+/* Gallery tile action header: revealed on hover via CSS (not JS state), so
+   it survives re-renders and drag drops without flickering off. The
+   .tile-chrome-visible variant (drag ghost) keeps it shown. */
+.gallery-tile .tile-chrome {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+.gallery-tile:hover .tile-chrome,
+.gallery-tile.tile-chrome-visible .tile-chrome {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 /* Custom Range Slider Styles */
 input[type='range'] {
   -webkit-appearance: none;

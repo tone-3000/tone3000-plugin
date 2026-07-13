@@ -85,6 +85,9 @@ const TileSurface: React.FC<{
 
   return (
     <div
+      // Header reveals on :hover via CSS (see index.css) — JS hover state
+      // dies across drag re-renders. The inert drag ghost pins it visible.
+      className={actions ? 'gallery-tile' : 'gallery-tile tile-chrome-visible'}
       onClick={actions?.onOpen}
       title={tone.title}
       style={{
@@ -98,12 +101,12 @@ const TileSurface: React.FC<{
         boxSizing: 'border-box',
       }}
     >
-      {/* Tone image (dimmed when the block is powered off) */}
+      {/* Tone image (dimmed while powered off or still loading) */}
       <div
         style={{
           position: 'absolute',
           inset: 0,
-          opacity: enabled ? 1 : 0.35,
+          opacity: enabled && block.loaded ? 1 : 0.35,
           transition: 'opacity 0.2s ease',
         }}
       >
@@ -119,41 +122,24 @@ const TileSurface: React.FC<{
         )}
       </div>
 
-      {/* Loading scrim while the model downloads/prepares */}
-      {!block.loaded && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: 'rgba(0, 0, 0, 0.55)',
-            color: MUTED,
-            fontSize: '10px',
-            letterSpacing: '0.08em',
-            pointerEvents: 'none',
-          }}
-        >
-          LOADING…
-        </div>
-      )}
-
-      {/* Translucent strip under the quick actions so they read on any art */}
+      {/* Translucent strip under the quick actions so they read on any art.
+          Fades in with the header (opacity only — never a layout change). */}
       <div
+        className="tile-chrome"
         style={{
           position: 'absolute',
           top: 0,
           left: 0,
           right: 0,
           height: '32px',
-          background: 'rgba(116, 116, 128, 0.18)',
+          background: 'rgba(0, 0, 0, 0.35)',
           pointerEvents: 'none',
         }}
       />
 
-      {/* Top quick-action bar: drag / power / swap / trash */}
+      {/* Top quick-action bar: drag / power / swap / trash (hover-revealed) */}
       <div
+        className="tile-chrome"
         style={{
           position: 'absolute',
           top: 0,

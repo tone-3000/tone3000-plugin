@@ -3,12 +3,18 @@ import {
   DndContext,
   DragOverlay,
   closestCenter,
+  pointerWithin,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
-import type { DragEndEvent, DragOverEvent, DragStartEvent } from '@dnd-kit/core';
+import type {
+  CollisionDetection,
+  DragEndEvent,
+  DragOverEvent,
+  DragStartEvent,
+} from '@dnd-kit/core';
 import {
   SortableContext,
   arrayMove,
@@ -42,6 +48,8 @@ import { isInsertSlot } from '../types/chain';
  */
 
 const TILE_SIZE = 224;
+/** Stereo shows two lanes, so its tiles shrink to fit the fixed height. */
+const STEREO_TILE_SIZE = 176;
 /** Gap between tiles — the visible run of each connector line. */
 const TILE_GAP = 24;
 /** Vertical gap between the two stereo lanes. */
@@ -90,7 +98,7 @@ const addTileRouting = (index: number, count: number): AddTileRouting => {
  * when a slot is vacated mid-drag; only the line runs inside the gaps are
  * visible otherwise. Mirrors the old vertical chain's background exactly.
  */
-const GhostRail: React.FC<{ slots: number }> = ({ slots }) => (
+const GhostRail: React.FC<{ slots: number; tileSize: number }> = ({ slots, tileSize }) => (
   <div
     style={{
       position: 'absolute',
@@ -107,8 +115,8 @@ const GhostRail: React.FC<{ slots: number }> = ({ slots }) => (
       <span
         key={`${i}-rail`}
         style={{
-          width: `${TILE_SIZE}px`,
-          height: `${TILE_SIZE}px`,
+          width: `${tileSize}px`,
+          height: `${tileSize}px`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -120,9 +128,9 @@ const GhostRail: React.FC<{ slots: number }> = ({ slots }) => (
           <div
             style={{
               position: 'absolute',
-              left: `${-(TILE_GAP + TILE_SIZE / 2 - RAIL_CIRCLE_RADIUS)}px`,
+              left: `${-(TILE_GAP + tileSize / 2 - RAIL_CIRCLE_RADIUS)}px`,
               top: '50%',
-              width: `${TILE_GAP + TILE_SIZE - 2 * RAIL_CIRCLE_RADIUS}px`,
+              width: `${TILE_GAP + tileSize - 2 * RAIL_CIRCLE_RADIUS}px`,
               height: '1px',
               backgroundColor: '#ffffff',
             }}
@@ -139,17 +147,18 @@ const GhostRail: React.FC<{ slots: number }> = ({ slots }) => (
     the classic pair of add tiles joined by a connector, like the old chain. */
 const GalleryLane: React.FC<{
   items: ChainItem[];
+  tileSize: number;
   onOpen: (blockId: string) => void;
   onAdd: () => void;
   onRemove: (id: string) => void;
   onSwap: (id: string) => void;
   onSetEnabled: (id: string, enabled: boolean) => void;
-}> = ({ items, onOpen, onAdd, onRemove, onSwap, onSetEnabled }) => {
+}> = ({ items, tileSize, onOpen, onAdd, onRemove, onSwap, onSetEnabled }) => {
   const emptyLane = items.length === 1 && isInsertSlot(items[0]);
 
   return (
     <div style={{ position: 'relative', width: 'max-content' }}>
-      <GhostRail slots={emptyLane ? 2 : items.length} />
+      <GhostRail slots={emptyLane ? 2 : items.length} tileSize={tileSize} />
       <SortableContext
         items={items.map((item) => item.blockId)}
         strategy={horizontalListSortingStrategy}
@@ -170,14 +179,14 @@ const GalleryLane: React.FC<{
                   land in an empty lane; its twin is purely decorative. */}
               <AddTile
                 id={items[0].blockId}
-                size={TILE_SIZE}
+                size={tileSize}
                 routing="right"
                 draggable={false}
                 onClick={onAdd}
               />
               <AddTile
                 id={`${items[0].blockId}-pair`}
-                size={TILE_SIZE}
+                size={tileSize}
                 routing="left"
                 draggable={false}
                 droppable={false}
@@ -190,7 +199,7 @@ const GalleryLane: React.FC<{
                 <AddTile
                   key={item.blockId}
                   id={item.blockId}
-                  size={TILE_SIZE}
+                  size={tileSize}
                   routing={addTileRouting(index, items.length)}
                   onClick={onAdd}
                 />
@@ -198,7 +207,7 @@ const GalleryLane: React.FC<{
                 <GalleryBlock
                   key={item.blockId}
                   block={item}
-                  size={TILE_SIZE}
+                  size={tileSize}
                   onOpen={onOpen}
                   onRemove={onRemove}
                   onSwap={onSwap}
@@ -214,7 +223,7 @@ const GalleryLane: React.FC<{
 };
 
 /**
- * Left rail for stereo: per-lane pan knobs (each centered on its lane), with
+ * Right rail for stereo: per-lane pan knobs (each centered on its lane), with
  * the link toggle and whole-chain swap on the seam between them. Constant-
  * power pan positions (0 = hard left, 1 = hard right): Pan L covers hard
  * left..center on a half track, Pan R center..hard right. Linked (default)
@@ -254,7 +263,7 @@ const StereoPanRail: React.FC<{ onSwapChains: () => void }> = ({ onSwapChains })
         flexDirection: 'column',
         alignItems: 'center',
         alignSelf: 'center',
-        height: `${TILE_SIZE * 2 + LANE_GAP}px`,
+        height: `${STEREO_TILE_SIZE * 2 + LANE_GAP}px`,
         flexShrink: 0,
       }}
     >
@@ -332,6 +341,17 @@ const EdgeFade: React.FC<{ side: 'left' | 'right' }> = ({ side }) => (
   />
 );
 
+/**
+ * Prefer the tile actually under the pointer; only fall back to nearest-
+ * center when the pointer is in a gap. closestCenter alone oscillates during
+ * cross-lane drags: right after a move shifts the layout, stale rects can
+ * make the "nearest" target flip back to the old lane.
+ */
+const galleryCollisionDetection: CollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args);
+  return pointerCollisions.length > 0 ? pointerCollisions : closestCenter(args);
+};
+
 type Lanes = Record<ChainSide, ChainItem[]>;
 
 export const ChainView: React.FC<ChainViewProps> = ({
@@ -364,10 +384,22 @@ export const ChainView: React.FC<ChainViewProps> = ({
    */
   const [lanes, setLanes] = useState<Lanes>({ left: chain, right: chainRight ?? [] });
   const draggingRef = useRef(false);
+  /**
+   * Set for one frame after a cross-lane move. dnd-kit fires another
+   * onDragOver as soon as the layout shifts, before it has re-measured — and
+   * with stale rects the nearest target can resolve back to the old lane,
+   * bouncing the item between lanes forever (React's "maximum update depth"
+   * crash). Cross-lane moves are skipped until the next animation frame,
+   * when the new measurements are in.
+   */
+  const justCrossedRef = useRef(false);
 
   useEffect(() => {
     if (!draggingRef.current) setLanes({ left: chain, right: chainRight ?? [] });
-  }, [chain, chainRight]);
+    requestAnimationFrame(() => {
+      justCrossedRef.current = false;
+    });
+  }, [chain, chainRight, lanes]);
 
   const sensors = useSensors(
     // A few px of travel before a drag engages: plain clicks (open detail,
@@ -400,8 +432,9 @@ export const ChainView: React.FC<ChainViewProps> = ({
   };
 
   // Live cross-lane reflow: as the pointer crosses into the other lane, move
-  // the dragged item into it (before the tile it hovers) so that lane parts
-  // to make room, exactly like a same-lane sort.
+  // the dragged item into it so that lane parts to make room, exactly like a
+  // same-lane sort. Which side of the hovered tile it lands on follows the
+  // dragged tile's center.
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
     if (!over) return;
@@ -410,16 +443,27 @@ export const ChainView: React.FC<ChainViewProps> = ({
     const from = laneOf(activeId);
     const to = laneOf(overId);
     if (!from || !to || from === to) return;
+    if (justCrossedRef.current) return;
 
     // Insert slots are lane anchors and stay put.
     const item = lanes[from].find((i) => i.blockId === activeId);
     if (!item || isInsertSlot(item)) return;
 
+    // Land after the hovered tile when the dragged tile's center has passed
+    // the hovered tile's center.
+    const activeRect = active.rect.current.translated;
+    const landAfter =
+      activeRect != null &&
+      activeRect.left + activeRect.width / 2 > over.rect.left + over.rect.width / 2;
+
+    justCrossedRef.current = true;
     setLanes((prev) => {
       const fromItems = prev[from].filter((i) => i.blockId !== activeId);
       const toItems = [...prev[to]];
       const overIndex = toItems.findIndex((i) => i.blockId === overId);
-      toItems.splice(overIndex === -1 ? toItems.length : overIndex, 0, item);
+      const insertIndex =
+        overIndex === -1 ? toItems.length : overIndex + (landAfter ? 1 : 0);
+      toItems.splice(insertIndex, 0, item);
       return { ...prev, [from]: fromItems, [to]: toItems };
     });
   };
@@ -538,10 +582,12 @@ export const ChainView: React.FC<ChainViewProps> = ({
   }
 
   const stereo = chainRight != null;
+  const tileSize = stereo ? STEREO_TILE_SIZE : TILE_SIZE;
 
   const lane = (side: ChainSide) => (
     <GalleryLane
       items={lanes[side]}
+      tileSize={tileSize}
       onOpen={setDetailBlockId}
       onAdd={() => onAddModel(side)}
       onRemove={onRemoveBlock}
@@ -562,10 +608,9 @@ export const ChainView: React.FC<ChainViewProps> = ({
         padding: '0 24px',
       }}
     >
-      {stereo && <StereoPanRail onSwapChains={onSwapChains} />}
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={galleryCollisionDetection}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
@@ -595,6 +640,11 @@ export const ChainView: React.FC<ChainViewProps> = ({
                 minWidth: '100%',
                 padding: `0 ${EDGE_FADE_WIDTH}px`,
                 boxSizing: 'border-box',
+                // Vertical centering can leave the content on a half-pixel
+                // boundary; keeping it on its own composited layer snaps it
+                // to the pixel grid once, so tiles can't shift ~1px when a
+                // drag or opacity fade promotes them to their own layers.
+                transform: 'translateZ(0)',
               }}
             >
               {lane('left')}
@@ -604,10 +654,14 @@ export const ChainView: React.FC<ChainViewProps> = ({
           <EdgeFade side="left" />
           <EdgeFade side="right" />
         </div>
-        <DragOverlay>
-          {activeDrag && <GalleryTileGhost item={activeDrag} size={TILE_SIZE} />}
+        {/* No drop animation: the default one measures the original element
+            before the optimistic lane commit paints, so the ghost would fly
+            back to the old slot before the tile appears at the new one. */}
+        <DragOverlay dropAnimation={null}>
+          {activeDrag && <GalleryTileGhost item={activeDrag} size={tileSize} />}
         </DragOverlay>
       </DndContext>
+      {stereo && <StereoPanRail onSwapChains={onSwapChains} />}
     </div>
   );
 };

@@ -204,7 +204,7 @@ export const Plugin: React.FC = () => {
         position: 'relative',
         width: '100%',
         maxWidth: '100%',
-        height: '710px',
+        height: '600px',
         display: 'flex',
         flexDirection: 'column',
         backgroundColor: '#000000',
@@ -362,7 +362,7 @@ export const Plugin: React.FC = () => {
             backgroundColor: '#000000',
           }}
         >
-          <DbMeter type="input" stereo={stereoInput} height={482} />
+          <DbMeter type="input" stereo={stereoInput} height={400} />
         </div>
 
         {/* Chain View - Center (gallery lanes scroll horizontally inside) */}
@@ -410,7 +410,7 @@ export const Plugin: React.FC = () => {
           <DbMeter
             type="output"
             stereo={stereoOutput}
-            height={482}
+            height={400}
             labelsPosition="right"
           />
         </div>
