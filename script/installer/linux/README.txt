@@ -28,6 +28,8 @@ Required: WebKitGTK 4.1 (or 4.0), GTK3, ALSA, FreeType.
   Fedora:           sudo dnf install webkit2gtk4.1
   Arch:             sudo pacman -S webkit2gtk-4.1
   openSUSE:         sudo zypper install libwebkit2gtk-4_1-0
+  Atomic Fedora (Silverblue/Kinoite/Bazzite):
+                    sudo rpm-ostree install webkit2gtk4.1  (then reboot)
 
 Troubleshooting
 ---------------

@@ -443,6 +443,28 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             completion(editor->processor.getTunerReading());
           })
       .withNativeFunction(
+          "startAutoBalance",
+          [editor](const juce::Array<juce::var>&,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            // Arm a one-shot L/R output energy measurement; the UI polls
+            // pollAutoBalance for progress/result (see Processor.h).
+            editor->processor.startAutoBalance();
+            completion(juce::var(true));
+          })
+      .withNativeFunction(
+          "cancelAutoBalance",
+          [editor](const juce::Array<juce::var>&,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            editor->processor.cancelAutoBalance();
+            completion(juce::var(true));
+          })
+      .withNativeFunction(
+          "pollAutoBalance",
+          [editor](const juce::Array<juce::var>&,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            completion(editor->processor.pollAutoBalance());
+          })
+      .withNativeFunction(
           "webLog",
           [](const juce::Array<juce::var>& args,
              juce::WebBrowserComponent::NativeFunctionCompletion completion) {

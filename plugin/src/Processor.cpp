@@ -928,6 +928,15 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   if (!cacheToneEqPre)
     processToneStack(buffer);
 
+  // ##########
+  // Auto balance listening pass: accumulate L/R energy right before the
+  // output stage, so the measured difference is exactly what the balance
+  // trim must correct. Zero work unless a measurement is armed.
+  // ##########
+  if (autoBalanceState.load(std::memory_order_acquire) ==
+      static_cast<int>(AutoBalanceState::Listening))
+    runAutoBalanceStage(buffer, numSamples);
+
   // ###########
   // Output gain per channel (level ±12 dB, balance trim ±12 dB opposing).
   // Per-channel output meters ride the same pass.
@@ -981,6 +990,129 @@ float TONE3000Processor::getInputMeterLevel() const {
 
 float TONE3000Processor::getOutputMeterLevel() const {
   return std::max(outputMeterLevelL.load(), outputMeterLevelR.load());
+}
+
+// #########################
+// AUTO BALANCE (one-shot L/R energy match)
+// #########################
+// The workflow is "click =, play for a couple of seconds, done": we measure
+// the user's real playing rather than injecting a test signal, because NAM
+// chains are nonlinear (a noise burst at an arbitrary level says little about
+// how the chains compare under a real pick attack) and a burst would be
+// audible at the output. Continuous AGC is deliberately avoided — it would
+// chase the player's dynamics instead of correcting a static chain mismatch.
+
+namespace {
+// Signal gate: blocks whose loudest channel is below this RMS don't count
+// toward the measurement, so silence between phrases can't dilute it.
+constexpr double kAutoBalanceFloorRms = 3.16e-3;  // −50 dBFS
+constexpr double kAutoBalanceMeasureSeconds = 2.0;
+constexpr double kAutoBalanceTimeoutSeconds = 15.0;
+}  // namespace
+
+void TONE3000Processor::startAutoBalance() {
+  // Reset is safe from the message thread: the audio thread only touches the
+  // accumulators while the state is Listening, and the release-store below
+  // publishes the zeroed accumulators together with the state flip.
+  autoBalanceSumL = 0.0;
+  autoBalanceSumR = 0.0;
+  autoBalanceSamples.store(0, std::memory_order_relaxed);
+  autoBalanceElapsed.store(0, std::memory_order_relaxed);
+  autoBalanceState.store(static_cast<int>(AutoBalanceState::Listening),
+                         std::memory_order_release);
+}
+
+void TONE3000Processor::cancelAutoBalance() {
+  autoBalanceState.store(static_cast<int>(AutoBalanceState::Idle), std::memory_order_release);
+}
+
+// Audio thread, pre-output-gain, only while Listening.
+void TONE3000Processor::runAutoBalanceStage(const juce::AudioBuffer<float>& buffer,
+                                            int numSamples) {
+  autoBalanceElapsed.fetch_add(numSamples, std::memory_order_relaxed);
+
+  if (buffer.getNumChannels() >= 2) {
+    const float* l = buffer.getReadPointer(0);
+    const float* r = buffer.getReadPointer(1);
+    double sumL = 0.0, sumR = 0.0;
+    for (int i = 0; i < numSamples; ++i) {
+      sumL += static_cast<double>(l[i]) * l[i];
+      sumR += static_cast<double>(r[i]) * r[i];
+    }
+
+    const double blockRms = std::sqrt(std::max(sumL, sumR) / std::max(1, numSamples));
+    if (blockRms > kAutoBalanceFloorRms) {
+      autoBalanceSumL += sumL;
+      autoBalanceSumR += sumR;
+      autoBalanceSamples.fetch_add(numSamples, std::memory_order_relaxed);
+    }
+  }
+
+  const auto needed =
+      static_cast<juce::int64>(kAutoBalanceMeasureSeconds * hostSampleRate);
+  if (autoBalanceSamples.load(std::memory_order_relaxed) >= needed) {
+    const double energyL = std::max(autoBalanceSumL, 1.0e-12);
+    const double energyR = std::max(autoBalanceSumR, 1.0e-12);
+    // Positive = left louder. The balance trim corrects up to ±12 dB per
+    // channel (±24 dB relative), so clamp to what the knob can express.
+    autoBalanceMatchedDb = static_cast<float>(
+        juce::jlimit(-24.0, 24.0, 10.0 * std::log10(energyL / energyR)));
+    autoBalanceState.store(static_cast<int>(AutoBalanceState::Measured),
+                           std::memory_order_release);
+  } else if (autoBalanceElapsed.load(std::memory_order_relaxed) >
+             static_cast<juce::int64>(kAutoBalanceTimeoutSeconds * hostSampleRate)) {
+    autoBalanceState.store(static_cast<int>(AutoBalanceState::TimedOut),
+                           std::memory_order_release);
+  }
+}
+
+// Message thread (UI poll). Applying the result here — not on the audio
+// thread — keeps setValueNotifyingHost off the RT path and on the thread
+// hosts expect parameter gestures from.
+juce::var TONE3000Processor::pollAutoBalance() {
+  juce::DynamicObject::Ptr obj = new juce::DynamicObject();
+  const auto state =
+      static_cast<AutoBalanceState>(autoBalanceState.load(std::memory_order_acquire));
+
+  switch (state) {
+    case AutoBalanceState::Listening: {
+      const auto needed =
+          static_cast<juce::int64>(kAutoBalanceMeasureSeconds * hostSampleRate);
+      const auto samples = autoBalanceSamples.load(std::memory_order_relaxed);
+      obj->setProperty("state", "listening");
+      obj->setProperty("progress",
+                       juce::jlimit(0.0, 1.0, static_cast<double>(samples) /
+                                                  static_cast<double>(std::max<juce::int64>(1, needed))));
+      break;
+    }
+    case AutoBalanceState::Measured: {
+      // diff dB → knob position: the trim applies ∓diff/2 to L and ±diff/2 to
+      // R, and the knob maps (value − 0.5) · 24 to the per-channel trim dB.
+      const float diffDb = autoBalanceMatchedDb;
+      const float balance = juce::jlimit(0.0f, 1.0f, 0.5f + diffDb / 48.0f);
+      if (auto* param = parameters.getParameter("outputBalance")) {
+        param->beginChangeGesture();
+        param->setValueNotifyingHost(balance);
+        param->endChangeGesture();
+      }
+      autoBalanceState.store(static_cast<int>(AutoBalanceState::Idle),
+                             std::memory_order_release);
+      obj->setProperty("state", "done");
+      obj->setProperty("matchedDb", diffDb);
+      juce::Logger::writeToLog("[AutoBalance] Matched L/R (diff " +
+                               juce::String(diffDb, 2) + " dB)");
+      break;
+    }
+    case AutoBalanceState::TimedOut:
+      autoBalanceState.store(static_cast<int>(AutoBalanceState::Idle),
+                             std::memory_order_release);
+      obj->setProperty("state", "timeout");
+      break;
+    case AutoBalanceState::Idle:
+      obj->setProperty("state", "idle");
+      break;
+  }
+  return juce::var(obj.get());
 }
 
 // #########################

@@ -178,6 +178,19 @@ public:
   void setTunerEnabled(bool enabled) { tuner.setEnabled(enabled); }
   juce::var getTunerReading() { return tuner.getReading(); }
 
+  // ── Auto balance: one-shot L/R output energy match ──
+  // startAutoBalance() arms a "listening" measurement: the audio thread
+  // accumulates pre-output-gain L/R energy (silence-gated) until ~2 s of real
+  // signal has been heard, then pollAutoBalance() — called from the message
+  // thread by the UI's poll loop — maps the measured dB difference onto the
+  // outputBalance parameter (host-automatable, so undo/presets come free).
+  // One-shot measurement of real playing is the industry norm here:
+  // continuous AGC fights the player's dynamics, and an injected noise burst
+  // is both audible and unrepresentative for nonlinear amp chains.
+  void startAutoBalance();
+  void cancelAutoBalance();
+  juce::var pollAutoBalance();  // { state: "idle"|"listening"|"done"|"timeout", matchedDb? }
+
   // Location of the on-disk diagnostic log. Single source of truth shared by the
   // FileLogger setup and the UI's "copy/reveal logs" actions so they never drift.
   // macOS: ~/Library/Logs/TONE3000/TONE3000.log, Windows: %APPDATA%/TONE3000/TONE3000.log
@@ -403,6 +416,24 @@ private:
 
   // Tuner pitch detection (fed from processBlock when enabled)
   TunerDetector tuner;
+
+  // ── Auto balance measurement state ──
+  // Lock-free audio↔message thread handshake. The audio thread only touches
+  // the accumulators while `autoBalanceState == Listening`; the message
+  // thread only reads them after flipping the state to Measured, so the two
+  // sides never race on the same phase.
+  enum class AutoBalanceState : int { Idle = 0, Listening, Measured, TimedOut };
+  std::atomic<int> autoBalanceState{static_cast<int>(AutoBalanceState::Idle)};
+  // Sum of squares per channel. Written by the audio thread only; plain
+  // doubles are safe because the message thread reads them strictly after
+  // observing state == Measured (the atomic state store/load provides the
+  // release/acquire ordering). The sample counters are atomic because the UI
+  // polls them for progress while the audio thread is still accumulating.
+  double autoBalanceSumL = 0.0, autoBalanceSumR = 0.0;
+  std::atomic<juce::int64> autoBalanceSamples{0};
+  std::atomic<juce::int64> autoBalanceElapsed{0};  // wall samples since arm, for the timeout
+  float autoBalanceMatchedDb = 0.0f;               // result, valid in Measured
+  void runAutoBalanceStage(const juce::AudioBuffer<float>& buffer, int numSamples);
 
   // Post-chain spread engine (one instance + one parameter set serves both
   // the mono double and the stereo chain shift — the modes are exclusive).

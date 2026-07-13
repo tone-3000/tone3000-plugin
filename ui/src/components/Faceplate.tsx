@@ -1,7 +1,8 @@
-import React from 'react';
-import { Power } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Equal, Power } from 'lucide-react';
 import { KnobControl } from './KnobControl';
 import { useParameter } from '../hooks/useParameter';
+import { useFunction } from '../hooks/useFunction';
 
 /**
  * Bottom faceplate: main input/output gain, gate and the global 3-band tone
@@ -82,6 +83,67 @@ const PreButton: React.FC<{ on: boolean; onClick: () => void }> = ({ on, onClick
 );
 
 /**
+ * Auto balance: one-shot L/R energy match. Click arms a listening
+ * measurement on the native side — play for ~2 s and the measured dB
+ * difference is written into the outputBalance parameter (the Bal knob
+ * visibly moves). Yellow while listening; click again to cancel; times out
+ * after 15 s of silence.
+ */
+const AutoBalanceButton: React.FC = () => {
+  const start = useFunction<boolean>('startAutoBalance');
+  const cancel = useFunction<boolean>('cancelAutoBalance');
+  const poll = useFunction<{ state: string; matchedDb?: number }>('pollAutoBalance');
+  const [listening, setListening] = useState(false);
+
+  useEffect(() => {
+    if (!listening) return;
+    const id = setInterval(async () => {
+      const res = await poll.invoke();
+      if (res && res.state !== 'listening') setListening(false);
+    }, 200);
+    return () => clearInterval(id);
+  }, [listening, poll.invoke]);
+
+  const handleClick = async () => {
+    if (listening) {
+      await cancel.invoke();
+      setListening(false);
+    } else {
+      await start.invoke();
+      setListening(true);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      title={
+        listening
+          ? 'Listening — play for a couple of seconds (click to cancel)'
+          : 'Auto balance: match L/R output level'
+      }
+      style={{
+        width: '18px',
+        height: '18px',
+        borderRadius: '5px',
+        border: 'none',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'pointer',
+        padding: 0,
+        flexShrink: 0,
+        color: listening ? '#FFFF00' : '#8D8D93',
+        backgroundColor: listening ? 'rgba(255, 255, 0, 0.12)' : 'rgba(235, 235, 245, 0.18)',
+        transform: `translateY(${KNOB_CENTER_OFFSET}px)`,
+      }}
+    >
+      <Equal size={11} />
+    </button>
+  );
+};
+
+/**
  * Main gain knob for a stage (input/output). When the stage runs stereo, a
  * smaller balance knob joins it: center = no effect, off-center trims L/R
  * against each other by up to ±12 dB on top of the main level.
@@ -92,7 +154,9 @@ const MainGainKnob: React.FC<{
   stereo: boolean;
   /** Which side of the main knob the balance knob sits on. */
   balanceSide: 'left' | 'right';
-}> = ({ label, type, stereo, balanceSide }) => {
+  /** Show the auto-balance (=) button next to the balance knob. */
+  autoBalance?: boolean;
+}> = ({ label, type, stereo, balanceSide, autoBalance = false }) => {
   const [level, setLevel] = useParameter(`${type}Level`, 'slider');
   const [balance, setBalance] = useParameter(`${type}Balance`, 'slider');
 
@@ -119,11 +183,16 @@ const MainGainKnob: React.FC<{
       innerColor="#1C1C1E"
     />
   );
+  // The (=) button always sits on the outer edge, keeping Bal next to its
+  // main knob: [=][Bal][knob] on the left side, [knob][Bal][=] on the right.
+  const autoBtn = autoBalance ? <AutoBalanceButton /> : null;
   return (
     <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end', gap: '10px' }}>
+      {balanceSide === 'left' && autoBtn}
       {balanceSide === 'left' && balanceKnob}
       {knob}
       {balanceSide === 'right' && balanceKnob}
+      {balanceSide === 'right' && autoBtn}
     </div>
   );
 };
@@ -134,9 +203,17 @@ interface FaceplateProps {
   stereoOutput: boolean;
   /** Plugin is fed a real stereo source — shows the input balance knob. */
   stereoInput: boolean;
+  /** Two independent chains are running (stereo mode) — shows the auto
+      balance button. Mono-mode spread doesn't need it: both channels carry
+      the same chain, so their energy already matches. */
+  stereoChains: boolean;
 }
 
-export const Faceplate: React.FC<FaceplateProps> = ({ stereoOutput, stereoInput }) => {
+export const Faceplate: React.FC<FaceplateProps> = ({
+  stereoOutput,
+  stereoInput,
+  stereoChains,
+}) => {
   const [toneBass, setToneBass] = useParameter('toneBass', 'slider');
   const [toneMid, setToneMid] = useParameter('toneMid', 'slider');
   const [toneTreble, setToneTreble] = useParameter('toneTreble', 'slider');
@@ -251,7 +328,13 @@ export const Faceplate: React.FC<FaceplateProps> = ({ stereoOutput, stereoInput 
         </div>
       </div>
 
-      <MainGainKnob label="Output" type="output" stereo={stereoOutput} balanceSide="left" />
+      <MainGainKnob
+        label="Output"
+        type="output"
+        stereo={stereoOutput}
+        balanceSide="left"
+        autoBalance={stereoChains}
+      />
     </div>
   );
 };

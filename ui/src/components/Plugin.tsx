@@ -428,7 +428,11 @@ export const Plugin: React.FC = () => {
       )}
 
       {/* Pinned faceplate at the bottom (gains, gate, tone stack) */}
-      <Faceplate stereoOutput={stereoOutput} stereoInput={stereoInput} />
+      <Faceplate
+        stereoOutput={stereoOutput}
+        stereoInput={stereoInput}
+        stereoChains={stereoEnabled}
+      />
 
       {/* Settings Modal */}
       <Settings

@@ -81,6 +81,39 @@ if (APPLE)
     endif()
 endif()
 
+# Linux: JUCE dlopens WebKitGTK/GTK by their UNVERSIONED .so names
+# (libwebkit2gtk-4.1.so etc.), but distros only ship those symlinks in the
+# -dev packages — end-user systems have only the versioned SONAMEs
+# (libwebkit2gtk-4.1.so.0). The dlopen fails silently, webKitIsAvailable
+# stays false, every webview call becomes a no-op, and the plugin renders a
+# black screen. Patch the names to the upstream SONAMEs, which exist on every
+# install (the -dev packages depend on the runtime libs, so this covers both).
+# Idempotent configure-time patch, same rationale as the macOS patches above.
+# Applied on every platform (the file only compiles on Linux; patching it
+# elsewhere is harmless and keeps the libs/juce tree identical everywhere).
+set(_juce_webview_linux "${LIB_DIR}/juce/modules/juce_gui_extra/native/juce_WebBrowserComponent_linux.cpp")
+if (EXISTS "${_juce_webview_linux}")
+    file(READ "${_juce_webview_linux}" _juce_webview_linux_src)
+    if (NOT _juce_webview_linux_src MATCHES "T3K_WEBKIT_SONAME")
+        string(REPLACE "\"libwebkit2gtk-4.1.so\""        "\"libwebkit2gtk-4.1.so.0\""         _juce_webview_linux_src "${_juce_webview_linux_src}")
+        string(REPLACE "\"libjavascriptcoregtk-4.1.so\"" "\"libjavascriptcoregtk-4.1.so.0\""  _juce_webview_linux_src "${_juce_webview_linux_src}")
+        string(REPLACE "\"libsoup-3.0.so\""              "\"libsoup-3.0.so.0\""               _juce_webview_linux_src "${_juce_webview_linux_src}")
+        string(REPLACE "\"libwebkit2gtk-4.0.so\""        "\"libwebkit2gtk-4.0.so.37\""        _juce_webview_linux_src "${_juce_webview_linux_src}")
+        string(REPLACE "\"libjavascriptcoregtk-4.0.so\"" "\"libjavascriptcoregtk-4.0.so.18\"" _juce_webview_linux_src "${_juce_webview_linux_src}")
+        string(REPLACE "\"libsoup-2.4.so\""              "\"libsoup-2.4.so.1\""               _juce_webview_linux_src "${_juce_webview_linux_src}")
+        string(REPLACE "\"libgtk-3.so\""                 "\"libgtk-3.so.0\""                  _juce_webview_linux_src "${_juce_webview_linux_src}")
+        string(REPLACE "\"libglib-2.0.so\""              "\"libglib-2.0.so.0\" /* T3K_WEBKIT_SONAME */" _juce_webview_linux_src "${_juce_webview_linux_src}")
+        if (NOT _juce_webview_linux_src MATCHES "T3K_WEBKIT_SONAME")
+            message(FATAL_ERROR
+                "T3K_WEBKIT_SONAME: failed to patch ${_juce_webview_linux}. "
+                "The JUCE source layout likely changed in this version. Update the patch "
+                "anchors in CMakeLists.txt.")
+        endif()
+        file(WRITE "${_juce_webview_linux}" "${_juce_webview_linux_src}")
+        message(STATUS "Patched JUCE WebBrowserComponent: WebKitGTK loaded by SONAME (works without -dev packages)")
+    endif()
+endif()
+
 # Standalone: the "Audio input is muted" notification banner is hard-coded to
 # lightgoldenrodyellow with black text inside JUCE's StandaloneFilterWindow and
 # is not themeable via LookAndFeel. Restyle it to the brand palette: black bar,

@@ -107,6 +107,23 @@ check_and_install_deps() {
     echo "  Note: without WebKitGTK the plugin window will render as a black screen."
   fi
 
+  # Atomic/immutable distros (Fedora Silverblue/Kinoite, Bazzite, ...): no dnf;
+  # packages are layered with rpm-ostree and only appear after a reboot, so
+  # print instructions instead of auto-running anything.
+  if [[ -f /run/ostree-booted ]]; then
+    local pkgs=()
+    [[ "$missing" == *webkit* ]]   && pkgs+=("webkit2gtk4.1")
+    [[ "$missing" == *gtk3* ]]     && pkgs+=("gtk3")
+    [[ "$missing" == *alsa* ]]     && pkgs+=("alsa-lib")
+    [[ "$missing" == *freetype* ]] && pkgs+=("freetype")
+    echo ""
+    echo "This is an atomic (ostree-based) system. Layer the packages and reboot:"
+    echo "  sudo rpm-ostree install ${pkgs[*]}"
+    echo "  systemctl reboot"
+    echo "Then re-run './install.sh --check' to verify."
+    return 1
+  fi
+
   local cmd
   cmd="$(install_command "$missing")"
   # Already root (containers, some minimal systems): no sudo needed/available.
