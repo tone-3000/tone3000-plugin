@@ -300,28 +300,32 @@ bool TONE3000Processor::removeChainBlock(const std::string& blockId) {
 bool TONE3000Processor::reorderChainBlocks(const std::vector<std::string>& newOrder) {
   juce::ScopedLock lock(chainMutex);
 
-  // Reorder the chain currently being edited (Left in mono mode, active side in stereo).
-  auto& chain = activeChain();
-
-  if (newOrder.size() != chain.size()) {
-    DBG("Failed to reorder chain blocks: size mismatch (got "
-        << newOrder.size() << ", expected " << chain.size() << ")");
-    return false;
-  }
-
-  // Validate that newOrder is a permutation of the chain up front, so history
-  // is only recorded for reorders that actually happen.
-  {
-    std::vector<std::string> chainIds, orderIds = newOrder;
+  // Both lanes render at once now, so the target chain is inferred from the
+  // ids themselves: the order must be a permutation of exactly one lane.
+  // (Block ids are globally unique across both chains.)
+  auto isPermutationOf = [](const std::vector<std::unique_ptr<ChainBlock>>& chain,
+                            const std::vector<std::string>& order) {
+    if (order.size() != chain.size())
+      return false;
+    std::vector<std::string> chainIds, orderIds = order;
     for (const auto& block : chain)
       chainIds.push_back(block->id);
     std::sort(chainIds.begin(), chainIds.end());
     std::sort(orderIds.begin(), orderIds.end());
-    if (chainIds != orderIds) {
-      DBG("Failed to reorder chain blocks: order is not a permutation of the chain");
-      return false;
-    }
+    return chainIds == orderIds;
+  };
+
+  std::vector<std::unique_ptr<ChainBlock>>* target = nullptr;
+  if (isPermutationOf(chainBlocks, newOrder))
+    target = &chainBlocks;
+  else if (isPermutationOf(rightChainBlocks, newOrder))
+    target = &rightChainBlocks;
+
+  if (target == nullptr) {
+    DBG("Failed to reorder chain blocks: order is not a permutation of either chain");
+    return false;
   }
+  auto& chain = *target;
 
   pushChainHistory();
 
@@ -341,6 +345,43 @@ bool TONE3000Processor::reorderChainBlocks(const std::vector<std::string>& newOr
   chain = std::move(reorderedBlocks);
   bumpChainRevision();
   DBG("Successfully reordered chain blocks (including insert block)");
+  return true;
+}
+
+bool TONE3000Processor::moveBlockToChain(const std::string& blockId, const juce::String& side,
+                                         int index) {
+  juce::ScopedLock lock(chainMutex);
+
+  if (!stereoEnabled.load()) {
+    DBG("moveBlockToChain: only valid in stereo mode");
+    return false;
+  }
+  if (blockId == INSERT_BLOCK_ID || blockId == INSERT_BLOCK_ID_RIGHT) {
+    DBG("moveBlockToChain: insert slots stay in their lane");
+    return false;
+  }
+
+  auto& target = (side == "right") ? rightChainBlocks : chainBlocks;
+  auto& source = (side == "right") ? chainBlocks : rightChainBlocks;
+
+  auto it = std::find_if(source.begin(), source.end(),
+                         [&blockId](const std::unique_ptr<ChainBlock>& block) {
+                           return block && block->id == blockId;
+                         });
+  if (it == source.end()) {
+    DBG("moveBlockToChain: block not found in the other lane: " << blockId);
+    return false;
+  }
+
+  pushChainHistory();
+
+  auto block = std::move(*it);
+  source.erase(it);
+  index = juce::jlimit(0, static_cast<int>(target.size()), index);
+  target.insert(target.begin() + index, std::move(block));
+
+  bumpChainRevision();
+  DBG("Moved block " << blockId << " to " << side << " chain at index " << index);
   return true;
 }
 
@@ -473,58 +514,62 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
   }
 
   juce::DynamicObject::Ptr state = new juce::DynamicObject();
-  juce::Array<juce::var> chainArray;
 
-  // Report the chain currently being edited. Cast away const for the helper; we only read.
-  const auto& chain = const_cast<TONE3000Processor*>(this)->activeChain();
+  // Serialize one lane. Both lanes render at once in the UI now (mono shows
+  // just the left), so the payload always ships them separately.
+  auto serializeChain = [](const std::vector<std::unique_ptr<ChainBlock>>& chain) {
+    juce::Array<juce::var> chainArray;
+    for (const auto& block : chain) {
+      juce::DynamicObject::Ptr item = new juce::DynamicObject();
+      item->setProperty("blockId", juce::String(block->id));
 
-  for (const auto& block : chain) {
-    juce::DynamicObject::Ptr item = new juce::DynamicObject();
-    item->setProperty("blockId", juce::String(block->id));
+      if (block->type == ChainBlockType::INSERT) {
+        item->setProperty("kind", "insert");
+        chainArray.add(juce::var(item.get()));
+        continue;
+      }
 
-    if (block->type == ChainBlockType::INSERT) {
-      item->setProperty("kind", "insert");
+      item->setProperty("kind", "tone");
+
+      // Full tone metadata, nested (not spread) so runtime fields never collide
+      // with API fields and the UI has one obvious place to read tone info from.
+      juce::var toneVar = juce::JSON::parse(block->toneJson);
+      if (!toneVar.isObject()) {
+        // Corrupt/legacy toneJson: emit a minimal stand-in so the UI's `tone`
+        // field is always an object.
+        juce::DynamicObject::Ptr fallback = new juce::DynamicObject();
+        fallback->setProperty("id", block->toneId);
+        fallback->setProperty("title", "Tone " + juce::String(block->toneId));
+        fallback->setProperty("models", juce::Array<juce::var>());
+        toneVar = juce::var(fallback.get());
+      }
+      item->setProperty("tone", toneVar);
+
+      item->setProperty("activeModelId", block->activeModelId);
+      item->setProperty("loaded", block->loaded);
+      item->setProperty("namSlimmable", block->type == ChainBlockType::NAM &&
+                                            block->namIsSlimmable && block->loaded);
+
+      // User-editable params, grouped so a future "shareable chain preset" can
+      // serialize { tone ref, activeModelId, params } per block verbatim.
+      juce::DynamicObject::Ptr params = new juce::DynamicObject();
+      params->setProperty("enabled", block->enabled);
+      params->setProperty("inputGain", block->inputGainNormalized);
+      params->setProperty("outputGain", block->outputGainNormalized);
+      params->setProperty("mix", block->mixNormalized);
+      params->setProperty("namSlimmableSize", block->namSlimmableSize);
+      params->setProperty("eq", block->eq.toVar());
+      item->setProperty("params", juce::var(params.get()));
+
       chainArray.add(juce::var(item.get()));
-      continue;
     }
-
-    item->setProperty("kind", "tone");
-
-    // Full tone metadata, nested (not spread) so runtime fields never collide
-    // with API fields and the UI has one obvious place to read tone info from.
-    juce::var toneVar = juce::JSON::parse(block->toneJson);
-    if (!toneVar.isObject()) {
-      // Corrupt/legacy toneJson: emit a minimal stand-in so the UI's `tone`
-      // field is always an object.
-      juce::DynamicObject::Ptr fallback = new juce::DynamicObject();
-      fallback->setProperty("id", block->toneId);
-      fallback->setProperty("title", "Tone " + juce::String(block->toneId));
-      fallback->setProperty("models", juce::Array<juce::var>());
-      toneVar = juce::var(fallback.get());
-    }
-    item->setProperty("tone", toneVar);
-
-    item->setProperty("activeModelId", block->activeModelId);
-    item->setProperty("loaded", block->loaded);
-    item->setProperty("namSlimmable",
-                      block->type == ChainBlockType::NAM && block->namIsSlimmable && block->loaded);
-
-    // User-editable params, grouped so a future "shareable chain preset" can
-    // serialize { tone ref, activeModelId, params } per block verbatim.
-    juce::DynamicObject::Ptr params = new juce::DynamicObject();
-    params->setProperty("enabled", block->enabled);
-    params->setProperty("inputGain", block->inputGainNormalized);
-    params->setProperty("outputGain", block->outputGainNormalized);
-    params->setProperty("mix", block->mixNormalized);
-    params->setProperty("namSlimmableSize", block->namSlimmableSize);
-    params->setProperty("eq", block->eq.toVar());
-    item->setProperty("params", juce::var(params.get()));
-
-    chainArray.add(juce::var(item.get()));
-  }
+    return chainArray;
+  };
 
   state->setProperty("revision", static_cast<int>(revision));
-  state->setProperty("chain", chainArray);
+  state->setProperty("chain", serializeChain(chainBlocks));
+  if (stereoEnabled.load())
+    state->setProperty("chainRight", serializeChain(rightChainBlocks));
   // History flags ride along with the chain state: they only ever change
   // together with a revision bump (mutation, undo/redo or a state load).
   state->setProperty("canUndo", chainHistory.canUndo());

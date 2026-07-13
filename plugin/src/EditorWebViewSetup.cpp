@@ -191,6 +191,19 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             }
           })
       .withNativeFunction(
+          "moveBlockToChain",
+          [editor](const juce::Array<juce::var>& args,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            // (blockId, "left" | "right", targetIndex) — drag across lanes.
+            if (args.size() >= 3) {
+              completion(juce::var(editor->processor.moveBlockToChain(
+                  args[0].toString().toStdString(), args[1].toString(),
+                  static_cast<int>(args[2]))));
+            } else {
+              completion(juce::var(false));
+            }
+          })
+      .withNativeFunction(
           "setBlockParam",
           [editor](const juce::Array<juce::var>& args,
                    juce::WebBrowserComponent::NativeFunctionCompletion completion) {

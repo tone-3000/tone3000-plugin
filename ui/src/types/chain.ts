@@ -148,7 +148,10 @@ export interface ChainState {
   inputMode: InputMode;
   /** Host sample rate — the EQ curve math needs it to mirror the audio exactly. */
   sampleRate: number;
+  /** Left lane (the only lane in mono mode). */
   chain: ChainItem[];
+  /** Right lane — present only while stereo mode is on. */
+  chainRight?: ChainItem[];
 }
 
 /** Standalone input channel mode (mirrors Processor::InputMode). */

@@ -21,10 +21,10 @@ import { isEqFlat } from '../types/chain';
 import { CARD_WIDTH, CARD_HEIGHT } from './chainLayout';
 
 const HEADER_HEIGHT = 40;
-const IMAGE_SIZE = 92;
+const IMAGE_SIZE = 200;
 const KNOB_SIZE = 30;
 /** Mini meter height in the side rails (meter sits centered above its knob). */
-const RAIL_METER_HEIGHT = 88;
+const RAIL_METER_HEIGHT = 180;
 
 const MUTED = 'rgba(235, 235, 245, 0.60)';
 const BORDER = '1px solid rgba(84, 84, 88, 0.65)';
@@ -117,6 +117,8 @@ interface ChainBlockProps {
   onResetEq: (blockId: string) => void;
   /** Host sample rate, for the EQ curve math. */
   sampleRate: number;
+  /** Hide the reorder grip (detail takeover — nothing to reorder there). */
+  dragHandle?: boolean;
 }
 
 export const ChainBlock: React.FC<ChainBlockProps> = ({
@@ -130,6 +132,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
   onSetEqEnabled,
   onResetEq,
   sampleRate,
+  dragHandle = true,
 }) => {
   const { blockId, tone, params } = block;
 
@@ -260,14 +263,16 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
           borderBottom: BORDER,
         }}
       >
-        <div
-          {...attributes}
-          {...listeners}
-          title="Drag to reorder"
-          style={{ ...headerButtonStyle, cursor: 'grab', color: '#8D8D93' }}
-        >
-          <GripVertical size={16} />
-        </div>
+        {dragHandle && (
+          <div
+            {...attributes}
+            {...listeners}
+            title="Drag to reorder"
+            style={{ ...headerButtonStyle, cursor: 'grab', color: '#ffffff' }}
+          >
+            <GripVertical size={16} />
+          </div>
+        )}
 
         <button
           onClick={handleToggleEnabled}
@@ -415,14 +420,14 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
         <button
           onClick={() => onSwap(blockId)}
           title="Swap tone"
-          style={headerButtonStyle}
+          style={{ ...headerButtonStyle, color: '#ffffff' }}
         >
           <ArrowLeftRight size={14} />
         </button>
         <button
           onClick={() => onRemove(blockId)}
           title="Remove block"
-          style={headerButtonStyle}
+          style={{ ...headerButtonStyle, color: '#ffffff' }}
         >
           <Trash2 size={14} />
         </button>
@@ -466,7 +471,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
             flexShrink: 0,
           }}
         >
-          <BlockMeter meterId={meterId.blockIn(blockId)} height={RAIL_METER_HEIGHT} />
+          <BlockMeter meterId={meterId.blockIn(blockId)} length={RAIL_METER_HEIGHT} />
           <KnobControl
             label="In"
             value={inputGain}
@@ -633,7 +638,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
             flexShrink: 0,
           }}
         >
-          <BlockMeter meterId={meterId.blockOut(blockId)} height={RAIL_METER_HEIGHT} />
+          <BlockMeter meterId={meterId.blockOut(blockId)} length={RAIL_METER_HEIGHT} />
           <KnobControl
             label="Out"
             value={outputGain}

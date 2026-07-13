@@ -53,6 +53,7 @@ export function useChainState() {
       switchModel: backend.getPluginFunction('switchModel'),
       removeChainBlock: backend.getPluginFunction('removeChainBlock'),
       reorderChainBlocks: backend.getPluginFunction('reorderChainBlocks'),
+      moveBlockToChain: backend.getPluginFunction('moveBlockToChain'),
       setBlockParam: backend.getPluginFunction('setBlockParam'),
       setBlockEqBand: backend.getPluginFunction('setBlockEqBand'),
       setBlockEqEnabled: backend.getPluginFunction('setBlockEqEnabled'),
@@ -122,6 +123,11 @@ export function useChainState() {
         run('removeChainBlock', () => native.removeChainBlock(blockId)),
       reorderBlocks: (orderedIds: string[]) =>
         run('reorderChainBlocks', () => native.reorderChainBlocks(orderedIds)),
+      /** Move a block into the other lane at the given index (stereo drag). */
+      moveBlockToChain: (blockId: string, side: ChainSide, index: number) =>
+        run<boolean>('moveBlockToChain', () =>
+          native.moveBlockToChain(blockId, side, index)
+        ),
       setStereoMode: (enabled: boolean) =>
         run('setStereoMode', () => native.setStereoMode(enabled)),
       setActiveSide: (side: ChainSide) =>
@@ -165,6 +171,7 @@ export function useChainState() {
 
   return {
     chain: state.chain,
+    chainRight: state.chainRight ?? null,
     canUndo: state.canUndo ?? false,
     canRedo: state.canRedo ?? false,
     activePreset: state.preset ?? null,
