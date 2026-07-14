@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeftRight, Check, Power, RotateCcw, Share, Trash2 } from 'lucide-react';
 import { KnobControl } from './KnobControl';
+import { gainDbScale } from './knobScale';
 import { ModelSelect } from './ModelSelect';
 import { BlockMeter } from './BlockMeter';
 import { BlockEqView } from './BlockEqView';
@@ -11,7 +12,16 @@ import type { BlockParamName, ToneBlock } from '../types/chain';
 import { isEqFlat } from '../types/chain';
 import { CARD_WIDTH, CARD_HEIGHT } from './chainLayout';
 import { AvatarFallback } from './AvatarFallback';
-import { BORDER, HIGHLIGHT, MUTED, SURFACE, SURFACE_RAISED, iconButtonStyle } from './theme';
+import {
+  ACTIVE_OUTLINE,
+  BORDER,
+  GRAY,
+  HIGHLIGHT,
+  MUTED,
+  SURFACE,
+  SURFACE_RAISED,
+  iconButtonStyle,
+} from './theme';
 
 const HEADER_HEIGHT = 40;
 const IMAGE_SIZE = 200;
@@ -22,42 +32,36 @@ const RAIL_METER_HEIGHT = 180;
 const headerButtonStyle = iconButtonStyle(24);
 
 /** EQ menu glyphs, drawn for legibility at header size (two clean faders /
-    one bell curve with its drag dot) rather than generic icon-set art. */
-const EqSlidersIcon: React.FC<{ color: string }> = ({ color }) => (
-  <svg width={14} height={14} viewBox="0 0 14 14">
-    <line
-      x1={4.5}
-      y1={1.5}
-      x2={4.5}
-      y2={12.5}
-      stroke={color}
-      strokeWidth={1.4}
-      strokeLinecap="round"
-    />
-    <line
-      x1={9.5}
-      y1={1.5}
-      x2={9.5}
-      y2={12.5}
-      stroke={color}
-      strokeWidth={1.4}
-      strokeLinecap="round"
-    />
-    <circle cx={4.5} cy={9} r={2} fill={color} />
-    <circle cx={9.5} cy={4.5} r={2} fill={color} />
+    one bell curve with its drag dot) rather than generic icon-set art.
+    `currentColor` + 1.5 stroke + round caps to match Lucide at this size. */
+const EqSlidersIcon: React.FC = () => (
+  <svg
+    width={14}
+    height={14}
+    viewBox="0 0 14 14"
+    stroke="currentColor"
+    strokeWidth={1.5}
+    strokeLinecap="round"
+  >
+    <line x1={4.5} y1={1.5} x2={4.5} y2={12.5} />
+    <line x1={9.5} y1={1.5} x2={9.5} y2={12.5} />
+    <circle cx={4.5} cy={9} r={2} fill="currentColor" stroke="none" />
+    <circle cx={9.5} cy={4.5} r={2} fill="currentColor" stroke="none" />
   </svg>
 );
 
-const EqCurveIcon: React.FC<{ color: string }> = ({ color }) => (
-  <svg width={16} height={14} viewBox="0 0 16 14">
-    <path
-      d="M1 11 C5 11 5.5 3 8 3 C10.5 3 11 11 15 11"
-      fill="none"
-      stroke={color}
-      strokeWidth={1.5}
-      strokeLinecap="round"
-    />
-    <circle cx={8} cy={3} r={1.8} fill={color} />
+const EqCurveIcon: React.FC = () => (
+  <svg
+    width={16}
+    height={14}
+    viewBox="0 0 16 14"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.5}
+    strokeLinecap="round"
+  >
+    <path d="M1 11 C5 11 5.5 3 8 3 C10.5 3 11 11 15 11" />
+    <circle cx={8} cy={3} r={1.8} fill="currentColor" stroke="none" />
   </svg>
 );
 
@@ -234,7 +238,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
           title={enabled ? 'Turn block off' : 'Turn block on'}
           style={{
             ...headerButtonStyle,
-            color: enabled ? '#ffffff' : '#8D8D93',
+            color: enabled ? '#ffffff' : GRAY,
             backgroundColor: enabled ? 'transparent' : HIGHLIGHT,
           }}
         >
@@ -302,10 +306,11 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
                 title="Sliders view"
                 style={{
                   ...headerGroupButtonStyle,
+                  color: eqView === 'sliders' ? '#ffffff' : MUTED,
                   backgroundColor: eqView === 'sliders' ? HIGHLIGHT : 'transparent',
                 }}
               >
-                <EqSlidersIcon color={eqView === 'sliders' ? '#ffffff' : MUTED} />
+                <EqSlidersIcon />
               </button>
               <button
                 onClick={() => setEqView('graph')}
@@ -313,19 +318,20 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
                 style={{
                   ...headerGroupButtonStyle,
                   borderLeft: BORDER,
+                  color: eqView === 'graph' ? '#ffffff' : MUTED,
                   backgroundColor: eqView === 'graph' ? HIGHLIGHT : 'transparent',
                 }}
               >
-                <EqCurveIcon color={eqView === 'graph' ? '#ffffff' : MUTED} />
+                <EqCurveIcon />
               </button>
             </div>
             <div style={headerGroupStyle}>
               <button
                 onClick={() => actions.resetBlockEq(blockId)}
                 title="Reset EQ to flat"
-                style={{ ...headerGroupButtonStyle, color: MUTED }}
+                style={{ ...headerGroupButtonStyle, color: '#ffffff' }}
               >
-                <RotateCcw size={12} />
+                <RotateCcw size={14} />
               </button>
               <button
                 onClick={handleToggleEqEnabled}
@@ -333,18 +339,20 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
                 style={{
                   ...headerGroupButtonStyle,
                   borderLeft: BORDER,
-                  color: eqOn ? '#ffffff' : '#8D8D93',
+                  color: eqOn ? '#ffffff' : GRAY,
                   backgroundColor: eqOn ? 'transparent' : HIGHLIGHT,
                 }}
               >
-                <Power size={12} />
+                <Power size={14} />
               </button>
             </div>
           </>
         )}
 
-        {/* EQ view toggle. The text glows when the EQ is shaping audio
-            (on and non-flat) so an active EQ is visible even when closed. */}
+        {/* EQ view toggle. Two independent signals (see theme.ts patterns):
+            white text + bright outline = the EQ is shaping audio (on and
+            non-flat), even when the editor is closed; grey fill = the
+            editor panel is currently open (like the tuner toggle). */}
         <button
           onClick={() => setShowEq((prev) => !prev)}
           title={showEq ? 'Hide EQ' : 'Show EQ'}
@@ -354,8 +362,8 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
             padding: '0 8px',
             fontSize: '11px',
             fontWeight: 700,
-            border: BORDER,
-            color: eqActive ? '#FFFF00' : showEq ? '#ffffff' : MUTED,
+            border: eqActive ? ACTIVE_OUTLINE : BORDER,
+            color: eqActive || showEq ? '#ffffff' : MUTED,
             backgroundColor: showEq ? HIGHLIGHT : 'transparent',
             marginRight: '4px',
           }}
@@ -366,7 +374,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
         <button
           onClick={handleShare}
           title="Copy tone link"
-          style={{ ...headerButtonStyle, color: copied ? '#30D158' : MUTED }}
+          style={{ ...headerButtonStyle, color: '#ffffff' }}
         >
           {copied ? <Check size={14} /> : <Share size={14} />}
         </button>
@@ -437,6 +445,8 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
                 labelSize={12}
                 labelBottom={false}
                 innerColor={SURFACE}
+                scale={gainDbScale}
+                defaultValue={0.5}
               />
             </div>
 
@@ -594,6 +604,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
                 labelSize={12}
                 labelBottom={false}
                 innerColor={SURFACE}
+                defaultValue={1}
               />
             </div>
 
@@ -621,6 +632,8 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
                 labelSize={12}
                 labelBottom={false}
                 innerColor={SURFACE}
+                scale={gainDbScale}
+                defaultValue={0.5}
               />
             </div>
           </>

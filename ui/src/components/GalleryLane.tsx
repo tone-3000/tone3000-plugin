@@ -4,13 +4,15 @@ import { ArrowUpDown, Link, PlusCircle } from 'lucide-react';
 import { GalleryBlock, AddTile } from './GalleryBlock';
 import type { AddTileRouting } from './GalleryBlock';
 import { KnobControl } from './KnobControl';
+import { panScale } from './knobScale';
+
+const PAN_LEFT_SCALE = panScale('left');
+const PAN_RIGHT_SCALE = panScale('right');
 import { PillIconButton } from './SpreadControls';
 import { useParameter } from '../hooks/useParameter';
 import { useChainActions } from '../hooks/useChainActions';
 import type { ChainItem } from '../types/chain';
 import { isInsertSlot } from '../types/chain';
-import { MUTED } from './theme';
-
 /**
  * Lane-level pieces of the chain gallery (see ChainView for the drag
  * orchestration that owns them): the ghost rail, a single lane of tiles,
@@ -212,6 +214,8 @@ export const StereoPanRail: React.FC = () => {
           max={0.5}
           size={30}
           labelSize={10}
+          scale={PAN_LEFT_SCALE}
+          defaultValue={0}
         />
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
@@ -236,11 +240,11 @@ export const StereoPanRail: React.FC = () => {
             justifyContent: 'center',
             cursor: 'pointer',
             padding: 0,
-            color: MUTED,
+            color: '#ffffff',
             background: 'transparent',
           }}
         >
-          <ArrowUpDown size={14} />
+          <ArrowUpDown size={12} />
         </button>
       </div>
       <div style={centered}>
@@ -253,6 +257,8 @@ export const StereoPanRail: React.FC = () => {
           max={1}
           size={30}
           labelSize={10}
+          scale={PAN_RIGHT_SCALE}
+          defaultValue={1}
         />
       </div>
     </div>

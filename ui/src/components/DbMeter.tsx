@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { useMeter, useMeterClip, meterId } from '../hooks/useMeters';
 import { METER_MAX_DB, METER_MIN_DB, getGradientColor } from './meterColor';
+import { GRAY } from './theme';
 
 interface DbMeterProps {
   type: 'input' | 'output';
@@ -16,7 +17,7 @@ const DOT_GAP = 10;
 const COLUMN_GAP = 5;
 /** Gap between the label rail and the dot column(s). */
 const LABEL_GAP = 10;
-const LABEL_COLOR = '#8D8D93';
+const LABEL_COLOR = GRAY;
 
 /**
  * Main input/output meter: vertical dot column(s) in the block-meter style —
@@ -118,9 +119,7 @@ export const DbMeter: React.FC<DbMeterProps> = ({
   );
 
   // One column subscribed to the combined level, or L/R columns per channel.
-  const columns = stereo
-    ? [meterId.main(type, 'l'), meterId.main(type, 'r')]
-    : [type];
+  const columns = stereo ? [meterId.main(type, 'l'), meterId.main(type, 'r')] : [type];
 
   return (
     <div

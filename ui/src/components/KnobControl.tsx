@@ -1,8 +1,24 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { KnobHeadless } from 'react-knob-headless';
 import { KnobInner } from './KnobInner';
 import type { KnobVariant } from './KnobInner';
+import type { KnobScale } from './knobScale';
+import { percentScale } from './knobScale';
+import { SURFACE_RAISED } from './theme';
 
+/**
+ * Knob interaction conventions (matching typical plugin UX):
+ * - Drag vertically to adjust; hold Shift for 8x finer control (works
+ *   mid-drag).
+ * - The label swaps to a live value readout while dragging and for a moment
+ *   after release.
+ * - Double-click opens inline text entry in real units (Enter commits,
+ *   Escape cancels, blur commits).
+ * - Alt/Option-click resets to the default value (when one is declared).
+ * No scroll-wheel support on purpose: knobs sit inside the horizontally
+ * scrolling chain view, and hijacking wheel events there hurts more than it
+ * helps.
+ */
 interface KnobControlProps {
   label: string;
   value: number;
@@ -18,18 +34,30 @@ interface KnobControlProps {
       param keeps absolute positions while the knob covers its half track. */
   min?: number;
   max?: number;
+  /** Normalized-to-units mapping for the readout and text entry. Defaults
+      to a plain percentage. */
+  scale?: KnobScale;
+  /** Normalized default; enables Alt/Option-click reset. */
+  defaultValue?: number;
   /** Fires true on grab / false on release, so owners of optimistic values
       can pause external syncs mid-drag (a stale poll must not fight the
       pointer). */
   onDragStateChange?: (dragging: boolean) => void;
 }
 
+const BASE_SENSITIVITY = 0.006;
+const FINE_FACTOR = 8;
+/** How long the value readout lingers after the pointer releases. */
+const READOUT_HOLD_MS = 800;
+
 /** Bipolar center detent: values within the snap window collapse to exactly
     0.5 so the DSP's "center = skip processing" branch is actually reachable
-    by drag (not just by precise pixel luck). */
-const roundKnobValue = (x: number, snapCenter: boolean) => {
-  if (snapCenter && Math.abs(x - 0.5) < 0.02) return 0.5;
-  return Math.round(x * 100) / 100;
+    by drag (not just by precise pixel luck). Fine mode narrows the window
+    and quantum so Shift genuinely adds precision. */
+const roundKnobValue = (x: number, snapCenter: boolean, fine: boolean) => {
+  if (snapCenter && Math.abs(x - 0.5) < (fine ? 0.004 : 0.02)) return 0.5;
+  const quantum = fine ? 10000 : 100;
+  return Math.round(x * quantum) / quantum;
 };
 
 export const KnobControl: React.FC<KnobControlProps> = ({
@@ -43,12 +71,30 @@ export const KnobControl: React.FC<KnobControlProps> = ({
   variant = 'full',
   min = 0,
   max = 1,
+  scale = percentScale,
+  defaultValue,
   onDragStateChange,
 }) => {
   const knobRef = useRef<HTMLDivElement>(null);
-  // Latest callback without retriggering the listener effect.
+  const inputRef = useRef<HTMLInputElement>(null);
+  const holdTimerRef = useRef<number | null>(null);
+  // The mouseup listener lives on `document` (releases can land anywhere),
+  // so it must ignore mouseups that don't belong to this knob's drag.
+  const draggingRef = useRef(false);
+
+  const [dragging, setDragging] = useState(false);
+  const [held, setHeld] = useState(false);
+  const [fine, setFine] = useState(false);
+  const [editText, setEditText] = useState<string | null>(null); // null = not editing
+  const editing = editText !== null;
+
+  // Latest callbacks/props for the mount-once listener effect.
   const dragStateRef = useRef(onDragStateChange);
   dragStateRef.current = onDragStateChange;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const defaultValueRef = useRef(defaultValue);
+  defaultValueRef.current = defaultValue;
 
   useEffect(() => {
     const knobElement = knobRef.current;
@@ -59,13 +105,30 @@ export const KnobControl: React.FC<KnobControlProps> = ({
       return false;
     };
 
-    const handleMouseDown = () => {
+    // Shift toggles fine mode live, including mid-drag.
+    const handleShift = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setFine(e.type === 'keydown');
+    };
+
+    const handleMouseDown = (e: MouseEvent) => {
+      // Alt/Option-click: reset to default. The drag still engages beneath,
+      // which is harmless — releasing without moving stays at the default.
+      if (e.altKey && defaultValueRef.current !== undefined) {
+        onChangeRef.current(defaultValueRef.current);
+      }
+
+      draggingRef.current = true;
+      setFine(e.shiftKey);
+      setDragging(true);
+      setHeld(false);
+      if (holdTimerRef.current !== null) window.clearTimeout(holdTimerRef.current);
+      window.addEventListener('keydown', handleShift);
+      window.addEventListener('keyup', handleShift);
+
       // Prevent text selection during drag
-      const bodyStyle = document.body.style as any;
+      const bodyStyle = document.body.style as CSSStyleDeclaration & Record<string, string>;
       bodyStyle.userSelect = 'none';
       bodyStyle.webkitUserSelect = 'none';
-      bodyStyle.mozUserSelect = 'none';
-      bodyStyle.msUserSelect = 'none';
 
       // Add class for CSS targeting
       document.body.classList.add('dragging');
@@ -73,12 +136,22 @@ export const KnobControl: React.FC<KnobControlProps> = ({
     };
 
     const handleMouseUp = () => {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      setDragging(false);
+      setFine(false);
+      window.removeEventListener('keydown', handleShift);
+      window.removeEventListener('keyup', handleShift);
+
+      // Keep the readout up briefly so the released value is legible.
+      setHeld(true);
+      if (holdTimerRef.current !== null) window.clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = window.setTimeout(() => setHeld(false), READOUT_HOLD_MS);
+
       // Restore text selection
-      const bodyStyle = document.body.style as any;
+      const bodyStyle = document.body.style as CSSStyleDeclaration & Record<string, string>;
       bodyStyle.userSelect = '';
       bodyStyle.webkitUserSelect = '';
-      bodyStyle.mozUserSelect = '';
-      bodyStyle.msUserSelect = '';
 
       // Remove class
       document.body.classList.remove('dragging');
@@ -95,16 +168,46 @@ export const KnobControl: React.FC<KnobControlProps> = ({
       knobElement.removeEventListener('dragstart', preventSelection);
       knobElement.removeEventListener('mousedown', handleMouseDown);
       document.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('keydown', handleShift);
+      window.removeEventListener('keyup', handleShift);
+      if (holdTimerRef.current !== null) window.clearTimeout(holdTimerRef.current);
 
       // Ensure body styles are reset
-      const bodyStyle = document.body.style as any;
+      const bodyStyle = document.body.style as CSSStyleDeclaration & Record<string, string>;
       bodyStyle.userSelect = '';
       bodyStyle.webkitUserSelect = '';
-      bodyStyle.mozUserSelect = '';
-      bodyStyle.msUserSelect = '';
       document.body.classList.remove('dragging');
     };
   }, []);
+
+  const openEditor = useCallback(() => {
+    setHeld(false);
+    setEditText(scale.editText(value));
+  }, [scale, value]);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  const commitEdit = useCallback(() => {
+    if (editText !== null) {
+      const parsed = Number.parseFloat(editText.replace(',', '.'));
+      if (Number.isFinite(parsed)) {
+        const norm = Math.min(max, Math.max(min, scale.fromDisplay(parsed)));
+        onChangeRef.current(roundKnobValue(norm, variant === 'bipolar', true));
+      }
+    }
+    setEditText(null);
+  }, [editText, max, min, scale, variant]);
+
+  const showReadout = !editing && (dragging || held);
+  // Fixed-footprint label slot: readout/input can be wider than the label
+  // but must never shift surrounding layout, so the slot is sized once and
+  // its content overflows symmetrically.
+  const slotHeight = Math.round(labelSize * 1.2);
 
   return (
     <div
@@ -122,10 +225,11 @@ export const KnobControl: React.FC<KnobControlProps> = ({
         valueRaw={value}
         valueMin={min}
         valueMax={max}
-        dragSensitivity={0.006}
-        valueRawRoundFn={(x) => roundKnobValue(x, variant === 'bipolar')}
-        valueRawDisplayFn={(x) => `${x.toFixed(2)}`}
+        dragSensitivity={fine ? BASE_SENSITIVITY / FINE_FACTOR : BASE_SENSITIVITY}
+        valueRawRoundFn={(x) => roundKnobValue(x, variant === 'bipolar', fine)}
+        valueRawDisplayFn={(x) => scale.format(x)}
         onValueRawChange={onChange}
+        onDoubleClick={openEditor}
         className="knob"
         style={{
           width: size,
@@ -141,17 +245,59 @@ export const KnobControl: React.FC<KnobControlProps> = ({
         <KnobInner value={value} size={size} innerColor={innerColor} variant={variant} />
       </KnobHeadless>
 
-      <span
+      <div
         style={{
-          fontSize: labelSize,
-          fontWeight: 400,
-          textAlign: 'center',
-          color: '#ffffff',
-          letterSpacing: '1px',
+          width: size,
+          height: slotHeight,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'visible',
         }}
       >
-        {label}
-      </span>
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') commitEdit();
+              else if (e.key === 'Escape') setEditText(null);
+            }}
+            inputMode="decimal"
+            style={{
+              width: Math.max(size, 34),
+              height: slotHeight + 4,
+              flexShrink: 0,
+              boxSizing: 'border-box',
+              background: SURFACE_RAISED,
+              border: '1px solid rgba(235, 235, 245, 0.3)',
+              borderRadius: '4px',
+              color: '#ffffff',
+              fontSize: Math.min(labelSize, 11),
+              textAlign: 'center',
+              outline: 'none',
+              padding: 0,
+            }}
+          />
+        ) : (
+          <span
+            style={{
+              fontSize: labelSize,
+              fontWeight: 400,
+              textAlign: 'center',
+              color: '#ffffff',
+              letterSpacing: showReadout ? 'normal' : '1px',
+              whiteSpace: 'nowrap',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {showReadout ? scale.format(value) : label}
+          </span>
+        )}
+      </div>
     </div>
   );
 };

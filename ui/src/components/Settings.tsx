@@ -3,7 +3,7 @@ import { X as XIcon, ArrowLeft, Info, ChevronDown } from 'lucide-react';
 import { useParameter } from '../hooks/useParameter';
 import { useNativeFunction } from '../hooks/useFunction';
 import type { InputMode } from '../types/chain';
-import { BORDER, MUTED, SUBTLE } from './theme';
+import { BORDER, GRAY, MUTED, SUBTLE } from './theme';
 
 /**
  * Settings: full-window takeover with a main screen (section cards that open
@@ -91,7 +91,7 @@ const PillToggle: React.FC<{ value: boolean; onChange: (value: boolean) => void 
         width: '22px',
         height: '22px',
         borderRadius: '50%',
-        backgroundColor: value ? '#000000' : '#8D8D93',
+        backgroundColor: value ? '#000000' : GRAY,
         transition: 'background-color 0.15s ease',
       }}
     />

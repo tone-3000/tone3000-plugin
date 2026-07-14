@@ -1,5 +1,6 @@
 import React from 'react';
 import { Circle } from 'lucide-react';
+import { GRAY, HIGHLIGHT, SURFACE_RAISED } from './theme';
 
 /**
  * Mono/stereo pill switch that lives in the top bar. Both chains render at
@@ -16,7 +17,7 @@ const StereoCirclesIcon: React.FC<{ size?: number }> = ({ size = 14 }) => (
     viewBox="0 0 18 12"
     fill="none"
     stroke="currentColor"
-    strokeWidth="1.5"
+    strokeWidth="1.75"
     strokeLinecap="round"
   >
     <circle cx="6" cy="6" r="5" />
@@ -38,8 +39,8 @@ export const StereoModeToggle: React.FC<{
     borderRadius: '12px',
     cursor: 'pointer',
     padding: 0,
-    color: active ? '#ffffff' : '#8D8D93',
-    backgroundColor: active ? 'rgba(235, 235, 245, 0.24)' : 'transparent',
+    color: active ? '#ffffff' : GRAY,
+    backgroundColor: active ? HIGHLIGHT : 'transparent',
   });
 
   return (
@@ -52,7 +53,7 @@ export const StereoModeToggle: React.FC<{
         gap: '2px',
         padding: '2px',
         borderRadius: '14px',
-        backgroundColor: '#1C1C1E',
+        backgroundColor: SURFACE_RAISED,
         flexShrink: 0,
       }}
     >

@@ -214,14 +214,14 @@ export const PresetBar: React.FC<PresetBarProps> = ({
                 setRenameValue(preset.name);
               }}
               title="Rename preset"
-              style={{ ...iconButtonStyle, color: MUTED, padding: '3px' }}
+              style={{ ...iconButtonStyle, padding: '3px' }}
             >
               <Pencil size={13} />
             </button>
             <button
               onClick={() => onDelete(preset.id)}
               title="Delete preset"
-              style={{ ...iconButtonStyle, color: MUTED, padding: '3px' }}
+              style={{ ...iconButtonStyle, padding: '3px' }}
             >
               <Trash2 size={13} />
             </button>
@@ -232,7 +232,10 @@ export const PresetBar: React.FC<PresetBarProps> = ({
   };
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '8px' }}>
+    <div
+      ref={containerRef}
+      style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '8px' }}
+    >
       {/* ‹ name › pill */}
       <div
         style={{
@@ -281,7 +284,9 @@ export const PresetBar: React.FC<PresetBarProps> = ({
       {/* Save popover */}
       {open === 'save' && (
         <div style={{ ...panelStyle, width: '280px' }}>
-          <div style={{ color: '#ffffff', fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}>
+          <div
+            style={{ color: '#ffffff', fontSize: '14px', fontWeight: 600, marginBottom: '12px' }}
+          >
             Save Preset
           </div>
           <input
@@ -321,7 +326,12 @@ export const PresetBar: React.FC<PresetBarProps> = ({
             <Search
               size={14}
               color={MUTED}
-              style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }}
+              style={{
+                position: 'absolute',
+                left: '12px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+              }}
             />
             <input
               autoFocus
@@ -335,7 +345,14 @@ export const PresetBar: React.FC<PresetBarProps> = ({
           <div className="hide-scrollbar" style={{ maxHeight: '340px', overflowY: 'auto' }}>
             {factoryPresets.length > 0 && (
               <>
-                <div style={{ color: '#ffffff', fontSize: '13px', fontWeight: 600, padding: '8px 4px' }}>
+                <div
+                  style={{
+                    color: '#ffffff',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    padding: '8px 4px',
+                  }}
+                >
                   TONE3000
                 </div>
                 {factoryPresets.map(renderRow)}
@@ -343,7 +360,14 @@ export const PresetBar: React.FC<PresetBarProps> = ({
             )}
             {userPresets.length > 0 && (
               <>
-                <div style={{ color: '#ffffff', fontSize: '13px', fontWeight: 600, padding: '8px 4px' }}>
+                <div
+                  style={{
+                    color: '#ffffff',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    padding: '8px 4px',
+                  }}
+                >
                   Your Presets
                 </div>
                 {userPresets.map(renderRow)}

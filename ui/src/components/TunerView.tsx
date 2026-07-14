@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNativeFunction } from '../hooks/useFunction';
+import { GRAY } from './theme';
 
 interface TunerReading {
   frequency: number;
@@ -202,7 +203,7 @@ export const TunerView: React.FC = () => {
               height: '14px',
               fontSize: '13px',
               fontFamily: 'monospace',
-              color: '#8D8D93',
+              color: GRAY,
               opacity: hasSignal ? 1 : 0,
               transition: 'opacity 150ms linear',
             }}

@@ -157,7 +157,7 @@ const TileSurface: React.FC<{
             backgroundColor: enabled ? 'transparent' : HIGHLIGHT,
           }}
         >
-          <Power size={13} />
+          <Power size={14} />
         </button>
         <button
           onClick={actions?.onSwap}
@@ -165,7 +165,7 @@ const TileSurface: React.FC<{
           title="Swap tone"
           style={{ ...actionButtonStyle, color: '#ffffff' }}
         >
-          <ArrowLeftRight size={13} />
+          <ArrowLeftRight size={14} />
         </button>
         <button
           onClick={actions?.onRemove}
@@ -173,7 +173,7 @@ const TileSurface: React.FC<{
           title="Remove block"
           style={{ ...actionButtonStyle, color: '#ffffff' }}
         >
-          <Trash2 size={13} />
+          <Trash2 size={14} />
         </button>
       </div>
 

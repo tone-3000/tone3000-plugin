@@ -34,6 +34,13 @@ import { BORDER, MUTED, SUBTLE } from './theme';
  * - Sliders (EqSliders.tsx): a Mesa-style graphic EQ mirroring the same
  *   bands. Gain only; frequency/type/Q are editable in the graph view.
  *
+ * Shared interaction conventions (mirroring KnobControl):
+ * - Shift while dragging a dot (or wheeling Q) = 8x finer control.
+ * - Alt/Option-click a dot resets the band (gain to 0, or Q to default on
+ *   cut bands) without touching its frequency.
+ * - The Freq/Gain/Q chips double as text entry: click one to type an exact
+ *   value (Enter commits, Escape cancels). Freq accepts "1.2k" style.
+ *
  * The spectrum backdrop (SpectrumBackdrop.tsx) is its own leaf so its
  * ~30 fps updates never re-render the editor; both views render it.
  *
@@ -67,6 +74,83 @@ const CURVE_FREQS = Array.from({ length: CURVE_POINTS }, (_, i) =>
 const GRID_FREQS = [50, 100, 200, 500, 1000, 2000, 5000, 10000];
 const GRID_LABELS: Record<number, string> = { 100: '100', 1000: '1k', 10000: '10k' };
 
+/** Readout chip that doubles as text entry: click to type, Enter commits,
+    Escape cancels, blur commits — same conventions as the knobs. */
+const EditableChip: React.FC<{
+  label: string;
+  text: string;
+  /** Prefill for the editor (number only, unit-free where possible). */
+  editText: string;
+  onCommit: (raw: string) => void;
+  disabled?: boolean;
+  title?: string;
+  style?: React.CSSProperties;
+}> = ({ label, text, editText, onCommit, disabled = false, title, style }) => {
+  const [draft, setDraft] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const editing = draft !== null;
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  const commit = () => {
+    if (draft !== null && draft.trim() !== '') onCommit(draft);
+    setDraft(null);
+  };
+
+  return (
+    <div
+      title={title ?? (disabled ? undefined : 'Click to type a value')}
+      onClick={() => {
+        if (!disabled && !editing) setDraft(editText);
+      }}
+      style={{ ...style, cursor: disabled || editing ? undefined : 'text' }}
+    >
+      <span style={{ fontSize: '11px', color: SUBTLE }}>{label}</span>
+      {editing ? (
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') commit();
+            else if (e.key === 'Escape') setDraft(null);
+          }}
+          inputMode="decimal"
+          style={{
+            width: '44px',
+            background: 'transparent',
+            border: 'none',
+            borderBottom: '1px solid rgba(235, 235, 245, 0.4)',
+            color: '#ffffff',
+            fontSize: '12px',
+            textAlign: 'center',
+            outline: 'none',
+            padding: 0,
+          }}
+        />
+      ) : (
+        <span style={{ fontSize: '12px', color: '#ffffff' }}>{text}</span>
+      )}
+    </div>
+  );
+};
+
+/** Parse a typed frequency: plain Hz ("800") or k-notation ("1.2k"). */
+const parseFreqInput = (raw: string): number | null => {
+  const cleaned = raw.trim().toLowerCase().replace(',', '.').replace(/hz$/, '').trim();
+  const hasK = cleaned.includes('k');
+  const value = Number.parseFloat(cleaned.replace('k', ''));
+  if (!Number.isFinite(value)) return null;
+  return hasK ? value * 1000 : value;
+};
+
 interface BlockEqViewProps {
   blockId: string;
   bands: EqBand[];
@@ -92,7 +176,7 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
   const [bands, setBands] = useState<EqBand[]>(bandsProp);
   const [selected, setSelected] = useState(1);
   const draggingRef = useRef(false);
-  const dragStateRef = useRef<{ index: number; startQ: number; startY: number } | null>(null);
+  const dragStateRef = useRef<{ index: number; lastX: number; lastY: number } | null>(null);
   const graphRef = useRef<SVGSVGElement | null>(null);
 
   useEffect(() => {
@@ -120,34 +204,63 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
     };
   }, []);
 
+  /** Alt/Option-click reset: neutralize the band's effect (gain or Q) while
+      keeping its frequency, matching the knobs' Alt-click convention. */
+  const resetBand = useCallback(
+    (index: number) => {
+      const band = bands[index];
+      if (!band) return;
+      updateBand(
+        index,
+        hasGain(band.type) ? { gainDb: 0 } : { q: TYPE_DEFAULT_Q[band.type] ?? 0.71 }
+      );
+    },
+    [bands, updateBand]
+  );
+
   const handleDotPointerDown = useCallback(
     (index: number) => (e: React.PointerEvent<SVGCircleElement>) => {
       e.preventDefault();
-      e.currentTarget.setPointerCapture(e.pointerId);
       setSelected(index);
+      if (e.altKey) {
+        resetBand(index);
+        return;
+      }
+      e.currentTarget.setPointerCapture(e.pointerId);
       draggingRef.current = true;
-      const { y } = graphPointFromEvent(e);
-      dragStateRef.current = { index, startQ: bands[index].q, startY: y };
+      const { x, y } = graphPointFromEvent(e);
+      dragStateRef.current = { index, lastX: x, lastY: y };
     },
-    [bands, graphPointFromEvent]
+    [graphPointFromEvent, resetBand]
   );
 
+  // Delta-based dragging (not absolute pointer position) so Shift = 8x finer
+  // control works and can toggle mid-drag without the dot jumping.
   const handleDotPointerMove = useCallback(
     (index: number) => (e: React.PointerEvent<SVGCircleElement>) => {
-      if (!draggingRef.current || dragStateRef.current?.index !== index) return;
+      const drag = dragStateRef.current;
+      if (!draggingRef.current || drag?.index !== index) return;
       const { x, y } = graphPointFromEvent(e);
+      const fine = e.shiftKey ? 1 / 8 : 1;
+      const dX = (x - drag.lastX) * fine;
+      const dGain = (yToGain(y) - yToGain(drag.lastY)) * fine;
+      const dY = (y - drag.lastY) * fine;
+      drag.lastX = x;
+      drag.lastY = y;
+
+      const band = bands[index];
       // Bands keep their left-to-right order: clamp between the neighbors'
       // frequencies (with a hair of margin so dots never sit exactly on top).
       const lo = index > 0 ? bands[index - 1].freqHz * 1.02 : EQ_MIN_FREQ_HZ;
       const hi = index < bands.length - 1 ? bands[index + 1].freqHz * 0.98 : EQ_MAX_FREQ_HZ;
-      const freqHz = clamp(normToFreq(clamp(x / GRAPH_W, 0, 1)), lo, hi);
-      if (hasGain(bands[index].type)) {
-        const gainDb = clamp(yToGain(y), -EQ_MAX_ABS_GAIN_DB, EQ_MAX_ABS_GAIN_DB);
+      const freqNorm = clamp(freqToNorm(band.freqHz) + dX / GRAPH_W, 0, 1);
+      const freqHz = clamp(normToFreq(freqNorm), lo, hi);
+      if (hasGain(band.type)) {
+        const gainDb = clamp(band.gainDb + dGain, -EQ_MAX_ABS_GAIN_DB, EQ_MAX_ABS_GAIN_DB);
         updateBand(index, { freqHz, gainDb });
       } else {
         // Cuts have no gain — vertical drag tunes Q instead (up = tighter).
-        const drag = dragStateRef.current;
-        const q = clamp(drag.startQ * Math.exp((drag.startY - y) * 0.02), EQ_MIN_Q, EQ_MAX_Q);
+        const q = clamp(band.q * Math.exp(-dY * 0.02), EQ_MIN_Q, EQ_MAX_Q);
         updateBand(index, { freqHz, q });
       }
     },
@@ -172,7 +285,8 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
       e.preventDefault();
       const band = current[index];
       if (!band) return;
-      const q = clamp(band.q * Math.exp(-e.deltaY * 0.003), EQ_MIN_Q, EQ_MAX_Q);
+      const fine = e.shiftKey ? 1 / 8 : 1;
+      const q = clamp(band.q * Math.exp(-e.deltaY * 0.003 * fine), EQ_MIN_Q, EQ_MAX_Q);
       updateBand(index, { q });
     };
     el.addEventListener('wheel', onWheel, { passive: false });
@@ -212,6 +326,34 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
       const defaultQ = TYPE_DEFAULT_Q[type];
       if (defaultQ !== undefined) patch.q = defaultQ;
       updateBand(selected, patch);
+    },
+    [selected, updateBand]
+  );
+
+  // Chip text entry -> band updates (clamped like their drag equivalents).
+  const commitFreq = useCallback(
+    (raw: string) => {
+      const parsed = parseFreqInput(raw);
+      if (parsed === null) return;
+      const lo = selected > 0 ? bands[selected - 1].freqHz * 1.02 : EQ_MIN_FREQ_HZ;
+      const hi = selected < bands.length - 1 ? bands[selected + 1].freqHz * 0.98 : EQ_MAX_FREQ_HZ;
+      updateBand(selected, { freqHz: clamp(parsed, lo, hi) });
+    },
+    [bands, selected, updateBand]
+  );
+  const commitGain = useCallback(
+    (raw: string) => {
+      const parsed = Number.parseFloat(raw.replace(',', '.'));
+      if (!Number.isFinite(parsed)) return;
+      updateBand(selected, { gainDb: clamp(parsed, -EQ_MAX_ABS_GAIN_DB, EQ_MAX_ABS_GAIN_DB) });
+    },
+    [selected, updateBand]
+  );
+  const commitQ = useCallback(
+    (raw: string) => {
+      const parsed = Number.parseFloat(raw.replace(',', '.'));
+      if (!Number.isFinite(parsed)) return;
+      updateBand(selected, { q: clamp(parsed, EQ_MIN_Q, EQ_MAX_Q) });
     },
     [selected, updateBand]
   );
@@ -261,84 +403,99 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
           </div>
         </>
       ) : (
-      <svg
-        ref={graphRef}
-        width="100%"
-        height="100%"
-        viewBox={`0 0 ${GRAPH_W} ${GRAPH_H}`}
-        preserveAspectRatio="none"
-        style={{ display: 'block', position: 'absolute', inset: 0 }}
-      >
-        {/* Grid */}
-        {GRID_FREQS.map((f) => {
-          const x = freqToNorm(f) * GRAPH_W;
-          return (
-            <g key={f}>
-              <line x1={x} y1={0} x2={x} y2={GRAPH_H} stroke="rgba(235, 235, 245, 0.07)" strokeWidth={1} />
-              {GRID_LABELS[f] && (
-                <text x={x + 4} y={GRAPH_H - 5} fill="rgba(235, 235, 245, 0.35)" fontSize={9}>
-                  {GRID_LABELS[f]}
-                </text>
-              )}
-            </g>
-          );
-        })}
-        {[-7.5, 7.5].map((db) => (
+        <svg
+          ref={graphRef}
+          width="100%"
+          height="100%"
+          viewBox={`0 0 ${GRAPH_W} ${GRAPH_H}`}
+          preserveAspectRatio="none"
+          style={{ display: 'block', position: 'absolute', inset: 0 }}
+        >
+          {/* Grid */}
+          {GRID_FREQS.map((f) => {
+            const x = freqToNorm(f) * GRAPH_W;
+            return (
+              <g key={f}>
+                <line
+                  x1={x}
+                  y1={0}
+                  x2={x}
+                  y2={GRAPH_H}
+                  stroke="rgba(235, 235, 245, 0.07)"
+                  strokeWidth={1}
+                />
+                {GRID_LABELS[f] && (
+                  <text x={x + 4} y={GRAPH_H - 5} fill="rgba(235, 235, 245, 0.35)" fontSize={9}>
+                    {GRID_LABELS[f]}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+          {[-7.5, 7.5].map((db) => (
+            <line
+              key={db}
+              x1={0}
+              y1={gainToY(db)}
+              x2={GRAPH_W}
+              y2={gainToY(db)}
+              stroke="rgba(235, 235, 245, 0.05)"
+              strokeWidth={1}
+            />
+          ))}
+          {/* 0 dB line */}
           <line
-            key={db}
             x1={0}
-            y1={gainToY(db)}
+            y1={gainToY(0)}
             x2={GRAPH_W}
-            y2={gainToY(db)}
-            stroke="rgba(235, 235, 245, 0.05)"
+            y2={gainToY(0)}
+            stroke="rgba(235, 235, 245, 0.18)"
             strokeWidth={1}
           />
-        ))}
-        {/* 0 dB line */}
-        <line
-          x1={0}
-          y1={gainToY(0)}
-          x2={GRAPH_W}
-          y2={gainToY(0)}
-          stroke="rgba(235, 235, 245, 0.18)"
-          strokeWidth={1}
-        />
 
-        <SpectrumBackdrop blockId={blockId} />
+          <SpectrumBackdrop blockId={blockId} />
 
-        {/* EQ curve + dots (dimmed while the EQ is bypassed) */}
-        <g opacity={eqEnabled ? 1 : 0.35}>
-        <path d={curve.area} fill={CURVE_COLOR} opacity={0.10} />
-        <path d={curve.line} fill="none" stroke={CURVE_COLOR} strokeWidth={1.25} />
+          {/* EQ curve + dots (dimmed while the EQ is bypassed) */}
+          <g opacity={eqEnabled ? 1 : 0.35}>
+            <path d={curve.area} fill={CURVE_COLOR} opacity={0.1} />
+            <path d={curve.line} fill="none" stroke={CURVE_COLOR} strokeWidth={1.25} />
 
-        {/* Band dots */}
-        {bands.map((band, i) => {
-          const cx = freqToNorm(band.freqHz) * GRAPH_W;
-          const cy = hasGain(band.type) ? gainToY(band.gainDb) : gainToY(0);
-          const isSelected = i === selected;
-          return (
-            <g key={i}>
-              {isSelected && (
-                <circle cx={cx} cy={cy} r={9} fill="none" stroke="#ffffff" strokeWidth={1.5} opacity={0.9} />
-              )}
-              <circle
-                cx={cx}
-                cy={cy}
-                r={5.5}
-                fill={isSelected ? '#FFFFFF' : '#B8B8BE'}
-                stroke="#000000"
-                strokeWidth={1.5}
-                style={{ cursor: 'grab', touchAction: 'none' }}
-                onPointerDown={handleDotPointerDown(i)}
-                onPointerMove={handleDotPointerMove(i)}
-                onPointerUp={handleDotPointerUp}
-                onPointerCancel={handleDotPointerUp}
-              />
-            </g>
-          );
-        })}
-        </g>
-      </svg>
+            {/* Band dots */}
+            {bands.map((band, i) => {
+              const cx = freqToNorm(band.freqHz) * GRAPH_W;
+              const cy = hasGain(band.type) ? gainToY(band.gainDb) : gainToY(0);
+              const isSelected = i === selected;
+              return (
+                <g key={i}>
+                  {isSelected && (
+                    <circle
+                      cx={cx}
+                      cy={cy}
+                      r={9}
+                      fill="none"
+                      stroke="#ffffff"
+                      strokeWidth={1.5}
+                      opacity={0.9}
+                    />
+                  )}
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r={5.5}
+                    fill={isSelected ? '#FFFFFF' : '#B8B8BE'}
+                    stroke="#000000"
+                    strokeWidth={1.5}
+                    style={{ cursor: 'grab', touchAction: 'none' }}
+                    onPointerDown={handleDotPointerDown(i)}
+                    onPointerMove={handleDotPointerMove(i)}
+                    onPointerUp={handleDotPointerUp}
+                    onPointerCancel={handleDotPointerUp}
+                  />
+                </g>
+              );
+            })}
+          </g>
+        </svg>
       )}
 
       {/* Floating: band readout (top-left, graph view only) */}
@@ -362,84 +519,92 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
 
       {/* Floating: type selector + selected band readouts (bottom-left, graph view only) */}
       {view === 'graph' && (
-      <div
-        style={{
-          position: 'absolute',
-          bottom: '10px',
-          left: '10px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-        }}
-      >
-        {/* Curve type: outer bands choose shelf vs pass; bells show their
-            single (active) option so the selected shape is always visible. */}
         <div
           style={{
+            position: 'absolute',
+            bottom: '10px',
+            left: '10px',
             display: 'flex',
-            height: '28px',
-            borderRadius: '8px',
-            border: BORDER,
-            overflow: 'hidden',
-            backgroundColor: OVERLAY_BG,
-            flexShrink: 0,
+            alignItems: 'center',
+            gap: '8px',
           }}
         >
-          {typeOptions.map((type, i) => {
-            const active = selectedBand?.type === type;
-            return (
-              <button
-                key={type}
-                onClick={() => handleTypeChange(type)}
-                title={BAND_TYPE_LABELS[type]}
-                style={{
-                  width: '32px',
-                  height: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  border: 'none',
-                  borderLeft: i > 0 ? BORDER : 'none',
-                  cursor: typeOptions.length > 1 ? 'pointer' : 'default',
-                  backgroundColor: active ? 'rgba(235, 235, 245, 0.16)' : 'transparent',
-                  padding: 0,
-                }}
-              >
-                <svg width={16} height={14} viewBox="0 0 16 14">
-                  <path
-                    d={TYPE_GLYPHS[type]}
-                    fill="none"
-                    stroke={active ? '#FFFFFF' : MUTED}
-                    strokeWidth={1.6}
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
-            );
-          })}
-        </div>
+          {/* Curve type: outer bands choose shelf vs pass; bells show their
+            single (active) option so the selected shape is always visible. */}
+          <div
+            style={{
+              display: 'flex',
+              height: '28px',
+              borderRadius: '8px',
+              border: BORDER,
+              overflow: 'hidden',
+              backgroundColor: OVERLAY_BG,
+              flexShrink: 0,
+            }}
+          >
+            {typeOptions.map((type, i) => {
+              const active = selectedBand?.type === type;
+              return (
+                <button
+                  key={type}
+                  onClick={() => handleTypeChange(type)}
+                  title={BAND_TYPE_LABELS[type]}
+                  style={{
+                    width: '32px',
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: 'none',
+                    borderLeft: i > 0 ? BORDER : 'none',
+                    cursor: typeOptions.length > 1 ? 'pointer' : 'default',
+                    backgroundColor: active ? 'rgba(235, 235, 245, 0.16)' : 'transparent',
+                    padding: 0,
+                  }}
+                >
+                  <svg width={16} height={14} viewBox="0 0 16 14">
+                    <path
+                      d={TYPE_GLYPHS[type]}
+                      fill="none"
+                      stroke={active ? '#FFFFFF' : MUTED}
+                      strokeWidth={1.6}
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+              );
+            })}
+          </div>
 
-        <div style={chipStyle}>
-          <span style={{ fontSize: '11px', color: SUBTLE }}>Freq</span>
-          <span style={{ fontSize: '12px', color: '#ffffff' }}>
-            {formatFreq(selectedBand?.freqHz ?? 0)}
-          </span>
+          <EditableChip
+            label="Freq"
+            text={formatFreq(selectedBand?.freqHz ?? 0)}
+            editText={Math.round(selectedBand?.freqHz ?? 0).toString()}
+            onCommit={commitFreq}
+            title='Click to type (accepts "800" or "1.2k")'
+            style={chipStyle}
+          />
+          <EditableChip
+            label="Gain"
+            text={
+              hasGain(selectedBand?.type ?? 'bell')
+                ? `${(selectedBand?.gainDb ?? 0).toFixed(1)} dB`
+                : '—'
+            }
+            editText={(selectedBand?.gainDb ?? 0).toFixed(1)}
+            onCommit={commitGain}
+            disabled={!hasGain(selectedBand?.type ?? 'bell')}
+            style={{ ...chipStyle, opacity: hasGain(selectedBand?.type ?? 'bell') ? 1 : 0.4 }}
+          />
+          <EditableChip
+            label="Q"
+            text={(selectedBand?.q ?? 1).toFixed(2)}
+            editText={(selectedBand?.q ?? 1).toFixed(2)}
+            onCommit={commitQ}
+            title="Scroll over the graph to adjust (Shift = fine) — or click to type"
+            style={chipStyle}
+          />
         </div>
-        <div style={{ ...chipStyle, opacity: hasGain(selectedBand?.type ?? 'bell') ? 1 : 0.4 }}>
-          <span style={{ fontSize: '11px', color: SUBTLE }}>Gain</span>
-          <span style={{ fontSize: '12px', color: '#ffffff' }}>
-            {hasGain(selectedBand?.type ?? 'bell')
-              ? `${(selectedBand?.gainDb ?? 0).toFixed(1)} dB`
-              : '—'}
-          </span>
-        </div>
-        <div style={chipStyle} title="Scroll over the graph to adjust Q">
-          <span style={{ fontSize: '11px', color: SUBTLE }}>Q</span>
-          <span style={{ fontSize: '12px', color: '#ffffff' }}>
-            {(selectedBand?.q ?? 1).toFixed(2)}
-          </span>
-        </div>
-      </div>
       )}
     </div>
   );

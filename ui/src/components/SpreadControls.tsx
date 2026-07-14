@@ -1,7 +1,9 @@
 import React from 'react';
 import { Power } from 'lucide-react';
 import { KnobControl } from './KnobControl';
+import { jitterMsScale, spreadMsScale } from './knobScale';
 import { useParameter } from '../hooks/useParameter';
+import { GRAY, HIGHLIGHT } from './theme';
 
 /**
  * Spread: a short per-note delay on one channel for stereo width. One
@@ -42,8 +44,8 @@ export const PillIconButton: React.FC<{
       cursor: 'pointer',
       padding: 0,
       flexShrink: 0,
-      color: on ? '#ffffff' : '#8D8D93',
-      backgroundColor: on ? 'transparent' : 'rgba(235, 235, 245, 0.18)',
+      color: on ? '#ffffff' : GRAY,
+      backgroundColor: on ? 'transparent' : HIGHLIGHT,
       transform: `translateY(${offsetY}px)`,
     }}
   >
@@ -78,6 +80,8 @@ export const SpreadGroup: React.FC<{
         size={KNOB_SIZE}
         labelSize={10}
         innerColor={innerColor}
+        scale={spreadMsScale}
+        defaultValue={0.5}
       />
       <KnobControl
         label="Jitter"
@@ -86,6 +90,8 @@ export const SpreadGroup: React.FC<{
         size={KNOB_SIZE}
         labelSize={10}
         innerColor={innerColor}
+        scale={jitterMsScale}
+        defaultValue={0}
       />
       <PillIconButton
         on={enabled}

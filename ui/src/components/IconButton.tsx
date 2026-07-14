@@ -1,5 +1,5 @@
 import React from 'react';
-import { iconButtonStyle } from './theme';
+import { HIGHLIGHT, iconButtonStyle } from './theme';
 
 interface IconButtonProps {
   onClick: () => void;
@@ -33,7 +33,7 @@ export const IconButton: React.FC<IconButtonProps> = ({
       color: '#ffffff',
       opacity: disabled ? 0.3 : 1,
       cursor: disabled ? 'default' : 'pointer',
-      background: active && fillWhenActive ? 'rgba(235, 235, 245, 0.18)' : 'transparent',
+      background: active && fillWhenActive ? HIGHLIGHT : 'transparent',
     }}
   >
     {children}
