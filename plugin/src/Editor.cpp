@@ -4,8 +4,8 @@
 void TONE3000Editor::parentHierarchyChanged() {
   if (auto* window = dynamic_cast<juce::DocumentWindow*>(getTopLevelComponent())) {
     window->setUsingNativeTitleBar(true);
-    window->centreWithSize(1024, 738);  // Add extra height for title bar
-    setSize(1024, 710);
+    window->centreWithSize(1024, 628);  // Add extra height for title bar
+    setSize(1024, 600);
   }
 
   // Trigger the WebView load only once the editor has a real top-level
@@ -33,7 +33,7 @@ TONE3000Editor::TONE3000Editor(TONE3000Processor& p) : AudioProcessorEditor(&p),
   mainWebView->setOpaque(true);
   addAndMakeVisible(*mainWebView);
 
-  setSize(1024, 710);
+  setSize(1024, 600);
 }
 
 TONE3000Editor::~TONE3000Editor() {

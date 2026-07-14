@@ -11,7 +11,7 @@ import {
 } from '../types/chain';
 import { eqResponseDb, formatFreq, freqToNorm, normToFreq } from './eqMath';
 import { useBlockSpectrum, SPECTRUM_MIN_DB } from '../hooks/useBlockSpectrum';
-import { CARD_WIDTH } from './chainLayout';
+import { CARD_WIDTH, CARD_HEIGHT } from './chainLayout';
 
 /**
  * 6-band EQ editor shown in the card body while the header EQ toggle is
@@ -34,9 +34,9 @@ import { CARD_WIDTH } from './chainLayout';
 
 export type EqViewMode = 'graph' | 'sliders';
 
-// Full card body: card width minus 2px border; 216 card - 2px border - 40 header tall.
+// Full card body: card width/height minus the 2px border, minus the 40px header.
 const GRAPH_W = CARD_WIDTH - 2;
-const GRAPH_H = 174;
+const GRAPH_H = CARD_HEIGHT - 2 - 40;
 const GRAPH_PAD_Y = 12; // keep dots inside the frame at ±15 dB
 
 const MUTED = 'rgba(235, 235, 245, 0.60)';

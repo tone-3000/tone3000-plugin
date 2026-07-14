@@ -1,22 +1,19 @@
 import React from 'react';
 import { Power } from 'lucide-react';
-import { ChainContentRow } from './chainLayout';
 import { KnobControl } from './KnobControl';
 import { useParameter } from '../hooks/useParameter';
 
 /**
  * Spread: a short per-note delay on one channel for stereo width. One
  * parameter set serves both modes (they're mutually exclusive):
- * - Mono: doubles the chain and delays the chosen side (slap double). The
- *   group renders in the row above the chain (SpreadControls).
- * - Stereo: delays the chosen side's chain in place; the same group renders
- *   in the stereo controls row (see StereoControls).
+ * - Mono: doubles the chain and delays the chosen side (slap double).
+ * - Stereo: delays the chosen side's chain in place.
+ * The group lives on the faceplate in both modes.
  *
  * The spread knob is bipolar — center = 0 ms = processing skipped; left of
  * center delays the left channel, right of center the right.
  */
 
-export const PILL_BORDER = '1px solid rgba(84, 84, 88, 0.65)';
 const KNOB_SIZE = 30;
 /** Vertically center inline elements on the knob column (knob + label). */
 export const KNOB_CENTER_OFFSET = -11;
@@ -26,8 +23,11 @@ export const PillIconButton: React.FC<{
   on: boolean;
   title: string;
   onClick: () => void;
+  /** Vertical nudge; defaults to centering on an adjacent knob. Pass 0 when
+      the button is positioned by its own layout. */
+  offsetY?: number;
   children: React.ReactNode;
-}> = ({ on, title, onClick, children }) => (
+}> = ({ on, title, onClick, offsetY = KNOB_CENTER_OFFSET, children }) => (
   <button
     onClick={onClick}
     title={title}
@@ -44,15 +44,18 @@ export const PillIconButton: React.FC<{
       flexShrink: 0,
       color: on ? '#ffffff' : '#8D8D93',
       backgroundColor: on ? 'transparent' : 'rgba(235, 235, 245, 0.18)',
-      transform: `translateY(${KNOB_CENTER_OFFSET}px)`,
+      transform: `translateY(${offsetY}px)`,
     }}
   >
     {children}
   </button>
 );
 
-/** Spread + jitter knobs with power switch — shared by both mode rows. */
-export const SpreadGroup: React.FC = () => {
+/** Spread + jitter knobs with power switch. */
+export const SpreadGroup: React.FC<{
+  /** Knob center fill — match the surface the group sits on. */
+  innerColor?: string;
+}> = ({ innerColor = '#000000' }) => {
   const [enabled, setEnabled] = useParameter('spreadEnabled', 'toggle');
   const [amount, setAmount] = useParameter('spreadAmount', 'slider');
   const [jitter, setJitter] = useParameter('spreadJitter', 'slider');
@@ -74,6 +77,7 @@ export const SpreadGroup: React.FC = () => {
         variant="bipolar"
         size={KNOB_SIZE}
         labelSize={10}
+        innerColor={innerColor}
       />
       <KnobControl
         label="Jitter"
@@ -81,6 +85,7 @@ export const SpreadGroup: React.FC = () => {
         onChange={setJitter}
         size={KNOB_SIZE}
         labelSize={10}
+        innerColor={innerColor}
       />
       <PillIconButton
         on={enabled}
@@ -92,17 +97,3 @@ export const SpreadGroup: React.FC = () => {
     </div>
   );
 };
-
-/** Mono-mode row: spread group pinned to the right, aligned with the cards. */
-export const SpreadControls: React.FC = () => (
-  <ChainContentRow
-    style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'flex-end',
-      padding: '12px 0',
-    }}
-  >
-    <SpreadGroup />
-  </ChainContentRow>
-);

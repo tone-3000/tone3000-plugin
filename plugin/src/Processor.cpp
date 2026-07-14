@@ -486,11 +486,11 @@ void TONE3000Processor::updateCachedParameters() {
   cacheSpreadEnabled = loadBool("spreadEnabled");
 }
 
-// Per-channel gain for a main stage: main level ±12 dB, plus the balance
+// Per-channel gain for a main stage: main level ±24 dB, plus the balance
 // trim (0.5 = centered) which adds up to ±12 dB opposing between L and R.
 // Mono buffers pass ch == 0 only, so balance is inert there by construction.
 static float mainStageChannelGain(float level, float balance, int channel) {
-  const float levelDb = (level - 0.5f) * 24.0f;
+  const float levelDb = (level - 0.5f) * 48.0f;
   const float trimDb = (balance - 0.5f) * 24.0f * (channel == 0 ? -1.0f : 1.0f);
   return juce::Decibels::decibelsToGain(levelDb + trimDb);
 }
@@ -542,12 +542,12 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
       tempDryBuffer.copyFrom(1, 0, buffer, 1, 0, numSamples);
     }
 
-    // Per-block input gain (0.5 == unity, ±12 dB), applied after the dry copy
+    // Per-block input gain (0.5 == unity, ±24 dB), applied after the dry copy
     // so Mix still blends against the untouched signal — this drives the
     // block's DSP harder/softer like a drive control. The block input meter
     // reads the post-gain signal (what the model actually receives).
     {
-      const float inputGainDbBlock = (block->inputGainNormalized - 0.5f) * 24.0f;
+      const float inputGainDbBlock = (block->inputGainNormalized - 0.5f) * 48.0f;
       block->inputGainSmoother.setTargetValue(juce::Decibels::decibelsToGain(inputGainDbBlock));
 
       float blockInputPeak = 0.0f;
@@ -684,8 +684,8 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
     }
 
     // Apply per-block output gain (centered at 0.5 == unity) and mix with dry
-    // Map normalized gain to linear: 0.5 -> 1.0, +/-0.5 -> +/-12 dB range
-    const float gainDb = (block->outputGainNormalized - 0.5f) * 24.0f;  // -12 dB .. +12 dB
+    // Map normalized gain to linear: 0.5 -> 1.0, +/-0.5 -> +/-24 dB range
+    const float gainDb = (block->outputGainNormalized - 0.5f) * 48.0f;  // -24 dB .. +24 dB
     const float targetLinear = juce::Decibels::decibelsToGain(gainDb);
     block->outputGainSmoother.setTargetValue(targetLinear);
     block->mixSmoother.setTargetValue(juce::jlimit(0.0f, 1.0f, block->mixNormalized));
@@ -777,8 +777,16 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // Input + Noise Gate (always enabled)
   // #########################
   
-  // Per-channel input meters, captured before processing. Mono sources
-  // report the same level on both channels.
+  // Per-channel input gains (level ±12 dB, balance trim ±12 dB opposing),
+  // constant across the block. Computed up front so the meters can show the
+  // post-gain level without a second pass over the samples.
+  const float inputGainL = mainStageChannelGain(cacheInputLevel, cacheInputBalance, 0);
+  const float inputGainR = mainStageChannelGain(cacheInputLevel, cacheInputBalance, 1);
+
+  // Per-channel input meters: raw peaks scaled by the input gain/balance, so
+  // the meter tracks those knobs. Pre-gate on purpose — a closed gate would
+  // otherwise read as a dead input. Mono sources report the same level on
+  // both channels.
   auto peakToDb = [](float peak) {
     return peak > 0.0f ? std::max(-60.0f, juce::Decibels::gainToDecibels(peak)) : -60.0f;
   };
@@ -794,8 +802,8 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     } else {
       peakR = peakL;
     }
-    inputMeterLevelL.store(peakToDb(peakL));
-    inputMeterLevelR.store(peakToDb(peakR));
+    inputMeterLevelL.store(peakToDb(peakL * inputGainL));
+    inputMeterLevelR.store(peakToDb(peakR * (numChannels > 1 ? inputGainR : inputGainL)));
   }
 
   // Feed the tuner from the raw input (pre-gain, pre-gate) while the tuner
@@ -804,12 +812,12 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   if (tuner.isEnabled())
     tuner.pushSamples(buffer.getReadPointer(0), numSamples);
 
-  // Main input gain per channel (level ±12 dB, balance trim ±12 dB opposing).
-  // The gate rides the same loop but only when its power switch is on.
+  // Apply the input gain per channel. The gate rides the same loop but only
+  // when its power switch is on.
   const float gateThresholdLinear = juce::Decibels::decibelsToGain(cacheGateThreshold);
   const bool gateOn = cacheGateEnabled;
   for (int ch = 0; ch < numChannels; ++ch) {
-    const float gainLinear = mainStageChannelGain(cacheInputLevel, cacheInputBalance, ch);
+    const float gainLinear = ch == 0 ? inputGainL : inputGainR;
     auto* channelData = buffer.getWritePointer(ch);
     for (int i = 0; i < numSamples; ++i) {
       float& sample = channelData[i];

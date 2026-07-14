@@ -4,13 +4,12 @@ import { useFunction } from '../hooks/useFunction';
 import { useChainState } from '../hooks/useChainState';
 import { usePresets } from '../hooks/usePresets';
 import { ChainView } from './ChainView';
-import { SpreadControls } from './SpreadControls';
 import { Faceplate } from './Faceplate';
 import { PresetBar } from './PresetBar';
-import { StereoModeToggle, StereoChainControls } from './StereoControls';
+import { StereoModeToggle } from './StereoControls';
 import { useParameter } from '../hooks/useParameter';
 import type { Model, Tone } from '../types/tone';
-import type { ToneBlock } from '../types/chain';
+import type { ChainSide, ToneBlock } from '../types/chain';
 import Settings from './Settings';
 import { DbMeter } from './DbMeter';
 import { TunerView } from './TunerView';
@@ -50,11 +49,11 @@ export const Plugin: React.FC = () => {
   // Chain state: revision-gated polling + mutation actions, owned by one hook.
   const {
     chain,
+    chainRight,
     canUndo,
     canRedo,
     activePreset,
     stereoEnabled,
-    activeSide,
     stereoInput,
     standalone,
     inputMode,
@@ -87,16 +86,10 @@ export const Plugin: React.FC = () => {
     }
   };
 
-  // Reorder items (full order including insert block - backend is source of truth)
+  // Reorder one lane (full order including its insert slot). Native infers
+  // which lane the ids belong to; the gallery only calls this on real moves.
   const handleReorderItems = async (orderedIds: string[]) => {
-    const currentOrder = chain.map((item) => item.blockId);
-    const orderChanged =
-      currentOrder.length !== orderedIds.length ||
-      currentOrder.some((id, i) => id !== orderedIds[i]);
-
-    if (orderChanged) {
-      await actions.reorderBlocks(orderedIds);
-    }
+    await actions.reorderBlocks(orderedIds);
   };
 
   // Share: copy the tone's public TONE3000 page URL. Clipboard writes go
@@ -187,9 +180,12 @@ export const Plugin: React.FC = () => {
   // page. Check connectivity first and show a modal if we're offline.
   const internetGate = useInternetGate();
 
-  const handleAddModel = () => {
-    internetGate.requireInternet(() => {
+  // Adding routes to a lane via the native active-edit side (it has to
+  // survive the OAuth redirect, so it lives in native state, not React's).
+  const handleAddModel = (side: ChainSide) => {
+    internetGate.requireInternet(async () => {
       sessionStorage.removeItem(SWAP_STORAGE_KEY);
+      if (stereoEnabled) await actions.setActiveSide(side);
       startSelectFlow();
     });
   };
@@ -208,7 +204,7 @@ export const Plugin: React.FC = () => {
         position: 'relative',
         width: '100%',
         maxWidth: '100%',
-        height: '710px',
+        height: '600px',
         display: 'flex',
         flexDirection: 'column',
         backgroundColor: '#000000',
@@ -366,37 +362,31 @@ export const Plugin: React.FC = () => {
             backgroundColor: '#000000',
           }}
         >
-          <DbMeter type="input" stereo={stereoInput} height={450} />
+          <DbMeter type="input" stereo={stereoInput} height={400} />
         </div>
 
-        {/* Chain View - Center */}
+        {/* Chain View - Center (gallery lanes scroll horizontally inside) */}
         <div
-          className="hide-scrollbar"
           style={{
             flex: 1,
             height: '100%',
-            overflow: 'auto',
+            overflow: 'hidden',
             minHeight: 0,
+            minWidth: 0,
             padding: '24px 0',
+            boxSizing: 'border-box',
           }}
         >
-          {stereoEnabled ? (
-            <StereoChainControls
-              activeSide={activeSide}
-              onSelectSide={(side) => actions.setActiveSide(side)}
-              onSwapChains={() => actions.swapChains()}
-            />
-          ) : (
-            <SpreadControls />
-          )}
           <ChainView
-            key={stereoEnabled ? activeSide : 'mono'}
             chain={chain}
+            chainRight={stereoEnabled ? chainRight ?? [] : null}
             onAddModel={handleAddModel}
             onRemoveBlock={(id) => actions.removeBlock(id)}
             onSwapBlock={handleSwapBlock}
             onShareBlock={handleShareBlock}
             onReorderItems={handleReorderItems}
+            onMoveBlock={(blockId, side, index) => actions.moveBlockToChain(blockId, side, index)}
+            onSwapChains={() => actions.swapChains()}
             onSwitchModel={handleSwitchModel}
             onSetBlockParam={actions.setBlockParam}
             onSetBlockEqBand={actions.setBlockEqBand}
@@ -420,7 +410,7 @@ export const Plugin: React.FC = () => {
           <DbMeter
             type="output"
             stereo={stereoOutput}
-            height={450}
+            height={400}
             labelsPosition="right"
           />
         </div>

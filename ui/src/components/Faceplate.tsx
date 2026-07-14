@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Equal, Power } from 'lucide-react';
 import { KnobControl } from './KnobControl';
+import { SpreadGroup } from './SpreadControls';
 import { useParameter } from '../hooks/useParameter';
 import { useFunction } from '../hooks/useFunction';
 
@@ -327,6 +328,10 @@ export const Faceplate: React.FC<FaceplateProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Spread/jitter (mono doubler & stereo offset) lives on the plate now,
+          just before the output stage it feeds. */}
+      <SpreadGroup innerColor="#1C1C1E" />
 
       <MainGainKnob
         label="Output"

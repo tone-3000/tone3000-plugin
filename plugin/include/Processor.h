@@ -68,6 +68,9 @@ public:
   bool switchModel(const std::string& blockId, int modelId);
   bool removeChainBlock(const std::string& blockId);
   bool reorderChainBlocks(const std::vector<std::string>& newOrder);
+  // Move a block into the other lane at the given index (stereo mode drag
+  // across chains). Engines move with the block; insert slots can't move.
+  bool moveBlockToChain(const std::string& blockId, const juce::String& side, int index);
 
   // TONE3000 OAuth access token. Updated by the UI after the Select flow and
   // again on every refresh. `fetchModelFromUrl` attaches it as a Bearer header
