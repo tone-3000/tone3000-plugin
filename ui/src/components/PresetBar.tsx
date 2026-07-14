@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronLeft, ChevronRight, Pencil, Save, Search, Trash2 } from 'lucide-react';
 import type { ActivePreset, PresetInfo } from '../types/chain';
+import { BORDER, GRAY } from './theme';
 
 /**
  * Top-bar preset controls: ‹ name › pill + save button, with two anchored
@@ -12,9 +13,8 @@ import type { ActivePreset, PresetInfo } from '../types/chain';
  * order (factory first, then user, each sorted by name), wrapping.
  */
 
-const MUTED = '#8D8D93';
+const MUTED = GRAY;
 const PANEL_BG = '#141416';
-const BORDER = '1px solid rgba(84, 84, 88, 0.65)';
 
 const panelStyle: React.CSSProperties = {
   position: 'absolute',

@@ -3,11 +3,12 @@
 #include <juce_dsp/juce_dsp.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_formats/juce_audio_formats.h>
-#include <map>
+#include <array>
 #include <atomic>
+#include <map>
 #include <memory>
-#include <vector>
 #include <string>
+#include <vector>
 #include "NAM/dsp.h"
 #include "NAM/get_dsp.h"
 #include "NAM/activations.h"
@@ -90,21 +91,26 @@ public:
   // a minimal { revision, unchanged: true } object is returned so the UI's
   // poll loop stays cheap.
   juce::var getChainState(int knownRevision) const;
-  bool isChainValid() const;
-
+  // Current chain revision, promoting any settled continuous-gesture edit
+  // into a real bump first. The editor's push timer watches this to emit a
+  // `chainChanged` event to the webview, so the UI resyncs immediately after
+  // mutations instead of fast-polling.
+  juce::uint32 getCurrentChainRevision() const;
   // Single entry point for all per-block user params. Supported params:
   // "enabled" (0/1), "inputGain", "outputGain", "mix" (normalized 0..1),
   // "namSlimmableSize" (0.0 lite .. 1.0 full). Returns false for unknown
-  // blocks/params. Bumps the chain revision.
+  // blocks/params. Continuous params defer their revision bump to the end of
+  // the gesture (see deferredRevisionBump) so drag-rate calls never force
+  // full chain resyncs.
   bool setBlockParam(const std::string& blockId, const juce::String& param, double value);
 
   // All meter levels in one call: { input, output, blocks: { id: { in, out } } }.
   // Values in dB with a -60 floor. Designed to be polled once per UI frame.
   juce::var getMeterLevels() const;
 
-  // Per-block post EQ. setBlockEqBand takes { type, freqHz, gainDb, q } for one
-  // band — the mutation granularity a future undo stack wants. Both bump the
-  // chain revision (EQ params are part of params.eq in getChainState).
+  // Per-block post EQ. setBlockEqBand takes { type, freqHz, gainDb, q } for
+  // one band — the undo stack's mutation granularity. Band drags defer their
+  // revision bump like continuous block params (see deferredRevisionBump).
   bool setBlockEqBand(const std::string& blockId, int bandIndex, const juce::var& bandVar);
   bool setBlockEqEnabled(const std::string& blockId, bool enabled);
   bool resetBlockEq(const std::string& blockId);
@@ -142,8 +148,9 @@ public:
     }
     return "input1";
   }
-  // Which chain the UI is currently editing (Left/Right). No-op argument outside {"left","right"}.
-  // Pure view navigation — not part of undo history.
+  // Which lane the next loadTone inserts into ("left"/"right"). The UI sets
+  // this before launching the Select flow so the choice survives the OAuth
+  // redirect. Not a view mode and not part of undo history.
   void setActiveEditChain(const juce::String& side);
   // Swap the Left and Right chains wholesale (stereo mode only). Undoable.
   bool swapChains();
@@ -172,10 +179,6 @@ public:
   int calculateTotalLatency() const;
   void updateLatencyCompensation();
 
-  // Meter level getters for UI (max of the two channels)
-  float getInputMeterLevel() const;
-  float getOutputMeterLevel() const;
-
   // Tuner: enabled by the UI while the tuner screen is visible. Reads the raw
   // (pre-gain, pre-gate) input so gating never starves the pitch detector.
   void setTunerEnabled(bool enabled) { tuner.setEnabled(enabled); }
@@ -200,14 +203,15 @@ public:
   static juce::File getLogFile();
 
 private:
+  // One chain of blocks. Two of these make up `lanes` (declared below).
+  using Lane = std::vector<std::unique_ptr<ChainBlock>>;
+
   // Helper methods
   float computeIrNormalizationGain(const juce::File& irFile, size_t maxIrLength);
   juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
   
   // Tone loading helpers
   std::vector<uint8_t> fetchModelFromUrl(const juce::String& modelUrl);
-  void loadModelData(ChainBlock& block, const std::vector<uint8_t>& modelData,
-                     const juce::String& filename);
 
   /** max(maxBlockSize, getBlockSize(), 1); avoids NamResampler prepare(0, …)→runtime errors. */
   int computeEffectiveNamPrepareBlockSize() const noexcept;
@@ -230,7 +234,11 @@ private:
   PreparedBlockModel prepareBlockModelOffThread(ChainBlockType type, const std::vector<uint8_t>& modelData,
                                                 const juce::String& filename,
                                                 double namPersistedSlimmableSize);
-  /** Short path under `chainMutex` only: swaps engines onto `block` and clears the opposite modality. */
+  /** Short path under `chainMutex` only: swaps the new engines onto `block`.
+      The block's *old* engines end up back in `prepared` — the caller must let
+      `prepared` die *after* releasing the lock, because engine destructors
+      (NAM graphs, convolution state) are far too heavy to run while the audio
+      thread may be blocked on chainMutex. */
   void applyPreparedModelToChainBlock(ChainBlock& block, PreparedBlockModel& prepared);
 
   // Run one chain (the per-block loop) over the supplied working buffer. The buffer may have
@@ -256,11 +264,16 @@ private:
   // bytes are only included when `includeModelData` is set (project files).
   static juce::ValueTree serializeBlockSettings(const ChainBlock& block);
   void applyBlockSettings(ChainBlock& block, const juce::ValueTree& blockState);
+  // Set a block's tone identity in one place: raw JSON, parsed var, and the
+  // slim UI summary (see makeToneSummary) always stay in sync.
+  static void setToneOnBlock(ChainBlock& block, int toneId, const juce::String& toneJson,
+                             const juce::var& parsedTone);
+  // Slim tone projection for getChainState: the UI renders only
+  // id/title/format/gear/first image/user/model names — shipping the full
+  // API payload (model URLs, tags, counts…) per block per sync is waste.
+  static juce::var makeToneSummary(const juce::var& toneVar);
   static void serializeChainToTree(const std::vector<std::unique_ptr<ChainBlock>>& blocks,
                                    juce::ValueTree& chainState, bool includeModelData);
-  void restoreChainFromTree(const juce::ValueTree& chainState,
-                            std::vector<std::unique_ptr<ChainBlock>>& target,
-                            const char* insertBlockId);
 
   // ── Undo/redo internals (ProcessorHistory.cpp) ──
   // Snapshot both chains + stereo mode as a ValueTree. History snapshots stay
@@ -274,11 +287,11 @@ private:
   // Restore a snapshot by reconciling against the live chains: blocks whose
   // tone/model still match keep their loaded engines (undoing a knob tweak
   // never reloads a model); everything else is rebuilt and queued for a
-  // background load. Caller must hold chainMutex.
-  void restoreChainSnapshot(const juce::ValueTree& snapshot);
-  void reconcileChainFromTree(const juce::ValueTree& chainState,
-                              std::vector<std::unique_ptr<ChainBlock>>& target,
-                              const char* insertBlockId);
+  // background load. Caller must hold chainMutex — and must destroy the
+  // returned retired blocks *after* releasing it (engine teardown is heavy).
+  [[nodiscard]] Lane restoreChainSnapshot(const juce::ValueTree& snapshot);
+  void reconcileChainFromTree(const juce::ValueTree& chainState, Lane& target,
+                              const char* insertBlockId, Lane& retired);
   // Queue a background download+prepare of `block`'s active model, resolving
   // url/name from its tone JSON. Used by undo/redo when a restored block's
   // model isn't cached in memory anymore.
@@ -307,18 +320,35 @@ private:
   // channel and an empty (or IR-only) chain plays back one-sided.
   std::atomic<bool> standaloneMonoInput{false};
 
-  // Chain management
-  std::vector<std::unique_ptr<ChainBlock>> chainBlocks;       // Left / primary chain
-  std::vector<std::unique_ptr<ChainBlock>> rightChainBlocks;  // Right chain (stereo mode)
+  // The two chains: lanes[0] = Left/primary (the only lane in mono mode),
+  // lanes[1] = Right (stereo mode). Kept as one array so per-lane logic
+  // (find, meters, serialization, reconciliation) is written once.
+  std::array<Lane, kNumLanes> lanes;
+  Lane& lane(ChainSide side) { return lanes[static_cast<size_t>(laneIndex(side))]; }
+  const Lane& lane(ChainSide side) const { return lanes[static_cast<size_t>(laneIndex(side))]; }
+
   std::atomic<bool> stereoEnabled{false};
-  ChainSide activeEditSide{ChainSide::Left};
+  // Which lane loadTone inserts into. Set by the UI before launching the
+  // Select flow (the choice must survive the OAuth redirect); not a view mode.
+  ChainSide pendingAddSide{ChainSide::Left};
   juce::CriticalSection chainMutex;
 
   // Monotonic revision of everything getChainState() reports. Bumped on every
   // chain mutation (structure, params, load completion, stereo/side changes)
-  // so the UI can cheaply skip resyncs when nothing changed.
-  std::atomic<juce::uint32> chainRevision{1};
-  void bumpChainRevision() { chainRevision.fetch_add(1); }
+  // so the UI can cheaply skip resyncs when nothing changed. Mutable + const:
+  // getChainState() promotes settled gesture edits into a bump (see below).
+  mutable std::atomic<juce::uint32> chainRevision{1};
+  void bumpChainRevision() const { chainRevision.fetch_add(1); }
+
+  // Deferred revision bump for continuous gestures (knob/EQ drags). Bumping
+  // per drag tick would make every 500 ms poll re-serialize and re-ship the
+  // whole chain mid-gesture; instead the mutator records "params changed at
+  // <now>" and getChainState() converts it into a real bump once the gesture
+  // has been quiet for kGestureSettleMs. The dragging view holds its own
+  // optimistic value, so nothing is stale meanwhile.
+  static constexpr juce::int64 kGestureSettleMs = 400;
+  mutable std::atomic<juce::int64> pendingParamBumpAt{0};  // 0 = nothing pending
+  void deferredRevisionBump() { pendingParamBumpAt.store(juce::Time::currentTimeMillis()); }
 
   // Queue a background download+prepare of a tone's model for `blockId`.
   // Shared by loadTone (new block) and swapTone (existing block).
@@ -338,17 +368,42 @@ private:
   // Thread pool for background model loading
   juce::ThreadPool loadingThreadPool;
 
-  // Processing buffers (still used by chain processing)
-  std::vector<double> inputBuffer, outputBuffer;
   int maxBlockSize = 0;
   bool eqParamsDirty = true;
   // Tracks the tone stack's power switch across blocks so re-enabling can
   // reset the filters (stale biquad state would otherwise ring).
   bool toneEqWasEnabled = true;
 
-  // cache
-  float cacheInputLevel;
-  float cacheOutputLevel;
+  // Raw APVTS parameter atomics, resolved once in the constructor. The audio
+  // thread reads these every block; getRawParameterValue is a string-keyed
+  // map lookup and has no business on the RT path.
+  struct ParamRefs {
+    std::atomic<float>* inputLevel = nullptr;
+    std::atomic<float>* outputLevel = nullptr;
+    std::atomic<float>* inputBalance = nullptr;
+    std::atomic<float>* outputBalance = nullptr;
+    std::atomic<float>* spreadEnabled = nullptr;
+    std::atomic<float>* spreadAmount = nullptr;
+    std::atomic<float>* spreadJitter = nullptr;
+    std::atomic<float>* chainPanLeft = nullptr;
+    std::atomic<float>* chainPanRight = nullptr;
+    std::atomic<float>* toneBass = nullptr;
+    std::atomic<float>* toneMid = nullptr;
+    std::atomic<float>* toneTreble = nullptr;
+    std::atomic<float>* gateThreshold = nullptr;
+    std::atomic<float>* gateEnabled = nullptr;
+    std::atomic<float>* toneEqEnabled = nullptr;
+    std::atomic<float>* toneEqPre = nullptr;
+    std::atomic<float>* targetLoudness = nullptr;
+    std::atomic<float>* normalize = nullptr;
+    std::atomic<float>* calibrateInput = nullptr;
+    std::atomic<float>* inputCalibrationLevel = nullptr;
+  } paramRefs;
+  void resolveParamRefs();
+
+  // Per-block cached values (refreshed once per processBlock from paramRefs).
+  float cacheInputLevel = 0.5f;
+  float cacheOutputLevel = 0.5f;
   float cacheInputBalance = 0.5f;
   float cacheOutputBalance = 0.5f;
   bool cacheSpreadEnabled = false;
@@ -356,29 +411,26 @@ private:
   float cacheSpreadJitter = 0.0f;
   float cacheChainPanLeft = 0.0f;
   float cacheChainPanRight = 1.0f;
-  float cacheBassTone;
-  float cacheMidTone;
-  float cacheTrebleTone;
-  float cacheGateThreshold;
+  float cacheBassTone = 5.0f;
+  float cacheMidTone = 5.0f;
+  float cacheTrebleTone = 5.0f;
+  float cacheGateThreshold = -80.0f;
   bool cacheGateEnabled = true;
   bool cacheToneEqEnabled = true;
   bool cacheToneEqPre = false;  // tone stack before (true) or after (false) the chain
-  float cacheTargetLoudness;
-  bool cacheNormalize;
-  bool cacheCalibrateInput;
-  float cacheInputCalibrationLevel;
+  float cacheTargetLoudness = -18.0f;
+  bool cacheNormalize = true;
+  bool cacheCalibrateInput = false;
+  float cacheInputCalibrationLevel = 12.0f;
 
   void updateEqCoefficients();
   void updateCachedParameters();
   void processToneStack(juce::AudioBuffer<float>& buffer);
 
-  juce::LinearSmoothedValue<float> normalizationGainSmoother;
-
   // DC blocker; ProcessorDuplicator runs one filter instance per channel, so a
   // single duplicator handles mono and stereo buffers alike.
   juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>, juce::dsp::IIR::Coefficients<float>>
-      dcBlockerLeft;
-
+      dcBlocker;
 
   juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>, juce::dsp::IIR::Coefficients<float>>
       bassFilter;
@@ -387,17 +439,8 @@ private:
   juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>, juce::dsp::IIR::Coefficients<float>>
       trebleFilter;
 
-  std::unique_ptr<juce::dsp::Oversampling<float>> oversampler;
-  std::vector<float> namProcessInputFloatBuffer;
-  juce::AudioBuffer<float> oversampleBuffer;
   juce::AudioBuffer<float> tempDryBuffer;
-  std::vector<float> resampleInputBuffer;
-  std::vector<float> resampleOutputBuffer;
-  juce::LagrangeInterpolator upsampler;
-  juce::LagrangeInterpolator downsampler;
-  double modelSampleRate = 48000.0;
   double hostSampleRate = 48000.0;  // Default, updated dynamically in prepareToPlay
-  bool bypassResampling = true;     // Default to bypass unless model requires specific rate
 
   // Meter level tracking, per channel (mono sources report L == R).
   mutable std::atomic<float> inputMeterLevelL{-60.0f};

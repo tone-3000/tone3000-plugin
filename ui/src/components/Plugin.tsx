@@ -1,12 +1,16 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { Settings as SettingsIcon, Undo2, Redo2 } from 'lucide-react';
-import { useFunction } from '../hooks/useFunction';
+import { useNativeFunction } from '../hooks/useFunction';
 import { useChainState } from '../hooks/useChainState';
+import { ChainActionsProvider } from '../hooks/useChainActions';
+import type { ChainActions } from '../hooks/useChainActions';
 import { usePresets } from '../hooks/usePresets';
 import { ChainView } from './ChainView';
 import { Faceplate } from './Faceplate';
 import { PresetBar } from './PresetBar';
-import { StereoModeToggle } from './StereoControls';
+import { StereoModeToggle } from './StereoModeToggle';
+import { IconButton } from './IconButton';
+import { BORDER } from './theme';
 import { useParameter } from '../hooks/useParameter';
 import type { Model, Tone } from '../types/tone';
 import type { ChainSide, ToneBlock } from '../types/chain';
@@ -71,25 +75,15 @@ export const Plugin: React.FC = () => {
   const [spreadEnabled] = useParameter('spreadEnabled', 'toggle');
   const stereoOutput = stereoEnabled || spreadEnabled;
 
-  // One-shot native functions
-  const setAccessToken = useFunction<boolean>('setAccessToken');
-  const setTunerEnabled = useFunction<boolean>('setTunerEnabled');
-  const copyToClipboard = useFunction<boolean>('copyToClipboard');
+  // One-shot native functions (stateless bindings — stable identities).
+  const setAccessToken = useNativeFunction<boolean>('setAccessToken');
+  const setTunerEnabled = useNativeFunction<boolean>('setTunerEnabled');
+  const copyToClipboard = useNativeFunction<boolean>('copyToClipboard');
 
   // Toggle the tuner screen; native only feeds the pitch detector while it's on.
   const handleToggleTuner = async (show: boolean) => {
     setShowTuner(show);
-    try {
-      await setTunerEnabled.invoke(show);
-    } catch (error) {
-      console.error('Error toggling tuner:', error);
-    }
-  };
-
-  // Reorder one lane (full order including its insert slot). Native infers
-  // which lane the ids belong to; the gallery only calls this on real moves.
-  const handleReorderItems = async (orderedIds: string[]) => {
-    await actions.reorderBlocks(orderedIds);
+    await setTunerEnabled(show);
   };
 
   // Share: copy the tone's public TONE3000 page URL. Clipboard writes go
@@ -98,7 +92,7 @@ export const Plugin: React.FC = () => {
   const handleShareBlock = useCallback(
     async (block: ToneBlock): Promise<boolean> => {
       const url = `${T3K_API}/tones/${block.tone.id}`;
-      const ok = await copyToClipboard.invoke(url);
+      const ok = await copyToClipboard(url);
       if (ok) return true;
       try {
         await navigator.clipboard.writeText(url);
@@ -115,11 +109,7 @@ export const Plugin: React.FC = () => {
   // again whenever T3KClient transparently refreshes the token.
   const pushAccessTokenToNative = useCallback(
     async (accessToken: string) => {
-      try {
-        await setAccessToken.invoke(accessToken);
-      } catch (error) {
-        console.error('Failed to push access token to native:', error);
-      }
+      await setAccessToken(accessToken);
     },
     [setAccessToken]
   );
@@ -163,40 +153,70 @@ export const Plugin: React.FC = () => {
   // TONE3000 Select integration. Single-webview redirect flow: clicking + on
   // the chain navigates the main webview to tone3000.com; TONE3000 redirects
   // back to index.html?code=…&tone_id=… and useT3kSelect resolves the rest.
-  const { startSelectFlow, oauthPhase, oauthError, clearOauthError } =
-    useT3kSelect({
-      onToneSelected: handleToneSelected,
-      onAccessTokenUpdated: pushAccessTokenToNative,
-    });
+  const { startSelectFlow, oauthPhase, oauthError, clearOauthError } = useT3kSelect({
+    onToneSelected: handleToneSelected,
+    onAccessTokenUpdated: pushAccessTokenToNative,
+  });
 
   // Handle switching models within a block
-  const handleSwitchModel = async (blockId: string, modelId: number) => {
-    const success = await actions.switchModel(blockId, modelId);
-    if (!success) console.error('Failed to switch model');
-  };
+  const handleSwitchModel = useCallback(
+    async (blockId: string, modelId: number) => {
+      const success = await actions.switchModel(blockId, modelId);
+      if (!success) console.error('Failed to switch model');
+    },
+    [actions]
+  );
 
   // Gate internet-dependent actions: the Select flow navigates the webview to
   // tone3000.com, and doing that offline strands the user on a browser error
   // page. Check connectivity first and show a modal if we're offline.
   const internetGate = useInternetGate();
+  const { requireInternet } = internetGate;
 
   // Adding routes to a lane via the native active-edit side (it has to
   // survive the OAuth redirect, so it lives in native state, not React's).
-  const handleAddModel = (side: ChainSide) => {
-    internetGate.requireInternet(async () => {
-      sessionStorage.removeItem(SWAP_STORAGE_KEY);
-      if (stereoEnabled) await actions.setActiveSide(side);
-      startSelectFlow();
-    });
-  };
+  const handleAddModel = useCallback(
+    (side: ChainSide) => {
+      requireInternet(async () => {
+        sessionStorage.removeItem(SWAP_STORAGE_KEY);
+        if (stereoEnabled) await actions.setActiveSide(side);
+        startSelectFlow();
+      });
+    },
+    [actions, requireInternet, startSelectFlow, stereoEnabled]
+  );
 
   // Swap: remember the target block, then run the same Select flow as add.
-  const handleSwapBlock = (blockId: string) => {
-    internetGate.requireInternet(() => {
-      sessionStorage.setItem(SWAP_STORAGE_KEY, blockId);
-      startSelectFlow();
-    });
-  };
+  const handleSwapBlock = useCallback(
+    (blockId: string) => {
+      requireInternet(() => {
+        sessionStorage.setItem(SWAP_STORAGE_KEY, blockId);
+        startSelectFlow();
+      });
+    },
+    [requireInternet, startSelectFlow]
+  );
+
+  // Single stable bundle of everything a block can do — ChainView and the
+  // tiles/cards below it read this from context instead of threading a dozen
+  // callback props (which would defeat their React.memo).
+  const chainActions = useMemo<ChainActions>(
+    () => ({
+      addModel: handleAddModel,
+      removeBlock: actions.removeBlock,
+      swapBlock: handleSwapBlock,
+      shareBlock: handleShareBlock,
+      reorderBlocks: actions.reorderBlocks,
+      moveBlock: actions.moveBlockToChain,
+      swapChains: actions.swapChains,
+      switchModel: handleSwitchModel,
+      setBlockParam: actions.setBlockParam,
+      setBlockEqBand: actions.setBlockEqBand,
+      setBlockEqEnabled: actions.setBlockEqEnabled,
+      resetBlockEq: actions.resetBlockEq,
+    }),
+    [actions, handleAddModel, handleShareBlock, handleSwapBlock, handleSwitchModel]
+  );
 
   return (
     <div
@@ -223,7 +243,7 @@ export const Plugin: React.FC = () => {
           backgroundColor: '#000000',
           padding: '12px 24px',
           flexShrink: 0,
-          borderBottom: '1px solid rgba(84, 84, 88, 0.65)',
+          borderBottom: BORDER,
         }}
       >
         <a
@@ -260,78 +280,23 @@ export const Plugin: React.FC = () => {
             stereoEnabled={stereoEnabled}
             onToggle={(enabled) => actions.setStereoMode(enabled)}
           />
-          <button
+          <IconButton
             onClick={() => handleToggleTuner(!showTuner)}
             title="Tuner"
-            style={{
-              background: showTuner ? 'rgba(235, 235, 245, 0.18)' : 'transparent',
-              border: 'none',
-              color: '#ffffff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              borderRadius: '4px',
-              padding: '5px',
-            }}
+            active={showTuner}
+            fillWhenActive
           >
             <TuningForkIcon size={18} />
-          </button>
-          <button
-            onClick={() => actions.undo()}
-            disabled={!canUndo}
-            title="Undo"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#ffffff',
-              opacity: canUndo ? 1 : 0.3,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: canUndo ? 'pointer' : 'default',
-              borderRadius: '4px',
-              padding: '5px',
-            }}
-          >
+          </IconButton>
+          <IconButton onClick={() => actions.undo()} disabled={!canUndo} title="Undo">
             <Undo2 size={18} />
-          </button>
-          <button
-            onClick={() => actions.redo()}
-            disabled={!canRedo}
-            title="Redo"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#ffffff',
-              opacity: canRedo ? 1 : 0.3,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: canRedo ? 'pointer' : 'default',
-              borderRadius: '4px',
-              padding: '5px',
-            }}
-          >
+          </IconButton>
+          <IconButton onClick={() => actions.redo()} disabled={!canRedo} title="Redo">
             <Redo2 size={18} />
-          </button>
-          <button
-            onClick={() => setShowSettings(true)}
-            title="Settings"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#ffffff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              borderRadius: '4px',
-              padding: '5px',
-            }}
-          >
+          </IconButton>
+          <IconButton onClick={() => setShowSettings(true)} title="Settings">
             <SettingsIcon size={18} />
-          </button>
+          </IconButton>
         </div>
       </div>
 
@@ -339,82 +304,67 @@ export const Plugin: React.FC = () => {
       {showTuner ? (
         <TunerView />
       ) : (
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'row',
-          flex: 1,
-          width: '100%',
-          backgroundColor: '#000000',
-          overflow: 'hidden',
-          minHeight: 0,
-          padding: '0 24px',
-        }}
-      >
-        {/* Left Meter - Input */}
         <div
           style={{
-            height: '100%',
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-            backgroundColor: '#000000',
-          }}
-        >
-          <DbMeter type="input" stereo={stereoInput} height={400} />
-        </div>
-
-        {/* Chain View - Center (gallery lanes scroll horizontally inside) */}
-        <div
-          style={{
+            flexDirection: 'row',
             flex: 1,
-            height: '100%',
+            width: '100%',
+            backgroundColor: '#000000',
             overflow: 'hidden',
             minHeight: 0,
-            minWidth: 0,
-            padding: '24px 0',
-            boxSizing: 'border-box',
+            padding: '0 24px',
           }}
         >
-          <ChainView
-            chain={chain}
-            chainRight={stereoEnabled ? chainRight ?? [] : null}
-            onAddModel={handleAddModel}
-            onRemoveBlock={(id) => actions.removeBlock(id)}
-            onSwapBlock={handleSwapBlock}
-            onShareBlock={handleShareBlock}
-            onReorderItems={handleReorderItems}
-            onMoveBlock={(blockId, side, index) => actions.moveBlockToChain(blockId, side, index)}
-            onSwapChains={() => actions.swapChains()}
-            onSwitchModel={handleSwitchModel}
-            onSetBlockParam={actions.setBlockParam}
-            onSetBlockEqBand={actions.setBlockEqBand}
-            onSetBlockEqEnabled={(id, enabled) => actions.setBlockEqEnabled(id, enabled)}
-            onResetBlockEq={(id) => actions.resetBlockEq(id)}
-            sampleRate={sampleRate}
-          />
-        </div>
+          {/* Left Meter - Input */}
+          <div
+            style={{
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              backgroundColor: '#000000',
+            }}
+          >
+            <DbMeter type="input" stereo={stereoInput} height={400} />
+          </div>
 
-        {/* Right Meter - Output */}
-        <div
-          style={{
-            height: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-            backgroundColor: '#000000',
-          }}
-        >
-          <DbMeter
-            type="output"
-            stereo={stereoOutput}
-            height={400}
-            labelsPosition="right"
-          />
+          {/* Chain View - Center (gallery lanes scroll horizontally inside) */}
+          <div
+            style={{
+              flex: 1,
+              height: '100%',
+              overflow: 'hidden',
+              minHeight: 0,
+              minWidth: 0,
+              padding: '24px 0',
+              boxSizing: 'border-box',
+            }}
+          >
+            <ChainActionsProvider value={chainActions}>
+              <ChainView
+                chain={chain}
+                chainRight={stereoEnabled ? (chainRight ?? []) : null}
+                sampleRate={sampleRate}
+              />
+            </ChainActionsProvider>
+          </div>
+
+          {/* Right Meter - Output */}
+          <div
+            style={{
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              backgroundColor: '#000000',
+            }}
+          >
+            <DbMeter type="output" stereo={stereoOutput} height={400} labelsPosition="right" />
+          </div>
         </div>
-      </div>
       )}
 
       {/* Pinned faceplate at the bottom (gains, gate, tone stack) */}
@@ -424,14 +374,16 @@ export const Plugin: React.FC = () => {
         stereoChains={stereoEnabled}
       />
 
-      {/* Settings Modal */}
-      <Settings
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-        standalone={standalone}
-        inputMode={inputMode}
-        onSetInputMode={(mode) => actions.setInputMode(mode)}
-      />
+      {/* Settings takeover — mounted only while open so its parameter
+          subscriptions and screen state don't run behind the main UI. */}
+      {showSettings && (
+        <Settings
+          onClose={() => setShowSettings(false)}
+          standalone={standalone}
+          inputMode={inputMode}
+          onSetInputMode={(mode) => actions.setInputMode(mode)}
+        />
+      )}
 
       {/* OAuth callback overlay — covers the chain UI while we resolve the
           tokens + tone after returning from tone3000.com, and surfaces any

@@ -122,12 +122,14 @@ const geometry = (variant: KnobVariant, value: number) => {
   }
 };
 
-export const KnobInner: React.FC<KnobInnerProps> = ({
+// Memoized: pure function of its scalar props, and it repaints two conic
+// gradients per render — cheap to skip when a parent re-renders idle knobs.
+export const KnobInner: React.FC<KnobInnerProps> = React.memo(function KnobInner({
   value,
   size,
   innerColor = '#000000',
   variant = 'full',
-}) => {
+}) {
   const { angleDeg, gradient } = geometry(variant, value);
   // Convert to radians, offset by -90 so 0° is at top
   const angleRad = (angleDeg - 90) * (Math.PI / 180);
@@ -214,4 +216,4 @@ export const KnobInner: React.FC<KnobInnerProps> = ({
       />
     </div>
   );
-};
+});

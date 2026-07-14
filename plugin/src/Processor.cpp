@@ -23,16 +23,37 @@ TONE3000Processor::TONE3000Processor()
       bassFilter(juce::dsp::IIR::Coefficients<float>::makeLowShelf(48000, 100.0f, 1.0f, 1.0f)),
       midFilter(juce::dsp::IIR::Coefficients<float>::makePeakFilter(48000, 1000.0f, 1.0f, 1.0f)),
       trebleFilter(juce::dsp::IIR::Coefficients<float>::makeHighShelf(48000, 4000.0f, 1.0f, 1.0f)),
-      oversampler(std::make_unique<juce::dsp::Oversampling<float>>(
-          2,
-          0,
-          juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple)),
       loadingThreadPool(2) {  // 2 threads for background loading
-  normalizationGainSmoother.reset(48000, 0.05f);
+  resolveParamRefs();
   // Always start with the insert block (pass-through placeholder for "add tone" position)
-  chainBlocks.push_back(
-      std::make_unique<ChainBlock>(INSERT_BLOCK_ID, ChainBlockType::INSERT));
+  lane(ChainSide::Left)
+      .push_back(std::make_unique<ChainBlock>(INSERT_BLOCK_ID, ChainBlockType::INSERT));
   DBG("TONE3000Processor constructed");
+}
+
+// One-time string-keyed lookups; everything after this reads the atomics.
+void TONE3000Processor::resolveParamRefs() {
+  auto get = [this](const char* id) { return parameters.getRawParameterValue(id); };
+  paramRefs.inputLevel = get("inputLevel");
+  paramRefs.outputLevel = get("outputLevel");
+  paramRefs.inputBalance = get("inputBalance");
+  paramRefs.outputBalance = get("outputBalance");
+  paramRefs.spreadEnabled = get("spreadEnabled");
+  paramRefs.spreadAmount = get("spreadAmount");
+  paramRefs.spreadJitter = get("spreadJitter");
+  paramRefs.chainPanLeft = get("chainPanLeft");
+  paramRefs.chainPanRight = get("chainPanRight");
+  paramRefs.toneBass = get("toneBass");
+  paramRefs.toneMid = get("toneMid");
+  paramRefs.toneTreble = get("toneTreble");
+  paramRefs.gateThreshold = get("gateThreshold");
+  paramRefs.gateEnabled = get("gateEnabled");
+  paramRefs.toneEqEnabled = get("toneEqEnabled");
+  paramRefs.toneEqPre = get("toneEqPre");
+  paramRefs.targetLoudness = get("targetLoudness");
+  paramRefs.normalize = get("normalize");
+  paramRefs.calibrateInput = get("calibrateInput");
+  paramRefs.inputCalibrationLevel = get("inputCalibrationLevel");
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createParameterLayout() {
@@ -81,7 +102,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
   // stereo chain shift — mode-exclusive). Amount is bipolar: 0.5 = center =
   // 0 ms (processing skipped); below center delays the left channel, above
   // center the right (0..24 ms). Jitter is ± per-note random variation
-  // (0..12 ms, 0 = off). Stored normalized; SpreadParams decodes to ms.
+  // (0..4 ms, 0 = off). Stored normalized; SpreadParams decodes to ms.
   layout.add(std::make_unique<juce::AudioParameterBool>(
       juce::ParameterID{"spreadEnabled", 19}, "spreadEnabled", false));
   layout.add(std::make_unique<juce::AudioParameterFloat>(
@@ -108,13 +129,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
 
 TONE3000Processor::~TONE3000Processor() {
   releaseResources();
-  
-  // Clean up chain blocks only when the processor is actually being destroyed
+
+  // Clean up both lanes only when the processor is actually being destroyed
   {
     juce::ScopedLock lock(chainMutex);
-    chainBlocks.clear();
+    for (auto& l : lanes)
+      l.clear();
   }
-  
+
   juce::Logger::writeToLog("[Processor] Destructor called");
 
   // Clean up the logger to prevent leaks
@@ -138,7 +160,11 @@ bool TONE3000Processor::isMidiEffect() const {
   return false;
 }
 double TONE3000Processor::getTailLengthSeconds() const {
-  return 0.0;
+  // IR convolution tails run up to 32768 samples (see prepareBlockModelOffThread's
+  // maxIrLength). Report that conservatively so hosts don't cut reverb/cab tails
+  // when audio stops; checking whether an IR is actually loaded would need the
+  // chain lock, which this (potentially RT-adjacent) query must not take.
+  return 32768.0 / juce::jmax(8000.0, hostSampleRate);
 }
 
 int TONE3000Processor::getNumPrograms() {
@@ -188,13 +214,17 @@ void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& b
       DBG("IR convolvers re-prepared for block: " << block->id);
     }
 
-    // Initialize per-block smoothers (input gain, output gain and mix)
+    // Initialize per-block smoothers (input gain, output gain, mix, NAM
+    // normalization). The RT path only ever calls setTargetValue on these —
+    // reset() belongs here and in the model-apply path, never per block.
     block->inputGainSmoother.reset(sampleRate, 0.05f);
     block->outputGainSmoother.reset(sampleRate, 0.05f);
     block->mixSmoother.reset(sampleRate, 0.05f);
+    block->namNormalizationSmoother.reset(sampleRate, 0.05f);
     block->inputGainSmoother.setCurrentAndTargetValue(1.0f);   // updated on first process
     block->outputGainSmoother.setCurrentAndTargetValue(1.0f);  // updated on first process
     block->mixSmoother.setCurrentAndTargetValue(block->mixNormalized);
+    block->namNormalizationSmoother.setCurrentAndTargetValue(1.0f);
 
     // Post-block EQ + spectrum analyzer need the sample rate for their math.
     block->eq.prepare(sampleRate);
@@ -241,43 +271,17 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
         new juce::FileLogger(getLogFile(), "TONE3000 JUCE Log"));
   }
 
-  resampleInputBuffer.resize(samplesPerBlock + 16);
-  resampleOutputBuffer.resize(samplesPerBlock + 16);
-  modelSampleRate = sampleRate;
-  hostSampleRate = sampleRate;  // Update host sample rate
+  hostSampleRate = sampleRate;
   maxBlockSize = samplesPerBlock;
-  inputBuffer.resize(maxBlockSize);
-  outputBuffer.resize(maxBlockSize);
 
   tuner.prepare(sampleRate);
 
   DBG("Preparing to play: sampleRate=" << sampleRate << ", samplesPerBlock=" << samplesPerBlock);
-  DBG("Model sample rate set to: " << modelSampleRate);
 
-  // Cached parameters
-  cacheInputLevel = parameters.getRawParameterValue("inputLevel")->load();
-  cacheOutputLevel = parameters.getRawParameterValue("outputLevel")->load();
-  cacheInputBalance = parameters.getRawParameterValue("inputBalance")->load();
-  cacheOutputBalance = parameters.getRawParameterValue("outputBalance")->load();
-  cacheSpreadEnabled = parameters.getRawParameterValue("spreadEnabled")->load() > 0.5f;
-  cacheSpreadAmount = parameters.getRawParameterValue("spreadAmount")->load();
-  cacheSpreadJitter = parameters.getRawParameterValue("spreadJitter")->load();
-  cacheChainPanLeft = parameters.getRawParameterValue("chainPanLeft")->load();
-  cacheChainPanRight = parameters.getRawParameterValue("chainPanRight")->load();
-  cacheBassTone = parameters.getRawParameterValue("toneBass")->load();
-  cacheMidTone = parameters.getRawParameterValue("toneMid")->load();
-  cacheTrebleTone = parameters.getRawParameterValue("toneTreble")->load();
-  cacheGateThreshold = parameters.getRawParameterValue("gateThreshold")->load();
-  cacheGateEnabled = parameters.getRawParameterValue("gateEnabled")->load() > 0.5f;
-  cacheToneEqEnabled = parameters.getRawParameterValue("toneEqEnabled")->load() > 0.5f;
-  cacheToneEqPre = parameters.getRawParameterValue("toneEqPre")->load() > 0.5f;
-  cacheTargetLoudness = parameters.getRawParameterValue("targetLoudness")->load();
-  DBG("Debug parameter values: gateThreshold=" << cacheGateThreshold << ", targetLoudness=" << cacheTargetLoudness);
-  cacheNormalize = parameters.getRawParameterValue("normalize")->load() > 0.5f;
-  cacheCalibrateInput = parameters.getRawParameterValue("calibrateInput")->load() > 0.5f;
-  cacheInputCalibrationLevel = parameters.getRawParameterValue("inputCalibrationLevel")->load();
-  DBG("Input calibration level loaded directly: " << cacheInputCalibrationLevel << " dBu");
-  
+  // Prime the cached parameter values from the resolved atomics.
+  updateCachedParameters();
+
+
   // Detect a mono input source in the standalone app. The device restarts (and
   // re-runs prepareToPlay) whenever the user changes the audio setup, so this
   // stays in sync with the selected device. Hosts (VST3/AU) never take this
@@ -293,18 +297,18 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
 
   updateStereoInputDetection();
 
-  // Reset all chain blocks (both Left and Right chains)
+  // Prepare every engine in both lanes for the new rate/block size.
   {
     juce::ScopedLock lock(chainMutex);
-    prepareChain(chainBlocks, sampleRate, samplesPerBlock);
-    prepareChain(rightChainBlocks, sampleRate, samplesPerBlock);
+    for (auto& l : lanes)
+      prepareChain(l, sampleRate, samplesPerBlock);
   }
 
   juce::dsp::ProcessSpec spec{sampleRate, static_cast<juce::uint32>(samplesPerBlock), 2};
   bassFilter.prepare(spec);
   midFilter.prepare(spec);
   trebleFilter.prepare(spec);
-  dcBlockerLeft.prepare(spec);
+  dcBlocker.prepare(spec);
   spread.prepare(sampleRate, samplesPerBlock);
 
   // Chain-pan blend gains: 20 ms ramps, primed from the current parameters
@@ -327,39 +331,24 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
       *juce::dsp::IIR::Coefficients<float>::makePeakFilter(sampleRate, 1000.0f, 1.0f, 1.0f);
   *trebleFilter.state =
       *juce::dsp::IIR::Coefficients<float>::makeHighShelf(sampleRate, 4000.0f, 1.0f, 1.0f);
-  *dcBlockerLeft.state = *juce::dsp::IIR::Coefficients<float>::makeHighPass(sampleRate, 20.0f);
+  *dcBlocker.state = *juce::dsp::IIR::Coefficients<float>::makeHighPass(sampleRate, 20.0f);
 
   bassFilter.reset();
   midFilter.reset();
   trebleFilter.reset();
-  dcBlockerLeft.reset();
+  dcBlocker.reset();
 
-  // Oversampling prep
-  oversampler = std::make_unique<juce::dsp::Oversampling<float>>(
-      2, 0, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple);
-  oversampler->initProcessing(static_cast<size_t>(samplesPerBlock));
-  oversampler->reset();
-
-  oversampleBuffer.setSize(2, samplesPerBlock + 8, false, false, true);
-  oversampleBuffer.clear();
+  // Scratch buffers, sized once here — the RT path never resizes them.
   tempDryBuffer.setSize(2, samplesPerBlock, false, false, true);
   tempDryBuffer.clear();
-
-  // Pre-allocated mono scratch buffers for per-side processing in stereo mode.
   stereoChainBufferL.setSize(1, samplesPerBlock, false, false, true);
   stereoChainBufferR.setSize(1, samplesPerBlock, false, false, true);
   stereoChainBufferL.clear();
   stereoChainBufferR.clear();
 
-  normalizationGainSmoother.reset(sampleRate, 0.05f);
-  normalizationGainSmoother.setCurrentAndTargetValue(1.0f);  // ✅ CRITICAL
-
-  setLatencySamples(bypassResampling ? 0 : static_cast<int>(oversampler->getLatencyInSamples()));
-
-  // Update latency compensation for resampling
   updateLatencyCompensation();
 
-  // ✅ Apply actual tone gain to EQ
+  // Apply the actual tone knob gains to the tone stack filters.
   updateEqCoefficients();
 }
 
@@ -377,7 +366,7 @@ void TONE3000Processor::releaseResources() {
   bassFilter.reset();
   midFilter.reset();
   trebleFilter.reset();
-  dcBlockerLeft.reset();
+  dcBlocker.reset();
 }
 
 bool TONE3000Processor::isBusesLayoutSupported(const BusesLayout& layouts) const {
@@ -445,45 +434,40 @@ void TONE3000Processor::processToneStack(juce::AudioBuffer<float>& buffer) {
 void TONE3000Processor::updateCachedParameters() {
   constexpr float epsilon = 1e-5f;
 
-  auto loadFloat = [&](const juce::String& paramID) -> float {
-    return parameters.getRawParameterValue(paramID)->load();
-  };
-
-  auto updateFloat = [&](float& cached, const juce::String& paramID) {
-    float value = loadFloat(paramID);
+  // Plain atomic loads — the string-keyed lookups happened once in
+  // resolveParamRefs(). `tone` marks the tone-stack floats whose changes
+  // must dirty the EQ coefficients.
+  auto updateFloat = [&](float& cached, const std::atomic<float>* param, bool tone = false) {
+    const float value = param->load();
     if (std::abs(value - cached) > epsilon) {
       cached = value;
-      // Set eqParamsDirty if any EQ parameter changed
-      if (paramID == "toneBass" || paramID == "toneMid" || paramID == "toneTreble") {
+      if (tone)
         eqParamsDirty = true;
-      }
     }
   };
 
-  updateFloat(cacheInputLevel, "inputLevel");
-  updateFloat(cacheOutputLevel, "outputLevel");
-  updateFloat(cacheInputBalance, "inputBalance");
-  updateFloat(cacheOutputBalance, "outputBalance");
-  updateFloat(cacheSpreadAmount, "spreadAmount");
-  updateFloat(cacheSpreadJitter, "spreadJitter");
-  updateFloat(cacheChainPanLeft, "chainPanLeft");
-  updateFloat(cacheChainPanRight, "chainPanRight");
-  updateFloat(cacheBassTone, "toneBass");
-  updateFloat(cacheMidTone, "toneMid");
-  updateFloat(cacheTrebleTone, "toneTreble");
-  updateFloat(cacheGateThreshold, "gateThreshold");
-  updateFloat(cacheTargetLoudness, "targetLoudness");
-  updateFloat(cacheInputCalibrationLevel, "inputCalibrationLevel");
+  updateFloat(cacheInputLevel, paramRefs.inputLevel);
+  updateFloat(cacheOutputLevel, paramRefs.outputLevel);
+  updateFloat(cacheInputBalance, paramRefs.inputBalance);
+  updateFloat(cacheOutputBalance, paramRefs.outputBalance);
+  updateFloat(cacheSpreadAmount, paramRefs.spreadAmount);
+  updateFloat(cacheSpreadJitter, paramRefs.spreadJitter);
+  updateFloat(cacheChainPanLeft, paramRefs.chainPanLeft);
+  updateFloat(cacheChainPanRight, paramRefs.chainPanRight);
+  updateFloat(cacheBassTone, paramRefs.toneBass, true);
+  updateFloat(cacheMidTone, paramRefs.toneMid, true);
+  updateFloat(cacheTrebleTone, paramRefs.toneTreble, true);
+  updateFloat(cacheGateThreshold, paramRefs.gateThreshold);
+  updateFloat(cacheTargetLoudness, paramRefs.targetLoudness);
+  updateFloat(cacheInputCalibrationLevel, paramRefs.inputCalibrationLevel);
 
-  auto loadBool = [&](const juce::String& paramID) -> bool {
-    return parameters.getRawParameterValue(paramID)->load() > 0.5f;
-  };
-  cacheNormalize = loadBool("normalize");
-  cacheCalibrateInput = loadBool("calibrateInput");
-  cacheGateEnabled = loadBool("gateEnabled");
-  cacheToneEqEnabled = loadBool("toneEqEnabled");
-  cacheToneEqPre = loadBool("toneEqPre");
-  cacheSpreadEnabled = loadBool("spreadEnabled");
+  auto loadBool = [](const std::atomic<float>* param) { return param->load() > 0.5f; };
+  cacheNormalize = loadBool(paramRefs.normalize);
+  cacheCalibrateInput = loadBool(paramRefs.calibrateInput);
+  cacheGateEnabled = loadBool(paramRefs.gateEnabled);
+  cacheToneEqEnabled = loadBool(paramRefs.toneEqEnabled);
+  cacheToneEqPre = loadBool(paramRefs.toneEqPre);
+  cacheSpreadEnabled = loadBool(paramRefs.spreadEnabled);
 }
 
 // Per-channel gain for a main stage: main level ±24 dB, plus the balance
@@ -597,36 +581,23 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
         // Process with resampling wrapper (handles mono conversion internally)
         block->namResampler->process(buffer);
 
-        // Compute per-block NAM normalization target and apply smoother
-        // If normalization is disabled, force smoother to unity.
+        // Per-block NAM loudness normalization target; unity when disabled.
+        // The smoother was prepared off the RT path (prepareChain / model
+        // apply) — here we only ever move its target.
         const float targetLufs = cacheTargetLoudness;  // use live target
         float blockGain = 1.0f;
         if (cacheNormalize) {
           float modelLoudnessDb = targetLufs;  // Default fallback
-
-          // Get loudness from the resampling wrapper
           if (block->namResampler->hasLoudness()) {
             modelLoudnessDb = static_cast<float>(block->namResampler->getLoudness());
           }
-
           if (!std::isfinite(modelLoudnessDb) || modelLoudnessDb < -100.0f || modelLoudnessDb > 0.0f) {
             modelLoudnessDb = targetLufs;
           }
           const float gainAdjustmentDb = juce::jlimit(-12.0f, 6.0f, targetLufs - modelLoudnessDb);
           blockGain = juce::Decibels::decibelsToGain(gainAdjustmentDb);
-          if (!block->namNormalizationSmoother.isSmoothing()) {
-            block->namNormalizationSmoother.reset(getSampleRate(), 0.05f);
-            block->namNormalizationSmoother.setCurrentAndTargetValue(blockGain);
-          }
-          block->namNormalizationSmoother.setTargetValue(blockGain);
-        } else {
-          if (!block->namNormalizationSmoother.isSmoothing()) {
-            block->namNormalizationSmoother.reset(getSampleRate(), 0.02f);
-            block->namNormalizationSmoother.setCurrentAndTargetValue(1.0f);
-          } else {
-            block->namNormalizationSmoother.setTargetValue(1.0f);
-          }
         }
+        block->namNormalizationSmoother.setTargetValue(blockGain);
 
         // Apply per-block normalization gain to the buffer
         auto* left = buffer.getWritePointer(0);
@@ -637,13 +608,13 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
           left[i] *= g;
           if (right) right[i] *= g;
         }
-      } catch (const std::exception& e) {
-        // Not RT-safe, but this is a one-shot failure path: loaded=false below
-        // stops the block from processing (and re-throwing) again. Without this
-        // a NAM failure is a silent bypass with nothing in the release log.
-        juce::Logger::writeToLog("[NAM] Processing failed for block " + juce::String(block->id) +
-                                 ": " + e.what() + " — disabling block");
+      } catch (const std::exception&) {
+        // RT-safe failure path: disable the block (stops it re-throwing every
+        // block) and flag it; the message thread writes the log line when it
+        // next serializes the chain — string building/logging can't run here.
         block->loaded = false;
+        block->rtProcessingFailed.store(true);
+        bumpChainRevision();  // wake the UI poll so the flag is drained
         buffer.copyFrom(0, 0, tempDryBuffer, 0, 0, numSamples);
         if (numChannels > 1) {
           buffer.copyFrom(1, 0, tempDryBuffer, 1, 0, numSamples);
@@ -664,13 +635,10 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
         auto& convolver = useStereoIr ? *block->convolverStereo : *block->convolverMono;
         convolver.process(juce::dsp::ProcessContextReplacing<float>(irBlock));
 
-        // Apply RMS-based normalization at runtime via smoother (attenuation-only)
+        // RMS-based normalization (attenuation-only). Smoother is prepared in
+        // prepareChain / model apply; only the target moves on the RT path.
         const float targetGain =
             cacheNormalize ? juce::jlimit(0.0f, 1.0f, block->irNormalizationGainLinear) : 1.0f;
-        if (!block->irNormalizationSmoother.isSmoothing()) {
-          block->irNormalizationSmoother.reset(getSampleRate(), 0.05f);
-          block->irNormalizationSmoother.setCurrentAndTargetValue(targetGain);
-        }
         block->irNormalizationSmoother.setTargetValue(targetGain);
         for (int i = 0; i < numSamples; ++i) {
           const float g = block->irNormalizationSmoother.getNextValue();
@@ -774,10 +742,10 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   }
 
   // #########################
-  // Input + Noise Gate (always enabled)
+  // Input gain + noise gate
   // #########################
-  
-  // Per-channel input gains (level ±12 dB, balance trim ±12 dB opposing),
+
+  // Per-channel input gains (level ±24 dB, balance trim ±12 dB opposing),
   // constant across the block. Computed up front so the meters can show the
   // post-gain level without a second pass over the samples.
   const float inputGainL = mainStageChannelGain(cacheInputLevel, cacheInputBalance, 0);
@@ -847,21 +815,22 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   {
     juce::ScopedLock lock(chainMutex);
 
-    if (stereoEnabled.load() && numChannels >= 2) {
-      // Stereo mode: split the buffer into two mono sides, run an independent chain on each,
-      // then merge back. Scratch buffers are pre-allocated in prepareToPlay.
-      stereoChainBufferL.setSize(1, numSamples, false, false, true);
-      stereoChainBufferR.setSize(1, numSamples, false, false, true);
+    if (stereoEnabled.load() && numChannels >= 2 &&
+        numSamples <= stereoChainBufferL.getNumSamples()) {
+      // Stereo mode: split the buffer into two mono sides, run an independent
+      // chain on each, then merge back. Scratch buffers are pre-allocated in
+      // prepareToPlay and never resized here (RT allocation); a host handing
+      // us more samples than it promised falls through to the mono path.
       stereoChainBufferL.copyFrom(0, 0, buffer, 0, 0, numSamples);
       stereoChainBufferR.copyFrom(0, 0, buffer, 1, 0, numSamples);
 
-      processChainOnBuffer(chainBlocks, stereoChainBufferL);
-      processChainOnBuffer(rightChainBlocks, stereoChainBufferR);
+      processChainOnBuffer(lane(ChainSide::Left), stereoChainBufferL);
+      processChainOnBuffer(lane(ChainSide::Right), stereoChainBufferR);
 
       buffer.copyFrom(0, 0, stereoChainBufferL, 0, 0, numSamples);
       buffer.copyFrom(1, 0, stereoChainBufferR, 0, 0, numSamples);
     } else {
-      processChainOnBuffer(chainBlocks, buffer);
+      processChainOnBuffer(lane(ChainSide::Left), buffer);
     }
   }
 
@@ -923,10 +892,8 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     // second one here would high-pass every channel twice.
     juce::dsp::AudioBlock<float> block(buffer);
     juce::dsp::ProcessContextReplacing<float> context(block);
-    dcBlockerLeft.process(context);
+    dcBlocker.process(context);
   }
-
-  // Remove global normalization stage; handled per NAM block
 
   // ##########
   // EQ section (global 3-band tone stack) — post-chain position (default).
@@ -946,7 +913,7 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     runAutoBalanceStage(buffer, numSamples);
 
   // ###########
-  // Output gain per channel (level ±12 dB, balance trim ±12 dB opposing).
+  // Output gain per channel (level ±24 dB, balance trim ±12 dB opposing).
   // Per-channel output meters ride the same pass.
   // ###########
   {
@@ -987,17 +954,6 @@ juce::AudioProcessorEditor* TONE3000Processor::createEditor() {
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() {
   return new TONE3000Processor();
-}
-
-// #########################
-// METER LEVEL GETTERS
-// #########################
-float TONE3000Processor::getInputMeterLevel() const {
-  return std::max(inputMeterLevelL.load(), inputMeterLevelR.load());
-}
-
-float TONE3000Processor::getOutputMeterLevel() const {
-  return std::max(outputMeterLevelL.load(), outputMeterLevelR.load());
 }
 
 // #########################

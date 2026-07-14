@@ -18,11 +18,11 @@ juce::ValueTree TONE3000Processor::captureChainSnapshot(bool includeModelData) c
   snapshot.setProperty("stereoEnabled", stereoEnabled.load(), nullptr);
 
   juce::ValueTree left("ChainBlocks");
-  serializeChainToTree(chainBlocks, left, includeModelData);
+  serializeChainToTree(lane(ChainSide::Left), left, includeModelData);
   snapshot.appendChild(left, nullptr);
 
   juce::ValueTree right("RightChainBlocks");
-  serializeChainToTree(rightChainBlocks, right, includeModelData);
+  serializeChainToTree(lane(ChainSide::Right), right, includeModelData);
   snapshot.appendChild(right, nullptr);
 
   return snapshot;
@@ -38,8 +38,7 @@ void TONE3000Processor::pushChainHistory(const juce::String& coalesceKey) {
 }
 
 void TONE3000Processor::queueActiveModelLoad(const ChainBlock& block) {
-  juce::var toneVar = juce::JSON::parse(block.toneJson);
-  juce::DynamicObject* toneObj = toneVar.getDynamicObject();
+  juce::DynamicObject* toneObj = block.toneVar.getDynamicObject();
   if (toneObj == nullptr)
     return;
 
@@ -68,11 +67,12 @@ void TONE3000Processor::queueActiveModelLoad(const ChainBlock& block) {
                                      << " not found in tone JSON for block " << block.id);
 }
 
-void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState,
-                                               std::vector<std::unique_ptr<ChainBlock>>& target,
-                                               const char* insertBlockId) {
+void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState, Lane& target,
+                                               const char* insertBlockId, Lane& retired) {
   // Park the live blocks by id so matching ones can be moved back with their
-  // engines/model caches intact. Anything left over at the end is a removal.
+  // engines/model caches intact. Anything left over at the end is a removal
+  // and goes into `retired` — the caller destroys those after releasing
+  // chainMutex (engine teardown is heavy).
   std::map<std::string, std::unique_ptr<ChainBlock>> existing;
   for (auto& b : target)
     if (b)
@@ -113,8 +113,13 @@ void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState
 
     const int activeModelId = blockState.getProperty("activeModelId", 0);
     const bool modelChanged = block->activeModelId != activeModelId;
-    block->toneId = toneId;
-    block->toneJson = blockState.getProperty("toneJson").toString();
+    const juce::String toneJson = blockState.getProperty("toneJson").toString();
+    // Re-parse the cached tone var/summary only when the tone actually
+    // changed (reused blocks keep theirs; fresh blocks always parse).
+    if (!block->toneVar.isObject() || block->toneJson != toneJson)
+      setToneOnBlock(*block, toneId, toneJson, juce::JSON::parse(toneJson));
+    else
+      block->toneId = toneId;
     block->activeModelId = activeModelId;
 
     // Engines survive only when the loaded model is still the right one.
@@ -122,20 +127,21 @@ void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState
     // goes through the background loader — cache-first, network fallback.
     if (modelChanged || !block->loaded) {
       block->loaded = false;
-      // Presets embed model bytes; seed the in-memory cache so the loader
-      // never needs the network. Only the active model is decoded.
-      if (block->modelCache.find(activeModelId) == block->modelCache.end()) {
-        const juce::ValueTree cacheState = blockState.getChildWithName("ModelCache");
-        for (int j = 0; j < cacheState.getNumChildren(); ++j) {
-          const juce::ValueTree cachedModel = cacheState.getChild(j);
-          if (static_cast<int>(cachedModel.getProperty("modelId")) != activeModelId)
-            continue;
-          juce::MemoryOutputStream decoded;
-          if (juce::Base64::convertFromBase64(decoded, cachedModel.getProperty("data").toString())) {
-            const auto* bytes = static_cast<const uint8_t*>(decoded.getData());
-            block->modelCache[activeModelId].assign(bytes, bytes + decoded.getDataSize());
-          }
-          break;
+      // Project files and presets embed model bytes; seed the in-memory cache
+      // with *all* of them so offline model switching keeps working and a
+      // later save doesn't silently drop the non-active models. Undo
+      // snapshots are settings-only (no ModelCache child) — this is a no-op
+      // there.
+      const juce::ValueTree cacheState = blockState.getChildWithName("ModelCache");
+      for (int j = 0; j < cacheState.getNumChildren(); ++j) {
+        const juce::ValueTree cachedModel = cacheState.getChild(j);
+        const int modelId = cachedModel.getProperty("modelId");
+        if (block->modelCache.find(modelId) != block->modelCache.end())
+          continue;
+        juce::MemoryOutputStream decoded;
+        if (juce::Base64::convertFromBase64(decoded, cachedModel.getProperty("data").toString())) {
+          const auto* bytes = static_cast<const uint8_t*>(decoded.getData());
+          block->modelCache[modelId].assign(bytes, bytes + decoded.getDataSize());
         }
       }
       queueActiveModelLoad(*block);
@@ -144,55 +150,67 @@ void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState
     target.push_back(std::move(block));
   }
 
-  // Snapshots always contain the insert placeholder, but keep the same
-  // guarantee restoreChainFromTree provides.
+  // Reconciled chains always keep an insert placeholder at hand.
   if (!hasInsertBlock)
     target.push_back(std::make_unique<ChainBlock>(insertBlockId, ChainBlockType::INSERT));
+
+  // Whatever is still parked was removed by this restore.
+  for (auto& [id, b] : existing)
+    retired.push_back(std::move(b));
 }
 
-void TONE3000Processor::restoreChainSnapshot(const juce::ValueTree& snapshot) {
+TONE3000Processor::Lane TONE3000Processor::restoreChainSnapshot(const juce::ValueTree& snapshot) {
+  Lane retired;
   if (!snapshot.isValid())
-    return;
+    return retired;
 
-  reconcileChainFromTree(snapshot.getChildWithName("ChainBlocks"), chainBlocks, INSERT_BLOCK_ID);
-  reconcileChainFromTree(snapshot.getChildWithName("RightChainBlocks"), rightChainBlocks,
-                         INSERT_BLOCK_ID_RIGHT);
+  reconcileChainFromTree(snapshot.getChildWithName("ChainBlocks"), lane(ChainSide::Left),
+                         INSERT_BLOCK_ID, retired);
+  reconcileChainFromTree(snapshot.getChildWithName("RightChainBlocks"), lane(ChainSide::Right),
+                         INSERT_BLOCK_ID_RIGHT, retired);
 
   const bool wasStereo = stereoEnabled.load();
   const bool snapStereo = static_cast<bool>(snapshot.getProperty("stereoEnabled", false));
 
-  if (snapStereo && rightChainBlocks.empty())
-    rightChainBlocks.push_back(
-        std::make_unique<ChainBlock>(INSERT_BLOCK_ID_RIGHT, ChainBlockType::INSERT));
+  auto& right = lane(ChainSide::Right);
+  if (snapStereo && right.empty())
+    right.push_back(std::make_unique<ChainBlock>(INSERT_BLOCK_ID_RIGHT, ChainBlockType::INSERT));
 
   stereoEnabled.store(snapStereo);
   if (!snapStereo)
-    activeEditSide = ChainSide::Left;
+    pendingAddSide = ChainSide::Left;
 
   // Mirrors setStereoMode: the right chain's engines must be ready before the
   // audio thread starts running them.
   const double sr = getSampleRate();
   if (snapStereo && !wasStereo && sr > 0.0 && maxBlockSize > 0)
-    prepareChain(rightChainBlocks, sr, maxBlockSize);
+    prepareChain(right, sr, maxBlockSize);
 
   updateLatencyCompensation();
   bumpChainRevision();
+  return retired;
 }
 
 bool TONE3000Processor::undoChain() {
-  juce::ScopedLock lock(chainMutex);
-  if (!chainHistory.canUndo())
-    return false;
-  restoreChainSnapshot(chainHistory.undo(captureChainSnapshot()));
+  Lane retired;  // destroyed after the lock — see restoreChainSnapshot
+  {
+    juce::ScopedLock lock(chainMutex);
+    if (!chainHistory.canUndo())
+      return false;
+    retired = restoreChainSnapshot(chainHistory.undo(captureChainSnapshot()));
+  }
   DBG("Chain undo applied");
   return true;
 }
 
 bool TONE3000Processor::redoChain() {
-  juce::ScopedLock lock(chainMutex);
-  if (!chainHistory.canRedo())
-    return false;
-  restoreChainSnapshot(chainHistory.redo(captureChainSnapshot()));
+  Lane retired;  // destroyed after the lock — see restoreChainSnapshot
+  {
+    juce::ScopedLock lock(chainMutex);
+    if (!chainHistory.canRedo())
+      return false;
+    retired = restoreChainSnapshot(chainHistory.redo(captureChainSnapshot()));
+  }
   DBG("Chain redo applied");
   return true;
 }

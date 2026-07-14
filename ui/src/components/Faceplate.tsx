@@ -3,7 +3,8 @@ import { Equal, Power } from 'lucide-react';
 import { KnobControl } from './KnobControl';
 import { SpreadGroup } from './SpreadControls';
 import { useParameter } from '../hooks/useParameter';
-import { useFunction } from '../hooks/useFunction';
+import { useNativeFunction } from '../hooks/useFunction';
+import { BORDER } from './theme';
 
 /**
  * Bottom faceplate: main input/output gain, gate and the global 3-band tone
@@ -20,8 +21,6 @@ import { useFunction } from '../hooks/useFunction';
 const KNOB_SIZE = 36;
 const BALANCE_KNOB_SIZE = 24;
 const PLATE_HEIGHT = 100;
-
-const BORDER = '1px solid rgba(84, 84, 88, 0.65)';
 
 /** Offset that vertically centers side-controls on the knob itself (the
     knob column is knob + gap + label; the label pulls its center down). */
@@ -91,26 +90,26 @@ const PreButton: React.FC<{ on: boolean; onClick: () => void }> = ({ on, onClick
  * after 15 s of silence.
  */
 const AutoBalanceButton: React.FC = () => {
-  const start = useFunction<boolean>('startAutoBalance');
-  const cancel = useFunction<boolean>('cancelAutoBalance');
-  const poll = useFunction<{ state: string; matchedDb?: number }>('pollAutoBalance');
+  const start = useNativeFunction<boolean>('startAutoBalance');
+  const cancel = useNativeFunction<boolean>('cancelAutoBalance');
+  const poll = useNativeFunction<{ state: string; matchedDb?: number }>('pollAutoBalance');
   const [listening, setListening] = useState(false);
 
   useEffect(() => {
     if (!listening) return;
     const id = setInterval(async () => {
-      const res = await poll.invoke();
+      const res = await poll();
       if (res && res.state !== 'listening') setListening(false);
     }, 200);
     return () => clearInterval(id);
-  }, [listening, poll.invoke]);
+  }, [listening, poll]);
 
   const handleClick = async () => {
     if (listening) {
-      await cancel.invoke();
+      await cancel();
       setListening(false);
     } else {
-      await start.invoke();
+      await start();
       setListening(true);
     }
   };

@@ -5,8 +5,18 @@ import type {
   ParameterMap,
   SliderParameter,
   ToggleParameter,
-  ComboBoxParameter,
 } from '../types/IAudioBackend';
+
+/** The raw event bus JUCE injects at `window.__JUCE__.backend`. */
+type RawJuceBackend = {
+  addEventListener: (eventId: string, fn: (payload: unknown) => void) => [string, number];
+  removeEventListener: (token: [string, number]) => void;
+  emitEvent: (eventId: string, payload: unknown) => void;
+};
+
+function rawJuceBackend(): RawJuceBackend | undefined {
+  return (window as unknown as { __JUCE__?: { backend?: RawJuceBackend } }).__JUCE__?.backend;
+}
 
 export class JuceBackend implements IAudioBackend {
   getParameterState<T extends ParameterType>(name: string, type: T): ParameterMap[T] {
@@ -17,6 +27,14 @@ export class JuceBackend implements IAudioBackend {
 
   getPluginFunction(name: string): (...args: any[]) => Promise<any> {
     return Juce.getNativeFunction(name);
+  }
+
+  addEventListener(eventId: string, fn: (payload: unknown) => void): () => void {
+    const backend = rawJuceBackend();
+    if (!backend) return () => {};
+    // The raw JUCE backend returns a [eventId, id] token for removal.
+    const token = backend.addEventListener(eventId, fn);
+    return () => backend.removeEventListener(token);
   }
 }
 
@@ -36,10 +54,6 @@ const juceMap: JuceGetterMap = {
     get: Juce.getToggleState,
     adapt: adaptToggle,
   },
-  comboBox: {
-    get: Juce.getComboBoxState,
-    adapt: adaptComboBox,
-  },
 };
 
 // Ask the backend relay to (re-)send propertiesChanged + valueChanged for a
@@ -48,11 +62,10 @@ const juceMap: JuceGetterMap = {
 // dropped if it lands before a listener is attached — so consumers re-request
 // after subscribing.
 function requestInitialUpdate(state: { identifier: string }): void {
-  const backend = (window as any).__JUCE__?.backend;
-  backend?.emitEvent(state.identifier, { eventType: 'requestInitialUpdate' });
+  rawJuceBackend()?.emitEvent(state.identifier, { eventType: 'requestInitialUpdate' });
 }
 
-type JuceControlState = Juce.SliderState | Juce.ToggleState | Juce.ComboBoxState;
+type JuceControlState = Juce.SliderState | Juce.ToggleState;
 
 // Subscribe to both valueChanged and propertiesChanged: for sliders the
 // normalised value is derived from the range properties, and the two events
@@ -75,8 +88,7 @@ function removeControlListener(state: JuceControlState, valueId: number): void {
 }
 
 const propsListenerIds = new Map<string, number>();
-const listenerKey = (state: JuceControlState, valueId: number) =>
-  `${state.identifier}#${valueId}`;
+const listenerKey = (state: JuceControlState, valueId: number) => `${state.identifier}#${valueId}`;
 
 function adaptSlider(slider: Juce.SliderState): SliderParameter {
   return {
@@ -101,19 +113,5 @@ function adaptToggle(toggle: Juce.ToggleState): ToggleParameter {
       removeListener: (id: number) => removeControlListener(toggle, id),
     },
     requestInitialUpdate: () => requestInitialUpdate(toggle),
-  };
-}
-
-function adaptComboBox(combo: Juce.ComboBoxState): ComboBoxParameter {
-  return {
-    getChoiceIndex: () => combo.getChoiceIndex(),
-    setChoiceIndex: (index: number) => combo.setChoiceIndex(index),
-    getChoices: () => combo.properties.choices,
-    valueChangedEvent: {
-      addListener: (fn: (val: number) => void) =>
-        addControlListener(combo, () => fn(combo.getChoiceIndex())),
-      removeListener: (id: number) => removeControlListener(combo, id),
-    },
-    requestInitialUpdate: () => requestInitialUpdate(combo),
   };
 }

@@ -43,7 +43,14 @@ export function useBlockSpectrum(blockId: string): number[] {
       polling = true;
       try {
         const res = await native.getSpectrum(blockId);
-        if (alive && Array.isArray(res)) setBins(res as number[]);
+        if (alive && Array.isArray(res)) {
+          const next = res as number[];
+          // Skip the ~30 fps re-render when the audio is idle and the bins
+          // haven't moved since the last poll.
+          setBins((prev) =>
+            prev.length === next.length && prev.every((v, i) => v === next[i]) ? prev : next
+          );
+        }
       } catch (error) {
         console.error('getBlockSpectrum failed:', error);
       } finally {

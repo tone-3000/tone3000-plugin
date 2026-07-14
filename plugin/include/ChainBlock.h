@@ -31,6 +31,9 @@ inline ChainBlockType chainBlockTypeFromString(const juce::String& s) {
 // Which chain is being processed/edited in stereo mode.
 enum class ChainSide { Left, Right };
 
+constexpr int kNumLanes = 2;
+inline int laneIndex(ChainSide side) { return side == ChainSide::Right ? 1 : 0; }
+
 // Fixed IDs for the insert/select placeholder blocks (pass-through, no audio effect).
 // Each chain owns its own placeholder so block ids stay globally unique.
 constexpr const char* INSERT_BLOCK_ID = "select-insert";
@@ -46,12 +49,25 @@ struct ChainBlock {
   juce::String toneJson;  // Complete tone JSON from TONE3000 API
   int activeModelId;      // Currently active model ID (single source of truth)
 
+  // Parsed-once copy of toneJson (full API payload — model switching needs
+  // the model URLs) and the slim projection getChainState ships to the UI
+  // (title/images/user/model names only). Both are ref-counted vars, so
+  // serializing chain state is O(1) per block instead of a JSON re-parse.
+  // Set together wherever toneJson is set — see setToneOnBlock.
+  juce::var toneVar;
+  juce::var toneSummary;
+
   // Model cache: stores downloaded model data by model ID
   std::map<int, std::vector<uint8_t>> modelCache;
 
   // State flags
   bool loaded;   // True when active model is loaded and ready
   bool enabled;  // True when block is enabled in processing chain
+
+  // Set by the audio thread when NAM processing throws (the block is disabled
+  // in the same breath). The message thread drains it in getChainState and
+  // writes the log line there — string building/logging is not RT-safe.
+  std::atomic<bool> rtProcessingFailed{false};
 
   // NAM-specific processing
   std::unique_ptr<NamResampler> namResampler;

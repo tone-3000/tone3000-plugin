@@ -255,35 +255,39 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block,
     return;
   }
 
+  // Engines are *swapped*, not reset: the block's previous engines end up in
+  // `prepared`, and the caller destroys them after releasing chainMutex —
+  // NAM graph / convolution teardown must never run while the audio thread
+  // can be blocked on the lock.
   if (block.type == ChainBlockType::NAM && prepared.namResampler != nullptr) {
-    block.convolverMono.reset();
-    block.convolverStereo.reset();
+    std::swap(block.namResampler, prepared.namResampler);      // new engine in, old out
+    std::swap(block.convolverMono, prepared.convolverMono);    // null in, any old IR out
+    std::swap(block.convolverStereo, prepared.convolverStereo);
     block.irNumChannels = 1;
     block.irTempFile = juce::File();
 
-    block.namResampler = std::move(prepared.namResampler);
     block.namIsSlimmable = prepared.namIsSlimmable;
     if (!block.namIsSlimmable)
       block.namSlimmableSize = 1.0;
     block.namResampler->setSlimmableSize(
         block.namIsSlimmable ? block.namSlimmableSize : 1.0);
     block.latencySamples = prepared.namLatencySamples;
+
+    block.namNormalizationSmoother.reset(getSampleRate(), 0.05f);
+    block.namNormalizationSmoother.setCurrentAndTargetValue(1.0f);
     block.loaded = true;
 
   } else if (block.type == ChainBlockType::IR && prepared.convolverMono != nullptr) {
-    block.namResampler.reset();
+    std::swap(block.namResampler, prepared.namResampler);      // null in, any old NAM out
+    std::swap(block.convolverMono, prepared.convolverMono);
+    std::swap(block.convolverStereo, prepared.convolverStereo);
     block.latencySamples = 0;
-
-    block.convolverMono = std::move(prepared.convolverMono);
-    block.convolverStereo = std::move(prepared.convolverStereo);
     block.irNumChannels = prepared.irNumChannels;
     block.irTempFile = prepared.irTempFile;
-
     prepared.irTempFile = juce::File();
 
     block.irNormalizationGainLinear = prepared.irNormalizationGainLinear;
-    const double sampleRate = getSampleRate();
-    block.irNormalizationSmoother.reset(sampleRate, 0.05f);
+    block.irNormalizationSmoother.reset(getSampleRate(), 0.05f);
     block.irNormalizationSmoother.setCurrentAndTargetValue(block.irNormalizationGainLinear);
 
     block.loaded = true;
@@ -291,15 +295,5 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block,
     DBG("Prepared model type/engine mismatch vs chain block — leaving block unloaded");
     block.loaded = false;
   }
-
-  prepared = PreparedBlockModel();
-}
-
-void TONE3000Processor::loadModelData(ChainBlock& block,
-                                      const std::vector<uint8_t>& modelData,
-                                      const juce::String& filename) {
-  PreparedBlockModel prepared =
-      prepareBlockModelOffThread(block.type, modelData, filename, block.namSlimmableSize);
-  applyPreparedModelToChainBlock(block, prepared);
 }
 

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Plugin } from './components/Plugin';
 import { AudioBackendContext } from './hooks/useAudioBackend';
 import { JuceBackend } from './backend/JuceBackend';
@@ -5,9 +6,9 @@ import { MetersProvider } from './hooks/useMeters';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 function App() {
-  // Create the JUCE backend - this should work for both development and JUCE
-  // The JuceBackend will use the JUCE framework functions when available
-  const backend = new JuceBackend();
+  // One backend for the app's lifetime — a fresh instance per render would
+  // change the context value and re-render the whole tree every time.
+  const backend = useMemo(() => new JuceBackend(), []);
 
   return (
     <ErrorBoundary>

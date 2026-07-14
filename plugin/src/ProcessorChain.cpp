@@ -1,26 +1,24 @@
 #include "Processor.h"
 #include <algorithm>
-#include <random>
 
 // ####################
 // CHAIN MANAGEMENT
 // ####################
 
-// The chain the UI edits/adds to right now: Left in mono mode, or the active side in stereo.
+// The lane loadTone inserts into: Left in mono mode, or the side the UI armed
+// before launching the Select flow in stereo.
 std::vector<std::unique_ptr<ChainBlock>>& TONE3000Processor::activeChain() {
-  if (stereoEnabled.load() && activeEditSide == ChainSide::Right)
-    return rightChainBlocks;
-  return chainBlocks;
+  if (stereoEnabled.load() && pendingAddSide == ChainSide::Right)
+    return lane(ChainSide::Right);
+  return lane(ChainSide::Left);
 }
 
-// Find a block by id across both chains (ids are globally unique).
+// Find a block by id across both lanes (ids are globally unique).
 ChainBlock* TONE3000Processor::findBlockById(const std::string& blockId) {
-  for (auto& b : chainBlocks)
-    if (b && b->id == blockId)
-      return b.get();
-  for (auto& b : rightChainBlocks)
-    if (b && b->id == blockId)
-      return b.get();
+  for (auto& l : lanes)
+    for (auto& b : l)
+      if (b && b->id == blockId)
+        return b.get();
   return nullptr;
 }
 
@@ -34,6 +32,7 @@ struct ParsedTone {
   juce::String modelUrl;
   juce::String modelName;
   ChainBlockType type = ChainBlockType::NAM;
+  juce::var toneVar;  // the parsed JSON, kept so the block can cache it
 };
 
 ParsedTone parseToneForLoading(const juce::String& toneJsonString) {
@@ -69,11 +68,65 @@ ParsedTone parseToneForLoading(const juce::String& toneJsonString) {
   out.modelUrl = firstModel->getProperty("model_url").toString();
   out.modelName = firstModel->getProperty("name").toString();
   out.type = (format == "nam") ? ChainBlockType::NAM : ChainBlockType::IR;
+  out.toneVar = toneVar;
   out.valid = true;
   return out;
 }
 
 }  // namespace
+
+juce::var TONE3000Processor::makeToneSummary(const juce::var& toneVar) {
+  auto* tone = toneVar.getDynamicObject();
+  if (tone == nullptr)
+    return {};
+
+  juce::DynamicObject::Ptr out = new juce::DynamicObject();
+  out->setProperty("id", tone->getProperty("id"));
+  out->setProperty("title", tone->getProperty("title"));
+  // Older persisted tone JSON used `platform` instead of `format`.
+  juce::var format = tone->getProperty("format");
+  if (format.toString().isEmpty())
+    format = tone->getProperty("platform");
+  out->setProperty("format", format);
+  out->setProperty("gear", tone->getProperty("gear"));
+
+  // Only the first image is ever rendered (block artwork).
+  juce::Array<juce::var> images;
+  if (auto* imgs = tone->getProperty("images").getArray(); imgs != nullptr && !imgs->isEmpty())
+    images.add(imgs->getReference(0));
+  out->setProperty("images", images);
+
+  if (auto* user = tone->getProperty("user").getDynamicObject()) {
+    juce::DynamicObject::Ptr u = new juce::DynamicObject();
+    u->setProperty("username", user->getProperty("username"));
+    u->setProperty("avatar_url", user->getProperty("avatar_url"));
+    out->setProperty("user", juce::var(u.get()));
+  }
+
+  // Model picker needs ids and names; the URLs stay native-side.
+  juce::Array<juce::var> models;
+  if (auto* modelsArr = tone->getProperty("models").getArray()) {
+    for (const auto& m : *modelsArr) {
+      if (auto* model = m.getDynamicObject()) {
+        juce::DynamicObject::Ptr slim = new juce::DynamicObject();
+        slim->setProperty("id", model->getProperty("id"));
+        slim->setProperty("name", model->getProperty("name"));
+        models.add(juce::var(slim.get()));
+      }
+    }
+  }
+  out->setProperty("models", models);
+
+  return out.get();
+}
+
+void TONE3000Processor::setToneOnBlock(ChainBlock& block, int toneId, const juce::String& toneJson,
+                                       const juce::var& parsedTone) {
+  block.toneId = toneId;
+  block.toneJson = toneJson;
+  block.toneVar = parsedTone;
+  block.toneSummary = makeToneSummary(parsedTone);
+}
 
 void TONE3000Processor::queueToneLoad(const std::string& blockId, const juce::String& toneJson,
                                       int modelId, const juce::String& modelUrl,
@@ -111,14 +164,12 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString) {
 
   pushChainHistory();
 
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
-  static std::uniform_int_distribution<> dis(1000, 9999);
-  std::string blockId = std::to_string(dis(gen));
+  // Collision-proof block id (the old 4-digit random ids could collide with
+  // long-lived sessions and undo snapshots).
+  std::string blockId = juce::Uuid().toString().toStdString();
 
   auto block = std::make_unique<ChainBlock>(blockId, parsed.type);
-  block->toneId = parsed.toneId;
-  block->toneJson = toneJsonString;
+  setToneOnBlock(*block, parsed.toneId, toneJsonString, parsed.toneVar);
   block->activeModelId = parsed.firstModelId;
   block->loaded = false;
 
@@ -177,8 +228,7 @@ bool TONE3000Processor::swapTone(const std::string& blockId, const juce::String&
   // user params (enabled/gains/mix). Engines stay until the new model swaps in
   // via applyPreparedModelToChainBlock, but loaded=false stops processing now.
   block->type = parsed.type;
-  block->toneId = parsed.toneId;
-  block->toneJson = toneJsonString;
+  setToneOnBlock(*block, parsed.toneId, toneJsonString, parsed.toneVar);
   block->activeModelId = parsed.firstModelId;
   block->loaded = false;
   block->modelCache.clear();
@@ -203,13 +253,12 @@ bool TONE3000Processor::switchModel(const std::string& blockId, int modelId) {
     return false;
   }
 
-  juce::var toneVar = juce::JSON::parse(block->toneJson);
-  if (!toneVar.isObject()) {
-    DBG("Failed to parse stored tone JSON");
+  if (!block->toneVar.isObject()) {
+    DBG("Block has no parsed tone metadata");
     return false;
   }
 
-  juce::DynamicObject* toneObj = toneVar.getDynamicObject();
+  juce::DynamicObject* toneObj = block->toneVar.getDynamicObject();
   juce::var modelsVar = toneObj->getProperty("models");
 
   if (!modelsVar.isArray()) {
@@ -269,32 +318,41 @@ bool TONE3000Processor::switchModel(const std::string& blockId, int modelId) {
 }
 
 bool TONE3000Processor::removeChainBlock(const std::string& blockId) {
-  juce::ScopedLock lock(chainMutex);
+  // Detached under the lock, destroyed after releasing it: engine teardown
+  // (NAM graph, convolution state) is heavy and the audio thread may be
+  // waiting on chainMutex.
+  std::unique_ptr<ChainBlock> removed;
+  {
+    juce::ScopedLock lock(chainMutex);
 
-  if (blockId == INSERT_BLOCK_ID || blockId == INSERT_BLOCK_ID_RIGHT) {
-    DBG("Cannot remove insert block");
-    return false;
-  }
+    if (blockId == INSERT_BLOCK_ID || blockId == INSERT_BLOCK_ID_RIGHT) {
+      DBG("Cannot remove insert block");
+      return false;
+    }
 
-  for (auto* chain : {&chainBlocks, &rightChainBlocks}) {
-    auto it = std::find_if(
-        chain->begin(), chain->end(),
-        [&blockId](const std::unique_ptr<ChainBlock>& block) { return block->id == blockId; });
-    if (it != chain->end()) {
-      if ((*it)->type == ChainBlockType::INSERT) {
-        DBG("Cannot remove insert block");
-        return false;
+    for (auto& chain : lanes) {
+      auto it = std::find_if(
+          chain.begin(), chain.end(),
+          [&blockId](const std::unique_ptr<ChainBlock>& block) { return block->id == blockId; });
+      if (it != chain.end()) {
+        pushChainHistory();
+        removed = std::move(*it);
+        chain.erase(it);
+        bumpChainRevision();
+        break;
       }
-      pushChainHistory();
-      chain->erase(it);
-      bumpChainRevision();
-      DBG("Removed chain block: " << blockId);
-      return true;
     }
   }
 
-  DBG("Failed to remove chain block: " << blockId << " (not found)");
-  return false;
+  if (removed == nullptr) {
+    DBG("Failed to remove chain block: " << blockId << " (not found)");
+    return false;
+  }
+
+  // A removed NAM block no longer contributes latency.
+  updateLatencyCompensation();
+  DBG("Removed chain block: " << blockId);
+  return true;
 }
 
 bool TONE3000Processor::reorderChainBlocks(const std::vector<std::string>& newOrder) {
@@ -316,10 +374,11 @@ bool TONE3000Processor::reorderChainBlocks(const std::vector<std::string>& newOr
   };
 
   std::vector<std::unique_ptr<ChainBlock>>* target = nullptr;
-  if (isPermutationOf(chainBlocks, newOrder))
-    target = &chainBlocks;
-  else if (isPermutationOf(rightChainBlocks, newOrder))
-    target = &rightChainBlocks;
+  for (auto& l : lanes)
+    if (isPermutationOf(l, newOrder)) {
+      target = &l;
+      break;
+    }
 
   if (target == nullptr) {
     DBG("Failed to reorder chain blocks: order is not a permutation of either chain");
@@ -361,8 +420,8 @@ bool TONE3000Processor::moveBlockToChain(const std::string& blockId, const juce:
     return false;
   }
 
-  auto& target = (side == "right") ? rightChainBlocks : chainBlocks;
-  auto& source = (side == "right") ? chainBlocks : rightChainBlocks;
+  auto& target = lane(side == "right" ? ChainSide::Right : ChainSide::Left);
+  auto& source = lane(side == "right" ? ChainSide::Left : ChainSide::Right);
 
   auto it = std::find_if(source.begin(), source.end(),
                          [&blockId](const std::unique_ptr<ChainBlock>& block) {
@@ -380,6 +439,9 @@ bool TONE3000Processor::moveBlockToChain(const std::string& blockId, const juce:
   index = juce::jlimit(0, static_cast<int>(target.size()), index);
   target.insert(target.begin() + index, std::move(block));
 
+  // Plugin latency is the max of the two lanes, so moving a NAM block across
+  // lanes can change it.
+  updateLatencyCompensation();
   bumpChainRevision();
   DBG("Moved block " << blockId << " to " << side << " chain at index " << index);
   return true;
@@ -414,6 +476,7 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, const j
 
   PreparedBlockModel prepared =
       prepareBlockModelOffThread(type, modelData, filename, namPersistedSlimmable);
+  const bool applied = prepared.success;
 
   {
     juce::ScopedLock lock(chainMutex);
@@ -425,9 +488,14 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, const j
     }
 
     applyPreparedModelToChainBlock(*block, prepared);
+  }
+  // `prepared` now holds the block's *previous* engines (if any); they are
+  // destroyed here, after the lock — teardown is too heavy to hold it.
 
-    if (prepared.success)
-      DBG("[Background] Successfully loaded tone for block: " << blockId);
+  if (applied) {
+    // A freshly loaded NAM model contributes latency the host must know about.
+    updateLatencyCompensation();
+    DBG("[Background] Successfully loaded tone for block: " << blockId);
   }
 }
 
@@ -477,6 +545,7 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
 
   PreparedBlockModel prepared = prepareBlockModelOffThread(blockTypeForPrepare, modelData, filename,
                                                            namPersistedSlimmable);
+  const bool applied = prepared.success;
 
   {
     juce::ScopedLock lock(chainMutex);
@@ -492,17 +561,36 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
     }
     applyPreparedModelToChainBlock(*block, prepared);
   }
+  // `prepared` now holds the block's *previous* engines (if any); they are
+  // destroyed here, after the lock — teardown is too heavy to hold it.
 
-  if (prepared.success)
+  if (applied) {
+    updateLatencyCompensation();
     DBG("[Background] Successfully switched to model ID: " << modelId);
+  }
+}
+
+// Promote a settled continuous gesture (knob/EQ drag) into a real revision
+// bump. Mid-gesture edits only record a timestamp (deferredRevisionBump);
+// once the gesture has been quiet for kGestureSettleMs the next revision
+// check converges everyone on the final values with a single full resync.
+// Called by the editor's push timer and by getChainState.
+juce::uint32 TONE3000Processor::getCurrentChainRevision() const {
+  if (const auto pendingAt = pendingParamBumpAt.load(); pendingAt != 0 &&
+      juce::Time::currentTimeMillis() - pendingAt >= kGestureSettleMs) {
+    pendingParamBumpAt.store(0);
+    bumpChainRevision();
+  }
+  return chainRevision.load();
 }
 
 juce::var TONE3000Processor::getChainState(int knownRevision) const {
   juce::ScopedLock lock(chainMutex);
 
   // Read under the lock so the revision always matches the snapshot we build:
-  // mutators bump the revision while holding chainMutex too.
-  const juce::uint32 revision = chainRevision.load();
+  // mutators bump the revision while holding chainMutex too. (Also promotes
+  // any settled gesture edit into a bump.)
+  const juce::uint32 revision = getCurrentChainRevision();
 
   // Cheap early-out for the UI poll loop: nothing changed since the caller
   // last synced, so skip building (and shipping) the full state.
@@ -520,6 +608,12 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
   auto serializeChain = [](const std::vector<std::unique_ptr<ChainBlock>>& chain) {
     juce::Array<juce::var> chainArray;
     for (const auto& block : chain) {
+      // Drain the audio thread's failure flag here (the message thread) —
+      // the RT path can't build strings or write logs.
+      if (block->rtProcessingFailed.exchange(false))
+        juce::Logger::writeToLog("[NAM] Processing failed for block " + juce::String(block->id) +
+                                 " — block disabled");
+
       juce::DynamicObject::Ptr item = new juce::DynamicObject();
       item->setProperty("blockId", juce::String(block->id));
 
@@ -531,9 +625,11 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
 
       item->setProperty("kind", "tone");
 
-      // Full tone metadata, nested (not spread) so runtime fields never collide
-      // with API fields and the UI has one obvious place to read tone info from.
-      juce::var toneVar = juce::JSON::parse(block->toneJson);
+      // Slim tone summary, nested (not spread) so runtime fields never collide
+      // with tone fields. Built once when the tone was set (see
+      // makeToneSummary); vars are ref-counted so this ships without
+      // re-parsing or deep-copying.
+      juce::var toneVar = block->toneSummary;
       if (!toneVar.isObject()) {
         // Corrupt/legacy toneJson: emit a minimal stand-in so the UI's `tone`
         // field is always an object.
@@ -567,9 +663,9 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
   };
 
   state->setProperty("revision", static_cast<int>(revision));
-  state->setProperty("chain", serializeChain(chainBlocks));
+  state->setProperty("chain", serializeChain(lane(ChainSide::Left)));
   if (stereoEnabled.load())
-    state->setProperty("chainRight", serializeChain(rightChainBlocks));
+    state->setProperty("chainRight", serializeChain(lane(ChainSide::Right)));
   // History flags ride along with the chain state: they only ever change
   // together with a revision bump (mutation, undo/redo or a state load).
   state->setProperty("canUndo", chainHistory.canUndo());
@@ -582,7 +678,7 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
     state->setProperty("preset", juce::var(preset.get()));
   }
   state->setProperty("stereoEnabled", stereoEnabled.load());
-  state->setProperty("activeSide", activeEditSide == ChainSide::Right ? "right" : "left");
+  state->setProperty("activeSide", pendingAddSide == ChainSide::Right ? "right" : "left");
   // True when a real stereo source feeds the plugin (stereo host bus or a
   // stereo standalone input device) — drives the dual input meter/gain UI.
   state->setProperty("stereoInput", stereoInputDetected.load());
@@ -618,8 +714,8 @@ juce::var TONE3000Processor::getMeterLevels() const {
     // time is a few property writes, so contention with the audio thread is
     // negligible even at per-frame polling rates.
     juce::ScopedLock lock(chainMutex);
-    for (const auto* chain : {&chainBlocks, &rightChainBlocks}) {
-      for (const auto& block : *chain) {
+    for (const auto& chain : lanes) {
+      for (const auto& block : chain) {
         if (block->type == ChainBlockType::INSERT)
           continue;
         juce::DynamicObject::Ptr levels = new juce::DynamicObject();
@@ -645,20 +741,21 @@ void TONE3000Processor::setStereoMode(bool enabled) {
   pushChainHistory();
 
   // Seed the right chain's insert placeholder the first time stereo is enabled.
-  if (enabled && rightChainBlocks.empty()) {
-    rightChainBlocks.push_back(
+  auto& right = lane(ChainSide::Right);
+  if (enabled && right.empty()) {
+    right.push_back(
         std::make_unique<ChainBlock>(INSERT_BLOCK_ID_RIGHT, ChainBlockType::INSERT));
   }
 
   stereoEnabled.store(enabled);
 
   if (!enabled)
-    activeEditSide = ChainSide::Left;
+    pendingAddSide = ChainSide::Left;
 
   // Make sure the right chain's engines are ready to run at the current rate/size.
   const double sr = getSampleRate();
   if (enabled && sr > 0.0 && maxBlockSize > 0)
-    prepareChain(rightChainBlocks, sr, maxBlockSize);
+    prepareChain(right, sr, maxBlockSize);
 
   updateLatencyCompensation();
   bumpChainRevision();
@@ -668,9 +765,9 @@ void TONE3000Processor::setStereoMode(bool enabled) {
 void TONE3000Processor::setActiveEditChain(const juce::String& side) {
   juce::ScopedLock lock(chainMutex);
   if (side == "right")
-    activeEditSide = ChainSide::Right;
+    pendingAddSide = ChainSide::Right;
   else if (side == "left")
-    activeEditSide = ChainSide::Left;
+    pendingAddSide = ChainSide::Left;
   bumpChainRevision();
 }
 
@@ -681,7 +778,7 @@ bool TONE3000Processor::swapChains() {
     return false;
 
   pushChainHistory();
-  std::swap(chainBlocks, rightChainBlocks);
+  std::swap(lane(ChainSide::Left), lane(ChainSide::Right));
 
   // Keep the insert placeholder ids side-invariant: they are fixed per-side
   // keys used by the UI and by snapshot reconciliation, so they must not
@@ -691,24 +788,13 @@ bool TONE3000Processor::swapChains() {
       if (block->type == ChainBlockType::INSERT)
         block->id = id;
   };
-  claimInsert(chainBlocks, INSERT_BLOCK_ID);
-  claimInsert(rightChainBlocks, INSERT_BLOCK_ID_RIGHT);
+  claimInsert(lane(ChainSide::Left), INSERT_BLOCK_ID);
+  claimInsert(lane(ChainSide::Right), INSERT_BLOCK_ID_RIGHT);
 
   updateLatencyCompensation();
   bumpChainRevision();
   DBG("Swapped Left/Right chains");
   return true;
-}
-
-bool TONE3000Processor::isChainValid() const {
-  juce::ScopedLock lock(chainMutex);
-
-  for (const auto& block : chainBlocks) {
-    if (block->loaded && block->enabled) {
-      return true;
-    }
-  }
-  return false;
 }
 
 bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::String& param,
@@ -753,7 +839,12 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
     block->namResampler->setSlimmableSize(clamped);
   }
 
-  bumpChainRevision();
+  // Continuous drags settle into one bump after the gesture ends; discrete
+  // toggles resync immediately.
+  if (isContinuous)
+    deferredRevisionBump();
+  else
+    bumpChainRevision();
   return true;
 }
 
@@ -775,7 +866,8 @@ bool TONE3000Processor::setBlockEqBand(const std::string& blockId, int bandIndex
   if (!block->eq.setBandFromVar(bandIndex, bandVar))
     return false;
 
-  bumpChainRevision();
+  // Band edits arrive at drag rate; converge pollers after the gesture ends.
+  deferredRevisionBump();
   return true;
 }
 
@@ -828,18 +920,21 @@ juce::var TONE3000Processor::getBlockSpectrum(const std::string& blockId) {
 
 void TONE3000Processor::disableAllBlockSpectrums() {
   juce::ScopedLock lock(chainMutex);
-  for (auto* chain : {&chainBlocks, &rightChainBlocks})
-    for (auto& block : *chain)
+  for (auto& chain : lanes)
+    for (auto& block : chain)
       block->spectrum.setEnabled(false);
 }
 
 int TONE3000Processor::calculateTotalLatency() const {
   juce::ScopedLock lock(chainMutex);
 
+  // Only blocks that actually process count: enabled AND loaded (a block
+  // whose model is still downloading passes audio through with no latency).
   auto chainLatency = [](const std::vector<std::unique_ptr<ChainBlock>>& blocks) {
     int latency = 0;
     for (const auto& block : blocks) {
-      if (block->enabled && block->type == ChainBlockType::NAM && block->namResampler) {
+      if (block->enabled && block->loaded && block->type == ChainBlockType::NAM &&
+          block->namResampler) {
         latency += block->latencySamples;
       }
     }
@@ -847,13 +942,9 @@ int TONE3000Processor::calculateTotalLatency() const {
   };
 
   // In stereo mode the two chains run in parallel, so the plugin latency is the larger of them.
-  int totalLatency = chainLatency(chainBlocks);
+  int totalLatency = chainLatency(lane(ChainSide::Left));
   if (stereoEnabled.load())
-    totalLatency = juce::jmax(totalLatency, chainLatency(rightChainBlocks));
-
-  if (!bypassResampling) {
-    totalLatency += static_cast<int>(oversampler->getLatencyInSamples());
-  }
+    totalLatency = juce::jmax(totalLatency, chainLatency(lane(ChainSide::Right)));
 
   return totalLatency;
 }

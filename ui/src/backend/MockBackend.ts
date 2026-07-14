@@ -4,7 +4,6 @@ import type {
   ParameterMap,
   SliderParameter,
   ToggleParameter,
-  ComboBoxParameter,
 } from '../types/IAudioBackend';
 
 export class MockBackend implements IAudioBackend {
@@ -40,23 +39,6 @@ export class MockBackend implements IAudioBackend {
         },
       },
     } as ToggleParameter,
-
-    comboBox: {
-      getChoiceIndex: () => 0,
-      setChoiceIndex: (index: number) => {
-        console.log(`Set comboBox to index ${index}`);
-      },
-      getChoices: () => ['Option 1', 'Option 2'],
-      valueChangedEvent: {
-        addListener: () => {
-          console.log('Added comboBox listener');
-          return 3;
-        },
-        removeListener: (id: number) => {
-          console.log('Removed comboBox listener', id);
-        },
-      },
-    } as ComboBoxParameter,
   };
 
   getParameterState<T extends ParameterType>(name: string, type: T): ParameterMap[T] {
@@ -69,5 +51,10 @@ export class MockBackend implements IAudioBackend {
       console.log(`Mock native function '${name}' called with`, args);
       return Promise.resolve(`Mocked result of ${name}`);
     };
+  }
+
+  addEventListener(eventId: string): () => void {
+    console.log(`Mock addEventListener for '${eventId}'`);
+    return () => {};
   }
 }

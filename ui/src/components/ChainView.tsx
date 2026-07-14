@@ -15,31 +15,33 @@ import type {
   DragOverEvent,
   DragStartEvent,
 } from '@dnd-kit/core';
-import {
-  SortableContext,
-  arrayMove,
-  sortableKeyboardCoordinates,
-  horizontalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { ArrowUpDown, ChevronLeft, Link, PlusCircle } from 'lucide-react';
+import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
+import { ChevronLeft } from 'lucide-react';
 import { ChainBlock } from './ChainBlock';
-import { GalleryBlock, AddTile, GalleryTileGhost } from './GalleryBlock';
-import type { AddTileRouting } from './GalleryBlock';
-import { KnobControl } from './KnobControl';
-import { PillIconButton } from './SpreadControls';
+import { GalleryTileGhost } from './GalleryBlock';
+import {
+  EdgeFade,
+  GalleryLane,
+  LANE_GAP,
+  STEREO_TILE_SIZE,
+  StereoPanRail,
+  TILE_SIZE,
+  EDGE_FADE_WIDTH,
+} from './GalleryLane';
 import { CARD_WIDTH } from './chainLayout';
-import { useParameter } from '../hooks/useParameter';
-import type { BlockParamName, ChainItem, ChainSide, EqBand, ToneBlock } from '../types/chain';
+import { useChainActions } from '../hooks/useChainActions';
+import type { ChainItem, ChainSide, ToneBlock } from '../types/chain';
 import { isInsertSlot } from '../types/chain';
 
 /**
  * Chain gallery: blocks render as square image tiles in horizontal,
  * left-to-right lanes over a static ghost rail of plus circles joined by
  * connector lines — the old vertical chain's link UI, rotated. Dragging a
- * tile away reveals the rail behind its slot.
+ * tile away reveals the rail behind its slot. (Lane internals live in
+ * GalleryLane.tsx; this component owns the drag orchestration.)
  *
  * Mono shows one lane; stereo shows both L/R lanes in a single shared
- * scroll area with the pan/link/swap rail on the left. One drag context
+ * scroll area with the pan/link/swap rail on the right. One drag context
  * spans both lanes and the lane lists are mirrored into optimistic local
  * state, so cross-lane drags reflow the target lane live (onDragOver) and
  * drops land without any snap-back while the native roundtrip completes.
@@ -47,299 +49,13 @@ import { isInsertSlot } from '../types/chain';
  * Back button.
  */
 
-const TILE_SIZE = 224;
-/** Stereo shows two lanes, so its tiles shrink to fit the fixed height. */
-const STEREO_TILE_SIZE = 176;
-/** Gap between tiles — the visible run of each connector line. */
-const TILE_GAP = 24;
-/** Vertical gap between the two stereo lanes. */
-const LANE_GAP = 24;
-/** Radius of the ghost rail's PlusCircle glyphs (size 40). */
-const RAIL_CIRCLE_RADIUS = 20;
-/** Gutter inside the scroll area — tiles fade out under it while scrolling. */
-const EDGE_FADE_WIDTH = 32;
-
-const MUTED = 'rgba(235, 235, 245, 0.60)';
-
 interface ChainViewProps {
   /** Left lane (the only lane in mono mode). */
   chain: ChainItem[];
   /** Right lane, or null while mono. */
   chainRight: ChainItem[] | null;
-  /** Launch the Select flow, adding to the given lane's insert slot. */
-  onAddModel: (side: ChainSide) => void;
-  onRemoveBlock: (id: string) => void;
-  onSwapBlock: (id: string) => void;
-  onShareBlock: (block: ToneBlock) => Promise<boolean>;
-  /** Reorder one lane; the ids identify which lane natively. */
-  onReorderItems: (orderedIds: string[]) => void;
-  /** Move a block into the other lane at the given index (stereo drag). */
-  onMoveBlock: (blockId: string, side: ChainSide, index: number) => void;
-  onSwapChains: () => void;
-  onSwitchModel?: (blockId: string, modelId: number) => Promise<void>;
-  onSetBlockParam: (blockId: string, param: BlockParamName, value: number | boolean) => void;
-  onSetBlockEqBand: (blockId: string, bandIndex: number, band: EqBand) => void;
-  onSetBlockEqEnabled: (blockId: string, enabled: boolean) => void;
-  onResetBlockEq: (blockId: string) => void;
   sampleRate: number;
 }
-
-/** Signal-flow routing lines for an add tile at the given lane position. */
-const addTileRouting = (index: number, count: number): AddTileRouting => {
-  if (count <= 1) return 'none';
-  if (index === 0) return 'right';
-  if (index === count - 1) return 'left';
-  return 'both';
-};
-
-/**
- * Static ghost rail behind a lane: one plus circle per slot, connector lines
- * between them. The circles sit hidden behind the (opaque) tiles and appear
- * when a slot is vacated mid-drag; only the line runs inside the gaps are
- * visible otherwise. Mirrors the old vertical chain's background exactly.
- */
-const GhostRail: React.FC<{ slots: number; tileSize: number }> = ({ slots, tileSize }) => (
-  <div
-    style={{
-      position: 'absolute',
-      inset: 0,
-      display: 'flex',
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: `${TILE_GAP}px`,
-      pointerEvents: 'none',
-      zIndex: 1,
-    }}
-  >
-    {Array.from({ length: slots }, (_, i) => (
-      <span
-        key={`${i}-rail`}
-        style={{
-          width: `${tileSize}px`,
-          height: `${tileSize}px`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          position: 'relative',
-          flexShrink: 0,
-        }}
-      >
-        {i > 0 && (
-          <div
-            style={{
-              position: 'absolute',
-              left: `${-(TILE_GAP + tileSize / 2 - RAIL_CIRCLE_RADIUS)}px`,
-              top: '50%',
-              width: `${TILE_GAP + tileSize - 2 * RAIL_CIRCLE_RADIUS}px`,
-              height: '1px',
-              backgroundColor: '#ffffff',
-            }}
-          />
-        )}
-        <PlusCircle size={40} strokeWidth={1} />
-      </span>
-    ))}
-  </div>
-);
-
-/** One lane of tiles over its ghost rail (no scroll of its own — both lanes
-    share the outer scroll area). An empty lane (just its insert slot) shows
-    the classic pair of add tiles joined by a connector, like the old chain. */
-const GalleryLane: React.FC<{
-  items: ChainItem[];
-  tileSize: number;
-  onOpen: (blockId: string) => void;
-  onAdd: () => void;
-  onRemove: (id: string) => void;
-  onSwap: (id: string) => void;
-  onSetEnabled: (id: string, enabled: boolean) => void;
-}> = ({ items, tileSize, onOpen, onAdd, onRemove, onSwap, onSetEnabled }) => {
-  const emptyLane = items.length === 1 && isInsertSlot(items[0]);
-
-  return (
-    <div style={{ position: 'relative', width: 'max-content' }}>
-      <GhostRail slots={emptyLane ? 2 : items.length} tileSize={tileSize} />
-      <SortableContext
-        items={items.map((item) => item.blockId)}
-        strategy={horizontalListSortingStrategy}
-      >
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: `${TILE_GAP}px`,
-            position: 'relative',
-            zIndex: 2,
-          }}
-        >
-          {emptyLane ? (
-            <>
-              {/* The real insert slot stays droppable so cross-lane drags can
-                  land in an empty lane; its twin is purely decorative. */}
-              <AddTile
-                id={items[0].blockId}
-                size={tileSize}
-                routing="right"
-                draggable={false}
-                onClick={onAdd}
-              />
-              <AddTile
-                id={`${items[0].blockId}-pair`}
-                size={tileSize}
-                routing="left"
-                draggable={false}
-                droppable={false}
-                onClick={onAdd}
-              />
-            </>
-          ) : (
-            items.map((item, index) =>
-              isInsertSlot(item) ? (
-                <AddTile
-                  key={item.blockId}
-                  id={item.blockId}
-                  size={tileSize}
-                  routing={addTileRouting(index, items.length)}
-                  onClick={onAdd}
-                />
-              ) : (
-                <GalleryBlock
-                  key={item.blockId}
-                  block={item}
-                  size={tileSize}
-                  onOpen={onOpen}
-                  onRemove={onRemove}
-                  onSwap={onSwap}
-                  onSetEnabled={onSetEnabled}
-                />
-              )
-            )
-          )}
-        </div>
-      </SortableContext>
-    </div>
-  );
-};
-
-/**
- * Right rail for stereo: per-lane pan knobs (each centered on its lane), with
- * the link toggle and whole-chain swap on the seam between them. Constant-
- * power pan positions (0 = hard left, 1 = hard right): Pan L covers hard
- * left..center on a half track, Pan R center..hard right. Linked (default)
- * mirrors the knobs so width changes stay symmetric.
- */
-const StereoPanRail: React.FC<{ onSwapChains: () => void }> = ({ onSwapChains }) => {
-  const [panLeft, setPanLeft] = useParameter('chainPanLeft', 'slider');
-  const [panRight, setPanRight] = useParameter('chainPanRight', 'slider');
-  const [linked, setLinked] = useParameter('chainPanLinked', 'toggle');
-
-  const handlePanLeft = (value: number) => {
-    setPanLeft(value);
-    if (linked) setPanRight(1 - value);
-  };
-  const handlePanRight = (value: number) => {
-    setPanRight(value);
-    if (linked) setPanLeft(1 - value);
-  };
-  const handleToggleLink = () => {
-    const next = !linked;
-    setLinked(next);
-    // Re-linking snaps back to a symmetric image, anchored on the left pan.
-    if (next) setPanRight(1 - panLeft);
-  };
-
-  const centered: React.CSSProperties = {
-    flex: 1,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  };
-
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        alignSelf: 'center',
-        height: `${STEREO_TILE_SIZE * 2 + LANE_GAP}px`,
-        flexShrink: 0,
-      }}
-    >
-      <div style={centered}>
-        <KnobControl
-          label="Pan L"
-          value={panLeft}
-          onChange={handlePanLeft}
-          variant="panLeft"
-          min={0}
-          max={0.5}
-          size={30}
-          labelSize={10}
-        />
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-        <PillIconButton
-          on={linked}
-          title={linked ? 'Unlink pans (uneven image)' : 'Link pans (mirrored)'}
-          onClick={handleToggleLink}
-          offsetY={0}
-        >
-          <Link size={12} />
-        </PillIconButton>
-        <button
-          onClick={onSwapChains}
-          title="Swap Left and Right chains"
-          style={{
-            width: '22px',
-            height: '22px',
-            borderRadius: '6px',
-            border: 'none',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            padding: 0,
-            color: MUTED,
-            background: 'transparent',
-          }}
-        >
-          <ArrowUpDown size={14} />
-        </button>
-      </div>
-      <div style={centered}>
-        <KnobControl
-          label="Pan R"
-          value={panRight}
-          onChange={handlePanRight}
-          variant="panRight"
-          min={0.5}
-          max={1}
-          size={30}
-          labelSize={10}
-        />
-      </div>
-    </div>
-  );
-};
-
-/** Fade the lanes out under the gutters as they scroll — content slides
-    behind a smooth ramp to the background instead of hard-clipping. */
-const EdgeFade: React.FC<{ side: 'left' | 'right' }> = ({ side }) => (
-  <div
-    style={{
-      position: 'absolute',
-      top: 0,
-      bottom: 0,
-      [side]: 0,
-      width: `${EDGE_FADE_WIDTH}px`,
-      background: `linear-gradient(to ${side === 'left' ? 'right' : 'left'}, #000000, rgba(0, 0, 0, 0))`,
-      pointerEvents: 'none',
-      zIndex: 3,
-    }}
-  />
-);
 
 /**
  * Prefer the tile actually under the pointer; only fall back to nearest-
@@ -354,23 +70,8 @@ const galleryCollisionDetection: CollisionDetection = (args) => {
 
 type Lanes = Record<ChainSide, ChainItem[]>;
 
-export const ChainView: React.FC<ChainViewProps> = ({
-  chain,
-  chainRight,
-  onAddModel,
-  onRemoveBlock,
-  onSwapBlock,
-  onShareBlock,
-  onReorderItems,
-  onMoveBlock,
-  onSwapChains,
-  onSwitchModel,
-  onSetBlockParam,
-  onSetBlockEqBand,
-  onSetBlockEqEnabled,
-  onResetBlockEq,
-  sampleRate,
-}) => {
+export const ChainView: React.FC<ChainViewProps> = ({ chain, chainRight, sampleRate }) => {
+  const actions = useChainActions();
   const [detailBlockId, setDetailBlockId] = useState<string | null>(null);
   /** The item under drag — drives the DragOverlay ghost. */
   const [activeDrag, setActiveDrag] = useState<ChainItem | null>(null);
@@ -378,7 +79,7 @@ export const ChainView: React.FC<ChainViewProps> = ({
   /**
    * Optimistic mirror of both lanes. Drag gestures mutate this immediately
    * (live cross-lane reflow via onDragOver, final order on drop) so nothing
-   * snaps back while the native mutation + poll roundtrip completes; it
+   * snaps back while the native mutation + resync roundtrip completes; it
    * resyncs from props whenever native reports a new state and no drag is
    * in flight.
    */
@@ -394,12 +95,13 @@ export const ChainView: React.FC<ChainViewProps> = ({
    */
   const justCrossedRef = useRef(false);
 
+  // Resync the optimistic lanes only when native actually reports new state
+  // (and no drag is in flight). `lanes` must NOT be a dependency here — the
+  // old version included it and unconditionally set a fresh object, which
+  // re-triggered itself in a silent render loop.
   useEffect(() => {
     if (!draggingRef.current) setLanes({ left: chain, right: chainRight ?? [] });
-    requestAnimationFrame(() => {
-      justCrossedRef.current = false;
-    });
-  }, [chain, chainRight, lanes]);
+  }, [chain, chainRight]);
 
   const sensors = useSensors(
     // A few px of travel before a drag engages: plain clicks (open detail,
@@ -407,8 +109,6 @@ export const ChainView: React.FC<ChainViewProps> = ({
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
-
-  const setEnabled = (id: string, enabled: boolean) => onSetBlockParam(id, 'enabled', enabled);
 
   /** Lane containing the id in the optimistic local state. */
   const laneOf = (id: string): ChainSide | null => {
@@ -457,12 +157,15 @@ export const ChainView: React.FC<ChainViewProps> = ({
       activeRect.left + activeRect.width / 2 > over.rect.left + over.rect.width / 2;
 
     justCrossedRef.current = true;
+    // Clear the guard once dnd-kit has re-measured the shifted layout.
+    requestAnimationFrame(() => {
+      justCrossedRef.current = false;
+    });
     setLanes((prev) => {
       const fromItems = prev[from].filter((i) => i.blockId !== activeId);
       const toItems = [...prev[to]];
       const overIndex = toItems.findIndex((i) => i.blockId === overId);
-      const insertIndex =
-        overIndex === -1 ? toItems.length : overIndex + (landAfter ? 1 : 0);
+      const insertIndex = overIndex === -1 ? toItems.length : overIndex + (landAfter ? 1 : 0);
       toItems.splice(insertIndex, 0, item);
       return { ...prev, [from]: fromItems, [to]: toItems };
     });
@@ -492,21 +195,21 @@ export const ChainView: React.FC<ChainViewProps> = ({
       setLanes((prev) => ({ ...prev, [side]: laneItems }));
     }
 
-    // Commit to native: a lane change is one moveBlockToChain (exact final
-    // index); a same-lane shuffle is one reorder. The next poll converges
+    // Commit to native: a lane change is one moveBlock (exact final index);
+    // a same-lane shuffle is one reorder. The chainChanged resync converges
     // the optimistic state.
     const origin = originLaneOf(activeId);
     if (origin && origin !== side) {
-      onMoveBlock(
+      actions.moveBlock(
         activeId,
         side,
         laneItems.findIndex((i) => i.blockId === activeId)
       );
       return;
     }
-    const nativeIds = (side === 'left' ? chain : chainRight ?? []).map((i) => i.blockId);
+    const nativeIds = (side === 'left' ? chain : (chainRight ?? [])).map((i) => i.blockId);
     const localIds = laneItems.map((i) => i.blockId);
-    if (nativeIds.join() !== localIds.join()) onReorderItems(localIds);
+    if (nativeIds.join() !== localIds.join()) actions.reorderBlocks(localIds);
   };
 
   const handleDragCancel = () => {
@@ -520,9 +223,9 @@ export const ChainView: React.FC<ChainViewProps> = ({
   // the gallery.
   const detailBlock =
     detailBlockId != null
-      ? [...chain, ...(chainRight ?? [])].find(
+      ? ([...chain, ...(chainRight ?? [])].find(
           (item): item is ToneBlock => !isInsertSlot(item) && item.blockId === detailBlockId
-        ) ?? null
+        ) ?? null)
       : null;
 
   if (detailBlock) {
@@ -556,27 +259,7 @@ export const ChainView: React.FC<ChainViewProps> = ({
             <ChevronLeft size={20} />
           </button>
         </div>
-        {/* The detail card calls useSortable, so give it an inert drag scope. */}
-        <DndContext>
-          <SortableContext items={[detailBlock.blockId]}>
-            <ChainBlock
-              block={detailBlock}
-              dragHandle={false}
-              onRemove={(id) => {
-                setDetailBlockId(null);
-                onRemoveBlock(id);
-              }}
-              onSwap={onSwapBlock}
-              onShare={onShareBlock}
-              onSwitchModel={onSwitchModel}
-              onSetParam={onSetBlockParam}
-              onSetEqBand={onSetBlockEqBand}
-              onSetEqEnabled={onSetBlockEqEnabled}
-              onResetEq={onResetBlockEq}
-              sampleRate={sampleRate}
-            />
-          </SortableContext>
-        </DndContext>
+        <ChainBlock block={detailBlock} sampleRate={sampleRate} />
       </div>
     );
   }
@@ -589,10 +272,7 @@ export const ChainView: React.FC<ChainViewProps> = ({
       items={lanes[side]}
       tileSize={tileSize}
       onOpen={setDetailBlockId}
-      onAdd={() => onAddModel(side)}
-      onRemove={onRemoveBlock}
-      onSwap={onSwapBlock}
-      onSetEnabled={setEnabled}
+      onAdd={() => actions.addModel(side)}
     />
   );
 
@@ -661,7 +341,7 @@ export const ChainView: React.FC<ChainViewProps> = ({
           {activeDrag && <GalleryTileGhost item={activeDrag} size={tileSize} />}
         </DragOverlay>
       </DndContext>
-      {stereo && <StereoPanRail onSwapChains={onSwapChains} />}
+      {stereo && <StereoPanRail />}
     </div>
   );
 };

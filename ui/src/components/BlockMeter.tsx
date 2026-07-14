@@ -19,12 +19,15 @@ const DOT_GAP = 5;
  * scale (dimmed) and lights up to the current level. Dots span
  * METER_MIN_DB..0 dBFS; the last dot (top / right) is a latching clip LED
  * (click to clear).
+ *
+ * Memoized: level updates arrive through the meter store subscription, so a
+ * parent re-render with identical props never needs to re-run this.
  */
-export const BlockMeter: React.FC<BlockMeterProps> = ({
+export const BlockMeter: React.FC<BlockMeterProps> = React.memo(function BlockMeter({
   meterId,
   length = 140,
   orientation = 'vertical',
-}) => {
+}) {
   const db = useMeter(meterId);
   const [clipped, clearClip] = useMeterClip(meterId);
 
@@ -71,4 +74,4 @@ export const BlockMeter: React.FC<BlockMeterProps> = ({
       })}
     </div>
   );
-};
+});

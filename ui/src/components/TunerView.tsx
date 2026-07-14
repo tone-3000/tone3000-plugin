@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useFunction } from '../hooks/useFunction';
+import { useNativeFunction } from '../hooks/useFunction';
 
 interface TunerReading {
   frequency: number;
@@ -37,7 +37,8 @@ const litCountForCents = (absCents: number): number => {
 };
 
 export const TunerView: React.FC = () => {
-  const getTunerReading = useFunction<TunerReading>('getTunerReading');
+  // Stateless binding — this polls at 20 Hz, so it must not set hook state.
+  const getTunerReading = useNativeFunction<TunerReading>('getTunerReading');
   const [note, setNote] = useState<string | null>(null);
   const [cents, setCents] = useState(0);
   const [hasSignal, setHasSignal] = useState(false);
@@ -53,7 +54,7 @@ export const TunerView: React.FC = () => {
       if (cancelled || polling) return;
       polling = true;
       try {
-        const reading = await getTunerReading.invoke();
+        const reading = await getTunerReading();
         if (cancelled || !reading) return;
 
         const freq = typeof reading.frequency === 'number' ? reading.frequency : 0;
@@ -86,7 +87,7 @@ export const TunerView: React.FC = () => {
       window.clearInterval(interval);
       if (holdTimeoutRef.current) window.clearTimeout(holdTimeoutRef.current);
     };
-  }, []);
+  }, [getTunerReading]);
 
   const absCents = Math.abs(cents);
   const inTune = hasSignal && absCents <= IN_TUNE_CENTS;

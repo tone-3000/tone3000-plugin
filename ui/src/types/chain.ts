@@ -1,5 +1,3 @@
-import type { Tone } from './tone';
-
 /**
  * Chain state model — mirrors the native `getChainState` payload.
  *
@@ -66,22 +64,18 @@ export function isEqFlat(eq: BlockEqParams): boolean {
   return !eq.bands.some(isEqBandActive);
 }
 
-/** True when the EQ is actually shaping audio (enabled and not flat). */
-export function isEqShaping(eq: BlockEqParams): boolean {
-  return eq.enabled && !isEqFlat(eq);
-}
-
 /** Per-block user-editable parameters (all persisted with the plugin state). */
 export interface BlockParams {
   /** Block participates in processing (per-block on/off). */
   enabled: boolean;
-  /** Normalized 0..1; 0.5 = unity, ±12 dB. Drives the block's DSP. */
+  /** Normalized 0..1; 0.5 = unity, ±24 dB. Drives the block's DSP. */
   inputGain: number;
-  /** Normalized 0..1; 0.5 = unity, ±12 dB. */
+  /** Normalized 0..1; 0.5 = unity, ±24 dB. */
   outputGain: number;
   /** Dry/wet: 0 = dry, 1 = wet. */
   mix: number;
-  /** NAM slimmable size: 0.5 = lite, 1.0 = full. */
+  /** NAM slimmable size: 0.0 = lite, 1.0 = full (tier boundaries live in
+      the native mapper — see ChainBlock's LITE/FULL toggle). */
   namSlimmableSize: number;
   /** Post-block 6-band EQ. Flat = skipped entirely on the audio thread. */
   eq: BlockEqParams;
@@ -93,12 +87,28 @@ export interface InsertSlot {
   kind: 'insert';
 }
 
+/**
+ * Slim tone projection shipped by native (see makeToneSummary in
+ * ProcessorChain.cpp). Only what the UI renders — the full API payload
+ * (model URLs, tags, counts, …) stays native-side.
+ */
+export interface ToneSummary {
+  id: number;
+  title: string;
+  format?: string;
+  gear?: string;
+  /** First image only (block artwork). */
+  images?: string[];
+  user?: { username: string; avatar_url: string };
+  models: { id: number; name: string }[];
+}
+
 /** A real tone block in the chain. */
 export interface ToneBlock {
   blockId: string;
   kind: 'tone';
-  /** Full TONE3000 tone JSON as stored by native. */
-  tone: Tone;
+  /** Tone metadata for rendering (slim projection of the API tone). */
+  tone: ToneSummary;
   activeModelId: number;
   /** True when the active model is downloaded, prepared and processing. */
   loaded: boolean;

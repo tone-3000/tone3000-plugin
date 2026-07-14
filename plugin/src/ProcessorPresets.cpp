@@ -89,13 +89,15 @@ bool TONE3000Processor::loadPreset(const juce::String& presetId) {
   if (!snapshot.isValid())
     return false;
 
+  Lane retired;  // destroyed after the lock — see restoreChainSnapshot
   {
     juce::ScopedLock lock(chainMutex);
     pushChainHistory();
-    restoreChainSnapshot(snapshot);  // bumps the revision
+    retired = restoreChainSnapshot(snapshot);  // bumps the revision
     activePresetId = presetId;
     activePresetName = preset.getProperty("name").toString();
   }
+  retired.clear();
 
   // Faceplate parameters. Gestured so hosts treat this like a user edit
   // (automation write modes record it instead of fighting it).

@@ -4,8 +4,10 @@ import { CSS } from '@dnd-kit/utilities';
 import { ArrowLeftRight, GripVertical, PlusCircle, Power, Trash2 } from 'lucide-react';
 import { BlockMeter } from './BlockMeter';
 import { meterId } from '../hooks/useMeters';
+import { useChainActions } from '../hooks/useChainActions';
 import type { ChainItem, ToneBlock } from '../types/chain';
 import { isInsertSlot } from '../types/chain';
+import { GRAY, HIGHLIGHT, SURFACE, SURFACE_RAISED, iconButtonStyle } from './theme';
 
 /**
  * Gallery view of a chain block: a square tone image with quick actions
@@ -18,31 +20,16 @@ import { isInsertSlot } from '../types/chain';
  * drag looks identical to the resting tile — just semi-transparent.
  */
 
-const MUTED = 'rgba(235, 235, 245, 0.60)';
 /** Opacity of the moving copy while dragging (matches the old chain). */
 const DRAG_GHOST_OPACITY = 0.75;
 
-const actionButtonStyle: React.CSSProperties = {
-  background: 'transparent',
-  border: 'none',
-  outline: 'none',
-  color: MUTED,
-  cursor: 'pointer',
-  width: '22px',
-  height: '22px',
-  borderRadius: '6px',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: 0,
-  flexShrink: 0,
-};
+const actionButtonStyle = iconButtonStyle(22);
 
 /** Keep tile buttons from taking focus on press — the webview scrolls the
     focused element into view, which nudges the whole lane by a pixel. */
 const preventFocus = (e: React.MouseEvent) => e.preventDefault();
 
-const AvatarFallback: React.FC = () => (
+const NoImageFallback: React.FC = () => (
   <div
     style={{
       width: '100%',
@@ -50,8 +37,8 @@ const AvatarFallback: React.FC = () => (
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: '#1C1C1E',
-      color: '#8D8D93',
+      backgroundColor: SURFACE_RAISED,
+      color: GRAY,
       fontSize: '11px',
       letterSpacing: '0.06em',
     }}
@@ -94,7 +81,7 @@ const TileSurface: React.FC<{
         width: `${size}px`,
         height: `${size}px`,
         borderRadius: '12px',
-        backgroundColor: '#151517',
+        backgroundColor: SURFACE,
         position: 'relative',
         overflow: 'hidden',
         cursor: actions ? 'pointer' : 'grabbing',
@@ -118,7 +105,7 @@ const TileSurface: React.FC<{
             style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
           />
         ) : (
-          <AvatarFallback />
+          <NoImageFallback />
         )}
       </div>
 
@@ -166,8 +153,8 @@ const TileSurface: React.FC<{
           title={enabled ? 'Turn block off' : 'Turn block on'}
           style={{
             ...actionButtonStyle,
-            color: enabled ? '#ffffff' : '#8D8D93',
-            backgroundColor: enabled ? 'transparent' : 'rgba(235, 235, 245, 0.18)',
+            color: enabled ? '#ffffff' : GRAY,
+            backgroundColor: enabled ? 'transparent' : HIGHLIGHT,
           }}
         >
           <Power size={13} />
@@ -219,25 +206,18 @@ interface GalleryBlockProps {
   size: number;
   /** Open the detail takeover for this block. */
   onOpen: (blockId: string) => void;
-  onRemove: (blockId: string) => void;
-  /** Launch the Select flow to replace this block's tone in place. */
-  onSwap: (blockId: string) => void;
-  /** Fire-and-forget per-block enabled toggle (see useChainState). */
-  onSetEnabled: (blockId: string, enabled: boolean) => void;
 }
 
-export const GalleryBlock: React.FC<GalleryBlockProps> = ({
-  block,
-  size,
-  onOpen,
-  onRemove,
-  onSwap,
-  onSetEnabled,
-}) => {
+/** Memoized — a lane re-render (e.g. another tile's optimistic state) only
+    reaches tiles whose block snapshot actually changed. Mutations come from
+    the ChainActions context, so there are no per-render callback props to
+    defeat the memo. */
+export const GalleryBlock: React.FC<GalleryBlockProps> = React.memo(({ block, size, onOpen }) => {
   const { blockId, params } = block;
+  const actions = useChainActions();
 
-  // Optimistic power state; native converges via polling (same pattern as the
-  // detail card).
+  // Optimistic power state; native converges via the chainChanged resync
+  // (same pattern as the detail card).
   const [enabled, setEnabled] = useState(params.enabled);
   useEffect(() => setEnabled(params.enabled), [params.enabled]);
 
@@ -249,11 +229,11 @@ export const GalleryBlock: React.FC<GalleryBlockProps> = ({
     (e: React.MouseEvent) => {
       e.stopPropagation();
       setEnabled((prev) => {
-        onSetEnabled(blockId, !prev);
+        actions.setBlockParam(blockId, 'enabled', !prev);
         return !prev;
       });
     },
-    [blockId, onSetEnabled]
+    [actions, blockId]
   );
 
   return (
@@ -279,18 +259,19 @@ export const GalleryBlock: React.FC<GalleryBlockProps> = ({
           onTogglePower: handleTogglePower,
           onSwap: (e) => {
             e.stopPropagation();
-            onSwap(blockId);
+            actions.swapBlock(blockId);
           },
           onRemove: (e) => {
             e.stopPropagation();
-            onRemove(blockId);
+            actions.removeBlock(blockId);
           },
           grip: { ...attributes, ...listeners },
         }}
       />
     </div>
   );
-};
+});
+GalleryBlock.displayName = 'GalleryBlock';
 
 /** Radius of the PlusCircle glyph — routing lines run edge-to-circle. */
 const PLUS_CIRCLE_RADIUS = 20;
@@ -304,7 +285,7 @@ const addTileFaceStyle = (size: number): React.CSSProperties => ({
   width: `${size}px`,
   height: `${size}px`,
   borderRadius: '12px',
-  backgroundColor: '#1C1C1E',
+  backgroundColor: SURFACE_RAISED,
   // https://kovart.github.io/dashed-border-generator/
   backgroundImage: `url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='none' rx='12' ry='12' stroke='%238D8D93FF' stroke-width='2' stroke-dasharray='6%2c 10' stroke-dashoffset='9' stroke-linecap='square'/%3e%3c/svg%3e")`,
   position: 'relative',

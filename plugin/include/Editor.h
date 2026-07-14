@@ -15,7 +15,7 @@
 #include "Processor.h"
 #include "BinaryData.h"  // Contains embedded Web UI assets (HTML/CSS/JS)
 
-class TONE3000Editor : public juce::AudioProcessorEditor {
+class TONE3000Editor : public juce::AudioProcessorEditor, private juce::Timer {
 public:
   explicit TONE3000Editor(TONE3000Processor&);
   ~TONE3000Editor() override;
@@ -44,6 +44,13 @@ private:
   // top-level NSWindow (Standalone races; harmless in AU/VST3 hosts).
   bool mainUrlLoaded = false;
   void loadMainUrlIfNeeded();
+
+  // Chain-change push: a lightweight native timer watches the processor's
+  // revision counter (an atomic read — far cheaper than the webview polling
+  // across the bridge) and emits a `chainChanged` event when it moves. The
+  // UI resyncs on the event and keeps only a slow safety-net poll.
+  void timerCallback() override;
+  juce::uint32 lastPushedRevision = 0;
 
   juce::WebControlParameterIndexReceiver controlParameterIndexReceiver;
 

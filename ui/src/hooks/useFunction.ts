@@ -1,6 +1,29 @@
 import { useState, useCallback } from 'react';
 import { useAudioBackend } from './useAudioBackend';
 
+/**
+ * Stateless native-function binding: a stable async callback and nothing
+ * else. Use this (not `useFunction`) for anything called on a timer — the
+ * stateful variant's loading/result updates would re-render the caller on
+ * every tick.
+ */
+export function useNativeFunction<T = unknown>(
+  name: string
+): (...args: unknown[]) => Promise<T | null> {
+  const backend = useAudioBackend();
+  return useCallback(
+    async (...args: unknown[]): Promise<T | null> => {
+      try {
+        return (await backend.getPluginFunction(name)(...args)) as T;
+      } catch (err) {
+        console.error(`Error invoking native function "${name}"`, err);
+        return null;
+      }
+    },
+    [backend, name]
+  );
+}
+
 export function useFunction<T = any>(name: string) {
   const backend = useAudioBackend();
   const [result, setResult] = useState<T | null>(null);

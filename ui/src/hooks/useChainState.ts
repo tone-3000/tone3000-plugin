@@ -11,12 +11,12 @@ import type {
 import { isUnchanged } from '../types/chain';
 
 /**
- * Poll cadence for chain state. Cheap because native short-circuits with a
- * tiny { revision, unchanged } reply whenever nothing changed since our last
- * sync — the full state only crosses the bridge after an actual mutation
- * (including background model loads finishing, which bump the revision).
+ * Fallback poll cadence for chain state. The primary sync channel is the
+ * native `chainChanged` push event (the editor watches the revision counter
+ * and emits within ~50 ms of any mutation); this slow poll only exists as a
+ * safety net in case an event is dropped (e.g. while the webview is hidden).
  */
-const POLL_INTERVAL_MS = 500;
+const FALLBACK_POLL_INTERVAL_MS = 3000;
 
 const EMPTY_STATE: ChainState = {
   revision: -1,
@@ -36,11 +36,11 @@ const EMPTY_STATE: ChainState = {
  *
  * Sync model:
  * - Native is the source of truth; we hold a revision-tagged snapshot.
- * - Mutations call native, then resync immediately (no optimistic chain
- *   surgery — the roundtrip is one bridge call).
+ * - Native pushes a `chainChanged` event on every revision bump; we resync on
+ *   it (plus a slow fallback poll, and immediately after our own mutations).
  * - Continuous params (knob drags) go through `setBlockParam` fire-and-forget;
- *   the card keeps its own optimistic knob value and the revision bump makes
- *   the next poll converge everyone else.
+ *   the card keeps its own optimistic knob value, native defers the revision
+ *   bump until the gesture settles, and the resulting push converges everyone.
  */
 export function useChainState() {
   const backend = useAudioBackend();
@@ -90,13 +90,17 @@ export function useChainState() {
 
   useEffect(() => {
     refresh(true);
-    const interval = setInterval(() => refresh(), POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [refresh]);
+    const unsubscribe = backend.addEventListener('chainChanged', () => refresh());
+    const interval = setInterval(() => refresh(), FALLBACK_POLL_INTERVAL_MS);
+    return () => {
+      unsubscribe();
+      clearInterval(interval);
+    };
+  }, [backend, refresh]);
 
   /** Run a mutation, then resync from native regardless of outcome. */
   const run = useCallback(
-    async <T,>(label: string, fn: () => Promise<T>): Promise<T | null> => {
+    async <T>(label: string, fn: () => Promise<T>): Promise<T | null> => {
       let result: T | null = null;
       try {
         result = await fn();
@@ -112,8 +116,7 @@ export function useChainState() {
   const actions = useMemo(
     () => ({
       /** Add a tone at the insert slot. Resolves to the new blockId ('' on failure). */
-      loadTone: (toneJson: string) =>
-        run<string>('loadTone', () => native.loadTone(toneJson)),
+      loadTone: (toneJson: string) => run<string>('loadTone', () => native.loadTone(toneJson)),
       /** Replace an existing block's tone in place (keeps position + params). */
       swapTone: (blockId: string, toneJson: string) =>
         run<boolean>('swapTone', () => native.swapTone(blockId, toneJson)),
@@ -125,9 +128,7 @@ export function useChainState() {
         run('reorderChainBlocks', () => native.reorderChainBlocks(orderedIds)),
       /** Move a block into the other lane at the given index (stereo drag). */
       moveBlockToChain: (blockId: string, side: ChainSide, index: number) =>
-        run<boolean>('moveBlockToChain', () =>
-          native.moveBlockToChain(blockId, side, index)
-        ),
+        run<boolean>('moveBlockToChain', () => native.moveBlockToChain(blockId, side, index)),
       setStereoMode: (enabled: boolean) =>
         run('setStereoMode', () => native.setStereoMode(enabled)),
       setActiveSide: (side: ChainSide) =>
@@ -176,7 +177,6 @@ export function useChainState() {
     canRedo: state.canRedo ?? false,
     activePreset: state.preset ?? null,
     stereoEnabled: state.stereoEnabled,
-    activeSide: state.activeSide,
     stereoInput: state.stereoInput ?? false,
     standalone: state.standalone ?? false,
     inputMode: state.inputMode ?? 'input1',

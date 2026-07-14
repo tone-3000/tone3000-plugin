@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { X as XIcon, ArrowLeft, Info, ChevronDown } from 'lucide-react';
 import { useParameter } from '../hooks/useParameter';
-import { useFunction } from '../hooks/useFunction';
+import { useNativeFunction } from '../hooks/useFunction';
 import type { InputMode } from '../types/chain';
+import { BORDER, MUTED, SUBTLE } from './theme';
 
 /**
  * Settings: full-window takeover with a main screen (section cards that open
@@ -13,7 +14,8 @@ import type { InputMode } from '../types/chain';
  */
 
 interface SettingsProps {
-  isOpen: boolean;
+  /** Mounted only while open (see Plugin) — closing unmounts, so screen
+      state and parameter subscriptions reset for free. */
   onClose: () => void;
   /** True in the standalone app — shows standalone-only settings. */
   standalone: boolean;
@@ -27,9 +29,7 @@ const INPUT_MODE_OPTIONS: { value: InputMode; label: string }[] = [
   { value: 'stereo', label: 'Stereo (inputs 1 + 2)' },
 ];
 
-const MUTED = 'rgba(235, 235, 245, 0.60)';
-const SUBTLE = 'rgba(235, 235, 245, 0.40)';
-const FIELD_BORDER = '1px solid rgba(84, 84, 88, 0.65)';
+const FIELD_BORDER = BORDER;
 
 const sectionLabelStyle: React.CSSProperties = {
   fontSize: '15px',
@@ -124,7 +124,6 @@ const ToggleRow: React.FC<{
 );
 
 export const Settings: React.FC<SettingsProps> = ({
-  isOpen,
   onClose,
   standalone,
   inputMode,
@@ -147,31 +146,24 @@ export const Settings: React.FC<SettingsProps> = ({
     setDbuValueNormalized(Math.max(0, Math.min(1, normalized)));
   };
 
-  const showAudioSettings = useFunction<boolean>('showAudioSettings');
+  const showAudioSettings = useNativeFunction<boolean>('showAudioSettings');
 
   // Diagnostics: forward the on-disk log so users can share it for debugging.
-  const copyLogs = useFunction<boolean>('copyLogs');
-  const revealLogs = useFunction<string>('revealLogs');
+  const copyLogs = useNativeFunction<boolean>('copyLogs');
+  const revealLogs = useNativeFunction<string>('revealLogs');
   const [logStatus, setLogStatus] = useState<string | null>(null);
 
   const handleCopyLogs = useCallback(async () => {
-    const ok = await copyLogs.invoke();
+    const ok = await copyLogs();
     setLogStatus(ok ? 'Logs copied to clipboard' : 'No log file found yet');
     setTimeout(() => setLogStatus(null), 3000);
   }, [copyLogs]);
 
   const handleRevealLogs = useCallback(async () => {
-    const path = await revealLogs.invoke();
+    const path = await revealLogs();
     setLogStatus(path ? 'Revealed log file' : 'No log file found yet');
     setTimeout(() => setLogStatus(null), 3000);
   }, [revealLogs]);
-
-  // Always land on the main screen when (re)opened.
-  useEffect(() => {
-    if (isOpen) setScreen('main');
-  }, [isOpen]);
-
-  if (!isOpen) return null;
 
   const header = (
     <div
@@ -292,7 +284,7 @@ export const Settings: React.FC<SettingsProps> = ({
             </p>
           </div>
 
-          <button onClick={() => showAudioSettings.invoke()} style={ctaButtonStyle}>
+          <button onClick={() => showAudioSettings()} style={ctaButtonStyle}>
             Audio Settings
           </button>
         </div>

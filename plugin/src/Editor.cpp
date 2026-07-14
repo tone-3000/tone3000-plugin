@@ -33,10 +33,25 @@ TONE3000Editor::TONE3000Editor(TONE3000Processor& p) : AudioProcessorEditor(&p),
   mainWebView->setOpaque(true);
   addAndMakeVisible(*mainWebView);
 
+  // Chain-change push (see Editor.h). 20 Hz keeps mutation→UI latency at
+  // ~50 ms worst case for the cost of one atomic read per tick.
+  lastPushedRevision = processor.getCurrentChainRevision();
+  startTimerHz(20);
+
   setSize(1024, 600);
 }
 
+void TONE3000Editor::timerCallback() {
+  const juce::uint32 revision = processor.getCurrentChainRevision();
+  if (revision == lastPushedRevision || mainWebView == nullptr)
+    return;
+  lastPushedRevision = revision;
+  mainWebView->emitEventIfBrowserIsVisible("chainChanged",
+                                           juce::var(static_cast<int>(revision)));
+}
+
 TONE3000Editor::~TONE3000Editor() {
+  stopTimer();
   // The tuner and block spectrum analyzers are only useful while the UI is
   // visible; stop feeding them when the editor goes away (the webview can't
   // send the disables itself on teardown).
