@@ -103,8 +103,15 @@ std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& mo
 }
 
 
-int TONE3000Processor::computeEffectiveNamPrepareBlockSize() const noexcept {
-  return juce::jmax(1, juce::jmax(maxBlockSize, getBlockSize()));
+int TONE3000Processor::chainDomainBlockSize() const noexcept {
+  const int hostBlockSize = juce::jmax(1, juce::jmax(maxBlockSize, getBlockSize()));
+  const double sr = hostSampleRate > 0.0 ? hostSampleRate : kChainSampleRate;
+  // Upsampling hosts below 48k (e.g. 44.1k) yield MORE frames per boundary
+  // callback than the host block size; never go below the host size either,
+  // since the direct path (48k host) hands host-sized blocks straight through.
+  const int domainFrames =
+      static_cast<int>(std::ceil(static_cast<double>(hostBlockSize) * kChainSampleRate / sr));
+  return juce::jmax(hostBlockSize, domainFrames);
 }
 
 TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThread(
@@ -123,8 +130,7 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
                            juce::String(type == ChainBlockType::NAM ? "NAM" : "IR") + " model: " +
                            filename + " (" + juce::String((juce::int64)modelData.size()) + " bytes)");
 
-  const double srForNam = hostSampleRate;
-  const int effectiveBlockSize = computeEffectiveNamPrepareBlockSize();
+  const int domainBlockSize = chainDomainBlockSize();
 
   try {
     if (type == ChainBlockType::NAM) {
@@ -146,30 +152,27 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
                                    std::to_string(rawDsp->NumOutputChannels()));
         }
 
-        auto resampler =
-            std::make_unique<NamResampler>(std::move(rawDsp), srForNam);
-        out.namIsSlimmable = resampler->isSlimmableModel();
+        auto engine = std::make_unique<NamEngine>(std::move(rawDsp));
+        out.namIsSlimmable = engine->isSlimmableModel();
 
-        double slimPersistForPrepare = namPersistedSlimmableSize;
-        if (!out.namIsSlimmable)
-          slimPersistForPrepare = 1.0;
-        const double clampedSlim =
-            out.namIsSlimmable ? juce::jlimit(0.0, 1.0, slimPersistForPrepare) : 1.0;
-        resampler->setSlimmableSize(clampedSlim);
-
-        if (srForNam > 0.0 && effectiveBlockSize > 0) {
-          resampler->prepare(srForNam, effectiveBlockSize);
-          out.namLatencySamples = resampler->getLatencySamples();
-        } else {
+        // The chain domain runs everything at kChainSampleRate. A2 models are
+        // all trained at 48k; anything else is rare enough that we just run it
+        // at 48k anyway and note it in the log (a slight pitch/tone shift beats
+        // per-block resampling machinery for a case that ~never happens).
+        if (std::abs(engine->getModelSampleRate() - kChainSampleRate) > 0.1) {
           juce::Logger::writeToLog(
-              "[ModelLoader] Deferring NamResampler::prepare — invalid sample rate/block size");
-          return out;
+              "[ModelLoader] NAM model reports " + juce::String(engine->getModelSampleRate()) +
+              " Hz; the chain runs at " + juce::String(kChainSampleRate) + " Hz regardless");
         }
 
-        out.namResampler = std::move(resampler);
-        juce::Logger::writeToLog("[ModelLoader] NAM model prepared — sample rate: " +
-                                 juce::String(out.namResampler->getModelSampleRate()) +
-                                 ", latency: " + juce::String(out.namLatencySamples));
+        const double clampedSlim =
+            out.namIsSlimmable ? juce::jlimit(0.0, 1.0, namPersistedSlimmableSize) : 1.0;
+        engine->setSlimmableSize(clampedSlim);
+        engine->prepare(domainBlockSize);
+
+        out.namEngine = std::move(engine);
+        juce::Logger::writeToLog("[ModelLoader] NAM model prepared — model sample rate: " +
+                                 juce::String(out.namEngine->getModelSampleRate()));
 
         out.success = true;
       } else {
@@ -202,9 +205,9 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
       const size_t maxIrLength = 32768;
       const int irNumChannels = juce::jlimit(1, 2, static_cast<int>(reader->numChannels));
 
-      const double sampleRate = getSampleRate();
-      const int convolutionBlockSize = effectiveBlockSize;
-      juce::dsp::ProcessSpec spec{sampleRate, static_cast<juce::uint32>(convolutionBlockSize), 2};
+      // IRs live in the chain domain too: the convolver resamples the IR file
+      // to kChainSampleRate at load, and processing always runs at that rate.
+      juce::dsp::ProcessSpec spec{kChainSampleRate, static_cast<juce::uint32>(domainBlockSize), 2};
 
       // Mono fallback convolver: IR channel 0 applied to every audio channel.
       auto convolverMono = std::make_unique<juce::dsp::Convolution>();
@@ -236,7 +239,7 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
     juce::Logger::writeToLog("[ModelLoader] Error preparing model '" + filename +
                              "': " + e.what());
     out.success = false;
-    out.namResampler.reset();
+    out.namEngine.reset();
     out.convolverMono.reset();
     out.convolverStereo.reset();
   }
@@ -259,8 +262,8 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block,
   // `prepared`, and the caller destroys them after releasing chainMutex —
   // NAM graph / convolution teardown must never run while the audio thread
   // can be blocked on the lock.
-  if (block.type == ChainBlockType::NAM && prepared.namResampler != nullptr) {
-    std::swap(block.namResampler, prepared.namResampler);      // new engine in, old out
+  if (block.type == ChainBlockType::NAM && prepared.namEngine != nullptr) {
+    std::swap(block.namEngine, prepared.namEngine);            // new engine in, old out
     std::swap(block.convolverMono, prepared.convolverMono);    // null in, any old IR out
     std::swap(block.convolverStereo, prepared.convolverStereo);
     block.irNumChannels = 1;
@@ -269,25 +272,23 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block,
     block.namIsSlimmable = prepared.namIsSlimmable;
     if (!block.namIsSlimmable)
       block.namSlimmableSize = 1.0;
-    block.namResampler->setSlimmableSize(
+    block.namEngine->setSlimmableSize(
         block.namIsSlimmable ? block.namSlimmableSize : 1.0);
-    block.latencySamples = prepared.namLatencySamples;
 
-    block.namNormalizationSmoother.reset(getSampleRate(), 0.05f);
+    block.namNormalizationSmoother.reset(kChainSampleRate, 0.05f);
     block.namNormalizationSmoother.setCurrentAndTargetValue(1.0f);
     block.loaded = true;
 
   } else if (block.type == ChainBlockType::IR && prepared.convolverMono != nullptr) {
-    std::swap(block.namResampler, prepared.namResampler);      // null in, any old NAM out
+    std::swap(block.namEngine, prepared.namEngine);            // null in, any old NAM out
     std::swap(block.convolverMono, prepared.convolverMono);
     std::swap(block.convolverStereo, prepared.convolverStereo);
-    block.latencySamples = 0;
     block.irNumChannels = prepared.irNumChannels;
     block.irTempFile = prepared.irTempFile;
     prepared.irTempFile = juce::File();
 
     block.irNormalizationGainLinear = prepared.irNormalizationGainLinear;
-    block.irNormalizationSmoother.reset(getSampleRate(), 0.05f);
+    block.irNormalizationSmoother.reset(kChainSampleRate, 0.05f);
     block.irNormalizationSmoother.setCurrentAndTargetValue(block.irNormalizationGainLinear);
 
     block.loaded = true;

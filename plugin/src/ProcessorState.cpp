@@ -39,15 +39,15 @@ void TONE3000Processor::applyBlockSettings(ChainBlock& block, const juce::ValueT
   if (block.type == ChainBlockType::NAM && blockState.hasProperty("namSlimmableSize")) {
     block.namSlimmableSize =
         juce::jlimit(0.0, 1.0, static_cast<double>(blockState.getProperty("namSlimmableSize")));
-    if (block.namIsSlimmable && block.namResampler != nullptr)
-      block.namResampler->setSlimmableSize(block.namSlimmableSize);
+    if (block.namIsSlimmable && block.namEngine != nullptr)
+      block.namEngine->setSlimmableSize(block.namSlimmableSize);
   }
 
   if (block.type != ChainBlockType::INSERT) {
     // EQ bands (defaults to flat when the child is missing — older projects).
+    // Block EQs always run in the chain domain (fixed rate).
     block.eq.restoreFromValueTree(blockState.getChildWithName("Eq"));
-    if (const double sr = getSampleRate(); sr > 0.0)
-      block.eq.prepare(sr);
+    block.eq.prepare(kChainSampleRate);
   }
 }
 

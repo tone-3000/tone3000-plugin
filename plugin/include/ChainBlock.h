@@ -8,7 +8,7 @@
 #include <vector>
 #include "BlockEq.h"
 #include "BlockSpectrum.h"
-#include "NamResampler.h"
+#include "NamEngine.h"
 
 // Chain block types
 enum class ChainBlockType { NAM, IR, INSERT };
@@ -69,10 +69,9 @@ struct ChainBlock {
   // writes the log line there — string building/logging is not RT-safe.
   std::atomic<bool> rtProcessingFailed{false};
 
-  // NAM-specific processing
-  std::unique_ptr<NamResampler> namResampler;
+  // NAM-specific processing (runs at the fixed chain rate — see ChainDomain.h)
+  std::unique_ptr<NamEngine> namEngine;
   juce::LinearSmoothedValue<float> namNormalizationSmoother;
-  int latencySamples = 0;
 
   // IR-specific processing.
   // convolverMono: IR channel 0 loaded with Stereo::no — applies the same (left) kernel to
@@ -109,7 +108,7 @@ struct ChainBlock {
   BlockSpectrum spectrum;
 
   // NAM slimmable / container (A2): 1.0 = full, 0.0 = lite (the tier boundary at
-  // 0.5 belongs to full — see NamResampler::setSlimmableSize); only used when namIsSlimmable
+  // 0.5 belongs to full — see NamEngine::setSlimmableSize); only used when namIsSlimmable
   bool namIsSlimmable{false};
   double namSlimmableSize{1.0};
 

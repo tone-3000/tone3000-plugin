@@ -28,6 +28,11 @@ TONE3000Processor::TONE3000Processor()
   // Always start with the insert block (pass-through placeholder for "add tone" position)
   lane(ChainSide::Left)
       .push_back(std::make_unique<ChainBlock>(INSERT_BLOCK_ID, ChainBlockType::INSERT));
+  // Built once (capturing only `this`) so invoking the boundary on the audio
+  // thread never constructs a std::function per block.
+  chainStageFunc = [this](float** inputs, float** outputs, int numFrames) {
+    processChainStage(inputs, outputs, numFrames);
+  };
   DBG("TONE3000Processor constructed");
 }
 
@@ -161,10 +166,11 @@ bool TONE3000Processor::isMidiEffect() const {
 }
 double TONE3000Processor::getTailLengthSeconds() const {
   // IR convolution tails run up to 32768 samples (see prepareBlockModelOffThread's
-  // maxIrLength). Report that conservatively so hosts don't cut reverb/cab tails
-  // when audio stops; checking whether an IR is actually loaded would need the
-  // chain lock, which this (potentially RT-adjacent) query must not take.
-  return 32768.0 / juce::jmax(8000.0, hostSampleRate);
+  // maxIrLength) at the fixed chain rate. Report that conservatively so hosts
+  // don't cut reverb/cab tails when audio stops; checking whether an IR is
+  // actually loaded would need the chain lock, which this (potentially
+  // RT-adjacent) query must not take.
+  return 32768.0 / kChainSampleRate;
 }
 
 int TONE3000Processor::getNumPrograms() {
@@ -187,27 +193,29 @@ void TONE3000Processor::changeProgramName(int index, const juce::String& newName
 // #############################
 // PREPARE A SINGLE CHAIN
 // #############################
-void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& blocks,
-                                     double sampleRate, int samplesPerBlock) {
+// Everything in a chain lives in the chain domain: fixed kChainSampleRate,
+// block sizes up to chainDomainBlockSize(). Host-rate changes only ever
+// re-prepare because the domain block size depends on the host block size.
+void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& blocks) {
+  const int domainBlockSize = chainDomainBlockSize();
+
   for (auto& block : blocks) {
     if (block->type == ChainBlockType::NAM) {
-      if (block->namResampler != nullptr) {
-        block->namResampler->prepare(sampleRate, samplesPerBlock);
-        block->latencySamples = block->namResampler->getLatencySamples();
-        DBG("Resampling NAM prepared for block: " << block->id
-            << " (latency: " << block->latencySamples << " samples)");
+      if (block->namEngine != nullptr) {
+        block->namEngine->prepare(domainBlockSize);
+        DBG("NAM engine prepared for block: " << block->id);
       } else {
-        DBG("Warning: NAM block " << block->id << " has no resampling wrapper to prepare");
+        DBG("Warning: NAM block " << block->id << " has no engine to prepare");
       }
     } else if (block->type == ChainBlockType::IR && block->convolverMono != nullptr) {
-      juce::dsp::ProcessSpec spec{sampleRate, static_cast<juce::uint32>(samplesPerBlock), 2};
+      juce::dsp::ProcessSpec spec{kChainSampleRate, static_cast<juce::uint32>(domainBlockSize), 2};
       block->convolverMono->prepare(spec);
       if (block->convolverStereo != nullptr)
         block->convolverStereo->prepare(spec);
 
-      // Reset normalization smoother to current gain to prevent jumps on sample rate change
+      // Reset normalization smoother to current gain to prevent jumps on re-prepare
       if (block->loaded) {
-        block->irNormalizationSmoother.reset(sampleRate, 0.05f);
+        block->irNormalizationSmoother.reset(kChainSampleRate, 0.05f);
         block->irNormalizationSmoother.setCurrentAndTargetValue(block->irNormalizationGainLinear);
       }
 
@@ -217,18 +225,18 @@ void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& b
     // Initialize per-block smoothers (input gain, output gain, mix, NAM
     // normalization). The RT path only ever calls setTargetValue on these —
     // reset() belongs here and in the model-apply path, never per block.
-    block->inputGainSmoother.reset(sampleRate, 0.05f);
-    block->outputGainSmoother.reset(sampleRate, 0.05f);
-    block->mixSmoother.reset(sampleRate, 0.05f);
-    block->namNormalizationSmoother.reset(sampleRate, 0.05f);
+    block->inputGainSmoother.reset(kChainSampleRate, 0.05f);
+    block->outputGainSmoother.reset(kChainSampleRate, 0.05f);
+    block->mixSmoother.reset(kChainSampleRate, 0.05f);
+    block->namNormalizationSmoother.reset(kChainSampleRate, 0.05f);
     block->inputGainSmoother.setCurrentAndTargetValue(1.0f);   // updated on first process
     block->outputGainSmoother.setCurrentAndTargetValue(1.0f);  // updated on first process
     block->mixSmoother.setCurrentAndTargetValue(block->mixNormalized);
     block->namNormalizationSmoother.setCurrentAndTargetValue(1.0f);
 
     // Post-block EQ + spectrum analyzer need the sample rate for their math.
-    block->eq.prepare(sampleRate);
-    block->spectrum.prepare(sampleRate);
+    block->eq.prepare(kChainSampleRate);
+    block->spectrum.prepare(kChainSampleRate);
   }
 }
 
@@ -297,11 +305,31 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
 
   updateStereoInputDetection();
 
-  // Prepare every engine in both lanes for the new rate/block size.
+  // ── Chain-domain resampling boundary ──
+  // Engaged whenever the host rate differs from the fixed chain rate — even
+  // for an empty chain, so reported latency is a constant per host rate and
+  // chain edits never trigger a PDC change. At a 48k host the boundary is
+  // dropped entirely and the chain stage runs directly on the host buffer.
+  const bool boundaryNeeded = std::abs(sampleRate - kChainSampleRate) > 0.1;
+  if (boundaryNeeded) {
+    if (chainBoundary == nullptr)
+      chainBoundary = std::make_unique<ChainBoundaryResampler>(kChainSampleRate);
+    chainBoundary->Reset(sampleRate, juce::jmax(1, samplesPerBlock));
+    chainBoundaryLatency = chainBoundary->GetLatency();
+  } else {
+    chainBoundary.reset();
+    chainBoundaryLatency = 0;
+  }
+  setLatencySamples(chainBoundaryLatency);
+  DBG("Chain boundary " << (boundaryNeeded ? "engaged" : "bypassed")
+      << " (latency: " << chainBoundaryLatency << " samples)");
+
+  // Prepare every engine in both lanes for the chain domain (fixed rate; the
+  // domain block size depends on the host rate/block size).
   {
     juce::ScopedLock lock(chainMutex);
     for (auto& l : lanes)
-      prepareChain(l, sampleRate, samplesPerBlock);
+      prepareChain(l);
   }
 
   juce::dsp::ProcessSpec spec{sampleRate, static_cast<juce::uint32>(samplesPerBlock), 2};
@@ -339,14 +367,12 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   dcBlocker.reset();
 
   // Scratch buffers, sized once here — the RT path never resizes them.
-  tempDryBuffer.setSize(2, samplesPerBlock, false, false, true);
+  // tempDryBuffer lives in the chain domain, where a callback can carry more
+  // frames than the host block (e.g. a 44.1k host upsampled to 48k).
+  tempDryBuffer.setSize(2, chainDomainBlockSize(), false, false, true);
   tempDryBuffer.clear();
-  stereoChainBufferL.setSize(1, samplesPerBlock, false, false, true);
-  stereoChainBufferR.setSize(1, samplesPerBlock, false, false, true);
-  stereoChainBufferL.clear();
-  stereoChainBufferR.clear();
-
-  updateLatencyCompensation();
+  chainScratchChannel.setSize(1, samplesPerBlock, false, false, true);
+  chainScratchChannel.clear();
 
   // Apply the actual tone knob gains to the tone stack filters.
   updateEqCoefficients();
@@ -552,20 +578,19 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
     }
 
     if (block->type == ChainBlockType::NAM) {
-      // NAM Processing with resampling wrapper
+      // NAM Processing (the engine runs at the chain rate — no per-block resampling)
       try {
-        jassert(numSamples <= maxBlockSize);
+        jassert(numSamples <= tempDryBuffer.getNumSamples());
 
-        // Skip processing if no resampling wrapper is available
-        if (block->namResampler == nullptr) {
-          DBG("Warning: NAM block " << block->id << " has no resampling wrapper - skipping");
+        if (block->namEngine == nullptr) {
+          DBG("Warning: NAM block " << block->id << " has no engine - skipping");
           continue;
         }
 
         // Calculate additional calibration gain for this specific NAM block
         float calibrationGain = 1.0f;
-        if (cacheCalibrateInput && block->namResampler->hasInputLevel()) {
-          const double modelInputLevel = block->namResampler->getInputLevel();
+        if (cacheCalibrateInput && block->namEngine->hasInputLevel()) {
+          const double modelInputLevel = block->namEngine->getInputLevel();
           const double calibrationAdjustmentDb = cacheInputCalibrationLevel - modelInputLevel;
           calibrationGain = juce::Decibels::decibelsToGain(static_cast<float>(calibrationAdjustmentDb));
         }
@@ -578,8 +603,8 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
           }
         }
 
-        // Process with resampling wrapper (handles mono conversion internally)
-        block->namResampler->process(buffer);
+        // Process with the NAM engine (handles mono conversion internally)
+        block->namEngine->process(buffer);
 
         // Per-block NAM loudness normalization target; unity when disabled.
         // The smoother was prepared off the RT path (prepareChain / model
@@ -588,8 +613,8 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
         float blockGain = 1.0f;
         if (cacheNormalize) {
           float modelLoudnessDb = targetLufs;  // Default fallback
-          if (block->namResampler->hasLoudness()) {
-            modelLoudnessDb = static_cast<float>(block->namResampler->getLoudness());
+          if (block->namEngine->hasLoudness()) {
+            modelLoudnessDb = static_cast<float>(block->namEngine->getLoudness());
           }
           if (!std::isfinite(modelLoudnessDb) || modelLoudnessDb < -100.0f || modelLoudnessDb > 0.0f) {
             modelLoudnessDb = targetLufs;
@@ -703,6 +728,37 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
   }
 }
 
+// #########################
+// RT CHAIN STAGE (48 kHz)
+// #########################
+// The encapsulated side of the chain-domain boundary: lane L (and lane R in
+// stereo mode) over the given channel pointers. Invoked by the boundary
+// resampler at 48 kHz, or directly on the host buffer when the host already
+// runs at 48 kHz. Called with chainMutex held (processBlock takes it).
+void TONE3000Processor::processChainStage(float** inputs, float** outputs, int numFrames) {
+  // The boundary hands us distinct input/output buffers; the chain processes
+  // in place, so move the audio to the output side first. On the direct path
+  // the pointers alias and the copies are skipped.
+  for (int ch = 0; ch < 2; ++ch) {
+    if (outputs[ch] != inputs[ch])
+      std::memcpy(outputs[ch], inputs[ch], sizeof(float) * static_cast<size_t>(numFrames));
+  }
+
+  if (rtStereoChains) {
+    // Stereo mode: each channel is an independent mono lane, processed in
+    // place — no split/merge copies needed.
+    float* left[] = {outputs[0]};
+    float* right[] = {outputs[1]};
+    juce::AudioBuffer<float> bufferL(left, 1, numFrames);
+    juce::AudioBuffer<float> bufferR(right, 1, numFrames);
+    processChainOnBuffer(lane(ChainSide::Left), bufferL);
+    processChainOnBuffer(lane(ChainSide::Right), bufferR);
+  } else {
+    juce::AudioBuffer<float> chainBuffer(outputs, rtChainChannels, numFrames);
+    processChainOnBuffer(lane(ChainSide::Left), chainBuffer);
+  }
+}
+
 // ################
 // RT PROCESS BLOCK
 // ################
@@ -810,27 +866,34 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     processToneStack(buffer);
 
   // ####################
-  // MODULAR CHAIN PROCESSING
+  // MODULAR CHAIN PROCESSING (chain domain — fixed 48 kHz, see ChainDomain.h)
   // ####################
   {
     juce::ScopedLock lock(chainMutex);
 
-    if (stereoEnabled.load() && numChannels >= 2 &&
-        numSamples <= stereoChainBufferL.getNumSamples()) {
-      // Stereo mode: split the buffer into two mono sides, run an independent
-      // chain on each, then merge back. Scratch buffers are pre-allocated in
-      // prepareToPlay and never resized here (RT allocation); a host handing
-      // us more samples than it promised falls through to the mono path.
-      stereoChainBufferL.copyFrom(0, 0, buffer, 0, 0, numSamples);
-      stereoChainBufferR.copyFrom(0, 0, buffer, 1, 0, numSamples);
+    rtStereoChains = stereoEnabled.load() && numChannels >= 2;
+    rtChainChannels = juce::jmin(numChannels, 2);
 
-      processChainOnBuffer(lane(ChainSide::Left), stereoChainBufferL);
-      processChainOnBuffer(lane(ChainSide::Right), stereoChainBufferR);
+    // Hosts occasionally exceed the block size they promised in prepareToPlay.
+    // Feed the chain stage in prepared-size slices so the boundary's internal
+    // buffers (and the chain-domain scratch) can never overflow — a single
+    // pass in the normal case.
+    const int maxSlice = juce::jmax(1, maxBlockSize);
+    for (int offset = 0; offset < numSamples; offset += maxSlice) {
+      const int sliceLen = juce::jmin(maxSlice, numSamples - offset);
 
-      buffer.copyFrom(0, 0, stereoChainBufferL, 0, 0, numSamples);
-      buffer.copyFrom(1, 0, stereoChainBufferR, 0, 0, numSamples);
-    } else {
-      processChainOnBuffer(lane(ChainSide::Left), buffer);
+      // The boundary is a fixed 2-channel container, so a mono host buffer
+      // gets the pre-cleared scratch as its second channel (processChainStage
+      // only touches rtChainChannels of them; the boundary passes the rest
+      // through).
+      float* channels[2] = {buffer.getWritePointer(0) + offset,
+                            numChannels > 1 ? buffer.getWritePointer(1) + offset
+                                            : chainScratchChannel.getWritePointer(0)};
+
+      if (chainBoundary != nullptr)
+        chainBoundary->ProcessBlock(channels, channels, sliceLen, chainStageFunc);
+      else
+        processChainStage(channels, channels, sliceLen);
     }
   }
 

@@ -156,7 +156,9 @@ export interface ChainState {
   /** Standalone input channel mode. Interfaces expose stereo pairs even with
       one jack plugged in, so the user picks what actually carries signal. */
   inputMode: InputMode;
-  /** Host sample rate — the EQ curve math needs it to mirror the audio exactly. */
+  /** The chain-domain processing rate (fixed 48000 — the whole chain runs at
+      48 kHz behind one resampling boundary). The EQ curve math needs it to
+      mirror the audio exactly. */
   sampleRate: number;
   /** Left lane (the only lane in mono mode). */
   chain: ChainItem[];

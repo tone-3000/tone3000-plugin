@@ -17,9 +17,9 @@
 #include "NAM/util.h"
 #include "NAM/wavenet/model.h"
 #include "ChainBlock.h"
+#include "ChainDomain.h"
 #include "ChainHistory.h"
 #include "Spread.h"
-#include "NamResampler.h"
 #include "PresetManager.h"
 #include "TunerDetector.h"
 
@@ -175,10 +175,6 @@ public:
   bool renamePreset(const juce::String& presetId, const juce::String& newName);
   bool deletePreset(const juce::String& presetId);
 
-  // Latency management
-  int calculateTotalLatency() const;
-  void updateLatencyCompensation();
-
   // Tuner: enabled by the UI while the tuner screen is visible. Reads the raw
   // (pre-gain, pre-gate) input so gating never starves the pitch detector.
   void setTunerEnabled(bool enabled) { tuner.setEnabled(enabled); }
@@ -213,15 +209,16 @@ private:
   // Tone loading helpers
   std::vector<uint8_t> fetchModelFromUrl(const juce::String& modelUrl);
 
-  /** max(maxBlockSize, getBlockSize(), 1); avoids NamResampler prepare(0, …)→runtime errors. */
-  int computeEffectiveNamPrepareBlockSize() const noexcept;
+  /** Largest frame count the chain domain can see per callback: the host max
+      block size converted to 48 kHz frames (and never below the host size, so
+      the direct 48k path is covered too). Floors at 1 to avoid prepare(0). */
+  int chainDomainBlockSize() const noexcept;
 
   struct PreparedBlockModel {
     bool success = false;
 
-    std::unique_ptr<NamResampler> namResampler;
+    std::unique_ptr<NamEngine> namEngine;
     bool namIsSlimmable = false;
-    int namLatencySamples = 0;
 
     std::unique_ptr<juce::dsp::Convolution> convolverMono;
     std::unique_ptr<juce::dsp::Convolution> convolverStereo;
@@ -243,13 +240,21 @@ private:
 
   // Run one chain (the per-block loop) over the supplied working buffer. The buffer may have
   // 1 channel (a single side in stereo mode) or 1-2 channels (mono mode). All per-channel work
-  // is keyed on buffer.getNumChannels(). Must be called while holding `chainMutex`.
+  // is keyed on buffer.getNumChannels(). Runs inside the chain domain (48 kHz — see
+  // ChainDomain.h). Must be called while holding `chainMutex`.
   void processChainOnBuffer(std::vector<std::unique_ptr<ChainBlock>>& blocks,
                             juce::AudioBuffer<float>& buffer);
 
-  // Prepare every engine in a chain for the given sample rate / block size. Holds no lock.
-  void prepareChain(std::vector<std::unique_ptr<ChainBlock>>& blocks, double sampleRate,
-                    int samplesPerBlock);
+  // The whole chain stage at the chain rate: lane L (and lane R in stereo
+  // mode) over the given channel pointers. Called either directly (48k host)
+  // or as the boundary resampler's encapsulated callback. `inputs`/`outputs`
+  // both carry 2 pointers; processing is in place on `outputs` after an
+  // input→output copy (skipped when they alias). Caller holds `chainMutex`.
+  void processChainStage(float** inputs, float** outputs, int numFrames);
+
+  // Prepare every engine in a chain for the fixed chain rate (kChainSampleRate)
+  // and the current chain-domain block size. Holds no lock.
+  void prepareChain(std::vector<std::unique_ptr<ChainBlock>>& blocks);
 
   // The chain the UI edits/adds to right now (Left in mono mode, or the active side in stereo).
   std::vector<std::unique_ptr<ChainBlock>>& activeChain();
@@ -356,9 +361,23 @@ private:
                      const juce::String& modelUrl, const juce::String& modelName,
                      ChainBlockType type);
 
-  // Pre-allocated mono scratch buffers for per-side processing in stereo mode.
-  juce::AudioBuffer<float> stereoChainBufferL;
-  juce::AudioBuffer<float> stereoChainBufferR;
+  // ── Chain-domain resampling boundary (see ChainDomain.h) ──
+  // Engaged (non-null) only when the host rate differs from kChainSampleRate;
+  // created/reset in prepareToPlay, so the audio thread never sees it change.
+  std::unique_ptr<ChainBoundaryResampler> chainBoundary;
+  // The encapsulated callback, built once in the constructor (capturing only
+  // `this`) so ProcessBlock never allocates a std::function per audio block.
+  ChainBoundaryResampler::BlockProcessFunc chainStageFunc;
+  // Boundary latency in host samples (0 at a 48k host). Constant per host
+  // rate — chain edits never change reported latency.
+  int chainBoundaryLatency = 0;
+  // Silent second channel handed to the boundary when the host buffer is
+  // mono (the boundary is a fixed 2-channel container).
+  juce::AudioBuffer<float> chainScratchChannel;
+  // Per-callback routing state for processChainStage, set by processBlock
+  // under chainMutex just before invoking the stage (audio thread only).
+  int rtChainChannels = 2;
+  bool rtStereoChains = false;
 
   // TONE3000 OAuth access token (Bearer). Read by `fetchModelFromUrl` from any
   // thread; written by the UI thread via `setAccessToken`.
@@ -439,7 +458,7 @@ private:
   juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>, juce::dsp::IIR::Coefficients<float>>
       trebleFilter;
 
-  juce::AudioBuffer<float> tempDryBuffer;
+  juce::AudioBuffer<float> tempDryBuffer;  // chain-domain scratch (sized to chainDomainBlockSize)
   double hostSampleRate = 48000.0;  // Default, updated dynamically in prepareToPlay
 
   // Meter level tracking, per channel (mono sources report L == R).

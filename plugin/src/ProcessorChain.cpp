@@ -349,8 +349,6 @@ bool TONE3000Processor::removeChainBlock(const std::string& blockId) {
     return false;
   }
 
-  // A removed NAM block no longer contributes latency.
-  updateLatencyCompensation();
   DBG("Removed chain block: " << blockId);
   return true;
 }
@@ -439,9 +437,6 @@ bool TONE3000Processor::moveBlockToChain(const std::string& blockId, const juce:
   index = juce::jlimit(0, static_cast<int>(target.size()), index);
   target.insert(target.begin() + index, std::move(block));
 
-  // Plugin latency is the max of the two lanes, so moving a NAM block across
-  // lanes can change it.
-  updateLatencyCompensation();
   bumpChainRevision();
   DBG("Moved block " << blockId << " to " << side << " chain at index " << index);
   return true;
@@ -493,8 +488,6 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, const j
   // destroyed here, after the lock — teardown is too heavy to hold it.
 
   if (applied) {
-    // A freshly loaded NAM model contributes latency the host must know about.
-    updateLatencyCompensation();
     DBG("[Background] Successfully loaded tone for block: " << blockId);
   }
 }
@@ -565,7 +558,6 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
   // destroyed here, after the lock — teardown is too heavy to hold it.
 
   if (applied) {
-    updateLatencyCompensation();
     DBG("[Background] Successfully switched to model ID: " << modelId);
   }
 }
@@ -688,10 +680,10 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
   state->setProperty(
       "inputMode",
       inputModeToString(static_cast<InputMode>(standaloneInputMode.load())));
-  // The EQ editor mirrors the biquad math client-side; it needs the real
-  // sample rate for the drawn curve to match the audio exactly.
-  const double sr = getSampleRate();
-  state->setProperty("sampleRate", sr > 0.0 ? sr : 48000.0);
+  // The EQ editor mirrors the biquad math client-side; block EQs run in the
+  // chain domain, so the drawn curve must use the fixed chain rate — not the
+  // host rate (see ChainDomain.h).
+  state->setProperty("sampleRate", kChainSampleRate);
   return state.get();
 }
 
@@ -752,12 +744,10 @@ void TONE3000Processor::setStereoMode(bool enabled) {
   if (!enabled)
     pendingAddSide = ChainSide::Left;
 
-  // Make sure the right chain's engines are ready to run at the current rate/size.
-  const double sr = getSampleRate();
-  if (enabled && sr > 0.0 && maxBlockSize > 0)
-    prepareChain(right, sr, maxBlockSize);
+  // Make sure the right chain's engines are ready to run in the chain domain.
+  if (enabled)
+    prepareChain(right);
 
-  updateLatencyCompensation();
   bumpChainRevision();
   DBG("Stereo mode " << (enabled ? "enabled" : "disabled"));
 }
@@ -791,7 +781,6 @@ bool TONE3000Processor::swapChains() {
   claimInsert(lane(ChainSide::Left), INSERT_BLOCK_ID);
   claimInsert(lane(ChainSide::Right), INSERT_BLOCK_ID_RIGHT);
 
-  updateLatencyCompensation();
   bumpChainRevision();
   DBG("Swapped Left/Right chains");
   return true;
@@ -813,7 +802,7 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
   }
   if (param == "namSlimmableSize" &&
       (block->type != ChainBlockType::NAM || !block->namIsSlimmable ||
-       block->namResampler == nullptr))
+       block->namEngine == nullptr))
     return false;
 
   // Continuous params coalesce a whole knob drag into one undo step.
@@ -821,12 +810,7 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
                                 : juce::String());
 
   if (param == "enabled") {
-    const bool enabled = value > 0.5;
-    if (block->enabled != enabled) {
-      block->enabled = enabled;
-      // NAM latency only counts for enabled blocks (chainMutex is re-entrant).
-      updateLatencyCompensation();
-    }
+    block->enabled = value > 0.5;
   } else if (param == "inputGain") {
     block->inputGainNormalized = juce::jlimit(0.0f, 1.0f, static_cast<float>(value));
   } else if (param == "outputGain") {
@@ -836,7 +820,7 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
   } else if (param == "namSlimmableSize") {
     const double clamped = juce::jlimit(0.0, 1.0, value);
     block->namSlimmableSize = clamped;
-    block->namResampler->setSlimmableSize(clamped);
+    block->namEngine->setSlimmableSize(clamped);
   }
 
   // Continuous drags settle into one bump after the gesture ends; discrete
@@ -923,36 +907,6 @@ void TONE3000Processor::disableAllBlockSpectrums() {
   for (auto& chain : lanes)
     for (auto& block : chain)
       block->spectrum.setEnabled(false);
-}
-
-int TONE3000Processor::calculateTotalLatency() const {
-  juce::ScopedLock lock(chainMutex);
-
-  // Only blocks that actually process count: enabled AND loaded (a block
-  // whose model is still downloading passes audio through with no latency).
-  auto chainLatency = [](const std::vector<std::unique_ptr<ChainBlock>>& blocks) {
-    int latency = 0;
-    for (const auto& block : blocks) {
-      if (block->enabled && block->loaded && block->type == ChainBlockType::NAM &&
-          block->namResampler) {
-        latency += block->latencySamples;
-      }
-    }
-    return latency;
-  };
-
-  // In stereo mode the two chains run in parallel, so the plugin latency is the larger of them.
-  int totalLatency = chainLatency(lane(ChainSide::Left));
-  if (stereoEnabled.load())
-    totalLatency = juce::jmax(totalLatency, chainLatency(lane(ChainSide::Right)));
-
-  return totalLatency;
-}
-
-void TONE3000Processor::updateLatencyCompensation() {
-  int newTotalLatency = calculateTotalLatency();
-  setLatencySamples(newTotalLatency);
-  DBG("Total plugin latency updated to: " << newTotalLatency << " samples");
 }
 
 void TONE3000Processor::setAccessToken(const juce::String& token) {

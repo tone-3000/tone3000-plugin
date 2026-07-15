@@ -115,8 +115,9 @@ target_sources(${PROJECT_NAME}
         src/ProcessorPresets.cpp
         src/ProcessorState.cpp
         src/ProcessorModelLoader.cpp
-        include/NamResampler.h
-        src/NamResampler.cpp
+        include/ChainDomain.h
+        include/NamEngine.h
+        src/NamEngine.cpp
         include/TunerDetector.h
         src/TunerDetector.cpp
 )

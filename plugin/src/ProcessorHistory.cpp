@@ -182,11 +182,9 @@ TONE3000Processor::Lane TONE3000Processor::restoreChainSnapshot(const juce::Valu
 
   // Mirrors setStereoMode: the right chain's engines must be ready before the
   // audio thread starts running them.
-  const double sr = getSampleRate();
-  if (snapStereo && !wasStereo && sr > 0.0 && maxBlockSize > 0)
-    prepareChain(right, sr, maxBlockSize);
+  if (snapStereo && !wasStereo)
+    prepareChain(right);
 
-  updateLatencyCompensation();
   bumpChainRevision();
   return retired;
 }
