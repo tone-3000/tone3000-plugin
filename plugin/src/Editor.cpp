@@ -8,6 +8,15 @@ void TONE3000Editor::parentHierarchyChanged() {
     setSize(1024, 600);
   }
 
+#if JUCE_MAC
+  // DAW hosts own the plugin's NSWindow and usually leave mouse-moved events
+  // off, which kills hover/cursor feedback in the WKWebView (clicks still
+  // work). Re-apply on every reparent since hosts can recreate the window
+  // when the editor is closed and reopened.
+  if (auto* peer = getPeer())
+    EditorWebViewSetup::enableHostWindowMouseMovedEvents(peer->getNativeHandle());
+#endif
+
   // Trigger the WebView load only once the editor has a real top-level
   // component (i.e. the NSWindow on macOS exists and is on-screen). In a DAW
   // the editor is parented to the host's window before this is called, so the

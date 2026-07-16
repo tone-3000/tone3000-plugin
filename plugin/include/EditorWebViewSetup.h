@@ -17,6 +17,20 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
  */
 void clearAuthCookies();
 
+#if JUCE_MAC
+/**
+ * Force acceptsMouseMovedEvents on the NSWindow that hosts the editor.
+ *
+ * WKWebView's hover states and cursor changes ride on mouseMoved: NSEvents,
+ * which AppKit only delivers when the window opts in. JUCE's own windows do
+ * (Standalone works out of the box), but most DAW plugin windows don't —
+ * killing :hover and cursor feedback in the web UI while clicks keep working.
+ * Takes the editor's NSView* (peer native handle); implemented in
+ * WindowMouseEvents.mm.
+ */
+void enableHostWindowMouseMovedEvents(void* nsViewPtr);
+#endif
+
 /**
  * Main-UI WebView with a navigation allowlist.
  *

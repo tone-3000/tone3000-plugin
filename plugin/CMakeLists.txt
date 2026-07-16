@@ -134,6 +134,8 @@ if (NOT HEADLESS)
     # ObjC++ on Apple; elsewhere a best-effort JUCE fallback.
     if (APPLE)
         target_sources(${PROJECT_NAME} PRIVATE src/WebViewCookies.mm)
+        # Hover/cursor fix for DAW-hosted windows (see WindowMouseEvents.mm).
+        target_sources(${PROJECT_NAME} PRIVATE src/WindowMouseEvents.mm)
     else()
         target_sources(${PROJECT_NAME} PRIVATE src/WebViewCookies.cpp)
     endif()
