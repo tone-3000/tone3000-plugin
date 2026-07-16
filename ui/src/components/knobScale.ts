@@ -44,7 +44,11 @@ export const percentScale: KnobScale = makeScale(
   0
 );
 
-/** Main/per-block gain: normalized 0.5 = unity, full range ±24 dB. */
+/** Main/per-block gain: normalized 0.5 = unity, full range ±24 dB.
+    Note: IR blocks read the same ±24 dB on their Out knob, but the DSP bakes
+    in an extra -18 dB (IR files are typically peak-normalized to 0 dBFS, far
+    too hot at unity) — see irOffsetDb in Processor.cpp. The knob deliberately
+    shows relative dB (0 at center) to keep it simple. */
 export const gainDbScale = linearScale(-24, 24, 'dB', 1);
 
 /** Stereo balance trim: 0.5 = centered, ±12 dB per channel at the ends. */

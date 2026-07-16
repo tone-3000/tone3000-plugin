@@ -1,96 +1,54 @@
 import React from 'react';
 import { WifiOff } from 'lucide-react';
+import { pillButtonStyle } from './theme';
 
 interface OfflineModalProps {
   open: boolean;
   onRetry: () => void;
   onDismiss: () => void;
-  /** Override the body copy for other internet-dependent features. */
-  message?: string;
 }
 
 /**
- * Modal shown when an internet-dependent action (e.g. loading tones from
- * TONE3000) is attempted while offline. Pairs with useInternetGate.
+ * First-line offline gate: shown when a network-dependent action (add /
+ * swap / login) is attempted while the OS reports no connection at all
+ * (`navigator.onLine === false`). Same full-window scrim + button language
+ * as OAuthOverlay so the two error surfaces read as one system.
  */
-export const OfflineModal: React.FC<OfflineModalProps> = ({
-  open,
-  onRetry,
-  onDismiss,
-  message = 'An internet connection is required to load tones from TONE3000. Check your connection and try again.',
-}) => {
+export const OfflineModal: React.FC<OfflineModalProps> = ({ open, onRetry, onDismiss }) => {
   if (!open) return null;
 
   return (
     <div
       role="alertdialog"
-      aria-modal="true"
       aria-label="No internet connection"
       style={{
         position: 'absolute',
         inset: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
+        gap: 16,
         padding: 24,
-        zIndex: 110,
+        textAlign: 'center',
+        color: '#fff',
+        zIndex: 3000,
       }}
-      onClick={onDismiss}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: '#1C1C1E',
-          border: '1px solid rgba(84, 84, 88, 0.65)',
-          borderRadius: 12,
-          padding: '28px 32px',
-          maxWidth: 380,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 16,
-          textAlign: 'center',
-          color: '#fff',
-          fontFamily: 'system-ui, -apple-system, sans-serif',
-        }}
-      >
-        <WifiOff size={32} color="#9ca3af" />
-        <div style={{ fontSize: 15, fontWeight: 600 }}>No internet connection</div>
-        <div style={{ fontSize: 13, opacity: 0.8, lineHeight: 1.5 }}>{message}</div>
-        <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
-          <button
-            type="button"
-            onClick={onRetry}
-            style={{
-              background: '#fff',
-              color: '#000',
-              border: 'none',
-              borderRadius: 6,
-              padding: '7px 16px',
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            Try again
-          </button>
-          <button
-            type="button"
-            onClick={onDismiss}
-            style={{
-              background: 'transparent',
-              color: '#fff',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              borderRadius: 6,
-              padding: '7px 16px',
-              fontSize: 13,
-              cursor: 'pointer',
-            }}
-          >
-            Dismiss
-          </button>
-        </div>
+      <WifiOff size={28} style={{ opacity: 0.9 }} />
+      <div style={{ fontSize: 14, opacity: 0.95, maxWidth: 360 }}>
+        No internet connection. Connect to browse and load tones from TONE3000.
+      </div>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <button type="button" onClick={onRetry} style={pillButtonStyle()}>
+          Try again
+        </button>
+        <button type="button" onClick={onDismiss} style={pillButtonStyle(false)}>
+          Dismiss
+        </button>
       </div>
     </div>
   );

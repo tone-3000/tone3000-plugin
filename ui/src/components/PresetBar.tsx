@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronLeft, ChevronRight, Pencil, Save, Search, Trash2 } from 'lucide-react';
 import type { ActivePreset, PresetInfo } from '../types/chain';
+import { HELP, helpProps } from './helpText';
 import { BORDER, GRAY } from './theme';
 
 /**
@@ -213,14 +214,14 @@ export const PresetBar: React.FC<PresetBarProps> = ({
                 setRenamingId(preset.id);
                 setRenameValue(preset.name);
               }}
-              title="Rename preset"
+              {...helpProps(HELP.presetRename)}
               style={{ ...iconButtonStyle, padding: '3px' }}
             >
               <Pencil size={13} />
             </button>
             <button
               onClick={() => onDelete(preset.id)}
-              title="Delete preset"
+              {...helpProps(HELP.presetDelete)}
               style={{ ...iconButtonStyle, padding: '3px' }}
             >
               <Trash2 size={13} />
@@ -248,20 +249,21 @@ export const PresetBar: React.FC<PresetBarProps> = ({
           flexShrink: 0,
         }}
       >
-        <button onClick={() => step(-1)} title="Previous preset" style={chevronStyle}>
+        <button onClick={() => step(-1)} {...helpProps(HELP.presetPrev)} style={chevronStyle}>
           <ChevronLeft size={14} />
         </button>
         <button
           onClick={openBrowse}
-          title="Browse presets"
+          {...helpProps(HELP.presetBrowse)}
           style={{
             background: 'transparent',
             border: 'none',
             color: active ? '#ffffff' : MUTED,
             fontSize: '12px',
             cursor: 'pointer',
-            minWidth: '96px',
-            maxWidth: '160px',
+            // Constant width so the pill never resizes with the name; long
+            // names ellipsize.
+            width: '150px',
             textAlign: 'center',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -271,13 +273,13 @@ export const PresetBar: React.FC<PresetBarProps> = ({
         >
           {active?.name ?? 'Presets'}
         </button>
-        <button onClick={() => step(1)} title="Next preset" style={chevronStyle}>
+        <button onClick={() => step(1)} {...helpProps(HELP.presetNext)} style={chevronStyle}>
           <ChevronRight size={14} />
         </button>
       </div>
 
       {/* Save */}
-      <button onClick={openSave} title="Save preset" style={iconButtonStyle}>
+      <button onClick={openSave} {...helpProps(HELP.presetSave)} style={iconButtonStyle}>
         <Save size={18} />
       </button>
 

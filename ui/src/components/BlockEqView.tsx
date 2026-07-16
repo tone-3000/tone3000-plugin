@@ -21,6 +21,7 @@ import {
 } from './eqShared';
 import { EqSliders } from './EqSliders';
 import { SpectrumBackdrop } from './SpectrumBackdrop';
+import { HELP, bandTypeHelp, helpProps, pinHelp, unpinHelp } from './helpText';
 import { BORDER, MUTED, SUBTLE } from './theme';
 
 /**
@@ -75,26 +76,28 @@ const GRID_FREQS = [50, 100, 200, 500, 1000, 2000, 5000, 10000];
 const GRID_LABELS: Record<number, string> = { 100: '100', 1000: '1k', 10000: '10k' };
 
 /** Readout chip that doubles as text entry: click to type, Enter commits,
-    Escape cancels, blur commits — same conventions as the knobs. */
+    Escape cancels, blur commits — same conventions as the knobs. The value
+    area is a fixed width (sized to the longest possible reading) so the chip
+    never resizes while values change or while editing. */
 const EditableChip: React.FC<{
   label: string;
   text: string;
   /** Prefill for the editor (number only, unit-free where possible). */
   editText: string;
+  /** Fixed width of the value area, px — the widest reading the chip shows. */
+  valueWidth: number;
   onCommit: (raw: string) => void;
   disabled?: boolean;
-  title?: string;
+  /** One-line hint for the faceplate help readout (see helpText.ts). */
+  help?: string;
   style?: React.CSSProperties;
-}> = ({ label, text, editText, onCommit, disabled = false, title, style }) => {
+}> = ({ label, text, editText, valueWidth, onCommit, disabled = false, help, style }) => {
   const [draft, setDraft] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const editing = draft !== null;
 
   useEffect(() => {
-    if (editing) {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    }
+    if (editing) inputRef.current?.focus();
   }, [editing]);
 
   const commit = () => {
@@ -104,9 +107,11 @@ const EditableChip: React.FC<{
 
   return (
     <div
-      title={title ?? (disabled ? undefined : 'Click to type a value')}
+      {...(help && !disabled ? helpProps(help) : {})}
       onClick={() => {
-        if (!disabled && !editing) setDraft(editText);
+        // Editing starts from an empty box (caret at the left) with the
+        // current value as placeholder; committing empty is a cancel.
+        if (!disabled && !editing) setDraft('');
       }}
       style={{ ...style, cursor: disabled || editing ? undefined : 'text' }}
     >
@@ -123,20 +128,30 @@ const EditableChip: React.FC<{
             else if (e.key === 'Escape') setDraft(null);
           }}
           inputMode="decimal"
+          placeholder={editText}
           style={{
-            width: '44px',
+            width: `${valueWidth}px`,
             background: 'transparent',
             border: 'none',
-            borderBottom: '1px solid rgba(235, 235, 245, 0.4)',
             color: '#ffffff',
             fontSize: '12px',
-            textAlign: 'center',
+            textAlign: 'left',
             outline: 'none',
             padding: 0,
           }}
         />
       ) : (
-        <span style={{ fontSize: '12px', color: '#ffffff' }}>{text}</span>
+        <span
+          style={{
+            width: `${valueWidth}px`,
+            fontSize: '12px',
+            color: '#ffffff',
+            textAlign: 'left',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {text}
+        </span>
       )}
     </div>
   );
@@ -228,6 +243,8 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
       }
       e.currentTarget.setPointerCapture(e.pointerId);
       draggingRef.current = true;
+      // Keep the hint up while the (captured) drag runs across the graph.
+      pinHelp(HELP.eqDot);
       const { x, y } = graphPointFromEvent(e);
       dragStateRef.current = { index, lastX: x, lastY: y };
     },
@@ -270,6 +287,7 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
   const handleDotPointerUp = useCallback(() => {
     draggingRef.current = false;
     dragStateRef.current = null;
+    unpinHelp(HELP.eqDot);
   }, []);
 
   // --- wheel = Q of the selected band (non-passive so the page can't scroll)
@@ -486,6 +504,7 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
                     stroke="#000000"
                     strokeWidth={1.5}
                     style={{ cursor: 'grab', touchAction: 'none' }}
+                    {...helpProps(HELP.eqDot)}
                     onPointerDown={handleDotPointerDown(i)}
                     onPointerMove={handleDotPointerMove(i)}
                     onPointerUp={handleDotPointerUp}
@@ -498,13 +517,14 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
         </svg>
       )}
 
-      {/* Floating: band readout (top-left, graph view only) */}
+      {/* Floating: band readout (top-left, graph view only). The grid bleeds
+          edge-to-edge; floating controls keep the card's 16px bounds. */}
       {view === 'graph' && (
         <div
           style={{
             position: 'absolute',
-            top: '6px',
-            left: '10px',
+            top: '16px',
+            left: '16px',
             fontSize: '11px',
             color: MUTED,
             pointerEvents: 'none',
@@ -522,8 +542,8 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
         <div
           style={{
             position: 'absolute',
-            bottom: '10px',
-            left: '10px',
+            bottom: '16px',
+            left: '16px',
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
@@ -548,7 +568,7 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
                 <button
                   key={type}
                   onClick={() => handleTypeChange(type)}
-                  title={BAND_TYPE_LABELS[type]}
+                  {...helpProps(bandTypeHelp(BAND_TYPE_LABELS[type]))}
                   style={{
                     width: '32px',
                     height: '100%',
@@ -576,12 +596,15 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
             })}
           </div>
 
+          {/* Value widths fit each chip's longest reading ("999 Hz",
+              "-15.0 dB", "10.00") so the row never shifts. */}
           <EditableChip
             label="Freq"
             text={formatFreq(selectedBand?.freqHz ?? 0)}
             editText={Math.round(selectedBand?.freqHz ?? 0).toString()}
+            valueWidth={42}
             onCommit={commitFreq}
-            title='Click to type (accepts "800" or "1.2k")'
+            help={HELP.eqFreqChip}
             style={chipStyle}
           />
           <EditableChip
@@ -592,16 +615,19 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
                 : '—'
             }
             editText={(selectedBand?.gainDb ?? 0).toFixed(1)}
+            valueWidth={52}
             onCommit={commitGain}
             disabled={!hasGain(selectedBand?.type ?? 'bell')}
+            help={HELP.eqGainChip}
             style={{ ...chipStyle, opacity: hasGain(selectedBand?.type ?? 'bell') ? 1 : 0.4 }}
           />
           <EditableChip
             label="Q"
             text={(selectedBand?.q ?? 1).toFixed(2)}
             editText={(selectedBand?.q ?? 1).toFixed(2)}
+            valueWidth={34}
             onCommit={commitQ}
-            title="Scroll over the graph to adjust (Shift = fine) — or click to type"
+            help={HELP.eqQChip}
             style={chipStyle}
           />
         </div>

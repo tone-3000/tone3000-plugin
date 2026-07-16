@@ -88,6 +88,9 @@ void TONE3000Editor::loadMainUrlIfNeeded() {
   juce::Logger::writeToLog("Release mode: loading from embedded resources");
   mainUrl = juce::WebBrowserComponent::getResourceProviderRoot() + "index.html";
 #endif
+  // Failed navigations (OAuth redirect with tone3000.com unreachable)
+  // recover by coming back here — see GuardedWebView::pageLoadHadNetworkError.
+  mainWebView->setRecoveryUrl(mainUrl);
   mainWebView->goToURL(mainUrl);
 }
 

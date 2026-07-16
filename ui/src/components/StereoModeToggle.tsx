@@ -1,5 +1,6 @@
 import React from 'react';
 import { Circle } from 'lucide-react';
+import { HELP, helpProps } from './helpText';
 import { GRAY, HIGHLIGHT, SURFACE_RAISED } from './theme';
 
 /**
@@ -45,7 +46,6 @@ export const StereoModeToggle: React.FC<{
 
   return (
     <div
-      title={stereoEnabled ? 'Stereo mode (dual chains)' : 'Mono mode (single chain)'}
       style={{
         display: 'flex',
         flexDirection: 'row',
@@ -59,14 +59,14 @@ export const StereoModeToggle: React.FC<{
     >
       <button
         onClick={() => onToggle(false)}
-        title="Mono (single chain)"
+        {...helpProps(HELP.monoMode)}
         style={segmentStyle(!stereoEnabled)}
       >
         <Circle size={12} strokeWidth={1.75} />
       </button>
       <button
         onClick={() => onToggle(true)}
-        title="Stereo (independent L/R chains)"
+        {...helpProps(HELP.stereoMode)}
         style={segmentStyle(stereoEnabled)}
       >
         <StereoCirclesIcon size={12} />

@@ -2,9 +2,13 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ArrowLeftRight, GripVertical, PlusCircle, Power, Trash2 } from 'lucide-react';
-import { BlockMeter } from './BlockMeter';
+import { BlockLed } from './BlockLed';
+import { ToneImage } from './GearIcon';
+import { LoadingDots } from './LoadingDots';
+import { RetryLoadBadge } from './RetryLoadBadge';
 import { meterId } from '../hooks/useMeters';
 import { useChainActions } from '../hooks/useChainActions';
+import { HELP, helpProps, toneTileHelp } from './helpText';
 import type { ChainItem, ToneBlock } from '../types/chain';
 import { isInsertSlot } from '../types/chain';
 import { GRAY, HIGHLIGHT, SURFACE, SURFACE_RAISED, iconButtonStyle } from './theme';
@@ -29,30 +33,14 @@ const actionButtonStyle = iconButtonStyle(22);
     focused element into view, which nudges the whole lane by a pixel. */
 const preventFocus = (e: React.MouseEvent) => e.preventDefault();
 
-const NoImageFallback: React.FC = () => (
-  <div
-    style={{
-      width: '100%',
-      height: '100%',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: SURFACE_RAISED,
-      color: GRAY,
-      fontSize: '11px',
-      letterSpacing: '0.06em',
-    }}
-  >
-    NO IMAGE
-  </div>
-);
-
 /** Interactive wiring for a tile's chrome; omitted for the drag ghost. */
 interface TileActions {
   onOpen: () => void;
   onTogglePower: (e: React.MouseEvent) => void;
   onSwap: (e: React.MouseEvent) => void;
   onRemove: (e: React.MouseEvent) => void;
+  /** Retry a failed model download (shown when block.loadFailed). */
+  onRetryLoad: () => void;
   /** useSortable attributes + listeners for the grip. */
   grip: React.HTMLAttributes<HTMLDivElement>;
 }
@@ -76,7 +64,9 @@ const TileSurface: React.FC<{
       // dies across drag re-renders. The inert drag ghost pins it visible.
       className={actions ? 'gallery-tile' : 'gallery-tile tile-chrome-visible'}
       onClick={actions?.onOpen}
-      title={tone.title}
+      // The inert drag ghost skips help — it rides under the pointer, so its
+      // hover events would pin the hint for the whole drag.
+      {...(actions ? helpProps(toneTileHelp(tone.title)) : {})}
       style={{
         width: `${size}px`,
         height: `${size}px`,
@@ -97,17 +87,38 @@ const TileSurface: React.FC<{
           transition: 'opacity 0.2s ease',
         }}
       >
-        {tone.images?.[0] ? (
-          <img
-            src={tone.images[0]}
-            alt={tone.title}
-            draggable={false}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-          />
-        ) : (
-          <NoImageFallback />
-        )}
+        <ToneImage
+          src={tone.images?.[0]}
+          alt={tone.title}
+          gear={tone.gear}
+          boxSize={size}
+          draggable={false}
+        />
       </div>
+
+      {/* Busy dots while the model downloads natively; if the download
+          failed, a retry affordance instead (dots would spin forever). */}
+      {!block.loaded && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            // Clicks pass through to the tile except on the retry button.
+            pointerEvents: 'none',
+          }}
+        >
+          {block.loadFailed && actions ? (
+            <div style={{ pointerEvents: 'auto' }}>
+              <RetryLoadBadge onRetry={actions.onRetryLoad} />
+            </div>
+          ) : (
+            !block.loadFailed && <LoadingDots />
+          )}
+        </div>
+      )}
 
       {/* Translucent strip under the quick actions so they read on any art.
           Fades in with the header (opacity only — never a layout change). */}
@@ -141,7 +152,7 @@ const TileSurface: React.FC<{
         <div
           {...(actions?.grip ?? {})}
           onClick={(e) => e.stopPropagation()}
-          title="Drag to reorder"
+          {...(actions ? helpProps(HELP.dragGrip) : {})}
           style={{ ...actionButtonStyle, cursor: 'grab', color: '#ffffff' }}
         >
           <GripVertical size={14} />
@@ -150,7 +161,7 @@ const TileSurface: React.FC<{
         <button
           onClick={actions?.onTogglePower}
           onMouseDown={preventFocus}
-          title={enabled ? 'Turn block off' : 'Turn block on'}
+          {...(actions ? helpProps(HELP.blockPower) : {})}
           style={{
             ...actionButtonStyle,
             color: enabled ? '#ffffff' : GRAY,
@@ -162,7 +173,7 @@ const TileSurface: React.FC<{
         <button
           onClick={actions?.onSwap}
           onMouseDown={preventFocus}
-          title="Swap tone"
+          {...(actions ? helpProps(HELP.swapTone) : {})}
           style={{ ...actionButtonStyle, color: '#ffffff' }}
         >
           <ArrowLeftRight size={14} />
@@ -170,31 +181,20 @@ const TileSurface: React.FC<{
         <button
           onClick={actions?.onRemove}
           onMouseDown={preventFocus}
-          title="Remove block"
+          {...(actions ? helpProps(HELP.removeBlock) : {})}
           style={{ ...actionButtonStyle, color: '#ffffff' }}
         >
           <Trash2 size={14} />
         </button>
       </div>
 
-      {/* Bottom strip: simplified horizontal output level + latching clip */}
+      {/* Corner LED: output level + latching clip (bottom corner keeps it
+          clear of the hover-revealed action bar along the top edge) */}
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          display: 'flex',
-          justifyContent: 'center',
-          padding: '6px 0 7px',
-        }}
+        style={{ position: 'absolute', bottom: '8px', right: '8px' }}
       >
-        <BlockMeter
-          meterId={meterId.blockOut(blockId)}
-          orientation="horizontal"
-          length={size - 20}
-        />
+        <BlockLed meterId={meterId.blockOut(blockId)} size={16} />
       </div>
     </div>
   );
@@ -265,6 +265,7 @@ export const GalleryBlock: React.FC<GalleryBlockProps> = React.memo(({ block, si
             e.stopPropagation();
             actions.removeBlock(blockId);
           },
+          onRetryLoad: () => actions.retryLoad(blockId),
           grip: { ...attributes, ...listeners },
         }}
       />
@@ -344,7 +345,7 @@ export const AddTile: React.FC<AddTileProps> = ({
     <div
       ref={setNodeRef}
       onClick={onClick}
-      title="Add tone"
+      {...helpProps(HELP.addTile)}
       style={{
         ...addTileFaceStyle(size),
         transform: CSS.Translate.toString(transform),
@@ -360,7 +361,7 @@ export const AddTile: React.FC<AddTileProps> = ({
           {...attributes}
           {...listeners}
           onClick={(e) => e.stopPropagation()}
-          title="Drag to reorder"
+          {...helpProps(HELP.dragGrip)}
           style={{
             position: 'absolute',
             top: '4px',

@@ -1,16 +1,29 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, FolderClosed } from 'lucide-react';
+import { LoadingDots } from './LoadingDots';
 
 interface Option {
   id: string;
   name: string;
 }
 
+/** One dropdown row: 12px vertical padding ×2 + ~17px text line. */
+const OPTION_ROW_HEIGHT = 41;
+/** The dropdown shows at most this many options before scrolling. */
+const MAX_VISIBLE_OPTIONS = 5;
+
 interface ModelSelectProps {
   options: Option[];
   value: string;
   onChange: (id: string) => void;
   height?: number;
+  /** Grays out and blocks all interaction (e.g. signed out — switching
+      models needs an authenticated native download). */
+  disabled?: boolean;
+  /** The catalog fetch is in flight (renders a dots row in the dropdown). */
+  loading?: boolean;
+  /** Catalog total for the "n/N" display. */
+  totalCount: number;
 }
 
 export const ModelSelect: React.FC<ModelSelectProps> = ({
@@ -18,6 +31,9 @@ export const ModelSelect: React.FC<ModelSelectProps> = ({
   value,
   onChange,
   height = 46,
+  disabled = false,
+  loading = false,
+  totalCount,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -25,7 +41,7 @@ export const ModelSelect: React.FC<ModelSelectProps> = ({
 
   const currentIndex = options.findIndex((opt) => opt.id === value);
   const selectedOption = options[currentIndex];
-  const positionText = `${currentIndex + 1}/${options.length}`;
+  const positionText = `${currentIndex + 1}/${totalCount}`;
 
   const handlePrev = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -64,7 +80,15 @@ export const ModelSelect: React.FC<ModelSelectProps> = ({
   }, [isOpen]);
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
+    <div
+      ref={containerRef}
+      style={{
+        position: 'relative',
+        width: '100%',
+        opacity: disabled ? 0.45 : 1,
+        pointerEvents: disabled ? 'none' : 'auto',
+      }}
+    >
       <div
         style={{
           borderRadius: '8px',
@@ -171,19 +195,21 @@ export const ModelSelect: React.FC<ModelSelectProps> = ({
         </span>
       </div>
 
-      {/* Dropdown */}
+      {/* Dropdown — opens upward: the select sits at the bottom of the card,
+          so a downward list would render past the card edge and get clipped. */}
       {isOpen && (
         <div
           ref={dropdownRef}
           style={{
             position: 'absolute',
-            top: '100%',
+            bottom: '100%',
             left: 0,
             right: 0,
-            marginTop: '4px',
+            marginBottom: '4px',
             borderRadius: '8px',
             background: '#39393D',
-            maxHeight: '300px',
+            // 6 rows + their 1px dividers; anything longer scrolls.
+            maxHeight: `${MAX_VISIBLE_OPTIONS * OPTION_ROW_HEIGHT + (MAX_VISIBLE_OPTIONS - 1)}px`,
             overflowY: 'auto',
             zIndex: 1000,
           }}
@@ -197,6 +223,7 @@ export const ModelSelect: React.FC<ModelSelectProps> = ({
                 cursor: 'pointer',
                 color: 'white',
                 fontSize: '14px',
+                lineHeight: '17px',
                 fontWeight: '400',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
@@ -219,6 +246,18 @@ export const ModelSelect: React.FC<ModelSelectProps> = ({
               {option.name}
             </div>
           ))}
+          {loading && (
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'center',
+                padding: '10px 16px',
+                borderTop: '1px solid rgba(84, 84, 88, 0.65)',
+              }}
+            >
+              <LoadingDots />
+            </div>
+          )}
         </div>
       )}
     </div>

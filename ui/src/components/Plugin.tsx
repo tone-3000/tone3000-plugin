@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useMemo } from 'react';
-import { Settings as SettingsIcon, Undo2, Redo2 } from 'lucide-react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import { Undo2, Redo2 } from 'lucide-react';
 import { useNativeFunction } from '../hooks/useFunction';
 import { useChainState } from '../hooks/useChainState';
 import { ChainActionsProvider } from '../hooks/useChainActions';
@@ -7,22 +7,25 @@ import type { ChainActions } from '../hooks/useChainActions';
 import { usePresets } from '../hooks/usePresets';
 import { ChainView } from './ChainView';
 import { Faceplate } from './Faceplate';
+import { HintBar } from './HintBar';
 import { PresetBar } from './PresetBar';
 import { StereoModeToggle } from './StereoModeToggle';
 import { IconButton } from './IconButton';
+import { HELP } from './helpText';
 import { BORDER } from './theme';
 import { useParameter } from '../hooks/useParameter';
-import type { Model, Tone } from '../types/tone';
+import type { Model, Tone, User } from '../types/tone';
+import { AccountMenu } from './AccountMenu';
 import type { ChainSide, ToneBlock } from '../types/chain';
 import Settings from './Settings';
 import { DbMeter } from './DbMeter';
 import { TunerView } from './TunerView';
 import { useT3kSelect } from '../hooks/useT3kSelect';
 import { useInternetGate } from '../hooks/useInternetGate';
-import { T3K_API } from '../t3k/config';
-import type { T3KTokens } from '../t3k/tone3000-client';
+import { T3K_API, T3K_ARCHITECTURE } from '../t3k/config';
 import { OAuthOverlay } from './OAuthOverlay';
 import { OfflineModal } from './OfflineModal';
+import { ToneBrowser } from './ToneBrowser';
 
 // Swap targets must survive the Select flow's full-page OAuth redirect (the
 // webview navigates to tone3000.com and back, remounting React), so the
@@ -49,6 +52,10 @@ const TuningForkIcon: React.FC<{ size?: number }> = ({ size = 18 }) => (
 export const Plugin: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [showTuner, setShowTuner] = useState(false);
+  // In-plugin tone browser takeover (streams of TONE3000 tones). Opened by
+  // the + when already authenticated, or right after the no-prompt login
+  // flow returns.
+  const [showToneBrowser, setShowToneBrowser] = useState(false);
 
   // Chain state: revision-gated polling + mutation actions, owned by one hook.
   const {
@@ -79,6 +86,7 @@ export const Plugin: React.FC = () => {
   const setAccessToken = useNativeFunction<boolean>('setAccessToken');
   const setTunerEnabled = useNativeFunction<boolean>('setTunerEnabled');
   const copyToClipboard = useNativeFunction<boolean>('copyToClipboard');
+  const clearAuthCookies = useNativeFunction<boolean>('clearAuthCookies');
 
   // Toggle the tuner screen; native only feeds the pitch detector while it's on.
   const handleToggleTuner = async (show: boolean) => {
@@ -114,12 +122,12 @@ export const Plugin: React.FC = () => {
     [setAccessToken]
   );
 
-  // Handle a fully-resolved tone (with embedded models) coming out of the
-  // Select flow. If a swap was pending (user hit the swap button on a block
-  // before the redirect), replace that block in place; otherwise add the tone
-  // at the insert slot.
+  // Handle a fully-resolved tone (with embedded models) — from the Select
+  // flow's callback or a card pick in the in-plugin tone browser. If a swap
+  // was pending (user hit the swap button on a block before browsing),
+  // replace that block in place; otherwise add the tone at the insert slot.
   const handleToneSelected = useCallback(
-    async (tone: Tone & { models: Model[] }, tokens: T3KTokens) => {
+    async (tone: Tone & { models: Model[] }, accessToken: string) => {
       if (!tone.models || tone.models.length === 0) {
         console.error('Tone has no models');
         return;
@@ -132,9 +140,12 @@ export const Plugin: React.FC = () => {
 
       // Make sure native has the freshest access token before it tries to
       // download the model from `model_url` (which now requires Bearer auth).
-      await pushAccessTokenToNative(tokens.access_token);
+      await pushAccessTokenToNative(accessToken);
 
       const toneJson = JSON.stringify(tone);
+
+      // A tone landed — return to the main chain view.
+      setShowToneBrowser(false);
 
       if (swapBlockId) {
         console.log('Swapping tone into block', swapBlockId, ':', tone.title);
@@ -150,52 +161,174 @@ export const Plugin: React.FC = () => {
     [actions, pushAccessTokenToNative]
   );
 
-  // TONE3000 Select integration. Single-webview redirect flow: clicking + on
-  // the chain navigates the main webview to tone3000.com; TONE3000 redirects
-  // back to index.html?code=…&tone_id=… and useT3kSelect resolves the rest.
-  const { startSelectFlow, oauthPhase, oauthError, clearOauthError } = useT3kSelect({
+  // TONE3000 integration. Two single-webview redirect flows share one
+  // callback: the no-prompt login (from + while signed out) comes back with
+  // tokens only and opens the in-plugin tone browser; the full-catalog
+  // Select flow (browser CTA / swap) also carries the picked tone_id.
+  const {
+    client: t3kClient,
+    startSelectFlow,
+    startLoginFlow,
+    selectToneById,
+    retryFlow,
+    oauthPhase,
+    oauthError,
+    clearOauthError,
+  } = useT3kSelect({
     onToneSelected: handleToneSelected,
     onAccessTokenUpdated: pushAccessTokenToNative,
+    onAuthenticated: () => setShowToneBrowser(true),
   });
 
-  // Handle switching models within a block
+  // Native downloads model files itself (add / swap / switch all fetch
+  // `model_url` with a Bearer header) but only holds a copy of the access
+  // token — the React client owns the session and its refresh token. The
+  // token listener above pushes every new/refreshed token set as it happens;
+  // ensureNativeAuth() is the guarantee on top: it validates the token
+  // (refreshing when near expiry) and awaits the push, so a native download
+  // can never start against a stale Bearer.
+  const ensureNativeAuth = useCallback(async () => {
+    await pushAccessTokenToNative(await t3kClient.getAccessToken());
+  }, [pushAccessTokenToNative, t3kClient]);
+
+  // A remembered login (tokens read straight from localStorage on a fresh
+  // webview) never fires the token listener, so native would otherwise sit
+  // tokenless until the next OAuth return or refresh — sync once on mount.
+  useEffect(() => {
+    if (!t3kClient.isAuthenticated()) return;
+    ensureNativeAuth().catch(() => {
+      // Refresh token rejected — the next + / login flow re-authenticates.
+    });
+  }, [ensureNativeAuth, t3kClient]);
+
+  // Signed-in identity for the header's account pill. Refreshed on mount
+  // (tokens persist in localStorage) and after each OAuth return.
+  const [user, setUser] = useState<User | null>(null);
+  useEffect(() => {
+    if (oauthPhase !== 'idle' || !t3kClient.isAuthenticated()) return;
+    let cancelled = false;
+    t3kClient
+      .getUser()
+      .then((u) => {
+        if (!cancelled) setUser(u);
+      })
+      .catch(() => {
+        // Avatar is decorative — auth failures surface via the flows.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [oauthPhase, t3kClient]);
+
+  // Logout clears auth everywhere: the API client's persisted tokens plus
+  // any mid-flight PKCE state (React app / OAuth), native's copy of the
+  // access token (backend model downloads), and the webview's tone3000.com
+  // session cookies — without the last one, the next OAuth redirect would
+  // silently re-approve on the still-live site session and it would look
+  // like logout never happened.
+  const handleLogout = useCallback(async () => {
+    t3kClient.logout();
+    sessionStorage.removeItem(SWAP_STORAGE_KEY);
+    setUser(null);
+    setShowToneBrowser(false);
+    await Promise.all([pushAccessTokenToNative(''), clearAuthCookies()]);
+  }, [clearAuthCookies, pushAccessTokenToNative, t3kClient]);
+
+  // Switch a block's model. Native downloads the new model file itself, so
+  // refresh-and-sync the token first — switching after the editor has been
+  // sitting idle is exactly when the last-pushed token has expired.
   const handleSwitchModel = useCallback(
-    async (blockId: string, modelId: number) => {
-      const success = await actions.switchModel(blockId, modelId);
+    async (blockId: string, modelId: number, model: Model) => {
+      try {
+        await ensureNativeAuth();
+      } catch (err) {
+        // Refresh token rejected: tokens are cleared, the model select
+        // disables itself on the next render, and the next + re-authenticates.
+        console.error('Cannot switch model — TONE3000 session expired', err);
+        return;
+      }
+      const success = await actions.switchModel(blockId, modelId, JSON.stringify(model));
       if (!success) console.error('Failed to switch model');
     },
-    [actions]
+    [actions, ensureNativeAuth]
   );
 
-  // Gate internet-dependent actions: the Select flow navigates the webview to
-  // tone3000.com, and doing that offline strands the user on a browser error
-  // page. Check connectivity first and show a modal if we're offline.
+  // Retry a failed model download. Refresh the token first when signed in
+  // (the failure may have left the block waiting long enough for the last
+  // pushed token to expire); signed out we retry anyway — legacy public
+  // model URLs still work anonymously.
+  const handleRetryLoad = useCallback(
+    async (blockId: string) => {
+      if (t3kClient.isAuthenticated()) {
+        try {
+          await ensureNativeAuth();
+        } catch {
+          // Session expired — the retry below still runs; native falls back
+          // to whatever token it holds.
+        }
+      }
+      await actions.retryModelLoad(blockId);
+    },
+    [actions, ensureNativeAuth, t3kClient]
+  );
+
+  // Fetch a tone's full model catalog for the detail card's picker (tones max
+  // out at 300 models, so one call covers it). The persisted block only
+  // carries the active model; NAM keeps the v2-architecture filter — all the
+  // plugin loads.
+  const handleListToneModels = useCallback(
+    async (toneId: number, format: string | undefined) => {
+      const isNam = format?.toLowerCase() === 'nam';
+      const res = await t3kClient.listModels(toneId, {
+        pageSize: 300,
+        ...(isNam && T3K_ARCHITECTURE !== undefined ? { architecture: T3K_ARCHITECTURE } : {}),
+      });
+      return res.data;
+    },
+    [t3kClient]
+  );
+
+  // First line of defence for network-dependent actions: an instant
+  // `navigator.onLine` check (no probe, no latency). It only catches the
+  // "no interface up" case — a connected-but-dead network still gets through
+  // and lands on the recovery paths (failed-navigation recovery, stream
+  // retry, block retry).
   const internetGate = useInternetGate();
   const { requireInternet } = internetGate;
 
   // Adding routes to a lane via the native active-edit side (it has to
   // survive the OAuth redirect, so it lives in native state, not React's).
+  // Signed in: straight to the in-plugin tone browser. Signed out: run the
+  // no-prompt login flow first; its callback opens the browser.
   const handleAddModel = useCallback(
     (side: ChainSide) => {
       requireInternet(async () => {
         sessionStorage.removeItem(SWAP_STORAGE_KEY);
         if (stereoEnabled) await actions.setActiveSide(side);
-        startSelectFlow();
+        if (t3kClient.isAuthenticated()) setShowToneBrowser(true);
+        else startLoginFlow({ openBrowser: true });
       });
     },
-    [actions, requireInternet, startSelectFlow, stereoEnabled]
+    [actions, requireInternet, startLoginFlow, stereoEnabled, t3kClient]
   );
 
-  // Swap: remember the target block, then run the same Select flow as add.
+  // Swap: remember the target block, then run the same browse flow as add —
+  // the pending swap id is consumed when the picked tone lands.
   const handleSwapBlock = useCallback(
     (blockId: string) => {
       requireInternet(() => {
         sessionStorage.setItem(SWAP_STORAGE_KEY, blockId);
-        startSelectFlow();
+        if (t3kClient.isAuthenticated()) setShowToneBrowser(true);
+        else startLoginFlow({ openBrowser: true });
       });
     },
-    [requireInternet, startSelectFlow]
+    [requireInternet, startLoginFlow, t3kClient]
   );
+
+  // Auth-dependent block actions (model switching) key off this. Reading
+  // localStorage per render is fine — every login/logout transition already
+  // re-renders Plugin (user / oauthPhase state), refreshing the value.
+  const authenticated = t3kClient.isAuthenticated();
 
   // Single stable bundle of everything a block can do — ChainView and the
   // tiles/cards below it read this from context instead of threading a dozen
@@ -210,12 +343,24 @@ export const Plugin: React.FC = () => {
       moveBlock: actions.moveBlockToChain,
       swapChains: actions.swapChains,
       switchModel: handleSwitchModel,
+      retryLoad: handleRetryLoad,
+      listToneModels: handleListToneModels,
       setBlockParam: actions.setBlockParam,
       setBlockEqBand: actions.setBlockEqBand,
       setBlockEqEnabled: actions.setBlockEqEnabled,
       resetBlockEq: actions.resetBlockEq,
+      authenticated,
     }),
-    [actions, handleAddModel, handleShareBlock, handleSwapBlock, handleSwitchModel]
+    [
+      actions,
+      authenticated,
+      handleAddModel,
+      handleListToneModels,
+      handleRetryLoad,
+      handleShareBlock,
+      handleSwapBlock,
+      handleSwitchModel,
+    ]
   );
 
   return (
@@ -267,7 +412,8 @@ export const Plugin: React.FC = () => {
             }}
           /> */}
         </a>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* 24px between header items; tight pairs (undo/redo) group inside. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
           <PresetBar
             active={activePreset}
             presets={presetStore.presets}
@@ -282,21 +428,27 @@ export const Plugin: React.FC = () => {
           />
           <IconButton
             onClick={() => handleToggleTuner(!showTuner)}
-            title="Tuner"
+            help={HELP.tuner}
             active={showTuner}
             fillWhenActive
           >
             <TuningForkIcon size={18} />
           </IconButton>
-          <IconButton onClick={() => actions.undo()} disabled={!canUndo} title="Undo">
-            <Undo2 size={18} />
-          </IconButton>
-          <IconButton onClick={() => actions.redo()} disabled={!canRedo} title="Redo">
-            <Redo2 size={18} />
-          </IconButton>
-          <IconButton onClick={() => setShowSettings(true)} title="Settings">
-            <SettingsIcon size={18} />
-          </IconButton>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <IconButton onClick={() => actions.undo()} disabled={!canUndo} help={HELP.undo}>
+              <Undo2 size={18} />
+            </IconButton>
+            <IconButton onClick={() => actions.redo()} disabled={!canRedo} help={HELP.redo}>
+              <Redo2 size={18} />
+            </IconButton>
+          </div>
+          <AccountMenu
+            user={user}
+            authenticated={authenticated}
+            onOpenSettings={() => setShowSettings(true)}
+            onLogin={() => requireInternet(() => startLoginFlow())}
+            onLogout={handleLogout}
+          />
         </div>
       </div>
 
@@ -327,7 +479,8 @@ export const Plugin: React.FC = () => {
               backgroundColor: '#000000',
             }}
           >
-            <DbMeter type="input" stereo={stereoInput} height={400} />
+            {/* 368px yields 23 dots (6px dot + 10px gap); wrapper centers vertically. */}
+            <DbMeter type="input" stereo={stereoInput} height={368} />
           </div>
 
           {/* Chain View - Center (gallery lanes scroll horizontally inside) */}
@@ -362,17 +515,35 @@ export const Plugin: React.FC = () => {
               backgroundColor: '#000000',
             }}
           >
-            <DbMeter type="output" stereo={stereoOutput} height={400} labelsPosition="right" />
+            <DbMeter type="output" stereo={stereoOutput} height={368} labelsPosition="right" />
           </div>
         </div>
       )}
 
-      {/* Pinned faceplate at the bottom (gains, gate, tone stack) */}
+      {/* Pinned faceplate at the bottom (gains, gate, tone stack), with the
+          hint strip under it (hidden entirely when hints are off). */}
       <Faceplate
         stereoOutput={stereoOutput}
         stereoInput={stereoInput}
         stereoChains={stereoEnabled}
       />
+      <HintBar />
+
+      {/* Tone browser takeover — quick links into the TONE3000 streams plus
+          the full-catalog Select CTA. Mounted only while open (like
+          Settings) so its fetches don't run behind the main UI. */}
+      {showToneBrowser && (
+        <ToneBrowser
+          client={t3kClient}
+          onPickTone={selectToneById}
+          onBrowseTone3000={startSelectFlow}
+          onClose={() => {
+            // Closing without picking also abandons any pending swap.
+            sessionStorage.removeItem(SWAP_STORAGE_KEY);
+            setShowToneBrowser(false);
+          }}
+        />
+      )}
 
       {/* Settings takeover — mounted only while open so its parameter
           subscriptions and screen state don't run behind the main UI. */}
@@ -387,15 +558,16 @@ export const Plugin: React.FC = () => {
 
       {/* OAuth callback overlay — covers the chain UI while we resolve the
           tokens + tone after returning from tone3000.com, and surfaces any
-          OAuth error with a retry affordance. */}
+          OAuth error (callback failures, failed-navigation recovery) with a
+          retry that restarts whichever flow actually failed. */}
       <OAuthOverlay
         phase={oauthPhase}
         error={oauthError}
-        onRetry={startSelectFlow}
+        onRetry={retryFlow}
         onDismiss={clearOauthError}
       />
 
-      {/* Offline gate for internet-dependent actions (e.g. the + button). */}
+      {/* Offline gate for internet-dependent actions (add / swap / login). */}
       <OfflineModal
         open={internetGate.offlineModalOpen}
         onRetry={internetGate.retry}

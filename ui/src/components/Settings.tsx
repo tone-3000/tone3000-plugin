@@ -1,9 +1,10 @@
-import React, { useCallback, useState } from 'react';
-import { X as XIcon, ArrowLeft, Info, ChevronDown } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { X as XIcon, Info, ChevronDown } from 'lucide-react';
 import { useParameter } from '../hooks/useParameter';
 import { useNativeFunction } from '../hooks/useFunction';
+import { setHintsEnabled, useHintsEnabled } from './helpText';
 import type { InputMode } from '../types/chain';
-import { BORDER, GRAY, MUTED, SUBTLE } from './theme';
+import { MUTED, SUBTLE } from './theme';
 
 /**
  * Settings: full-window takeover with a main screen (section cards that open
@@ -29,8 +30,8 @@ const INPUT_MODE_OPTIONS: { value: InputMode; label: string }[] = [
   { value: 'stereo', label: 'Stereo (inputs 1 + 2)' },
 ];
 
-const FIELD_BORDER = BORDER;
-
+// Only headers carry weight; everything else is regular (the app's global
+// stylesheet defaults heavier, so body copy sets 400 explicitly).
 const sectionLabelStyle: React.CSSProperties = {
   fontSize: '15px',
   fontWeight: 600,
@@ -39,6 +40,7 @@ const sectionLabelStyle: React.CSSProperties = {
 
 const descriptionStyle: React.CSSProperties = {
   fontSize: '13px',
+  fontWeight: 400,
   color: MUTED,
   margin: '6px 0 0',
   lineHeight: 1.45,
@@ -52,18 +54,13 @@ const ctaButtonStyle: React.CSSProperties = {
   backgroundColor: 'transparent',
   color: '#ffffff',
   fontSize: '15px',
+  fontWeight: 400,
   cursor: 'pointer',
   textAlign: 'center',
 };
 
-const fieldLabelStyle: React.CSSProperties = {
-  fontSize: '12px',
-  color: SUBTLE,
-  display: 'block',
-  marginBottom: '6px',
-};
-
-/** Grayscale pill switch (iOS-style, on brand: black/white/gray only). */
+/** Green pill switch mirroring the web ToggleSimple: 40×24 track (zinc-500
+    off, #00D13B on), 16px white knob with a 4px inset, 300ms ease. */
 const PillToggle: React.FC<{ value: boolean; onChange: (value: boolean) => void }> = ({
   value,
   onChange,
@@ -73,30 +70,137 @@ const PillToggle: React.FC<{ value: boolean; onChange: (value: boolean) => void 
     aria-checked={value}
     onClick={() => onChange(!value)}
     style={{
-      width: '44px',
-      height: '26px',
-      borderRadius: '13px',
+      position: 'relative',
+      width: '40px',
+      height: '24px',
+      borderRadius: '12px',
       border: 'none',
-      padding: '2px',
+      padding: 0,
       cursor: 'pointer',
-      backgroundColor: value ? '#ffffff' : '#2C2C2E',
-      display: 'flex',
-      justifyContent: value ? 'flex-end' : 'flex-start',
+      backgroundColor: value ? '#00D13B' : '#71717a',
+      boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.15)',
       flexShrink: 0,
-      transition: 'background-color 0.15s ease',
+      transition: 'background-color 0.3s ease-in-out',
     }}
   >
     <span
       style={{
-        width: '22px',
-        height: '22px',
+        position: 'absolute',
+        top: '4px',
+        left: '4px',
+        width: '16px',
+        height: '16px',
         borderRadius: '50%',
-        backgroundColor: value ? '#000000' : GRAY,
-        transition: 'background-color 0.15s ease',
+        backgroundColor: '#ffffff',
+        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
+        transform: value ? 'translateX(16px)' : 'translateX(0)',
+        transition: 'transform 0.3s ease-in-out',
+        display: 'block',
       }}
     />
   </button>
 );
+
+/** Custom dropdown select styled like the plugin's other pickers (model
+    select dropdown): grey trigger, dark panel, hover-highlight rows. */
+const SelectField: React.FC<{
+  value: InputMode;
+  options: { value: InputMode; label: string }[];
+  onChange: (value: InputMode) => void;
+}> = ({ value, options, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [open]);
+
+  const selected = options.find((option) => option.value === value);
+
+  return (
+    <div ref={rootRef} style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen((prev) => !prev)}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '10px',
+          padding: '12px 14px 12px 16px',
+          borderRadius: '8px',
+          border: 'none',
+          backgroundColor: 'rgba(120, 120, 128, 0.36)',
+          color: '#ffffff',
+          fontSize: '14px',
+          fontWeight: 400,
+          cursor: 'pointer',
+          boxSizing: 'border-box',
+        }}
+      >
+        {selected?.label}
+        <ChevronDown
+          size={16}
+          style={{
+            color: MUTED,
+            flexShrink: 0,
+            transform: open ? 'rotate(180deg)' : 'none',
+            transition: 'transform 0.15s ease',
+          }}
+        />
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            left: 0,
+            right: 0,
+            borderRadius: '8px',
+            background: '#39393D',
+            overflow: 'hidden',
+            zIndex: 100,
+          }}
+        >
+          {options.map((option, index) => (
+            <div
+              key={option.value}
+              onClick={() => {
+                onChange(option.value);
+                setOpen(false);
+              }}
+              onMouseEnter={(e) => {
+                if (option.value !== value)
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+              }}
+              onMouseLeave={(e) => {
+                if (option.value !== value) e.currentTarget.style.background = 'transparent';
+              }}
+              style={{
+                padding: '12px 16px',
+                cursor: 'pointer',
+                color: '#ffffff',
+                fontSize: '14px',
+                fontWeight: 400,
+                background: option.value === value ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+                borderBottom:
+                  index < options.length - 1 ? '1px solid rgba(84, 84, 88, 0.65)' : 'none',
+              }}
+            >
+              {option.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 /** Section label with a pill toggle on the right, description underneath. */
 const ToggleRow: React.FC<{
@@ -131,6 +235,8 @@ export const Settings: React.FC<SettingsProps> = ({
 }) => {
   const [screen, setScreen] = useState<'main' | 'advanced'>('main');
 
+  const hintsEnabled = useHintsEnabled();
+
   const [normalizationEnabled, setNormalizationEnabled] = useParameter('normalize', 'toggle');
   const [calibrationEnabled, setCalibrationEnabled] = useParameter('calibrateInput', 'toggle');
   const [dbuValueNormalized, setDbuValueNormalized] = useParameter(
@@ -144,6 +250,18 @@ export const Settings: React.FC<SettingsProps> = ({
   const setDbuValue = (value: number) => {
     const normalized = (value + 60) / 120;
     setDbuValueNormalized(Math.max(0, Math.min(1, normalized)));
+  };
+
+  // Draft while the calibration field is focused: committing every keystroke
+  // would reformat the value under the cursor and make typing impossible
+  // (can't enter "-", clear the field, or finish "12.5").
+  const [dbuDraft, setDbuDraft] = useState<string | null>(null);
+  const commitDbuDraft = () => {
+    if (dbuDraft !== null) {
+      const parsed = parseFloat(dbuDraft);
+      if (!Number.isNaN(parsed)) setDbuValue(parsed);
+    }
+    setDbuDraft(null);
   };
 
   const showAudioSettings = useNativeFunction<boolean>('showAudioSettings');
@@ -165,6 +283,13 @@ export const Settings: React.FC<SettingsProps> = ({
     setTimeout(() => setLogStatus(null), 3000);
   }, [revealLogs]);
 
+  // One control: the X steps Advanced back to the main screen, and closes
+  // from there — no separate back button.
+  const handleHeaderClose = useCallback(() => {
+    if (screen === 'advanced') setScreen('main');
+    else onClose();
+  }, [onClose, screen]);
+
   const header = (
     <div
       style={{
@@ -174,35 +299,15 @@ export const Settings: React.FC<SettingsProps> = ({
         marginBottom: '28px',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        {screen === 'advanced' && (
-          <button
-            onClick={() => setScreen('main')}
-            title="Back to settings"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#ffffff',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              padding: 0,
-            }}
-          >
-            <ArrowLeft size={20} />
-          </button>
-        )}
-        <span style={{ fontSize: '22px', fontWeight: 700, color: '#ffffff' }}>
-          {screen === 'advanced' ? 'Advanced' : 'Settings'}
-        </span>
-      </div>
+      <span style={{ fontSize: '22px', fontWeight: 600, color: '#ffffff' }}>
+        {screen === 'advanced' ? 'Advanced' : 'Settings'}
+      </span>
       <button
-        onClick={onClose}
-        title="Close settings"
+        onClick={handleHeaderClose}
         style={{
           background: 'transparent',
           border: 'none',
-          color: MUTED,
+          color: '#ffffff',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
@@ -243,44 +348,9 @@ export const Settings: React.FC<SettingsProps> = ({
           {/* Input channel picker: interfaces expose stereo pairs even when
               only one jack is plugged in, so pick what carries signal. */}
           <div style={{ marginBottom: '16px' }}>
-            <label style={fieldLabelStyle}>Input Channels</label>
-            <div style={{ position: 'relative' }}>
-              <select
-                value={inputMode}
-                onChange={(e) => onSetInputMode(e.target.value as InputMode)}
-                style={{
-                  width: '100%',
-                  padding: '12px 40px 12px 16px',
-                  borderRadius: '10px',
-                  border: FIELD_BORDER,
-                  backgroundColor: '#111111',
-                  color: '#ffffff',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                  appearance: 'none',
-                  WebkitAppearance: 'none',
-                }}
-              >
-                {INPUT_MODE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={16}
-                style={{
-                  position: 'absolute',
-                  right: '14px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  color: MUTED,
-                  pointerEvents: 'none',
-                }}
-              />
-            </div>
+            <SelectField value={inputMode} options={INPUT_MODE_OPTIONS} onChange={onSetInputMode} />
             <p style={{ ...descriptionStyle, fontSize: '12px' }}>
-              Use a mono input for a single instrument cable (e.g. guitar into input 1).
+              Use mono for a single instrument cable (e.g. guitar in input 1).
             </p>
           </div>
 
@@ -289,6 +359,13 @@ export const Settings: React.FC<SettingsProps> = ({
           </button>
         </div>
       )}
+
+      <ToggleRow
+        label="Hints"
+        description="Shows a help bar under the faceplate describing the control under your pointer, with its shortcuts."
+        value={hintsEnabled}
+        onChange={setHintsEnabled}
+      />
 
       <div style={{ marginBottom: '36px' }}>
         <span style={sectionLabelStyle}>Advanced</span>
@@ -313,16 +390,31 @@ export const Settings: React.FC<SettingsProps> = ({
 
       <ToggleRow
         label="Calibration"
-        description="Matches your input level to the level the capture was made at, for accurate gain staging."
+        description="Matches your input level to the level the capture was made at, for accurate gain staging. Also passes true-to-life levels between captures in the chain when the capture data allows."
         value={calibrationEnabled}
         onChange={setCalibrationEnabled}
       >
         {calibrationEnabled && (
           <div style={{ marginTop: '14px' }}>
+            {/* Kill the webkit number-input chrome (spinners, focus ring). */}
+            <style>
+              {`.settings-number-input::-webkit-outer-spin-button,
+                .settings-number-input::-webkit-inner-spin-button {
+                  -webkit-appearance: none;
+                  margin: 0;
+                }
+                .settings-number-input:focus { outline: none; }`}
+            </style>
             <input
               type="number"
-              value={dbuValue.toFixed(1)}
-              onChange={(e) => setDbuValue(parseFloat(e.target.value) || 0)}
+              className="settings-number-input"
+              value={dbuDraft ?? dbuValue.toFixed(1)}
+              onFocus={() => setDbuDraft(dbuValue.toFixed(1))}
+              onChange={(e) => setDbuDraft(e.target.value)}
+              onBlur={commitDbuDraft}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+              }}
               step="0.1"
               min="-60"
               max="60"
@@ -331,11 +423,15 @@ export const Settings: React.FC<SettingsProps> = ({
                 width: '100%',
                 boxSizing: 'border-box',
                 padding: '12px 16px',
-                borderRadius: '10px',
-                border: FIELD_BORDER,
-                backgroundColor: '#111111',
+                borderRadius: '8px',
+                border: 'none',
+                backgroundColor: 'rgba(120, 120, 128, 0.36)',
                 color: '#ffffff',
                 fontSize: '14px',
+                fontWeight: 400,
+                appearance: 'none',
+                WebkitAppearance: 'none',
+                outline: 'none',
               }}
             />
             <p style={{ ...descriptionStyle, fontSize: '12px', marginTop: '8px' }}>

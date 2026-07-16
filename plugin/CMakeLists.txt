@@ -130,6 +130,13 @@ if (NOT HEADLESS)
             include/EditorWebViewSetup.h
             src/EditorWebViewSetup.cpp
     )
+    # Webview session clearing is platform-specific: WKWebsiteDataStore needs
+    # ObjC++ on Apple; elsewhere a best-effort JUCE fallback.
+    if (APPLE)
+        target_sources(${PROJECT_NAME} PRIVATE src/WebViewCookies.mm)
+    else()
+        target_sources(${PROJECT_NAME} PRIVATE src/WebViewCookies.cpp)
+    endif()
 endif()
 
 target_include_directories(${PROJECT_NAME}

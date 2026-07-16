@@ -38,7 +38,7 @@ private:
   //==============================================================================
   // WebView UI
   //==============================================================================
-  std::unique_ptr<juce::WebBrowserComponent> mainWebView;   // Main Plugin UI
+  std::unique_ptr<EditorWebViewSetup::GuardedWebView> mainWebView;  // Main Plugin UI
 
   // Guards against loading the main URL before the editor has a real
   // top-level NSWindow (Standalone races; harmless in AU/VST3 hosts).

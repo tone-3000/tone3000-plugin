@@ -51,6 +51,7 @@ export function useChainState() {
       loadTone: backend.getPluginFunction('loadTone'),
       swapTone: backend.getPluginFunction('swapTone'),
       switchModel: backend.getPluginFunction('switchModel'),
+      retryModelLoad: backend.getPluginFunction('retryModelLoad'),
       removeChainBlock: backend.getPluginFunction('removeChainBlock'),
       reorderChainBlocks: backend.getPluginFunction('reorderChainBlocks'),
       moveBlockToChain: backend.getPluginFunction('moveBlockToChain'),
@@ -120,8 +121,13 @@ export function useChainState() {
       /** Replace an existing block's tone in place (keeps position + params). */
       swapTone: (blockId: string, toneJson: string) =>
         run<boolean>('swapTone', () => native.swapTone(blockId, toneJson)),
-      switchModel: (blockId: string, modelId: number) =>
-        run<boolean>('switchModel', () => native.switchModel(blockId, modelId)),
+      /** `modelJson` is the full model object (id/name/model_url) — native
+          only stores the active model and resolves the switch from this. */
+      switchModel: (blockId: string, modelId: number, modelJson: string) =>
+        run<boolean>('switchModel', () => native.switchModel(blockId, modelId, modelJson)),
+      /** Retry a failed model download (block.loadFailed). */
+      retryModelLoad: (blockId: string) =>
+        run<boolean>('retryModelLoad', () => native.retryModelLoad(blockId)),
       removeBlock: (blockId: string) =>
         run('removeChainBlock', () => native.removeChainBlock(blockId)),
       reorderBlocks: (orderedIds: string[]) =>

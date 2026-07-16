@@ -29,6 +29,7 @@ import {
   EDGE_FADE_WIDTH,
 } from './GalleryLane';
 import { CARD_WIDTH } from './chainLayout';
+import { HELP, helpProps } from './helpText';
 import { useChainActions } from '../hooks/useChainActions';
 import type { ChainItem, ChainSide, ToneBlock } from '../types/chain';
 import { isInsertSlot } from '../types/chain';
@@ -245,7 +246,7 @@ export const ChainView: React.FC<ChainViewProps> = ({ chain, chainRight, sampleR
         <div style={{ width: `${CARD_WIDTH}px`, maxWidth: '100%' }}>
           <button
             onClick={() => setDetailBlockId(null)}
-            title="Back to chain"
+            {...helpProps(HELP.backToChain)}
             style={{
               display: 'flex',
               alignItems: 'center',

@@ -41,6 +41,10 @@ export interface Tone {
   links: string[];
   format: string;
   models_count: number;
+  /** Per-architecture breakdowns (always returned; NAM only meaningfully). */
+  a1_models_count?: number;
+  a2_models_count?: number;
+  custom_models_count?: number;
   favorites_count: number;
   downloads_count: number;
   license: string;

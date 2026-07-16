@@ -77,6 +77,31 @@ void GuardedWebView::newWindowAttemptingToLoad(const juce::String& newUrl) {
     juce::URL(newUrl).launchInDefaultBrowser();
 }
 
+bool GuardedWebView::pageLoadHadNetworkError(const juce::String& errorInfo) {
+  juce::Logger::writeToLog("WebView navigation failed: " + errorInfo);
+  // The only remote navigations this view makes are the OAuth redirects to
+  // tone3000.com; a failure means the site is unreachable and the user is
+  // stuck on a dead page. Recover by reloading the plugin UI — chain state
+  // lives natively and tokens in localStorage, so nothing is lost. In
+  // release the recovery URL is served from embedded resources and can't
+  // itself hit the network; `recoveryInFlight` stops a retry loop in dev
+  // builds where it's the (possibly down) Vite server.
+  //
+  // The query param tells the UI why it was reloaded, so it can surface the
+  // OAuth error overlay (retry / dismiss) instead of landing silently on the
+  // main screen. The resource provider ignores it (juce::URL::getFileName
+  // strips query parameters), as does the OAuth callback detection.
+  if (recoveryUrl.isNotEmpty() && !recoveryInFlight) {
+    recoveryInFlight = true;
+    goToURL(recoveryUrl + "?t3k-nav-error=1");
+  }
+  return false;  // never show the platform's built-in error page
+}
+
+void GuardedWebView::pageFinishedLoading(const juce::String&) {
+  recoveryInFlight = false;
+}
+
 // WebView2's cache/storage folder (Windows only). A stable per-user location
 // instead of the temp dir: temp cleaners can purge it mid-session, and a
 // persistent cache makes editor cold-opens faster. Matches the app-data root
@@ -143,9 +168,19 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
                 editor->processor.swapTone(args[0].toString().toStdString(), args[1].toString()));
           }))
       .withNativeFunction(
-          "switchModel", guarded(2, false, [editor](const juce::Array<juce::var>& args) {
+          // (blockId, modelId, modelJson) — native only stores the active
+          // model, so the full model object always rides along.
+          "switchModel", guarded(3, false, [editor](const juce::Array<juce::var>& args) {
+            const juce::var modelData =
+                args[2].isObject() ? args[2] : juce::JSON::parse(args[2].toString());
             return juce::var(editor->processor.switchModel(args[0].toString().toStdString(),
-                                                           static_cast<int>(args[1])));
+                                                           static_cast<int>(args[1]), modelData));
+          }))
+      .withNativeFunction(
+          // Retry a failed model download (block.loadFailed) — re-queues the
+          // block's active model through the background loader.
+          "retryModelLoad", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
+            return juce::var(editor->processor.retryModelLoad(args[0].toString().toStdString()));
           }))
       .withNativeFunction(
           "removeChainBlock", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
@@ -320,6 +355,14 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
           // background model downloads can attach the Bearer header.
           "setAccessToken", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
             editor->processor.setAccessToken(args[0].toString());
+            return juce::var(true);
+          }))
+      .withNativeFunction(
+          // Logout: drop the webview's tone3000.com session (cookies + site
+          // storage) so the next OAuth redirect shows a real login screen
+          // instead of silently re-approving on the old session.
+          "clearAuthCookies", guarded(0, false, [](const juce::Array<juce::var>&) {
+            clearAuthCookies();
             return juce::var(true);
           }))
       .withNativeFunction(

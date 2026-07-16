@@ -1,9 +1,11 @@
 import React from 'react';
+import { helpProps } from './helpText';
 import { HIGHLIGHT, iconButtonStyle } from './theme';
 
 interface IconButtonProps {
   onClick: () => void;
-  title: string;
+  /** One-line hint for the faceplate help readout (see helpText.ts). */
+  help: string;
   /** Lit (white icon, optional active fill) vs muted. Defaults lit. */
   active?: boolean;
   /** Grayed out and non-interactive. */
@@ -17,7 +19,7 @@ interface IconButtonProps {
 /** Small square icon button used across the top bar and card chrome. */
 export const IconButton: React.FC<IconButtonProps> = ({
   onClick,
-  title,
+  help,
   active = true,
   disabled = false,
   fillWhenActive = false,
@@ -27,7 +29,7 @@ export const IconButton: React.FC<IconButtonProps> = ({
   <button
     onClick={onClick}
     disabled={disabled}
-    title={title}
+    {...helpProps(help)}
     style={{
       ...iconButtonStyle(size),
       color: '#ffffff',

@@ -32,7 +32,12 @@ struct ParsedTone {
   juce::String modelUrl;
   juce::String modelName;
   ChainBlockType type = ChainBlockType::NAM;
-  juce::var toneVar;  // the parsed JSON, kept so the block can cache it
+  float defaultMix = 1.0f;  // gear-dependent (reverb-style IRs start at 50%)
+  // Parsed tone with its models pruned to just the one being loaded — native
+  // only ever stores the active model; the catalog stays on the API and the
+  // UI pages it in for the picker.
+  juce::var toneVar;
+  juce::String toneJson;  // `toneVar` re-serialized (what the block persists)
 };
 
 ParsedTone parseToneForLoading(const juce::String& toneJsonString) {
@@ -68,7 +73,25 @@ ParsedTone parseToneForLoading(const juce::String& toneJsonString) {
   out.modelUrl = firstModel->getProperty("model_url").toString();
   out.modelName = firstModel->getProperty("name").toString();
   out.type = (format == "nam") ? ChainBlockType::NAM : ChainBlockType::IR;
+
+  // Store only the model being loaded — native persists just the active
+  // model; the catalog stays on the API.
+  juce::Array<juce::var> prunedModels;
+  prunedModels.add(modelsVar.getArray()->getReference(0));
+  toneObj->setProperty("models", prunedModels);
+
+  // Default mix by gear: "space"/"pedal" IRs are typically reverbs, meant to
+  // be blended, so they start half wet. Cab IRs and NAM captures replace the
+  // signal and stay fully wet. (Mirrored by defaultMix in ChainBlock.tsx for
+  // the knob's Alt-click reset.)
+  if (out.type == ChainBlockType::IR) {
+    const juce::String gear = toneObj->getProperty("gear").toString().toLowerCase();
+    if (gear == "space" || gear == "pedal")
+      out.defaultMix = 0.5f;
+  }
+
   out.toneVar = toneVar;
+  out.toneJson = juce::JSON::toString(toneVar);
   out.valid = true;
   return out;
 }
@@ -90,6 +113,12 @@ juce::var TONE3000Processor::makeToneSummary(const juce::var& toneVar) {
   out->setProperty("format", format);
   out->setProperty("gear", tone->getProperty("gear"));
 
+  // Catalog totals for the model picker's "n/N" (only the active model is
+  // stored, so the UI can't count the catalog itself). NAM blocks use the
+  // v2-architecture total — the plugin only loads A2 weights.
+  out->setProperty("models_count", tone->getProperty("models_count"));
+  out->setProperty("a2_models_count", tone->getProperty("a2_models_count"));
+
   // Only the first image is ever rendered (block artwork).
   juce::Array<juce::var> images;
   if (auto* imgs = tone->getProperty("images").getArray(); imgs != nullptr && !imgs->isEmpty())
@@ -103,7 +132,8 @@ juce::var TONE3000Processor::makeToneSummary(const juce::var& toneVar) {
     out->setProperty("user", juce::var(u.get()));
   }
 
-  // Model picker needs ids and names; the URLs stay native-side.
+  // Only the active model is stored natively (see parseToneForLoading /
+  // switchModel); the picker pages the full catalog from the API client-side.
   juce::Array<juce::var> models;
   if (auto* modelsArr = tone->getProperty("models").getArray()) {
     for (const auto& m : *modelsArr) {
@@ -128,31 +158,30 @@ void TONE3000Processor::setToneOnBlock(ChainBlock& block, int toneId, const juce
   block.toneSummary = makeToneSummary(parsedTone);
 }
 
-void TONE3000Processor::queueToneLoad(const std::string& blockId, const juce::String& toneJson,
-                                      int modelId, const juce::String& modelUrl,
+void TONE3000Processor::queueToneLoad(const std::string& blockId, int modelId,
+                                      const juce::String& modelUrl,
                                       const juce::String& modelName, ChainBlockType type) {
   struct LoadToneJob : public juce::ThreadPoolJob {
     TONE3000Processor& processor;
     std::string blockId;
-    juce::String toneJson;
     int modelId;
     juce::String modelUrl;
     juce::String modelName;
     ChainBlockType type;
 
-    LoadToneJob(TONE3000Processor& p, const std::string& bid, const juce::String& tj, int mid,
-                const juce::String& url, const juce::String& name, ChainBlockType t)
-        : ThreadPoolJob("Load Tone"), processor(p), blockId(bid), toneJson(tj), modelId(mid),
-          modelUrl(url), modelName(name), type(t) {}
+    LoadToneJob(TONE3000Processor& p, const std::string& bid, int mid, const juce::String& url,
+                const juce::String& name, ChainBlockType t)
+        : ThreadPoolJob("Load Tone"), processor(p), blockId(bid), modelId(mid), modelUrl(url),
+          modelName(name), type(t) {}
 
     JobStatus runJob() override {
-      processor.loadToneInBackground(blockId, toneJson, modelId, modelUrl, modelName, type);
+      processor.loadToneInBackground(blockId, modelId, modelUrl, modelName, type);
       return jobHasFinished;
     }
   };
 
-  loadingThreadPool.addJob(
-      new LoadToneJob(*this, blockId, toneJson, modelId, modelUrl, modelName, type), true);
+  loadingThreadPool.addJob(new LoadToneJob(*this, blockId, modelId, modelUrl, modelName, type),
+                           true);
 }
 
 std::string TONE3000Processor::loadTone(const juce::String& toneJsonString) {
@@ -169,8 +198,9 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString) {
   std::string blockId = juce::Uuid().toString().toStdString();
 
   auto block = std::make_unique<ChainBlock>(blockId, parsed.type);
-  setToneOnBlock(*block, parsed.toneId, toneJsonString, parsed.toneVar);
+  setToneOnBlock(*block, parsed.toneId, parsed.toneJson, parsed.toneVar);
   block->activeModelId = parsed.firstModelId;
+  block->mixNormalized = parsed.defaultMix;
   block->loaded = false;
 
   DBG("Created tone block: " << parsed.toneId << " (block: " << blockId << ")");
@@ -203,8 +233,7 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString) {
   }
 
   bumpChainRevision();
-  queueToneLoad(blockId, toneJsonString, parsed.firstModelId, parsed.modelUrl, parsed.modelName,
-                parsed.type);
+  queueToneLoad(blockId, parsed.firstModelId, parsed.modelUrl, parsed.modelName, parsed.type);
 
   return blockId;
 }
@@ -228,9 +257,10 @@ bool TONE3000Processor::swapTone(const std::string& blockId, const juce::String&
   // user params (enabled/gains/mix). Engines stay until the new model swaps in
   // via applyPreparedModelToChainBlock, but loaded=false stops processing now.
   block->type = parsed.type;
-  setToneOnBlock(*block, parsed.toneId, toneJsonString, parsed.toneVar);
+  setToneOnBlock(*block, parsed.toneId, parsed.toneJson, parsed.toneVar);
   block->activeModelId = parsed.firstModelId;
   block->loaded = false;
+  block->loadFailed = false;
   block->modelCache.clear();
   block->namIsSlimmable = false;
   block->namSlimmableSize = 1.0;
@@ -238,13 +268,13 @@ bool TONE3000Processor::swapTone(const std::string& blockId, const juce::String&
   DBG("Swapped tone on block " << blockId << " -> tone " << parsed.toneId);
 
   bumpChainRevision();
-  queueToneLoad(blockId, toneJsonString, parsed.firstModelId, parsed.modelUrl, parsed.modelName,
-                parsed.type);
+  queueToneLoad(blockId, parsed.firstModelId, parsed.modelUrl, parsed.modelName, parsed.type);
 
   return true;
 }
 
-bool TONE3000Processor::switchModel(const std::string& blockId, int modelId) {
+bool TONE3000Processor::switchModel(const std::string& blockId, int modelId,
+                                    const juce::var& modelData) {
   juce::ScopedLock lock(chainMutex);
 
   ChainBlock* block = findBlockById(blockId);
@@ -258,40 +288,32 @@ bool TONE3000Processor::switchModel(const std::string& blockId, int modelId) {
     return false;
   }
 
-  juce::DynamicObject* toneObj = block->toneVar.getDynamicObject();
-  juce::var modelsVar = toneObj->getProperty("models");
-
-  if (!modelsVar.isArray()) {
-    DBG("Models array not found in tone JSON");
+  // Native only stores the *active* model — the catalog lives on the API and
+  // the UI pages it in — so the switch always carries the full model object.
+  juce::DynamicObject* model = modelData.getDynamicObject();
+  if (model == nullptr || static_cast<int>(model->getProperty("id")) != modelId ||
+      model->getProperty("model_url").toString().isEmpty()) {
+    DBG("switchModel: missing or invalid model data for ID: " << modelId);
     return false;
   }
 
-  juce::DynamicObject* targetModel = nullptr;
-  for (int i = 0; i < modelsVar.getArray()->size(); i++) {
-    juce::var modelVar = modelsVar.getArray()->getReference(i);
-    if (modelVar.isObject()) {
-      juce::DynamicObject* modelObj = modelVar.getDynamicObject();
-      if ((int)modelObj->getProperty("id") == modelId) {
-        targetModel = modelObj;
-        break;
-      }
-    }
-  }
-
-  if (!targetModel) {
-    DBG("Model not found with ID: " << modelId);
-    return false;
-  }
-
-  juce::String modelUrl = targetModel->getProperty("model_url").toString();
-  juce::String modelName = targetModel->getProperty("name").toString();
+  const juce::String modelUrl = model->getProperty("model_url").toString();
+  const juce::String modelName = model->getProperty("name").toString();
 
   DBG("Queueing model switch: " << modelName << " (ID: " << modelId << ")");
 
   pushChainHistory();
 
+  // The new model becomes the tone's sole stored model.
+  juce::Array<juce::var> models;
+  models.add(modelData);
+  block->toneVar.getDynamicObject()->setProperty("models", models);
+  block->toneJson = juce::JSON::toString(block->toneVar);
+  block->toneSummary = makeToneSummary(block->toneVar);
+
   block->activeModelId = modelId;
   block->loaded = false;
+  block->loadFailed = false;
   bumpChainRevision();
 
   struct SwitchModelJob : public juce::ThreadPoolJob {
@@ -442,14 +464,41 @@ bool TONE3000Processor::moveBlockToChain(const std::string& blockId, const juce:
   return true;
 }
 
-void TONE3000Processor::loadToneInBackground(const std::string& blockId, const juce::String& toneJson,
-                                             int firstModelId, const juce::String& modelUrl,
+// A background download/prepare failed: leave the block unloaded but flip
+// loadFailed (with a revision bump) so the UI swaps its loading dots for a
+// retry affordance instead of spinning forever.
+void TONE3000Processor::markBlockLoadFailed(const std::string& blockId) {
+  juce::ScopedLock lock(chainMutex);
+  if (ChainBlock* block = findBlockById(blockId)) {
+    block->loadFailed = true;
+    bumpChainRevision();
+  }
+}
+
+// Re-queue the block's active model (retry after a failed download). The
+// background loader is cache-first, so this only hits the network for the
+// bytes that actually failed to arrive.
+bool TONE3000Processor::retryModelLoad(const std::string& blockId) {
+  juce::ScopedLock lock(chainMutex);
+  ChainBlock* block = findBlockById(blockId);
+  if (block == nullptr || block->type == ChainBlockType::INSERT || block->loaded)
+    return false;
+
+  block->loadFailed = false;
+  bumpChainRevision();  // back to the loading state in the UI
+  queueActiveModelLoad(*block);
+  return true;
+}
+
+void TONE3000Processor::loadToneInBackground(const std::string& blockId, int firstModelId,
+                                             const juce::String& modelUrl,
                                              const juce::String& modelName, ChainBlockType type) {
   DBG("[Background] Loading tone for block: " << blockId);
 
   std::vector<uint8_t> modelData = fetchModelFromUrl(modelUrl);
   if (modelData.empty()) {
     DBG("[Background] Failed to fetch model from URL");
+    markBlockLoadFailed(blockId);
     return;
   }
 
@@ -529,6 +578,7 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
 
     if (modelData.empty()) {
       DBG("[Background] Failed to fetch model from URL");
+      markBlockLoadFailed(blockId);
       return;
     }
   }
@@ -635,6 +685,7 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
 
       item->setProperty("activeModelId", block->activeModelId);
       item->setProperty("loaded", block->loaded);
+      item->setProperty("loadFailed", block->loadFailed);
       item->setProperty("namSlimmable", block->type == ChainBlockType::NAM &&
                                             block->namIsSlimmable && block->loaded);
 

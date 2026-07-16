@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { useMeter, useMeterClip, meterId } from '../hooks/useMeters';
 import { METER_MAX_DB, METER_MIN_DB, getGradientColor } from './meterColor';
+import { HELP, helpProps } from './helpText';
 import { GRAY } from './theme';
 
 interface DbMeterProps {
@@ -51,7 +52,7 @@ const DotColumn: React.FC<{ id: string; numDots: number }> = ({ id, numDots }) =
           <div
             key={index}
             onClick={isClipDot && clipped ? clearClip : undefined}
-            title={isClipDot && clipped ? 'Clipped — click to clear' : undefined}
+            {...(isClipDot && clipped ? helpProps(HELP.clipDot) : {})}
             style={{
               width: `${DOT_SIZE}px`,
               height: `${DOT_SIZE}px`,

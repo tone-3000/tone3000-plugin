@@ -42,6 +42,20 @@ const QUANTIZE = 2;
  */
 const MIN_FETCH_INTERVAL_MS = 33;
 
+/**
+ * Ids whose clip latches clear together. The main meters' mono and L/R ids
+ * are three views of one physical signal (mono = max(L, R)), and which view
+ * is on screen changes with stereo mode (e.g. toggling Spread) — so clearing
+ * a clip on any of them clears all three. A stale latch would otherwise
+ * survive on the hidden variant and reappear on the next mode switch.
+ * Block meters have no channel variants; they clear individually.
+ */
+const clipGroup = (id: string): string[] => {
+  const base = id.split(':')[0];
+  if (base === 'input' || base === 'output') return [base, `${base}:l`, `${base}:r`];
+  return [id];
+};
+
 class MeterStore {
   private levels = new Map<string, number>();
   /** Meter ids that have hit CLIP_DB; latched until clearClip(). */
@@ -78,8 +92,10 @@ class MeterStore {
   getClip = (id: string): boolean => this.clips.has(id);
 
   clearClip = (id: string): void => {
-    if (!this.clips.delete(id)) return;
-    this.listeners.get(id)?.forEach((callback) => callback());
+    for (const groupId of clipGroup(id)) {
+      if (!this.clips.delete(groupId)) continue;
+      this.listeners.get(groupId)?.forEach((callback) => callback());
+    }
   };
 
   private start() {

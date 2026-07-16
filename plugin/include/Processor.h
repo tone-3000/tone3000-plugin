@@ -66,7 +66,14 @@ public:
   // position and user params (enabled/gains/mix); the new tone's first model
   // is queued for background loading.
   bool swapTone(const std::string& blockId, const juce::String& toneJsonString);
-  bool switchModel(const std::string& blockId, int modelId);
+  // Switch the block's active model. Native only stores the active model, so
+  // `modelData` (JSON object with id/name/model_url, paged in from the API by
+  // the UI) is required and becomes the tone's new sole stored model.
+  bool switchModel(const std::string& blockId, int modelId, const juce::var& modelData);
+  // Retry a failed model download (block.loadFailed): clears the flag and
+  // re-queues the block's active model through the background loader. The
+  // simplest recovery when tone3000.com was unreachable mid-load.
+  bool retryModelLoad(const std::string& blockId);
   bool removeChainBlock(const std::string& blockId);
   bool reorderChainBlocks(const std::vector<std::string>& newOrder);
   // Move a block into the other lane at the given index (stereo mode drag
@@ -80,9 +87,9 @@ public:
   juce::String getAccessToken() const;
   
   // Background loading (called by thread pool jobs)
-  void loadToneInBackground(const std::string& blockId, const juce::String& toneJson, 
-                            int firstModelId, const juce::String& modelUrl, 
-                            const juce::String& modelName, ChainBlockType type);
+  void loadToneInBackground(const std::string& blockId, int firstModelId,
+                            const juce::String& modelUrl, const juce::String& modelName,
+                            ChainBlockType type);
   void switchModelInBackground(const std::string& blockId, int modelId, 
                                const juce::String& modelUrl, const juce::String& modelName);
 
@@ -357,9 +364,13 @@ private:
 
   // Queue a background download+prepare of a tone's model for `blockId`.
   // Shared by loadTone (new block) and swapTone (existing block).
-  void queueToneLoad(const std::string& blockId, const juce::String& toneJson, int modelId,
-                     const juce::String& modelUrl, const juce::String& modelName,
-                     ChainBlockType type);
+  void queueToneLoad(const std::string& blockId, int modelId, const juce::String& modelUrl,
+                     const juce::String& modelName, ChainBlockType type);
+
+  // Flip a block's loadFailed flag (with a revision bump) after a background
+  // download/prepare failure, so the UI can offer a retry instead of showing
+  // loading dots forever. No-op if the block is gone.
+  void markBlockLoadFailed(const std::string& blockId);
 
   // ── Chain-domain resampling boundary (see ChainDomain.h) ──
   // Engaged (non-null) only when the host rate differs from kChainSampleRate;

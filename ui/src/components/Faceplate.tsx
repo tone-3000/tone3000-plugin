@@ -5,6 +5,7 @@ import { balanceDbScale, gainDbScale, gateDbScale, toneScale } from './knobScale
 import { SpreadGroup } from './SpreadControls';
 import { useParameter } from '../hooks/useParameter';
 import { useNativeFunction } from '../hooks/useFunction';
+import { HELP, helpProps } from './helpText';
 import { ACTIVE_OUTLINE, BORDER, GRAY, HIGHLIGHT } from './theme';
 
 /**
@@ -29,15 +30,15 @@ const KNOB_CENTER_OFFSET = -11;
 
 const PowerButton: React.FC<{
   on: boolean;
-  title: string;
+  help: string;
   onClick: () => void;
   /** Vertical nudge; defaults to centering on a lone knob. Pass 0 when the
       button sits inside a pre-positioned stack. */
   offsetY?: number;
-}> = ({ on, title, onClick, offsetY = KNOB_CENTER_OFFSET }) => (
+}> = ({ on, help, onClick, offsetY = KNOB_CENTER_OFFSET }) => (
   <button
     onClick={onClick}
-    title={title}
+    {...helpProps(help)}
     style={{
       width: '22px',
       height: '22px',
@@ -63,9 +64,7 @@ const PowerButton: React.FC<{
 const PreButton: React.FC<{ on: boolean; onClick: () => void }> = ({ on, onClick }) => (
   <button
     onClick={onClick}
-    title={
-      on ? 'EQ runs before the chain — click for post' : 'EQ runs after the chain — click for pre'
-    }
+    {...helpProps(HELP.tonePre)}
     style={{
       height: '15px',
       padding: '0 5px',
@@ -120,11 +119,7 @@ const AutoBalanceButton: React.FC = () => {
   return (
     <button
       onClick={handleClick}
-      title={
-        listening
-          ? 'Listening — play for a couple of seconds (click to cancel)'
-          : 'Auto balance: match L/R output level'
-      }
+      {...helpProps(HELP.autoBalance)}
       style={{
         width: '18px',
         height: '18px',
@@ -142,7 +137,9 @@ const AutoBalanceButton: React.FC = () => {
         transform: `translateY(${KNOB_CENTER_OFFSET}px)`,
       }}
     >
-      <Equal size={11} />
+      {/* Size 12 keeps the glyph's inset even (16px content box − 12 = 2px
+          per side); 11 forced a half-pixel offset that read as off-center. */}
+      <Equal size={12} />
     </button>
   );
 };
@@ -174,6 +171,7 @@ const MainGainKnob: React.FC<{
       innerColor="#1C1C1E"
       scale={gainDbScale}
       defaultValue={0.5}
+      help={type === 'input' ? HELP.inputLevel : HELP.outputLevel}
     />
   );
 
@@ -189,6 +187,7 @@ const MainGainKnob: React.FC<{
       innerColor="#1C1C1E"
       scale={balanceDbScale}
       defaultValue={0.5}
+      help={type === 'input' ? HELP.inputBalance : HELP.outputBalance}
     />
   );
   // The (=) button always sits on the outer edge, keeping Bal next to its
@@ -241,7 +240,10 @@ export const Faceplate: React.FC<FaceplateProps> = ({
         flexShrink: 0,
         borderTop: BORDER,
         background: '#1C1C1E',
-        padding: '0 24px',
+        // Wider than the meter section's 24px gutters so the Input/Output
+        // knobs (36px) sit centered under the main meters' dot columns
+        // (24px gutter + 18px labels + 10px gap puts the dots ~55px in).
+        padding: '0 38px',
         boxSizing: 'border-box',
       }}
     >
@@ -266,10 +268,11 @@ export const Faceplate: React.FC<FaceplateProps> = ({
           innerColor="#1C1C1E"
           scale={gateDbScale}
           defaultValue={gateDbScale.fromDisplay(-80)}
+          help={HELP.gate}
         />
         <PowerButton
           on={gateEnabled}
-          title={gateEnabled ? 'Turn gate off' : 'Turn gate on'}
+          help={HELP.gatePower}
           onClick={() => setGateEnabled(!gateEnabled)}
         />
       </div>
@@ -293,6 +296,7 @@ export const Faceplate: React.FC<FaceplateProps> = ({
           innerColor="#1C1C1E"
           scale={toneScale}
           defaultValue={toneScale.fromDisplay(5)}
+          help={HELP.toneBass}
         />
         <KnobControl
           label="Middle"
@@ -303,6 +307,7 @@ export const Faceplate: React.FC<FaceplateProps> = ({
           innerColor="#1C1C1E"
           scale={toneScale}
           defaultValue={toneScale.fromDisplay(5)}
+          help={HELP.toneMiddle}
         />
         <KnobControl
           label="Treble"
@@ -313,6 +318,7 @@ export const Faceplate: React.FC<FaceplateProps> = ({
           innerColor="#1C1C1E"
           scale={toneScale}
           defaultValue={toneScale.fromDisplay(5)}
+          help={HELP.toneTreble}
         />
         {/* Power sits exactly where the other power buttons do; PRE hangs
             below it out-of-flow so it never shifts the power position. */}
@@ -327,7 +333,7 @@ export const Faceplate: React.FC<FaceplateProps> = ({
         >
           <PowerButton
             on={toneEqEnabled}
-            title={toneEqEnabled ? 'Turn EQ off' : 'Turn EQ on'}
+            help={HELP.tonePower}
             onClick={() => setToneEqEnabled(!toneEqEnabled)}
             offsetY={0}
           />

@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import type { BlockParamName, ChainSide, EqBand, ToneBlock } from '../types/chain';
+import type { Model } from '../types/tone';
 
 /**
  * Everything a chain block (gallery tile or detail card) can do, bundled
@@ -25,7 +26,18 @@ export interface ChainActions {
   moveBlock: (blockId: string, side: ChainSide, index: number) => void;
   /** Swap the Left and Right chains wholesale (stereo only). */
   swapChains: () => void;
-  switchModel: (blockId: string, modelId: number) => Promise<void>;
+  /** Native only stores the active model, so the switch always carries the
+      full model object (paged in from the API by the picker). */
+  switchModel: (blockId: string, modelId: number, model: Model) => Promise<void>;
+  /** Retry a failed model download (`block.loadFailed`) — re-queues the
+      block's active model through the native background loader. */
+  retryLoad: (blockId: string) => void;
+  /**
+   * Fetch a tone's full model catalog (tones max out at 300 models; NAM is
+   * architecture-filtered). Backs the detail card's model picker — the
+   * persisted block only carries the active model.
+   */
+  listToneModels: (toneId: number, format: string | undefined) => Promise<Model[]>;
   /** Fire-and-forget per-block param setter (see useChainState). */
   setBlockParam: (blockId: string, param: BlockParamName, value: number | boolean) => void;
   /** Fire-and-forget whole-band EQ setter (see useChainState). */
@@ -33,6 +45,12 @@ export interface ChainActions {
   /** EQ power/bypass — band settings persist, processing is skipped. */
   setBlockEqEnabled: (blockId: string, enabled: boolean) => void;
   resetBlockEq: (blockId: string) => void;
+  /**
+   * Whether a TONE3000 session is present. Auth-dependent block actions
+   * (model switching — native re-downloads the model with a Bearer token)
+   * disable themselves when signed out.
+   */
+  authenticated: boolean;
 }
 
 const ChainActionsContext = createContext<ChainActions | null>(null);

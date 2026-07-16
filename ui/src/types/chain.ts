@@ -100,7 +100,12 @@ export interface ToneSummary {
   /** First image only (block artwork). */
   images?: string[];
   user?: { username: string; avatar_url: string };
+  /** Only the active model — the picker pages the catalog from the API. */
   models: { id: number; name: string }[];
+  /** Catalog totals (picker count). NAM uses `a2_models_count` — the plugin
+      only loads v2 architectures. */
+  models_count: number;
+  a2_models_count: number;
 }
 
 /** A real tone block in the chain. */
@@ -112,6 +117,10 @@ export interface ToneBlock {
   activeModelId: number;
   /** True when the active model is downloaded, prepared and processing. */
   loaded: boolean;
+  /** True when the last download/prepare of the active model failed (network
+      down, TONE3000 unreachable). The block renders a retry affordance
+      instead of loading dots; retry re-queues via `retryModelLoad`. */
+  loadFailed: boolean;
   /** Capability flag from native (model is a SlimmableContainer). UI no longer
       gates on this — architecture=2 NAM tones always show LITE/FULL. */
   namSlimmable: boolean;

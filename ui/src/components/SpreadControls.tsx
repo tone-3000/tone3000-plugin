@@ -3,6 +3,7 @@ import { Power } from 'lucide-react';
 import { KnobControl } from './KnobControl';
 import { jitterMsScale, spreadMsScale } from './knobScale';
 import { useParameter } from '../hooks/useParameter';
+import { HELP, helpProps } from './helpText';
 import { GRAY, HIGHLIGHT } from './theme';
 
 /**
@@ -16,23 +17,25 @@ import { GRAY, HIGHLIGHT } from './theme';
  * center delays the left channel, right of center the right.
  */
 
-const KNOB_SIZE = 30;
+/** Matches the main faceplate knobs (Input/Gate/tone stack/Output). */
+const KNOB_SIZE = 36;
 /** Vertically center inline elements on the knob column (knob + label). */
 export const KNOB_CENTER_OFFSET = -11;
 
 /** Small square icon toggle that sits inline with knobs in a control row. */
 export const PillIconButton: React.FC<{
   on: boolean;
-  title: string;
+  /** One-line hint for the faceplate help readout (see helpText.ts). */
+  help: string;
   onClick: () => void;
   /** Vertical nudge; defaults to centering on an adjacent knob. Pass 0 when
       the button is positioned by its own layout. */
   offsetY?: number;
   children: React.ReactNode;
-}> = ({ on, title, onClick, offsetY = KNOB_CENTER_OFFSET, children }) => (
+}> = ({ on, help, onClick, offsetY = KNOB_CENTER_OFFSET, children }) => (
   <button
     onClick={onClick}
-    title={title}
+    {...helpProps(help)}
     style={{
       width: '22px',
       height: '22px',
@@ -78,26 +81,24 @@ export const SpreadGroup: React.FC<{
         onChange={setAmount}
         variant="bipolar"
         size={KNOB_SIZE}
-        labelSize={10}
+        labelSize={12}
         innerColor={innerColor}
         scale={spreadMsScale}
         defaultValue={0.5}
+        help={HELP.spread}
       />
       <KnobControl
         label="Jitter"
         value={jitter}
         onChange={setJitter}
         size={KNOB_SIZE}
-        labelSize={10}
+        labelSize={12}
         innerColor={innerColor}
         scale={jitterMsScale}
         defaultValue={0}
+        help={HELP.jitter}
       />
-      <PillIconButton
-        on={enabled}
-        title={enabled ? 'Turn spread off' : 'Turn spread on'}
-        onClick={() => setEnabled(!enabled)}
-      >
+      <PillIconButton on={enabled} help={HELP.spreadPower} onClick={() => setEnabled(!enabled)}>
         <Power size={12} />
       </PillIconButton>
     </div>

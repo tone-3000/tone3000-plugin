@@ -255,6 +255,7 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block,
 
   if (!prepared.success) {
     block.loaded = false;
+    block.loadFailed = true;  // corrupt/unreadable model — surface the retry UI
     return;
   }
 
@@ -278,6 +279,7 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block,
     block.namNormalizationSmoother.reset(kChainSampleRate, 0.05f);
     block.namNormalizationSmoother.setCurrentAndTargetValue(1.0f);
     block.loaded = true;
+    block.loadFailed = false;
 
   } else if (block.type == ChainBlockType::IR && prepared.convolverMono != nullptr) {
     std::swap(block.namEngine, prepared.namEngine);            // null in, any old NAM out
@@ -292,9 +294,11 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block,
     block.irNormalizationSmoother.setCurrentAndTargetValue(block.irNormalizationGainLinear);
 
     block.loaded = true;
+    block.loadFailed = false;
   } else {
     DBG("Prepared model type/engine mismatch vs chain block — leaving block unloaded");
     block.loaded = false;
+    block.loadFailed = true;
   }
 }
 

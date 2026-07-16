@@ -3,6 +3,7 @@ import type { EqBand } from '../types/chain';
 import { EQ_MAX_ABS_GAIN_DB, EQ_NUM_BANDS } from '../types/chain';
 import { formatFreq } from './eqMath';
 import { clamp, hasGain, TYPE_GLYPHS } from './eqShared';
+import { HELP, helpProps, pinHelp, unpinHelp } from './helpText';
 import { SUBTLE } from './theme';
 
 /**
@@ -19,7 +20,7 @@ import { SUBTLE } from './theme';
  */
 
 /** How long the dB readout lingers after the pointer releases. */
-const READOUT_HOLD_MS = 800;
+const READOUT_HOLD_MS = 250;
 
 const SLIDER_DB_MARKS = [15, 7.5, 0, -7.5, -15];
 const SLIDER_FREQ_ROW_H = 16;
@@ -86,6 +87,8 @@ export const EqSliders: React.FC<EqSlidersProps> = ({
     lastYRef.current = e.clientY;
     if (holdTimerRef.current !== null) window.clearTimeout(holdTimerRef.current);
     setReadoutIndex(index);
+    // Keep the hint up while the (captured) drag runs off the fader column.
+    pinHelp(HELP.eqFader);
     onDragStateChange(true);
     // Plain grab jumps the cap to the pointer; a Shift-grab holds position so
     // fine adjustment starts from the current value.
@@ -111,6 +114,7 @@ export const EqSliders: React.FC<EqSlidersProps> = ({
   const handlePointerUp = () => {
     if (draggingIndexRef.current === null) return;
     draggingIndexRef.current = null;
+    unpinHelp(HELP.eqFader);
     onDragStateChange(false);
     if (holdTimerRef.current !== null) window.clearTimeout(holdTimerRef.current);
     holdTimerRef.current = window.setTimeout(() => setReadoutIndex(null), READOUT_HOLD_MS);
@@ -130,7 +134,8 @@ export const EqSliders: React.FC<EqSlidersProps> = ({
         position: 'absolute',
         inset: 0,
         display: 'flex',
-        padding: '10px 18px 6px',
+        // Matches the tone card body's 16px gutters.
+        padding: '16px',
         boxSizing: 'border-box',
       }}
     >
@@ -204,11 +209,7 @@ export const EqSliders: React.FC<EqSlidersProps> = ({
                   onPointerUp={handlePointerUp}
                   onPointerCancel={handlePointerUp}
                   onDoubleClick={() => editable && onGainChange(i, 0)}
-                  title={
-                    editable
-                      ? `${formatFreq(band.freqHz)} · ${band.gainDb.toFixed(1)} dB (Shift = fine, double-click = reset)`
-                      : 'Pass filter — adjust in the graph view'
-                  }
+                  {...helpProps(editable ? HELP.eqFader : HELP.eqFaderPass)}
                   style={{
                     flex: 1,
                     position: 'relative',

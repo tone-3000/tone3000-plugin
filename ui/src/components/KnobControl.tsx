@@ -4,14 +4,15 @@ import { KnobInner } from './KnobInner';
 import type { KnobVariant } from './KnobInner';
 import type { KnobScale } from './knobScale';
 import { percentScale } from './knobScale';
+import { helpProps, pinHelp, unpinHelp } from './helpText';
 import { SURFACE_RAISED } from './theme';
 
 /**
  * Knob interaction conventions (matching typical plugin UX):
  * - Drag vertically to adjust; hold Shift for 8x finer control (works
  *   mid-drag).
- * - The label swaps to a live value readout while dragging and for a moment
- *   after release.
+ * - The label swaps to a live value readout while dragging; it snaps back to
+ *   the label the instant the pointer releases.
  * - Double-click opens inline text entry in real units (Enter commits,
  *   Escape cancels, blur commits).
  * - Alt/Option-click resets to the default value (when one is declared).
@@ -39,6 +40,9 @@ interface KnobControlProps {
   scale?: KnobScale;
   /** Normalized default; enables Alt/Option-click reset. */
   defaultValue?: number;
+  /** One-line hint for the faceplate help readout, shown while hovered or
+      dragging (see helpText.ts). */
+  help?: string;
   /** Fires true on grab / false on release, so owners of optimistic values
       can pause external syncs mid-drag (a stale poll must not fight the
       pointer). */
@@ -47,8 +51,6 @@ interface KnobControlProps {
 
 const BASE_SENSITIVITY = 0.006;
 const FINE_FACTOR = 8;
-/** How long the value readout lingers after the pointer releases. */
-const READOUT_HOLD_MS = 800;
 
 /** Bipolar center detent: values within the snap window collapse to exactly
     0.5 so the DSP's "center = skip processing" branch is actually reachable
@@ -73,17 +75,16 @@ export const KnobControl: React.FC<KnobControlProps> = ({
   max = 1,
   scale = percentScale,
   defaultValue,
+  help,
   onDragStateChange,
 }) => {
   const knobRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const holdTimerRef = useRef<number | null>(null);
   // The mouseup listener lives on `document` (releases can land anywhere),
   // so it must ignore mouseups that don't belong to this knob's drag.
   const draggingRef = useRef(false);
 
   const [dragging, setDragging] = useState(false);
-  const [held, setHeld] = useState(false);
   const [fine, setFine] = useState(false);
   const [editText, setEditText] = useState<string | null>(null); // null = not editing
   const editing = editText !== null;
@@ -105,10 +106,17 @@ export const KnobControl: React.FC<KnobControlProps> = ({
       return false;
     };
 
-    // Shift toggles fine mode live, including mid-drag.
+    // Shift toggles fine mode live, including mid-drag. Keydown/keyup alone
+    // can't be trusted here: the plugin webview doesn't reliably deliver
+    // bare-modifier key events (the native wrapper consumes them), which
+    // silently killed mid-drag Shift. So the primary source is the modifier
+    // state carried on the pointer events themselves (same approach as the
+    // EQ editors); the key listeners stay as a bonus so fine mode can engage
+    // while the pointer is stationary.
     const handleShift = (e: KeyboardEvent) => {
       if (e.key === 'Shift') setFine(e.type === 'keydown');
     };
+    const handleDragPointerMove = (e: PointerEvent) => setFine(e.shiftKey);
 
     const handleMouseDown = (e: MouseEvent) => {
       // Alt/Option-click: reset to default. The drag still engages beneath,
@@ -120,10 +128,9 @@ export const KnobControl: React.FC<KnobControlProps> = ({
       draggingRef.current = true;
       setFine(e.shiftKey);
       setDragging(true);
-      setHeld(false);
-      if (holdTimerRef.current !== null) window.clearTimeout(holdTimerRef.current);
       window.addEventListener('keydown', handleShift);
       window.addEventListener('keyup', handleShift);
+      window.addEventListener('pointermove', handleDragPointerMove);
 
       // Prevent text selection during drag
       const bodyStyle = document.body.style as CSSStyleDeclaration & Record<string, string>;
@@ -142,11 +149,7 @@ export const KnobControl: React.FC<KnobControlProps> = ({
       setFine(false);
       window.removeEventListener('keydown', handleShift);
       window.removeEventListener('keyup', handleShift);
-
-      // Keep the readout up briefly so the released value is legible.
-      setHeld(true);
-      if (holdTimerRef.current !== null) window.clearTimeout(holdTimerRef.current);
-      holdTimerRef.current = window.setTimeout(() => setHeld(false), READOUT_HOLD_MS);
+      window.removeEventListener('pointermove', handleDragPointerMove);
 
       // Restore text selection
       const bodyStyle = document.body.style as CSSStyleDeclaration & Record<string, string>;
@@ -170,7 +173,7 @@ export const KnobControl: React.FC<KnobControlProps> = ({
       document.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('keydown', handleShift);
       window.removeEventListener('keyup', handleShift);
-      if (holdTimerRef.current !== null) window.clearTimeout(holdTimerRef.current);
+      window.removeEventListener('pointermove', handleDragPointerMove);
 
       // Ensure body styles are reset
       const bodyStyle = document.body.style as CSSStyleDeclaration & Record<string, string>;
@@ -180,8 +183,19 @@ export const KnobControl: React.FC<KnobControlProps> = ({
     };
   }, []);
 
+  // Hover is handled by the data-help attribute (see helpText.ts); pinning
+  // keeps the hint up mid-drag, when the pointer can wander off the knob
+  // without releasing.
+  const helpRef = useRef(help);
+  helpRef.current = help;
+  useEffect(() => {
+    const text = helpRef.current;
+    if (!text || !dragging) return;
+    pinHelp(text);
+    return () => unpinHelp(text);
+  }, [dragging]);
+
   const openEditor = useCallback(() => {
-    setHeld(false);
     setEditText(scale.editText(value));
   }, [scale, value]);
 
@@ -203,7 +217,7 @@ export const KnobControl: React.FC<KnobControlProps> = ({
     setEditText(null);
   }, [editText, max, min, scale, variant]);
 
-  const showReadout = !editing && (dragging || held);
+  const showReadout = !editing && dragging;
   // Fixed-footprint label slot: readout/input can be wider than the label
   // but must never shift surrounding layout, so the slot is sized once and
   // its content overflows symmetrically.
@@ -211,6 +225,7 @@ export const KnobControl: React.FC<KnobControlProps> = ({
 
   return (
     <div
+      {...(help ? helpProps(help) : {})}
       style={{
         display: 'flex',
         flexDirection: labelBottom ? 'column' : 'column-reverse',

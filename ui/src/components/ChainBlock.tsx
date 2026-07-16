@@ -1,17 +1,23 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeftRight, Check, Power, RotateCcw, Share, Trash2 } from 'lucide-react';
+import { ToneImage } from './GearIcon';
 import { KnobControl } from './KnobControl';
 import { gainDbScale } from './knobScale';
 import { ModelSelect } from './ModelSelect';
+import { RetryLoadBadge } from './RetryLoadBadge';
 import { BlockMeter } from './BlockMeter';
 import { BlockEqView } from './BlockEqView';
 import type { EqViewMode } from './BlockEqView';
 import { meterId } from '../hooks/useMeters';
 import { useChainActions } from '../hooks/useChainActions';
 import type { BlockParamName, ToneBlock } from '../types/chain';
+import type { Model } from '../types/tone';
 import { isEqFlat } from '../types/chain';
 import { CARD_WIDTH, CARD_HEIGHT } from './chainLayout';
-import { AvatarFallback } from './AvatarFallback';
+import { formatLabel, gearLabel } from '../t3k/labels';
+import { AvatarImage } from './AvatarFallback';
+import { FormatBadge } from './FormatBadge';
+import { HELP, helpProps } from './helpText';
 import {
   ACTIVE_OUTLINE,
   BORDER,
@@ -181,23 +187,63 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
     [setParam]
   );
 
+  // Native persists only the block's *active* model; the full catalog (tones
+  // max out at 300 models) is fetched client-side in one call per tone.
+  // Signed out the picker is disabled (and the API needs the token anyway).
+  const [models, setModels] = useState<Model[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!actions.authenticated) return;
+    let stale = false;
+    setModels([]);
+    setModelsLoading(true);
+    actions
+      .listToneModels(tone.id, tone.format)
+      .then((list) => {
+        if (!stale) setModels(list);
+      })
+      .catch((err) => console.error('Failed to load models', err))
+      .finally(() => {
+        if (!stale) setModelsLoading(false);
+      });
+    return () => {
+      stale = true;
+    };
+  }, [actions, tone.format, tone.id]);
+
+  // Full catalog once loaded; just the active model until then.
+  const modelOptions = models.length ? models : tone.models;
+
   const handleModelSelect = async (id: string) => {
-    if (!tone.models?.length || isSwitchingModel) return;
+    if (isSwitchingModel) return;
     const newModelId = parseInt(id, 10);
-    if (isNaN(newModelId)) return;
+    if (isNaN(newModelId) || newModelId === block.activeModelId) return;
+
+    // Native only stores the active model, so the switch call carries the
+    // full model object from the fetched catalog.
+    const model = models.find((m) => m.id === newModelId);
+    if (!model) return;
 
     setIsSwitchingModel(true);
     try {
-      await actions.switchModel(blockId, newModelId);
+      await actions.switchModel(blockId, newModelId, model);
     } finally {
       setIsSwitchingModel(false);
     }
   };
 
   const isNam = tone.format?.toLowerCase() === 'nam';
-  // architecture=2 NAM models are always A2/slimmable — no need to wait on
-  // the native capability flag that used to gate this after model load.
-  const formatBadge = isNam ? 'NAM A2' : (tone.format?.toUpperCase() ?? '');
+  // Reverb-style IRs (gear "space"/"pedal") load half wet by default (native
+  // sets it in parseToneForLoading); Alt-click reset on Mix must agree.
+  const isReverbIr = !isNam && ['space', 'pedal'].includes(tone.gear?.toLowerCase() ?? '');
+  const defaultMix = isReverbIr ? 0.5 : 1;
+  // All NAM blocks are A2, so the badge is just the format name.
+  const formatBadge = formatLabel(tone.format);
+
+  // Picker's "n/N" total from the tone metadata (A2-only for NAM — that's
+  // all the plugin loads).
+  const modelsTotal = isNam ? tone.a2_models_count : tone.models_count;
 
   // EQ is shaping this block's audio: powered on and not flat (a flat or
   // bypassed EQ is skipped natively). Uses the optimistic power state so the
@@ -235,7 +281,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
       >
         <button
           onClick={handleToggleEnabled}
-          title={enabled ? 'Turn block off' : 'Turn block on'}
+          {...helpProps(HELP.blockPower)}
           style={{
             ...headerButtonStyle,
             color: enabled ? '#ffffff' : GRAY,
@@ -245,7 +291,8 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
           <Power size={14} />
         </button>
 
-        {/* LITE/FULL for every NAM block (architecture=2 = always A2). */}
+        {/* LITE/FULL for every NAM block (architecture=2 = always A2).
+            Subtle segmented control: the active side just reads white. */}
         {isNam && (
           <div
             style={{
@@ -253,7 +300,8 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
               flexDirection: 'row',
               marginLeft: '4px',
               borderRadius: '6px',
-              border: BORDER,
+              // Same grey as the model select bar so the header controls match.
+              backgroundColor: 'rgba(120, 120, 128, 0.36)',
               overflow: 'hidden',
               flexShrink: 0,
               opacity: block.loaded && !isSwitchingModel ? 1 : 0.45,
@@ -263,14 +311,16 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
             <button
               type="button"
               onClick={() => handleNamSizeMode(true)}
+              {...helpProps(HELP.namLite)}
               style={{
-                padding: '3px 10px',
+                padding: '3px 4px 3px 10px',
                 fontSize: '11px',
-                fontWeight: 700,
+                fontWeight: 400,
                 border: 'none',
                 cursor: 'pointer',
-                backgroundColor: isLite ? HIGHLIGHT : 'transparent',
-                color: '#ffffff',
+                backgroundColor: 'transparent',
+                color: isLite ? '#ffffff' : MUTED,
+                transition: 'color 0.15s ease',
               }}
             >
               LITE
@@ -278,15 +328,16 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
             <button
               type="button"
               onClick={() => handleNamSizeMode(false)}
+              {...helpProps(HELP.namFull)}
               style={{
-                padding: '3px 10px',
+                padding: '3px 10px 3px 4px',
                 fontSize: '11px',
-                fontWeight: 700,
+                fontWeight: 400,
                 border: 'none',
-                borderLeft: BORDER,
                 cursor: 'pointer',
-                backgroundColor: !isLite ? HIGHLIGHT : 'transparent',
-                color: '#ffffff',
+                backgroundColor: 'transparent',
+                color: !isLite ? '#ffffff' : MUTED,
+                transition: 'color 0.15s ease',
               }}
             >
               FULL
@@ -303,7 +354,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
             <div style={headerGroupStyle}>
               <button
                 onClick={() => setEqView('sliders')}
-                title="Sliders view"
+                {...helpProps(HELP.eqSlidersView)}
                 style={{
                   ...headerGroupButtonStyle,
                   color: eqView === 'sliders' ? '#ffffff' : MUTED,
@@ -314,7 +365,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
               </button>
               <button
                 onClick={() => setEqView('graph')}
-                title="Curve view"
+                {...helpProps(HELP.eqCurveView)}
                 style={{
                   ...headerGroupButtonStyle,
                   borderLeft: BORDER,
@@ -325,27 +376,26 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
                 <EqCurveIcon />
               </button>
             </div>
-            <div style={headerGroupStyle}>
-              <button
-                onClick={() => actions.resetBlockEq(blockId)}
-                title="Reset EQ to flat"
-                style={{ ...headerGroupButtonStyle, color: '#ffffff' }}
-              >
-                <RotateCcw size={14} />
-              </button>
-              <button
-                onClick={handleToggleEqEnabled}
-                title={eqOn ? 'Bypass EQ' : 'Enable EQ'}
-                style={{
-                  ...headerGroupButtonStyle,
-                  borderLeft: BORDER,
-                  color: eqOn ? '#ffffff' : GRAY,
-                  backgroundColor: eqOn ? 'transparent' : HIGHLIGHT,
-                }}
-              >
-                <Power size={14} />
-              </button>
-            </div>
+            {/* Reset and power stand alone (no bordered group). */}
+            <button
+              onClick={() => actions.resetBlockEq(blockId)}
+              {...helpProps(HELP.eqReset)}
+              style={{ ...headerButtonStyle, border: 'none', color: '#ffffff' }}
+            >
+              <RotateCcw size={14} />
+            </button>
+            <button
+              onClick={handleToggleEqEnabled}
+              {...helpProps(HELP.eqPower)}
+              style={{
+                ...headerButtonStyle,
+                border: 'none',
+                color: eqOn ? '#ffffff' : GRAY,
+                backgroundColor: eqOn ? 'transparent' : HIGHLIGHT,
+              }}
+            >
+              <Power size={14} />
+            </button>
           </>
         )}
 
@@ -355,7 +405,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
             editor panel is currently open (like the tuner toggle). */}
         <button
           onClick={() => setShowEq((prev) => !prev)}
-          title={showEq ? 'Hide EQ' : 'Show EQ'}
+          {...helpProps(HELP.eqToggle)}
           style={{
             ...headerButtonStyle,
             width: 'auto',
@@ -373,21 +423,21 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
 
         <button
           onClick={handleShare}
-          title="Copy tone link"
+          {...helpProps(HELP.shareTone)}
           style={{ ...headerButtonStyle, color: '#ffffff' }}
         >
           {copied ? <Check size={14} /> : <Share size={14} />}
         </button>
         <button
           onClick={() => actions.swapBlock(blockId)}
-          title="Swap tone"
+          {...helpProps(HELP.swapTone)}
           style={{ ...headerButtonStyle, color: '#ffffff' }}
         >
           <ArrowLeftRight size={14} />
         </button>
         <button
           onClick={() => actions.removeBlock(blockId)}
-          title="Remove block"
+          {...helpProps(HELP.removeBlock)}
           style={{ ...headerButtonStyle, color: '#ffffff' }}
         >
           <Trash2 size={14} />
@@ -404,7 +454,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
           alignItems: 'stretch',
           // The EQ grid bleeds edge-to-edge; the normal view keeps its gutters.
           gap: showEq ? 0 : '12px',
-          padding: showEq ? 0 : '12px',
+          padding: showEq ? 0 : '16px',
           boxSizing: 'border-box',
           opacity: enabled ? 1 : 0.45,
           transition: 'opacity 0.2s ease',
@@ -421,18 +471,19 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
           />
         ) : (
           <>
-            {/* Input rail: meter centered above the input gain knob */}
+            {/* Input rail: knob pinned at the bottom, meter centered in the
+                space between it and the card header */}
             <div
               style={{
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                justifyContent: 'flex-end',
-                gap: '8px',
                 flexShrink: 0,
               }}
             >
-              <BlockMeter meterId={meterId.blockIn(blockId)} length={RAIL_METER_HEIGHT} />
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', minHeight: 0 }}>
+                <BlockMeter meterId={meterId.blockIn(blockId)} length={RAIL_METER_HEIGHT} />
+              </div>
               <KnobControl
                 label="In"
                 value={inputGain}
@@ -447,6 +498,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
                 innerColor={SURFACE}
                 scale={gainDbScale}
                 defaultValue={0.5}
+                help={HELP.blockIn}
               />
             </div>
 
@@ -460,36 +512,57 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'space-between',
-                gap: '8px',
+                gap: '22px',
               }}
             >
               <div
                 style={{
                   display: 'flex',
                   flexDirection: 'row',
-                  alignItems: 'flex-start',
-                  gap: '12px',
+                  // Copy centers on the image's vertical middle, web-style.
+                  alignItems: 'center',
+                  gap: '24px',
                   minWidth: 0,
                 }}
               >
-                {/* Tone image */}
-                {tone.images?.[0] && (
+                {/* Tone image (gear glyph fallback, like the web's ToneCard) */}
+                <div
+                  style={{
+                    position: 'relative',
+                    width: IMAGE_SIZE,
+                    height: IMAGE_SIZE,
+                    borderRadius: '8px',
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                  }}
+                >
                   <div
-                    style={{
-                      width: IMAGE_SIZE,
-                      height: IMAGE_SIZE,
-                      borderRadius: '8px',
-                      overflow: 'hidden',
-                      flexShrink: 0,
-                    }}
+                    style={{ opacity: block.loadFailed ? 0.35 : 1, width: '100%', height: '100%' }}
                   >
-                    <img
-                      src={tone.images[0]}
+                    <ToneImage
+                      src={tone.images?.[0]}
                       alt={tone.title}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      gear={tone.gear}
+                      boxSize={IMAGE_SIZE}
                     />
                   </div>
-                )}
+                  {/* Failed model download (e.g. a model switch while offline):
+                      surface the retry here too — the switch is driven from
+                      this card, so the failure must be visible in place. */}
+                  {block.loadFailed && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <RetryLoadBadge onRetry={() => actions.retryLoad(blockId)} />
+                    </div>
+                  )}
+                </div>
 
                 {/* Tone info */}
                 <div
@@ -503,12 +576,14 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
                 >
                   <span
                     style={{
-                      fontSize: '16px',
+                      fontSize: '18px',
                       color: '#ffffff',
-                      fontWeight: '700',
+                      fontWeight: '600',
+                      // Two-line clamp with trailing ellipsis.
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
                       overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
                     }}
                   >
                     {tone.title}
@@ -523,50 +598,31 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
                     }}
                   >
                     {tone.gear && (
-                      <span style={{ fontSize: '13px', color: MUTED, fontWeight: '400' }}>
-                        {tone.gear}
+                      <span style={{ fontSize: '14px', color: MUTED, fontWeight: '400' }}>
+                        {gearLabel(tone.gear)}
                       </span>
                     )}
-                    {formatBadge && (
-                      <span
-                        style={{
-                          fontFamily: 'monospace',
-                          fontSize: '11px',
-                          color: 'black',
-                          fontWeight: '400',
-                          backgroundColor: MUTED,
-                          padding: '0 6px',
-                          borderRadius: '4px',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {formatBadge}
-                      </span>
-                    )}
+                    {formatBadge && <FormatBadge label={formatBadge} />}
                   </div>
 
                   {tone.user && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <div
                         style={{
-                          width: '20px',
-                          height: '20px',
+                          width: '23px',
+                          height: '23px',
                           borderRadius: '50%',
                           overflow: 'hidden',
                           flexShrink: 0,
                         }}
                       >
-                        {tone.user.avatar_url ? (
-                          <img
-                            src={tone.user.avatar_url}
-                            alt={tone.user.username}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          />
-                        ) : (
-                          <AvatarFallback size={20} />
-                        )}
+                        <AvatarImage
+                          src={tone.user.avatar_url}
+                          alt={tone.user.username}
+                          size={23}
+                        />
                       </div>
-                      <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: '700' }}>
+                      <span style={{ fontSize: '14px', color: '#ffffff', fontWeight: '400' }}>
                         {tone.user.username}
                       </span>
                     </div>
@@ -574,12 +630,24 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
                 </div>
               </div>
 
-              <ModelSelect
-                options={(tone.models ?? []).map((m) => ({ id: String(m.id), name: m.name }))}
-                value={String(block.activeModelId)}
-                onChange={handleModelSelect}
-                height={36}
-              />
+              {/* Switching models re-downloads through native with a Bearer
+                  token, so the picker is inert while signed out. The wrapper
+                  carries the cursor + hint — the select itself is
+                  pointer-events: none when disabled. */}
+              <div
+                {...(!actions.authenticated ? helpProps(HELP.modelSelectSignedOut) : {})}
+                style={{ cursor: actions.authenticated ? 'default' : 'not-allowed' }}
+              >
+                <ModelSelect
+                  options={modelOptions.map((m) => ({ id: String(m.id), name: m.name }))}
+                  value={String(block.activeModelId)}
+                  onChange={handleModelSelect}
+                  height={36}
+                  disabled={!actions.authenticated}
+                  loading={modelsLoading}
+                  totalCount={modelsTotal}
+                />
+              </div>
             </div>
 
             {/* Mix knob: bottom aligned, between the model select and the output rail */}
@@ -604,22 +672,24 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
                 labelSize={12}
                 labelBottom={false}
                 innerColor={SURFACE}
-                defaultValue={1}
+                defaultValue={defaultMix}
+                help={HELP.blockMix}
               />
             </div>
 
-            {/* Output rail: meter centered above the output gain knob */}
+            {/* Output rail: knob pinned at the bottom, meter centered in the
+                space between it and the card header */}
             <div
               style={{
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                justifyContent: 'flex-end',
-                gap: '8px',
                 flexShrink: 0,
               }}
             >
-              <BlockMeter meterId={meterId.blockOut(blockId)} length={RAIL_METER_HEIGHT} />
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', minHeight: 0 }}>
+                <BlockMeter meterId={meterId.blockOut(blockId)} length={RAIL_METER_HEIGHT} />
+              </div>
               <KnobControl
                 label="Out"
                 value={outputGain}
@@ -634,6 +704,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
                 innerColor={SURFACE}
                 scale={gainDbScale}
                 defaultValue={0.5}
+                help={isNam ? HELP.blockOut : HELP.blockOutIr}
               />
             </div>
           </>

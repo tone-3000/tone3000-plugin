@@ -8,13 +8,14 @@
  *   - Token refresh
  *   - Authenticated fetch helpers for the tone + models endpoints
  *
- * Tokens (and the PKCE verifier mid-flow) live in sessionStorage on the
- * WebView's `juce.backend` origin, which persists across the same-window
- * redirect away to tone3000.com and back.
+ * Tokens live in localStorage on the WebView's `juce.backend` origin so a
+ * signed-in user stays signed in across editor sessions (the refresh token is
+ * long-lived; access tokens refresh transparently). The PKCE verifier/state
+ * are mid-flow-only values and stay in sessionStorage.
  */
 
 import { T3K_API } from './config';
-import type { Tone, Model, PaginatedResponse } from '../types/tone';
+import type { Tone, Model, PaginatedResponse, User } from '../types/tone';
 
 export interface T3KTokens {
   access_token: string;
@@ -118,6 +119,24 @@ export async function startSelectFlow(
   window.location.href = buildAuthorizeUrl(publishableKey, redirectUri, extra, pkce);
 }
 
+/**
+ * Login Flow — standard OAuth authorization with no `prompt`. The user signs
+ * in on tone3000.com (no tone browsing) and is redirected straight back with
+ * a `code` to exchange for tokens. Used to authenticate before showing the
+ * in-plugin tone browser.
+ */
+export async function startLoginFlow(
+  publishableKey: string,
+  redirectUri: string,
+  options?: { loginHint?: string; menubar?: boolean }
+): Promise<void> {
+  const pkce = await buildPkceParams();
+  const extra: Record<string, string> = {};
+  if (options?.loginHint) extra.login_hint = options.loginHint;
+  if (options?.menubar) extra.menubar = 'true';
+  window.location.href = buildAuthorizeUrl(publishableKey, redirectUri, extra, pkce);
+}
+
 // ─── Callback handler ─────────────────────────────────────────────────────────
 
 /**
@@ -218,10 +237,11 @@ const STORAGE_KEY = 't3k_tokens';
 /**
  * T3KClient — authenticated API client with proactive token refresh.
  *
- * Tokens are persisted in sessionStorage so they survive the OAuth redirect
- * round-trip and a WebView reload, but not a process restart. After the user
- * comes back from tone3000.com, call `setTokens()` once with the freshly
- * exchanged tokens to seed the client.
+ * Tokens are persisted in localStorage so they survive the OAuth redirect
+ * round-trip, WebView reloads, and editor restarts — the in-plugin tone
+ * browser can open instantly in later sessions without re-running the OAuth
+ * redirect. After the user comes back from tone3000.com, call `setTokens()`
+ * once with the freshly exchanged tokens to seed the client.
  */
 export class T3KClient {
   private refreshPromise: Promise<T3KTokens> | null = null;
@@ -244,17 +264,28 @@ export class T3KClient {
   }
 
   setTokens(tokens: T3KTokens): void {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(tokens));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(tokens));
     this.onTokensUpdated?.(tokens);
   }
 
   getTokens(): T3KTokens | null {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? (JSON.parse(raw) as T3KTokens) : null;
   }
 
   clearTokens(): void {
-    sessionStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY);
+  }
+
+  /**
+   * Full sign-out on this client: drops the persisted token set and any
+   * mid-flight PKCE state so the next + press starts a fresh login flow.
+   * (Native's copy of the access token is cleared separately by the caller.)
+   */
+  logout(): void {
+    this.clearTokens();
+    sessionStorage.removeItem(PKCE_CODE_VERIFIER_KEY);
+    sessionStorage.removeItem(PKCE_STATE_KEY);
   }
 
   /**
@@ -312,9 +343,61 @@ export class T3KClient {
     return res;
   }
 
+  /** True when a token set is present (it may still be refreshed on use). */
+  isAuthenticated(): boolean {
+    return this.getTokens() !== null;
+  }
+
+  /** The currently authenticated user (avatar + username for the header). */
+  async getUser(): Promise<User> {
+    const res = await this.fetch('/api/v1/user');
+    if (!res.ok) throw new Error(`getUser failed: ${res.status}`);
+    return res.json();
+  }
+
   async getTone(id: number | string): Promise<Tone> {
     const res = await this.fetch(`/api/v1/tones/${id}`);
     if (!res.ok) throw new Error(`getTone failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** Shared pagination for the session-scoped tone streams. */
+  private async listTones(
+    endpoint: 'created' | 'favorited' | 'downloaded',
+    options?: { page?: number; pageSize?: number }
+  ): Promise<PaginatedResponse<Tone>> {
+    const qs = new URLSearchParams({
+      page: String(options?.page ?? 1),
+      page_size: String(options?.pageSize ?? 10),
+    });
+    const res = await this.fetch(`/api/v1/tones/${endpoint}?${qs.toString()}`);
+    if (!res.ok) throw new Error(`list ${endpoint} failed: ${res.status}`);
+    return res.json();
+  }
+
+  listCreatedTones(options?: { page?: number; pageSize?: number }) {
+    return this.listTones('created', options);
+  }
+
+  listFavoritedTones(options?: { page?: number; pageSize?: number }) {
+    return this.listTones('favorited', options);
+  }
+
+  listDownloadedTones(options?: { page?: number; pageSize?: number }) {
+    return this.listTones('downloaded', options);
+  }
+
+  /** Top 10 trending tones for one gear type (homepage feed; not paginated). */
+  async listTrendingTones(gear: string): Promise<{ data: Tone[] }> {
+    const res = await this.fetch(`/api/v1/tones/trending?gear=${encodeURIComponent(gear)}`);
+    if (!res.ok) throw new Error(`listTrendingTones failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** 10 most recently published tones (homepage feed; not paginated). */
+  async listLatestTones(): Promise<{ data: Tone[] }> {
+    const res = await this.fetch('/api/v1/tones/latest');
+    if (!res.ok) throw new Error(`listLatestTones failed: ${res.status}`);
     return res.json();
   }
 

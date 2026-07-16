@@ -38,6 +38,29 @@ export const SURFACE = '#151517';
 /** Raised chrome (card headers, faceplate, pills). */
 export const SURFACE_RAISED = '#1C1C1E';
 
+/**
+ * Pill CTA — the house text-button style (preset Save, the tone browser's
+ * Browse CTA, gear chips): rounded-full outline on a transparent fill.
+ * Primary = white outline + white label; secondary (the "dismiss" next to a
+ * primary) = hairline outline + muted label.
+ */
+export const pillButtonStyle = (primary = true): CSSProperties => ({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '8px',
+  padding: '7px 16px',
+  fontSize: '13px',
+  fontWeight: 600,
+  borderRadius: '9999px',
+  border: primary ? '1px solid #ffffff' : BORDER,
+  backgroundColor: 'transparent',
+  color: primary ? '#ffffff' : MUTED,
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
+});
+
 /** Base style for a small square icon button (header/tile quick actions). */
 export const iconButtonStyle = (size = 24): CSSProperties => ({
   background: 'transparent',

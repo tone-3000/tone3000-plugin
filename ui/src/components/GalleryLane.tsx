@@ -9,6 +9,8 @@ import { panScale } from './knobScale';
 const PAN_LEFT_SCALE = panScale('left');
 const PAN_RIGHT_SCALE = panScale('right');
 import { PillIconButton } from './SpreadControls';
+import { HELP, helpProps } from './helpText';
+import { BORDER } from './theme';
 import { useParameter } from '../hooks/useParameter';
 import { useChainActions } from '../hooks/useChainActions';
 import type { ChainItem } from '../types/chain';
@@ -186,11 +188,21 @@ export const StereoPanRail: React.FC = () => {
     if (next) setPanRight(1 - panLeft);
   };
 
-  const centered: React.CSSProperties = {
+  // Each knob region: knob centered on its lane, with a hairline connector
+  // filling the remaining run between the knob and the link/swap box so the
+  // pan controls read as one wired-together group.
+  const knobRegion: React.CSSProperties = {
     flex: 1,
     display: 'flex',
+    flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
+  };
+  const spacer: React.CSSProperties = { flex: 1 };
+  const connector: React.CSSProperties = {
+    flex: 1,
+    width: 0,
+    borderLeft: BORDER,
+    margin: '6px 0',
   };
 
   return (
@@ -204,7 +216,8 @@ export const StereoPanRail: React.FC = () => {
         flexShrink: 0,
       }}
     >
-      <div style={centered}>
+      <div style={knobRegion}>
+        <div style={spacer} />
         <KnobControl
           label="Pan L"
           value={panLeft}
@@ -216,20 +229,27 @@ export const StereoPanRail: React.FC = () => {
           labelSize={10}
           scale={PAN_LEFT_SCALE}
           defaultValue={0}
+          help={HELP.panLeft}
         />
+        <div style={connector} />
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-        <PillIconButton
-          on={linked}
-          title={linked ? 'Unlink pans (uneven image)' : 'Link pans (mirrored)'}
-          onClick={handleToggleLink}
-          offsetY={0}
-        >
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: '4px',
+          border: BORDER,
+          borderRadius: '8px',
+          padding: '3px 5px',
+        }}
+      >
+        <PillIconButton on={linked} help={HELP.panLink} onClick={handleToggleLink} offsetY={0}>
           <Link size={12} />
         </PillIconButton>
         <button
           onClick={swapChains}
-          title="Swap Left and Right chains"
+          {...helpProps(HELP.swapChains)}
           style={{
             width: '22px',
             height: '22px',
@@ -247,7 +267,8 @@ export const StereoPanRail: React.FC = () => {
           <ArrowUpDown size={12} />
         </button>
       </div>
-      <div style={centered}>
+      <div style={knobRegion}>
+        <div style={connector} />
         <KnobControl
           label="Pan R"
           value={panRight}
@@ -259,7 +280,9 @@ export const StereoPanRail: React.FC = () => {
           labelSize={10}
           scale={PAN_RIGHT_SCALE}
           defaultValue={1}
+          help={HELP.panRight}
         />
+        <div style={spacer} />
       </div>
     </div>
   );

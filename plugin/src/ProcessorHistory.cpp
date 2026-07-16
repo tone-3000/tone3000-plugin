@@ -127,6 +127,7 @@ void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState
     // goes through the background loader — cache-first, network fallback.
     if (modelChanged || !block->loaded) {
       block->loaded = false;
+      block->loadFailed = false;  // fresh load queued below — back to loading UI
       // Project files and presets embed model bytes; seed the in-memory cache
       // with *all* of them so offline model switching keeps working and a
       // later save doesn't silently drop the non-active models. Undo

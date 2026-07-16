@@ -5,5 +5,5 @@
  */
 
 export const CARD_WIDTH = 800;
-// Header (40) + body padding (24) + 200px image + gap (8) + model select (36).
-export const CARD_HEIGHT = 308;
+// Header (40) + body padding (32) + 200px image + gap (22) + model select (36).
+export const CARD_HEIGHT = 330;

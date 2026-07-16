@@ -1,6 +1,30 @@
 import React from 'react';
 import { GRAY } from './theme';
 
+/**
+ * User avatar with recovery: renders `src` when present and swaps in the
+ * person-glyph fallback if it's missing or the network fetch fails (offline /
+ * tone3000.com down). Fills its parent (the circular clip wrapper).
+ */
+export const AvatarImage: React.FC<{ src: string | undefined; alt: string; size: number }> = ({
+  src,
+  alt,
+  size,
+}) => {
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => setFailed(false), [src]);
+
+  if (!src || failed) return <AvatarFallback size={size} />;
+  return (
+    <img
+      src={src}
+      alt={alt}
+      onError={() => setFailed(true)}
+      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+    />
+  );
+};
+
 /** Placeholder avatar (person glyph) shown when a tone's creator has no
     avatar_url. */
 export const AvatarFallback: React.FC<{ size: number }> = ({ size }) => (

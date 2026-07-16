@@ -518,8 +518,10 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
   const int numSamples = buffer.getNumSamples();
   const int numChannels = buffer.getNumChannels();
 
-  // Highest index of an enabled+loaded NAM block. A stereo IR is only worth processing in
-  // true stereo when there is no NAM downstream to collapse the image back to mono.
+  // Highest index of an enabled+loaded NAM block. Used twice: a stereo IR is only worth
+  // processing in true stereo when there is no NAM downstream to collapse the image back to
+  // mono, and NAM blocks *before* this index hand off at calibrated output level (see the
+  // post-model gain stage below) while the last one keeps loudness normalization.
   int lastNamIndex = -1;
   for (int i = 0; i < static_cast<int>(blocks.size()); ++i) {
     const auto& b = blocks[i];
@@ -606,12 +608,42 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
         // Process with the NAM engine (handles mono conversion internally)
         block->namEngine->process(buffer);
 
-        // Per-block NAM loudness normalization target; unity when disabled.
+        // Post-model gain: calibrated hand-off OR loudness normalization,
+        // never both — they have contradictory goals (reproduce the capture
+        // rig's true level vs. make every capture equally loud).
+        //
+        // Calibrated hand-off applies only mid-chain (another NAM downstream)
+        // when calibration is on and the model carries output_level_dbu.
+        // Gain = model output dBu − user's calibration dBu converts the
+        // model's output back into the user's analog reference frame; the
+        // downstream NAM's input calibration then converts from that frame
+        // into its own model's, so the user's setting cancels and the
+        // hand-off carries exactly the level of physically plugging device A
+        // into device B. Normalizing mid-chain instead would wreck the drive
+        // level into the next model that calibration exists to preserve.
+        //
+        // The last NAM block deliberately stays on normalization: calibrated
+        // output at the chain's end would swing overall volume with each
+        // capture's metadata (a cranked-amp model can sit 20+ dB hot). Net
+        // effect: calibration governs drive/character, normalization governs
+        // listening level. No clamp on the hand-off gain — it's a physical
+        // level difference, not a guess — only a metadata sanity check that
+        // falls back to normalization when the value is junk.
         // The smoother was prepared off the RT path (prepareChain / model
         // apply) — here we only ever move its target.
         const float targetLufs = cacheTargetLoudness;  // use live target
         float blockGain = 1.0f;
-        if (cacheNormalize) {
+        bool calibratedHandOff = false;
+        if (cacheCalibrateInput && idx < lastNamIndex && block->namEngine->hasOutputLevel()) {
+          const float modelOutputLevel = static_cast<float>(block->namEngine->getOutputLevel());
+          if (std::isfinite(modelOutputLevel) && modelOutputLevel >= -60.0f &&
+              modelOutputLevel <= 60.0f) {
+            blockGain =
+                juce::Decibels::decibelsToGain(modelOutputLevel - cacheInputCalibrationLevel);
+            calibratedHandOff = true;
+          }
+        }
+        if (!calibratedHandOff && cacheNormalize) {
           float modelLoudnessDb = targetLufs;  // Default fallback
           if (block->namEngine->hasLoudness()) {
             modelLoudnessDb = static_cast<float>(block->namEngine->getLoudness());
@@ -624,7 +656,7 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
         }
         block->namNormalizationSmoother.setTargetValue(blockGain);
 
-        // Apply per-block normalization gain to the buffer
+        // Apply per-block normalization / hand-off gain to the buffer
         auto* left = buffer.getWritePointer(0);
         auto* right = numChannels > 1 ? buffer.getWritePointer(1) : nullptr;
 
@@ -677,8 +709,13 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
     }
 
     // Apply per-block output gain (centered at 0.5 == unity) and mix with dry
-    // Map normalized gain to linear: 0.5 -> 1.0, +/-0.5 -> +/-24 dB range
-    const float gainDb = (block->outputGainNormalized - 0.5f) * 48.0f;  // -24 dB .. +24 dB
+    // Map normalized gain to linear: 0.5 -> 1.0, +/-0.5 -> +/-24 dB range.
+    // IR blocks carry a fixed -18 dB offset on top: IR files are typically
+    // peak-normalized to 0 dBFS, far too hot at unity. The UI knob still
+    // reads relative dB (0 at center) to keep it simple for the user; the
+    // trim is invisible chain gain staging (see gainDbScale in knobScale.ts).
+    const float irOffsetDb = (block->type == ChainBlockType::IR) ? -18.0f : 0.0f;
+    const float gainDb = (block->outputGainNormalized - 0.5f) * 48.0f + irOffsetDb;
     const float targetLinear = juce::Decibels::decibelsToGain(gainDb);
     block->outputGainSmoother.setTargetValue(targetLinear);
     block->mixSmoother.setTargetValue(juce::jlimit(0.0f, 1.0f, block->mixNormalized));

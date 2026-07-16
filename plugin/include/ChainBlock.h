@@ -64,6 +64,12 @@ struct ChainBlock {
   bool loaded;   // True when active model is loaded and ready
   bool enabled;  // True when block is enabled in processing chain
 
+  // True when the last download/prepare of the active model failed (network
+  // down, tone3000.com unreachable, bad model data). The UI swaps its loading
+  // dots for a retry affordance targeting retryModelLoad. Runtime-only —
+  // never persisted; cleared whenever a new load is queued.
+  bool loadFailed{false};
+
   // Set by the audio thread when NAM processing throws (the block is disabled
   // in the same breath). The message thread drains it in getChainState and
   // writes the log line there — string building/logging is not RT-safe.

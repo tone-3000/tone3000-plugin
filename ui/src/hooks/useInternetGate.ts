@@ -3,16 +3,16 @@ import { useCallback, useRef, useState } from 'react';
 /**
  * Instant connectivity check via `navigator.onLine`. `false` means the OS has
  * no network interface up (the "internet not set up" case we're guarding
- * against); `true` doesn't guarantee the wider internet is reachable, but we
- * deliberately skip any network probe to keep the + button instant.
+ * against); `true` doesn't guarantee the wider internet is reachable — that's
+ * what the recovery paths are for (failed-navigation recovery, block retry).
+ * We deliberately skip any network probe to keep the + button instant.
  */
 export function checkInternet(): boolean {
   return typeof navigator === 'undefined' || navigator.onLine !== false;
 }
 
 /**
- * Reusable gate for internet-dependent actions (Select flow, and future
- * online features). Usage:
+ * First line of defence for internet-dependent actions (add / swap / login):
  *
  *   const gate = useInternetGate();
  *   const onAdd = () => gate.requireInternet(() => startSelectFlow());

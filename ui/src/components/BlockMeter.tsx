@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { useMeter, useMeterClip } from '../hooks/useMeters';
 import { METER_MAX_DB, METER_MIN_DB, getGradientColor } from './meterColor';
+import { HELP, helpProps } from './helpText';
 
 interface BlockMeterProps {
   /** Meter id from useMeters (e.g. meterId.blockIn(blockId)). */
@@ -12,7 +13,8 @@ interface BlockMeterProps {
 }
 
 const DOT_SIZE = 4;
-const DOT_GAP = 5;
+/** Matches the main meters' (DbMeter) gap so the rails read as one family. */
+const DOT_GAP = 10;
 
 /**
  * Minimal per-block level meter: a run of dots that always shows the color
@@ -59,7 +61,7 @@ export const BlockMeter: React.FC<BlockMeterProps> = React.memo(function BlockMe
           <div
             key={index}
             onClick={isClipDot && clipped ? clearClip : undefined}
-            title={isClipDot && clipped ? 'Clipped — click to clear' : undefined}
+            {...(isClipDot && clipped ? helpProps(HELP.clipDot) : {})}
             style={{
               width: `${DOT_SIZE}px`,
               height: `${DOT_SIZE}px`,
