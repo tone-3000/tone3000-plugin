@@ -483,7 +483,10 @@ export const Plugin: React.FC = () => {
             <DbMeter type="input" stereo={stereoInput} height={368} />
           </div>
 
-          {/* Chain View - Center (gallery lanes scroll horizontally inside) */}
+          {/* Chain View - Center (gallery lanes scroll horizontally inside).
+              Vertical padding is a minimum gap only (lanes center themselves);
+              it must stay small enough that the 376px stereo stack fits in the
+              middle section even with the hint bar showing. */}
           <div
             style={{
               flex: 1,
@@ -491,7 +494,7 @@ export const Plugin: React.FC = () => {
               overflow: 'hidden',
               minHeight: 0,
               minWidth: 0,
-              padding: '24px 0',
+              padding: '12px 0',
               boxSizing: 'border-box',
             }}
           >

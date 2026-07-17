@@ -37,11 +37,18 @@ have_webkit() {
   { have_lib "libwebkit2gtk-4.0.so" && have_lib "libjavascriptcoregtk-4.0.so" && have_lib "libsoup-2.4.so"; }
 }
 
+# JUCE also dlopens libcurl at runtime for native HTTPS (tone model
+# downloads). It accepts the OpenSSL or GnuTLS flavour, any current SONAME.
+have_curl() {
+  have_lib "libcurl.so" || have_lib "libcurl-gnutls.so"
+}
+
 # Everything the binary needs but may not be on a minimal install.
-# Prints the names of missing components (webkit, gtk3, alsa, freetype).
+# Prints the names of missing components (webkit, curl, gtk3, alsa, freetype).
 missing_deps() {
   local missing=()
   have_webkit             || missing+=("webkit")
+  have_curl               || missing+=("curl")
   have_lib "libgtk-3.so"  || missing+=("gtk3")
   have_lib "libasound.so" || missing+=("alsa")
   have_lib "libfreetype.so" || missing+=("freetype")
@@ -67,24 +74,28 @@ install_command() {
   local missing="$1" pkgs=()
   if command -v apt-get >/dev/null; then
     [[ "$missing" == *webkit* ]]   && pkgs+=("$(apt_pick libwebkit2gtk-4.1-0 libwebkit2gtk-4.0-37)")
+    [[ "$missing" == *curl* ]]     && pkgs+=("$(apt_pick libcurl4t64 libcurl4)")
     [[ "$missing" == *gtk3* ]]     && pkgs+=("$(apt_pick libgtk-3-0t64 libgtk-3-0)")
     [[ "$missing" == *alsa* ]]     && pkgs+=("$(apt_pick libasound2t64 libasound2)")
     [[ "$missing" == *freetype* ]] && pkgs+=("libfreetype6")
     echo "sudo apt-get install -y ${pkgs[*]}"
   elif command -v dnf >/dev/null; then
     [[ "$missing" == *webkit* ]]   && pkgs+=("webkit2gtk4.1")
+    [[ "$missing" == *curl* ]]     && pkgs+=("libcurl")
     [[ "$missing" == *gtk3* ]]     && pkgs+=("gtk3")
     [[ "$missing" == *alsa* ]]     && pkgs+=("alsa-lib")
     [[ "$missing" == *freetype* ]] && pkgs+=("freetype")
     echo "sudo dnf install -y ${pkgs[*]}"
   elif command -v pacman >/dev/null; then
     [[ "$missing" == *webkit* ]]   && pkgs+=("webkit2gtk-4.1")
+    [[ "$missing" == *curl* ]]     && pkgs+=("curl")
     [[ "$missing" == *gtk3* ]]     && pkgs+=("gtk3")
     [[ "$missing" == *alsa* ]]     && pkgs+=("alsa-lib")
     [[ "$missing" == *freetype* ]] && pkgs+=("freetype2")
     echo "sudo pacman -S --needed --noconfirm ${pkgs[*]}"
   elif command -v zypper >/dev/null; then
     [[ "$missing" == *webkit* ]]   && pkgs+=("libwebkit2gtk-4_1-0")
+    [[ "$missing" == *curl* ]]     && pkgs+=("libcurl4")
     [[ "$missing" == *gtk3* ]]     && pkgs+=("libgtk-3-0")
     [[ "$missing" == *alsa* ]]     && pkgs+=("alsa")
     [[ "$missing" == *freetype* ]] && pkgs+=("libfreetype6")
@@ -106,6 +117,9 @@ check_and_install_deps() {
   if [[ "$missing" == *webkit* ]]; then
     echo "  Note: without WebKitGTK the plugin window will render as a black screen."
   fi
+  if [[ "$missing" == *curl* ]]; then
+    echo "  Note: without libcurl, tone model downloads from TONE3000 will fail."
+  fi
 
   # Atomic/immutable distros (Fedora Silverblue/Kinoite, Bazzite, ...): no dnf;
   # packages are layered with rpm-ostree and only appear after a reboot, so
@@ -113,6 +127,7 @@ check_and_install_deps() {
   if [[ -f /run/ostree-booted ]]; then
     local pkgs=()
     [[ "$missing" == *webkit* ]]   && pkgs+=("webkit2gtk4.1")
+    [[ "$missing" == *curl* ]]     && pkgs+=("libcurl")
     [[ "$missing" == *gtk3* ]]     && pkgs+=("gtk3")
     [[ "$missing" == *alsa* ]]     && pkgs+=("alsa-lib")
     [[ "$missing" == *freetype* ]] && pkgs+=("freetype")
@@ -133,7 +148,7 @@ check_and_install_deps() {
   if [[ -z "$cmd" ]]; then
     echo ""
     echo "Could not detect your package manager. Install the WebKitGTK 4.1 (or 4.0),"
-    echo "GTK3, ALSA and FreeType runtime libraries with your distro's package"
+    echo "curl, GTK3, ALSA and FreeType runtime libraries with your distro's package"
     echo "manager, then re-run this script."
     return 1
   fi

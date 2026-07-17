@@ -218,9 +218,28 @@ endif()
 target_compile_definitions(${PROJECT_NAME}
     PUBLIC
         JUCE_WEB_BROWSER=${JUCE_WEB_BROWSER_VALUE}
-        JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
 )
+
+# Native networking (juce::URL / WebInputStream), used for model downloads
+# (ProcessorModelLoader). macOS/Windows use the OS HTTP stacks and ignore
+# JUCE_USE_CURL entirely. On Linux, curl is the ONLY backend with TLS: with
+# JUCE_USE_CURL=0 JUCE falls back to a raw-socket implementation that rejects
+# https:// URLs outright (juce_Network_linux.cpp decomposeURL), so every
+# model_url fetch fails. Load curl lazily so there is no link-time libcurl
+# dependency — JUCE dlopens the versioned SONAMEs (libcurl.so.4,
+# libcurl-gnutls.so.4, ...) at runtime, which exist on end-user systems
+# without any -dev package. Build hosts need the curl headers
+# (libcurl4-openssl-dev; CI installs it).
+if (UNIX AND NOT APPLE)
+    target_compile_definitions(${PROJECT_NAME}
+        PUBLIC
+            JUCE_USE_CURL=1
+            JUCE_LOAD_CURL_SYMBOLS_LAZILY=1
+    )
+else()
+    target_compile_definitions(${PROJECT_NAME} PUBLIC JUCE_USE_CURL=0)
+endif()
 
 # Use native macOS title bar for standalone app
 if (APPLE AND NOT HEADLESS)
