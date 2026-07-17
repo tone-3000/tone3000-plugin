@@ -25,9 +25,21 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # Runtime dependency handling
 # ──────────────────────────────────────────────────────────────────────────────
 
+# Captured once: `ldconfig -p | grep -q ...` (the previous approach) is racy
+# under `set -o pipefail` — grep -q exits as soon as it finds a match, which
+# can SIGPIPE a still-writing ldconfig, and pipefail then reports that SIGPIPE
+# exit as the whole pipeline failing even though grep found the library. That
+# made this script randomly claim present libraries (webkit, gtk3, ...) were
+# missing. Matching in-shell against a single captured snapshot avoids the
+# pipe entirely.
+LDCONFIG_CACHE="$(ldconfig -p 2>/dev/null || true)"
+
 # Returns 0 if a shared library is resolvable by the dynamic loader.
 have_lib() {
-  ldconfig -p 2>/dev/null | grep -q "$1"
+  case "$LDCONFIG_CACHE" in
+    *"$1"*) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 # JUCE dlopens WebKitGTK at runtime, preferring the 4.1 ABI (libsoup3) and
