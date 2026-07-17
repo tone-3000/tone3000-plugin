@@ -97,7 +97,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
 
   // Stereo balance trims for the main gains: 0.5 = centered (no effect),
   // otherwise an opposing ±12 dB trim between L and R on top of the main
-  // level. Only audible on stereo buffers; the UI hides the knobs otherwise.
+  // level. Output balance only applies in stereo mode or mono+spread (see
+  // processBlock); the UI hides the knobs when inactive.
   layout.add(std::make_unique<juce::AudioParameterFloat>(
       juce::ParameterID{"inputBalance", 17}, "inputBalance", 0.0f, 1.0f, 0.5f));
   layout.add(std::make_unique<juce::AudioParameterFloat>(
@@ -1014,12 +1015,18 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
 
   // ###########
   // Output gain per channel (level ±24 dB, balance trim ±12 dB opposing).
+  // Balance only applies when the output image is actually stereo: stereo
+  // mode, or mono mode with spread powered on. Otherwise force center so a
+  // leftover Bal setting from a prior mono+spread session can't skew a
+  // mono (identical L/R) bus — matches the UI hiding the Bal knob.
   // Per-channel output meters ride the same pass.
   // ###########
   {
+    const bool applyOutputBalance = stereoEnabled.load() || cacheSpreadEnabled;
+    const float outputBalance = applyOutputBalance ? cacheOutputBalance : 0.5f;
     float peakL = 0.0f, peakR = 0.0f;
     for (int ch = 0; ch < numChannels; ++ch) {
-      const float gainLinear = mainStageChannelGain(cacheOutputLevel, cacheOutputBalance, ch);
+      const float gainLinear = mainStageChannelGain(cacheOutputLevel, outputBalance, ch);
       float& peak = (ch == 0) ? peakL : peakR;
       auto* channelData = buffer.getWritePointer(ch);
       for (int i = 0; i < numSamples; ++i) {

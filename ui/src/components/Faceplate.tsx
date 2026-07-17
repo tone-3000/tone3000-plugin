@@ -15,8 +15,9 @@ import { ACTIVE_OUTLINE, BORDER, GRAY, HIGHLIGHT } from './theme';
  *
  * Stereo gains: one main level knob per stage plus a small balance knob that
  * trims L/R against each other (±12 dB opposing, center = off). The balance
- * knob only appears when the stage actually runs stereo; the parameter is
- * inert on mono buffers either way. All values are host parameters —
+ * knob only appears when the stage actually runs stereo (stereo mode, or
+ * mono+spread for output); DSP forces center when inactive so a leftover
+ * setting can't skew a mono bus. All values are host parameters —
  * presets/undo get them for free.
  */
 

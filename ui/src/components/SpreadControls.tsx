@@ -19,6 +19,8 @@ import { GRAY, HIGHLIGHT } from './theme';
 
 /** Matches the main faceplate knobs (Input/Gate/tone stack/Output). */
 const KNOB_SIZE = 36;
+/** Companion trim next to Spread — same size language as Bal next to Output. */
+const JITTER_KNOB_SIZE = 24;
 /** Vertically center inline elements on the knob column (knob + label). */
 export const KNOB_CENTER_OFFSET = -11;
 
@@ -56,7 +58,8 @@ export const PillIconButton: React.FC<{
   </button>
 );
 
-/** Spread + jitter knobs with power switch. */
+/** Spread + jitter knobs with power switch. Jitter is a small companion
+ *  knob grouped with Spread the same way Bal sits next to Output. */
 export const SpreadGroup: React.FC<{
   /** Knob center fill — match the surface the group sits on. */
   innerColor?: string;
@@ -71,33 +74,35 @@ export const SpreadGroup: React.FC<{
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'center',
-        gap: '16px',
+        gap: '10px',
         opacity: enabled ? 1 : 0.55,
       }}
     >
-      <KnobControl
-        label="Spread"
-        value={amount}
-        onChange={setAmount}
-        variant="bipolar"
-        size={KNOB_SIZE}
-        labelSize={12}
-        innerColor={innerColor}
-        scale={spreadMsScale}
-        defaultValue={0.5}
-        help={HELP.spread}
-      />
-      <KnobControl
-        label="Jitter"
-        value={jitter}
-        onChange={setJitter}
-        size={KNOB_SIZE}
-        labelSize={12}
-        innerColor={innerColor}
-        scale={jitterMsScale}
-        defaultValue={0}
-        help={HELP.jitter}
-      />
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end', gap: '10px' }}>
+        <KnobControl
+          label="Spread"
+          value={amount}
+          onChange={setAmount}
+          variant="bipolar"
+          size={KNOB_SIZE}
+          labelSize={12}
+          innerColor={innerColor}
+          scale={spreadMsScale}
+          defaultValue={0.5}
+          help={HELP.spread}
+        />
+        <KnobControl
+          label="Jit"
+          value={jitter}
+          onChange={setJitter}
+          size={JITTER_KNOB_SIZE}
+          labelSize={10}
+          innerColor={innerColor}
+          scale={jitterMsScale}
+          defaultValue={0}
+          help={HELP.jitter}
+        />
+      </div>
       <PillIconButton on={enabled} help={HELP.spreadPower} onClick={() => setEnabled(!enabled)}>
         <Power size={12} />
       </PillIconButton>

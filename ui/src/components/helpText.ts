@@ -126,7 +126,7 @@ export const HELP = {
   ),
   outputBalance: knobHelp(
     'Output Balance',
-    'trims output L/R against each other, ±12 dB. Center: off.'
+    'trims output L/R against each other, ±12 dB. Center: off. Active in stereo mode or when mono spread is on.'
   ),
   autoBalance:
     'Auto Balance: matches L/R output level. Click: arm, then play ~2 s · Click again: cancel.',
