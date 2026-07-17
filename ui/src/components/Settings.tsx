@@ -485,10 +485,11 @@ export const Settings: React.FC<SettingsProps> = ({
     >
       <div
         style={{
-          maxWidth: '460px',
+          maxWidth: '600px',
           margin: '0 auto',
-          padding: '48px 24px 40px',
+          padding: '28px 24px 40px',
           color: '#ffffff',
+          boxSizing: 'border-box',
         }}
       >
         {header}

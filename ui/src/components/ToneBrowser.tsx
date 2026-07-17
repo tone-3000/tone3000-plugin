@@ -9,25 +9,24 @@ import {
   X as XIcon,
 } from 'lucide-react';
 import type { T3KClient } from '../t3k/tone3000-client';
-import type { Tone, User } from '../types/tone';
+import type { Tone } from '../types/tone';
 import { GEAR_LABELS, formatLabel, gearLabel } from '../t3k/labels';
 import { AvatarImage } from './AvatarFallback';
 import { FormatBadge } from './FormatBadge';
 import { GearIcon, ToneImage } from './GearIcon';
-import { IconButton } from './IconButton';
 import { BusyOverlay, LoadingDots } from './LoadingDots';
-import { CARD_WIDTH } from './chainLayout';
 import { Tone3000Logo } from './Tone3000Logo';
-import { HELP } from './helpText';
+import { HELP, helpProps } from './helpText';
 import { BORDER, MUTED, SURFACE, SURFACE_RAISED, pillButtonStyle } from './theme';
 
 /**
  * In-plugin tone browser: full-window takeover shown after the user is
- * authenticated (no-prompt OAuth). Quick links to tones across the API's
- * bounded streams (trending / downloads / favorites / created / latest),
- * with a gear-type chip row on trending, plus a persistent CTA into the
- * full TONE3000 catalog via the Select flow. Clicking a card resolves the
- * tone (models + token) and loads it into the chain.
+ * authenticated (no-prompt OAuth). Settings-style layout (title + close in a
+ * centered 600px column, whole page scrolls) with quick links across the
+ * API's bounded streams (trending / downloads / favorites / created /
+ * latest), a gear-type chip row on trending, and a Browse TONE3000 CTA into
+ * the full-catalog Select flow. Clicking a card resolves the tone (models +
+ * token) and loads it into the chain.
  *
  * The stream tabs / gear chips / tone rows / paginator port the tone3000.com
  * web components (Tabs, GearChip, ToneCard's isApiSelect variant, Paginator)
@@ -65,14 +64,9 @@ const PAGE_SIZE = 12;
 /** Remembers the last-viewed stream so the next browse lands on it. */
 const STREAM_STORAGE_KEY = 't3k_browser_stream';
 
-/** Tabs, gear chips and the tone list all align to this column — the same
-    width as the chain's expanded detail card, i.e. the inner main frame. */
-const innerColumnStyle: React.CSSProperties = {
-  width: '100%',
-  maxWidth: `${CARD_WIDTH}px`,
-  margin: '0 auto',
-  boxSizing: 'border-box',
-};
+/** Matches Settings-style column; same width as the tone rows. */
+const COLUMN_MAX_WIDTH = 600;
+const CARD_IMAGE_SIZE = 120;
 
 /** Web GearChip port: rounded-full outline chip, white border when active,
     gear glyph leading the label (currentColor, like the web's inheritColor). */
@@ -173,7 +167,7 @@ const isToneUnavailable = (tone: Tone): boolean =>
  * Web ToneCard port (`isApiSelect` variant, simplified): horizontal list row
  * on a raised surface with no border — image left; title, gear + format,
  * counts and creator stacked right. Secondary text is weight 400 like the
- * web (the plugin body default is 600).
+ * web (the plugin body default is 600). Stats match the gear-type text size.
  */
 const ToneRow: React.FC<{
   tone: Tone;
@@ -207,8 +201,8 @@ const ToneRow: React.FC<{
     >
       <div
         style={{
-          width: '108px',
-          height: '108px',
+          width: `${CARD_IMAGE_SIZE}px`,
+          height: `${CARD_IMAGE_SIZE}px`,
           borderRadius: '8px',
           overflow: 'hidden',
           flexShrink: 0,
@@ -222,7 +216,7 @@ const ToneRow: React.FC<{
           src={tone.images?.[0]}
           alt={tone.title}
           gear={tone.gear}
-          boxSize={108}
+          boxSize={CARD_IMAGE_SIZE}
           draggable={false}
         />
       </div>
@@ -243,7 +237,10 @@ const ToneRow: React.FC<{
             color: '#ffffff',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            lineHeight: 1.3,
           }}
         >
           {tone.title}
@@ -264,10 +261,18 @@ const ToneRow: React.FC<{
           <FormatBadge label={formatLabel(tone.format)} />
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'row', gap: '20px', color: MUTED, fontSize: '13px' }}>
-          <CountStat icon={<Download size={13} />} value={tone.downloads_count ?? 0} />
-          <CountStat icon={<Bookmark size={13} />} value={tone.favorites_count ?? 0} />
-          <CountStat icon={<FolderClosed size={13} />} value={tone.models_count ?? 0} />
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'row',
+            gap: '20px',
+            color: MUTED,
+            fontSize: '14px',
+          }}
+        >
+          <CountStat icon={<Download size={14} />} value={tone.downloads_count ?? 0} />
+          <CountStat icon={<Bookmark size={14} />} value={tone.favorites_count ?? 0} />
+          <CountStat icon={<FolderClosed size={14} />} value={tone.models_count ?? 0} />
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
@@ -405,7 +410,6 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
-  const [user, setUser] = useState<User | null>(null);
   /** Tone id currently being resolved+loaded (blocks further picks). */
   const [pickingId, setPickingId] = useState<number | null>(null);
   const [pickError, setPickError] = useState<string | null>(null);
@@ -415,22 +419,6 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 });
   }, [result]);
-
-  // Signed-in identity chip (design requirement: show who's logged in).
-  useEffect(() => {
-    let cancelled = false;
-    client
-      .getUser()
-      .then((u) => {
-        if (!cancelled) setUser(u);
-      })
-      .catch(() => {
-        // Identity chip is decorative; stream errors surface separately.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [client]);
 
   useEffect(() => {
     let cancelled = false;
@@ -579,73 +567,66 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
     );
   })();
 
-  // Paginated streams pin the paginator over the bottom of the scroll area;
-  // the list scrolls under it and gets extra bottom padding to clear it.
+  // Paginated streams keep the paginator at the end of the scrolled page.
   const showPaginator = !error && result?.totalPages != null && result.totalPages > 1;
 
   return (
     <div
+      ref={scrollRef}
       style={{
         position: 'absolute',
         inset: 0,
         backgroundColor: '#000000',
         zIndex: 2000,
-        display: 'flex',
-        flexDirection: 'column',
+        overflow: 'auto',
         color: '#ffffff',
       }}
     >
-      {/* Header — mirrors the main screen's top bar: logo left, one white
-          close button where the main options normally sit. The browse CTA
-          rides in the header too, but right-aligned to the same centered
-          column as the body content below (not the window edge). */}
       <div
         style={{
-          position: 'relative',
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          backgroundColor: '#000000',
-          padding: '12px 24px',
-          flexShrink: 0,
-          borderBottom: BORDER,
+          maxWidth: `${COLUMN_MAX_WIDTH}px`,
+          margin: '0 auto',
+          padding: '28px 24px 40px',
           boxSizing: 'border-box',
         }}
       >
-        <img src="/t3k.svg" alt="T3K" style={{ height: '30px' }} />
+        {/* Header — title left; Browse + close on the right. */}
         <div
           style={{
-            position: 'absolute',
-            left: '50%',
-            top: '50%',
-            transform: 'translate(-50%, -50%)',
-            width: '100%',
-            maxWidth: `${CARD_WIDTH}px`,
             display: 'flex',
-            justifyContent: 'flex-end',
-            pointerEvents: 'none',
-            boxSizing: 'border-box',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '16px',
+            marginBottom: '28px',
           }}
         >
-          <button
-            onClick={onBrowseTone3000}
-            style={{ ...pillButtonStyle(), gap: '10px', pointerEvents: 'auto' }}
-          >
-            <SearchIcon size={14} />
-            Browse
-            <Tone3000Logo height={12} />
-          </button>
+          <span style={{ fontSize: '22px', fontWeight: 600, color: '#ffffff' }}>Select Tone</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+            <button onClick={onBrowseTone3000} style={{ ...pillButtonStyle(), gap: '10px' }}>
+              <SearchIcon size={14} />
+              Browse
+              <Tone3000Logo height={12} />
+            </button>
+            <button
+              onClick={onClose}
+              {...helpProps(HELP.closeToneBrowser)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#ffffff',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '4px',
+              }}
+            >
+              <XIcon size={20} />
+            </button>
+          </div>
         </div>
-        <IconButton onClick={onClose} help={HELP.closeToneBrowser} size={28}>
-          <XIcon size={18} />
-        </IconButton>
-      </div>
 
-      {/* Stream tabs (underline style) with the signed-in identity pinned
-          right. 24px below the header — same as the main screen's chain. */}
-      <div style={{ padding: '24px 24px 0', flexShrink: 0 }}>
-        <div style={{ ...innerColumnStyle, display: 'flex', alignItems: 'center', gap: '16px' }}>
+        {/* Stream tabs */}
+        <div style={{ marginBottom: '24px' }}>
           <div className="hide-scrollbar" style={{ display: 'flex', overflowX: 'auto' }}>
             {STREAMS.map((s) => (
               <StreamTab
@@ -656,41 +637,18 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
               />
             ))}
           </div>
-          <div style={{ flex: 1 }} />
-          {user && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                minWidth: 0,
-                flexShrink: 0,
-              }}
-            >
-              <div
-                style={{
-                  width: '20px',
-                  height: '20px',
-                  borderRadius: '50%',
-                  overflow: 'hidden',
-                  flexShrink: 0,
-                }}
-              >
-                <AvatarImage src={user.avatar_url} alt={user.username} size={20} />
-              </div>
-              <span style={{ fontSize: '13px', color: MUTED, whiteSpace: 'nowrap' }}>
-                @{user.username}
-              </span>
-            </div>
-          )}
         </div>
-      </div>
 
-      {/* Trending gear chips + pick errors (bottom padding keeps the scroll
-          area from butting right up against the pills) */}
-      {(stream === 'trending' || pickError) && (
-        <div style={{ padding: '12px 24px', flexShrink: 0 }}>
-          <div style={{ ...innerColumnStyle, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {/* Trending gear chips + pick errors */}
+        {(stream === 'trending' || pickError) && (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+              marginBottom: '24px',
+            }}
+          >
             {stream === 'trending' && (
               <FadedScrollRow>
                 {GEAR_CHIPS.map((g) => (
@@ -706,38 +664,24 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
             )}
             {pickError && <span style={{ fontSize: '12px', color: '#ff6b5e' }}>{pickError}</span>}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Vertical tone list */}
-      <div
-        ref={scrollRef}
-        style={{
-          flex: 1,
-          minHeight: 0,
-          overflowY: 'auto',
-          padding: `16px 24px ${showPaginator ? 16 : 24}px`,
-          boxSizing: 'border-box',
-        }}
-      >
-        <div style={innerColumnStyle}>{body}</div>
-      </div>
+        {/* Tone list */}
+        <div style={{ marginBottom: showPaginator ? '16px' : 0 }}>{body}</div>
 
-      {/* Paginator pinned below the list on its own solid black row */}
-      {showPaginator && (
-        <div style={{ flexShrink: 0, padding: '12px 24px 16px', backgroundColor: '#000000' }}>
-          <div style={{ ...innerColumnStyle, display: 'flex', justifyContent: 'flex-end' }}>
-            <div
-              style={{
-                pointerEvents: loading ? 'none' : 'auto',
-                opacity: loading ? 0.5 : 1,
-              }}
-            >
-              <Paginator page={page} totalPages={result!.totalPages!} onPageChange={setPage} />
-            </div>
+        {showPaginator && (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              pointerEvents: loading ? 'none' : 'auto',
+              opacity: loading ? 0.5 : 1,
+            }}
+          >
+            <Paginator page={page} totalPages={result!.totalPages!} onPageChange={setPage} />
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
