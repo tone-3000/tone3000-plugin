@@ -153,7 +153,9 @@ const TileSurface: React.FC<{
           {...(actions?.grip ?? {})}
           onClick={(e) => e.stopPropagation()}
           {...(actions ? helpProps(HELP.dragGrip) : {})}
-          style={{ ...actionButtonStyle, cursor: 'grab', color: '#ffffff' }}
+          // touch-action: none — otherwise touch devices claim the gesture
+          // for lane scrolling and pointercancel kills the drag instantly.
+          style={{ ...actionButtonStyle, cursor: 'grab', color: '#ffffff', touchAction: 'none' }}
         >
           <GripVertical size={14} />
         </div>
@@ -369,6 +371,7 @@ export const AddTile: React.FC<AddTileProps> = ({
             ...actionButtonStyle,
             cursor: 'grab',
             color: '#ffffff',
+            touchAction: 'none',
           }}
         >
           <GripVertical size={14} />
