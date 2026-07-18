@@ -180,6 +180,53 @@ From the repo root, run **`./script/cp-VST3.sh`** or **`./script/cp-AU.sh`** (ma
 
 The plugin is a JUCE processor with a chain of NAM and IR blocks. Audio runs through the chain (with resampling for NAM when the host sample rate differs from the model), then DC blocker and tone EQ. **NeuralAmpModelerCore** (in `plugin/NeuralAmpModelerCore/`) provides the NAM engine; **AudioDSPTools** (in `plugin/AudioDSPTools/`) provides resampling so NAM runs at its native rate.
 
+### Signal flow
+
+The full path, in processing order (`TONE3000Processor::processBlock` in `plugin/src/Processor.cpp`). Stages marked `*` are bypassable / conditional:
+
+```mermaid
+flowchart LR
+    IN([In]) --> IG["Input Level<br/>+ Balance"]
+    IG --> GATE["Noise Gate&nbsp;*"]
+    GATE --> TSPRE["Tone Stack&nbsp;*<br/>(PRE position)"]
+    TSPRE --> RS(("⇅ 48k"))
+    subgraph CHAINS["Tone chains — run at 48 kHz"]
+        direction LR
+        CL["Left chain<br/>(NAM / IR blocks)"]
+        CR["Right chain<br/>(stereo mode only)"]
+    end
+    RS --> CL
+    RS --> CR
+    CL --> RS2(("⇅ 48k"))
+    CR --> RS2
+    RS2 --> SPREAD["Spread&nbsp;*<br/>(delay one side + jitter)"]
+    SPREAD --> PAN["Pan L / Pan R&nbsp;*<br/>(stereo, constant-power)"]
+    PAN --> DCB["DC Blocker<br/>(~20 Hz HPF)"]
+    DCB --> TSPOST["Tone Stack&nbsp;*<br/>(POST position)"]
+    TSPOST --> OG["Output Level<br/>+ Balance"]
+    OG --> OUT([Out])
+```
+
+- **Mono mode** — only the Left chain runs (a stereo bus passes both channels through it together) and the pan stage is skipped. If Spread is on, the chain output is doubled to stereo first, then one side is delayed.
+- **Stereo mode** — channel 0 feeds the Left chain and channel 1 the Right chain independently; the two pan knobs then place each chain in the stereo image with constant-power law.
+- **Tone stack** — one Bass/Middle/Treble EQ that sits either before the chains (**PRE**) or after the DC blocker (**POST**), never both.
+- **48 kHz boundary** — the chains always run at 48 kHz; a Lanczos resampler wraps them when the host rate differs (bypassed at 48 kHz).
+
+Inside every tone block:
+
+```mermaid
+flowchart LR
+    BIN([block in]) --> BIG["In Gain<br/>±24 dB"]
+    BIN -. dry .-> MIX
+    BIG --> MODEL["NAM model / IR<br/>(+ calibration or<br/>loudness normalize)"]
+    MODEL --> BOG["Out Gain<br/>±24 dB"]
+    BOG --> MIX["Dry/Wet Mix"]
+    MIX --> BEQ["6-band EQ&nbsp;*"]
+    BEQ --> BOUT([block out])
+```
+
+Meters tap the signal after input gain (input meters, pre-gate), after each block's In Gain and after its EQ (block LEDs), and after output gain (output meters).
+
 ---
 
 ## Windows: WebView2
