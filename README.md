@@ -71,7 +71,7 @@ git submodule update --init --recursive
 
 ### 3. Configure and build
 
-The default build includes the GUI (Standalone, VST3, AU, AAX). For headless/embedded builds, add `-DHEADLESS=ON`.
+The default build includes the GUI (Standalone, VST3, AU, AAX, LV2, CLAP). For headless/embedded builds, add `-DHEADLESS=ON`. Individual formats can be switched off with `-DBUILD_AAX=OFF`, `-DBUILD_LV2=OFF`, `-DBUILD_CLAP=OFF`. CLAP support comes from [clap-juce-extensions](https://github.com/free-audio/clap-juce-extensions), fetched automatically at configure time.
 
 ```sh
 # Debug
@@ -137,10 +137,14 @@ Copy the built plugin into your system plugin folder (or use [script/](#installi
 |----|--------|--------|
 | **macOS** | VST3 | `~/Library/Audio/Plug-Ins/VST3/` |
 | **macOS** | AU | `~/Library/Audio/Plug-Ins/Components/` |
+| **macOS** | CLAP | `~/Library/Audio/Plug-Ins/CLAP/` |
 | **Windows** | VST3 | `C:\Program Files\Common Files\VST3\` |
+| **Windows** | CLAP | `C:\Program Files\Common Files\CLAP\` |
 | **Linux** | VST3 | `~/.vst3/` |
+| **Linux** | LV2 | `~/.lv2/` |
+| **Linux** | CLAP | `~/.clap/` |
 
-Built artefacts: **Debug** → `build/plugin/TONE3000_artefacts/Debug/VST3/TONE3000.vst3` (or `AU/TONE3000.component` on macOS). **Release** → same path with `Release` instead of `Debug`. Then rescan plugins in your DAW.
+Built artefacts: **Debug** → `build/plugin/TONE3000_artefacts/Debug/VST3/TONE3000.vst3` (plus `AU/TONE3000.component` on macOS, and `LV2/TONE3000.lv2` / `CLAP/TONE3000.clap` alongside). **Release** → same path with `Release` instead of `Debug`. Then rescan plugins in your DAW.
 
 ---
 
@@ -243,7 +247,7 @@ On Windows, the UI uses WebView2. Install it once (e.g. from the repo):
 
 This project is licensed under the **MIT License** (see [LICENSE](LICENSE)).
 
-It uses the **JUCE** framework, which has its own licensing (including optional commercial terms). See [JUCE Licensing](https://juce.com/juce-6-licence) for details. **AudioDSPTools**’ ResamplingContainer is from the iPlug2 project (see its license in that source). **NeuralAmpModelerCore** has its own license terms in that directory.
+It uses the **JUCE** framework, which has its own licensing (including optional commercial terms). See [JUCE Licensing](https://juce.com/juce-6-licence) for details. **AudioDSPTools**’ ResamplingContainer is from the iPlug2 project (see its license in that source). **NeuralAmpModelerCore** has its own license terms in that directory. The CLAP build uses **clap-juce-extensions** and the **CLAP** SDK (both MIT), fetched at configure time.
 
 ---
 

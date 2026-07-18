@@ -286,6 +286,8 @@ jobs:
           STAGE="build/${PKG}"
           mkdir -p "$STAGE"
           cp -r "$ARTEFACTS/VST3/TONE3000.vst3" "$STAGE/"
+          cp -r "$ARTEFACTS/LV2/TONE3000.lv2" "$STAGE/"
+          cp "$ARTEFACTS/CLAP/TONE3000.clap" "$STAGE/"
           cp "$ARTEFACTS/Standalone/TONE3000" "$STAGE/"
           install -m 755 script/installer/linux/install.sh "$STAGE/install.sh"
           install -m 644 script/installer/linux/README.txt "$STAGE/README.txt"

@@ -2,12 +2,14 @@
 # TONE3000 Linux installer.
 #
 # Installs from the extracted tarball (run from inside the extracted folder):
-#   ./install.sh              install VST3 + standalone for the current user
+#   ./install.sh              install VST3 + LV2 + CLAP + standalone for the current user
 #   ./install.sh --check      only check runtime dependencies, install nothing
 #   ./install.sh --uninstall  remove a previous install
 #
 # Install locations (override with env vars):
 #   VST3_DIR  VST3 plug-in dir   (default: ~/.vst3, the standard per-user location)
+#   LV2_DIR   LV2 plug-in dir    (default: ~/.lv2)
+#   CLAP_DIR  CLAP plug-in dir   (default: ~/.clap)
 #   BIN_DIR   standalone app dir (default: ~/.local/bin)
 #
 # Runtime dependencies: the UI runs in a system WebKitGTK webview, which JUCE
@@ -18,6 +20,8 @@
 set -euo pipefail
 
 VST3_DIR="${VST3_DIR:-$HOME/.vst3}"
+LV2_DIR="${LV2_DIR:-$HOME/.lv2}"
+CLAP_DIR="${CLAP_DIR:-$HOME/.clap}"
 BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
@@ -210,6 +214,8 @@ check_linked_libs() {
 
 if [[ "${1:-}" == "--uninstall" ]]; then
   rm -rf "$VST3_DIR/TONE3000.vst3"
+  rm -rf "$LV2_DIR/TONE3000.lv2"
+  rm -f "$CLAP_DIR/TONE3000.clap"
   rm -f "$BIN_DIR/TONE3000"
   echo "TONE3000 uninstalled."
   exit 0
@@ -222,9 +228,11 @@ if [[ "${1:-}" == "--check" ]]; then
   exit "$status"
 fi
 
-if [[ ! -d "$HERE/TONE3000.vst3" || ! -f "$HERE/TONE3000" ]]; then
-  echo "Error: TONE3000.vst3 and/or TONE3000 not found next to this script."
-  echo "Run install.sh from inside the extracted release folder."
+if [[ ! -d "$HERE/TONE3000.vst3" || ! -d "$HERE/TONE3000.lv2" ||
+      ! -f "$HERE/TONE3000.clap" || ! -f "$HERE/TONE3000" ]]; then
+  echo "Error: TONE3000.vst3, TONE3000.lv2, TONE3000.clap and/or TONE3000 not"
+  echo "found next to this script. Run install.sh from inside the extracted"
+  echo "release folder."
   exit 1
 fi
 
@@ -239,6 +247,15 @@ mkdir -p "$VST3_DIR"
 rm -rf "$VST3_DIR/TONE3000.vst3"
 cp -r "$HERE/TONE3000.vst3" "$VST3_DIR/"
 
+echo "Installing LV2 to $LV2_DIR ..."
+mkdir -p "$LV2_DIR"
+rm -rf "$LV2_DIR/TONE3000.lv2"
+cp -r "$HERE/TONE3000.lv2" "$LV2_DIR/"
+
+echo "Installing CLAP to $CLAP_DIR ..."
+mkdir -p "$CLAP_DIR"
+install -m 644 "$HERE/TONE3000.clap" "$CLAP_DIR/TONE3000.clap"
+
 echo "Installing standalone app to $BIN_DIR ..."
 mkdir -p "$BIN_DIR"
 install -m 755 "$HERE/TONE3000" "$BIN_DIR/TONE3000"
@@ -246,6 +263,8 @@ install -m 755 "$HERE/TONE3000" "$BIN_DIR/TONE3000"
 echo ""
 echo "Done."
 echo "  VST3:       $VST3_DIR/TONE3000.vst3 (rescan plug-ins in your DAW)"
+echo "  LV2:        $LV2_DIR/TONE3000.lv2"
+echo "  CLAP:       $CLAP_DIR/TONE3000.clap"
 echo "  Standalone: $BIN_DIR/TONE3000"
 if ! echo ":$PATH:" | grep -q ":$BIN_DIR:"; then
   echo ""

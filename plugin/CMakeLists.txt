@@ -7,6 +7,8 @@ project(TONE3000 VERSION 0.0.1)        # Set version of the plugin
 
 option(HEADLESS "Disable GUI (headless/embedded build)" OFF)
 option(BUILD_AAX "Build AAX (Avid) format" ON)
+option(BUILD_LV2 "Build LV2 format (native Linux plugin standard)" ON)
+option(BUILD_CLAP "Build CLAP format (via clap-juce-extensions)" ON)
 set(_plugin_formats "VST3") # Default plugin format
 
 # Build for Desktop or Embedded
@@ -20,6 +22,9 @@ if (NOT HEADLESS)
     endif()
     if (BUILD_AAX)
         list(APPEND _plugin_formats "AAX")
+    endif()
+    if (BUILD_LV2)
+        list(APPEND _plugin_formats "LV2")
     endif()
     set(VST3_MANIFEST TRUE)                     # Create moduleinfo.json for VST3
     add_compile_definitions(HEADLESS=0)
@@ -86,6 +91,9 @@ juce_add_plugin(${PROJECT_NAME}
     PLUGIN_MANUFACTURER_CODE TFTF
     PLUGIN_CODE ${PLUGIN_CODE}
     FORMATS ${_plugin_formats}
+    # The LV2 URI is the plugin's permanent identity in LV2 hosts (it keys
+    # sessions and presets) — never change it once released.
+    LV2URI "https://www.tone3000.com/plugin"
     PRODUCT_NAME ${PROJECT_NAME}
     NEEDS_WEB_BROWSER ${NEEDS_WEB_BROWSER_VALUE}
     VST3_AUTO_MANIFEST ${VST3_MANIFEST}
@@ -278,6 +286,28 @@ if (WIN32)
             message(STATUS "ASIO disabled — set ASIO_SDK_PATH to the Steinberg ASIO SDK to enable it")
         endif()
     endif()
+endif()
+
+# CLAP format: JUCE has no native support, so the plugin is wrapped with
+# clap-juce-extensions (MIT, the standard route used by Surge, Chow, etc.).
+# It reuses the shared-code target built by juce_add_plugin unchanged and
+# emits a TONE3000_CLAP target whose .clap lands in the artefacts dir next
+# to VST3/LV2. Like the LV2 URI, the CLAP_ID is the plugin's permanent
+# identity in hosts — never change it once released.
+if (NOT HEADLESS AND BUILD_CLAP)
+    # Pinned to a commit: the repo's tags track the CLAP protocol version
+    # (0.26.0 = 2022, pre-JUCE 8) and there are no wrapper releases — JUCE 8
+    # compatibility only exists on main.
+    CPMAddPackage(
+        NAME clap-juce-extensions
+        GITHUB_REPOSITORY free-audio/clap-juce-extensions
+        GIT_TAG 16e9d4ca7b1e86c76e04584b2c08e85a764bcda8
+        SOURCE_DIR ${LIB_DIR}/clap-juce-extensions
+        EXCLUDE_FROM_ALL YES
+    )
+    clap_juce_extensions_plugin(TARGET ${PROJECT_NAME}
+        CLAP_ID "com.tone3000.plugin"
+        CLAP_FEATURES audio-effect distortion)
 endif()
 
 # Treat all warnings as errors
