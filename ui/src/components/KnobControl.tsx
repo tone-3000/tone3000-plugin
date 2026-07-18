@@ -52,6 +52,14 @@ interface KnobControlProps {
 const BASE_SENSITIVITY = 0.006;
 const FINE_FACTOR = 8;
 
+/** Label → value readout swap is debounced on press so a quick tap (e.g.
+    half of a double-tap heading into the type-in editor) never flashes the
+    value. */
+const READOUT_SHOW_MS = 150;
+/** The readout also lingers briefly after release (same hold as the EQ
+    faders) instead of snapping back to the label. */
+const READOUT_HOLD_MS = 250;
+
 /** Bipolar center detent: values within the snap window collapse to exactly
     0.5 so the DSP's "center = skip processing" branch is actually reachable
     by drag (not just by precise pixel luck). Fine mode narrows the window
@@ -80,8 +88,8 @@ export const KnobControl: React.FC<KnobControlProps> = ({
 }) => {
   const knobRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  // The mouseup listener lives on `document` (releases can land anywhere),
-  // so it must ignore mouseups that don't belong to this knob's drag.
+  // The pointerup listener lives on `document` (releases can land anywhere),
+  // so it must ignore releases that don't belong to this knob's drag.
   const draggingRef = useRef(false);
 
   const [dragging, setDragging] = useState(false);
@@ -118,7 +126,7 @@ export const KnobControl: React.FC<KnobControlProps> = ({
     };
     const handleDragPointerMove = (e: PointerEvent) => setFine(e.shiftKey);
 
-    const handleMouseDown = (e: MouseEvent) => {
+    const handlePointerDown = (e: PointerEvent) => {
       // Alt/Option-click: reset to default. The drag still engages beneath,
       // which is harmless — releasing without moving stays at the default.
       if (e.altKey && defaultValueRef.current !== undefined) {
@@ -142,7 +150,7 @@ export const KnobControl: React.FC<KnobControlProps> = ({
       dragStateRef.current?.(true);
     };
 
-    const handleMouseUp = () => {
+    const handlePointerUp = () => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
       setDragging(false);
@@ -161,16 +169,21 @@ export const KnobControl: React.FC<KnobControlProps> = ({
       dragStateRef.current?.(false);
     };
 
+    // Pointer events (not mouse events) so the drag state — and with it the
+    // value readout and pinned hint — also engages for touch drags, which
+    // never synthesize mouse events while moving.
     knobElement.addEventListener('selectstart', preventSelection);
     knobElement.addEventListener('dragstart', preventSelection);
-    knobElement.addEventListener('mousedown', handleMouseDown);
-    document.addEventListener('mouseup', handleMouseUp);
+    knobElement.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('pointerup', handlePointerUp);
+    document.addEventListener('pointercancel', handlePointerUp);
 
     return () => {
       knobElement.removeEventListener('selectstart', preventSelection);
       knobElement.removeEventListener('dragstart', preventSelection);
-      knobElement.removeEventListener('mousedown', handleMouseDown);
-      document.removeEventListener('mouseup', handleMouseUp);
+      knobElement.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('pointerup', handlePointerUp);
+      document.removeEventListener('pointercancel', handlePointerUp);
       window.removeEventListener('keydown', handleShift);
       window.removeEventListener('keyup', handleShift);
       window.removeEventListener('pointermove', handleDragPointerMove);
@@ -217,7 +230,20 @@ export const KnobControl: React.FC<KnobControlProps> = ({
     setEditText(null);
   }, [editText, max, min, scale, variant]);
 
-  const showReadout = !editing && dragging;
+  // Debounced readout visibility: the show timer outlasts a quick tap (so
+  // double-tapping into the editor can't flash the value), and the hide
+  // timer lets the final value linger for a beat after release. A change of
+  // `dragging` cancels whichever timer is pending.
+  const [readoutVisible, setReadoutVisible] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setReadoutVisible(dragging),
+      dragging ? READOUT_SHOW_MS : READOUT_HOLD_MS
+    );
+    return () => window.clearTimeout(timer);
+  }, [dragging]);
+
+  const showReadout = !editing && readoutVisible;
   // Fixed-footprint label slot: readout/input can be wider than the label
   // but must never shift surrounding layout, so the slot is sized once and
   // its content overflows symmetrically.

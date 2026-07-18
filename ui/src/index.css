@@ -104,6 +104,15 @@ body.dragging {
   pointer-events: auto;
 }
 
+/* Touch-only devices (primary input can't hover): the action bar would be
+   unreachable behind :hover, so keep it always visible instead. */
+@media (hover: none) {
+  .gallery-tile .tile-chrome {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
 /* Custom Range Slider Styles */
 input[type='range'] {
   -webkit-appearance: none;

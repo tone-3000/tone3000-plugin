@@ -283,7 +283,7 @@ export const ChainView: React.FC<ChainViewProps> = ({ chain, chainRight, sampleR
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'stretch',
-        gap: '20px',
+        gap: '8px',
         height: '100%',
         boxSizing: 'border-box',
         padding: '0 24px',

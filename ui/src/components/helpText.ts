@@ -15,10 +15,10 @@ import { useSyncExternalStore } from 'react';
 
 // --- store -----------------------------------------------------------------
 
-// Hover tracking is delegated: elements carry a data-help attribute and one
-// document-level mouseover listener resolves the nearest hint under the
-// pointer. Compared to per-element enter/leave handlers this survives
-// nesting (button inside a hoverable tile) and elements unmounting
+// Hover tracking is delegated: elements carry a data-help attribute and
+// document-level mouseover + pointerdown listeners resolve the nearest hint
+// under the pointer. Compared to per-element enter/leave handlers this
+// survives nesting (button inside a hoverable tile) and elements unmounting
 // mid-hover (removing a block never strands its hint on screen).
 //
 // `pinned` overrides hover for the duration of an interaction — a knob drag
@@ -57,10 +57,16 @@ const installDelegation = () => {
     emit();
   };
 
-  document.addEventListener('mouseover', (e) => {
+  const resolve = (e: Event) => {
     const el = e.target instanceof Element ? e.target.closest(`[${HELP_ATTR}]`) : null;
     update(el?.getAttribute(HELP_ATTR) ?? null);
-  });
+  };
+
+  document.addEventListener('mouseover', resolve);
+  // Touch-only devices never hover, so pressing a control is the hint
+  // trigger there (harmless for mouse users — press implies hover). The
+  // hint stays up after the tap until the next press lands elsewhere.
+  document.addEventListener('pointerdown', resolve);
   // Pointer left the window entirely.
   document.addEventListener('mouseout', (e) => {
     if (e.relatedTarget === null) update(null);
