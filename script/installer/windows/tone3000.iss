@@ -45,12 +45,15 @@ Name: "custom"; Description: "Custom installation"; Flags: iscustom
 [Components]
 Name: "standalone"; Description: "Standalone application"; Types: full custom
 Name: "vst3";       Description: "VST3 plug-in";           Types: full custom
+Name: "clap";       Description: "CLAP plug-in";           Types: full custom
 
 [Files]
 ; Standalone app → Program Files\TONE3000
 Source: "{#ArtefactsDir}\Standalone\TONE3000.exe"; DestDir: "{app}"; Components: standalone; Flags: ignoreversion
 ; VST3 bundle → Common Files\VST3 (standard VST3 location)
 Source: "{#ArtefactsDir}\VST3\TONE3000.vst3\*"; DestDir: "{commoncf64}\VST3\TONE3000.vst3"; Components: vst3; Flags: ignoreversion recursesubdirs createallsubdirs
+; CLAP (single file on Windows) → Common Files\CLAP (standard CLAP location)
+Source: "{#ArtefactsDir}\CLAP\TONE3000.clap"; DestDir: "{commoncf64}\CLAP"; Components: clap; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\TONE3000"; Filename: "{app}\TONE3000.exe"; Components: standalone

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build a macOS .pkg installer wizard for TONE3000 (Standalone, VST3, AU, AAX).
+# Build a macOS .pkg installer wizard for TONE3000 (Standalone, VST3, AU, AAX, CLAP).
 #
 # Two modes:
 #
@@ -111,6 +111,7 @@ mkdir -p "$STAGE/standalone/Applications"
 mkdir -p "$STAGE/vst3"
 mkdir -p "$STAGE/au"
 mkdir -p "$STAGE/aax"
+mkdir -p "$STAGE/clap"
 mkdir -p "$COMPONENTS_DIR"
 
 # ─── 1. Stage artefacts at their final layout ────────────────────────────────
@@ -121,6 +122,7 @@ ditto "$RELEASE/Standalone/TONE3000.app" "$STAGE/standalone/Applications/TONE300
 HAVE_VST3=0
 HAVE_AU=0
 HAVE_AAX=0
+HAVE_CLAP=0
 
 if [[ -d "$RELEASE/VST3/TONE3000.vst3" ]]; then
   echo "Staging VST3..."
@@ -140,6 +142,12 @@ if [[ -d "$RELEASE/AAX/TONE3000.aaxplugin" ]]; then
   HAVE_AAX=1
 fi
 
+if [[ -d "$RELEASE/CLAP/TONE3000.clap" ]]; then
+  echo "Staging CLAP..."
+  ditto "$RELEASE/CLAP/TONE3000.clap" "$STAGE/clap/TONE3000.clap"
+  HAVE_CLAP=1
+fi
+
 xattr -cr "$STAGE" 2>/dev/null || true
 
 # ─── 2. Sign each staged bundle ──────────────────────────────────────────────
@@ -149,6 +157,7 @@ sign_bundle "$STAGE/standalone/Applications/TONE3000.app"
 [[ $HAVE_VST3 -eq 1 ]] && sign_bundle "$STAGE/vst3/TONE3000.vst3"
 [[ $HAVE_AU   -eq 1 ]] && sign_bundle "$STAGE/au/TONE3000.component"
 [[ $HAVE_AAX  -eq 1 ]] && sign_bundle "$STAGE/aax/TONE3000.aaxplugin"
+[[ $HAVE_CLAP -eq 1 ]] && sign_bundle "$STAGE/clap/TONE3000.clap"
 
 # ─── 3. Build component .pkg files (one per install location) ────────────────
 
@@ -188,6 +197,15 @@ if [[ $HAVE_AAX -eq 1 ]]; then
     "$COMPONENTS_DIR/_aax.pkg"
 fi
 
+if [[ $HAVE_CLAP -eq 1 ]]; then
+  pkgbuild \
+    --root "$STAGE/clap" \
+    --identifier "com.tone3000.clap" \
+    --version "$VERSION" \
+    --install-location "/Library/Audio/Plug-Ins/CLAP" \
+    "$COMPONENTS_DIR/_clap.pkg"
+fi
+
 # ─── 4. Generate distribution.xml for the components we actually built ──────
 
 DIST_XML="$COMPONENTS_DIR/distribution.xml"
@@ -211,6 +229,7 @@ HAS_CONCLUSION=0
   [[ $HAVE_VST3 -eq 1 ]] && echo '    <line choice="vst3" />'
   [[ $HAVE_AU   -eq 1 ]] && echo '    <line choice="au" />'
   [[ $HAVE_AAX  -eq 1 ]] && echo '    <line choice="aax" />'
+  [[ $HAVE_CLAP -eq 1 ]] && echo '    <line choice="clap" />'
   echo '  </choices-outline>'
 
   cat <<XML
@@ -244,6 +263,15 @@ XML
     <pkg-ref id="com.tone3000.aax" />
   </choice>
   <pkg-ref id="com.tone3000.aax" version="${VERSION}" auth="root">_aax.pkg</pkg-ref>
+XML
+  fi
+
+  if [[ $HAVE_CLAP -eq 1 ]]; then
+    cat <<XML
+  <choice id="clap" title="CLAP Plug-In" description="Installs TONE3000.clap to /Library/Audio/Plug-Ins/CLAP.">
+    <pkg-ref id="com.tone3000.clap" />
+  </choice>
+  <pkg-ref id="com.tone3000.clap" version="${VERSION}" auth="root">_clap.pkg</pkg-ref>
 XML
   fi
 
