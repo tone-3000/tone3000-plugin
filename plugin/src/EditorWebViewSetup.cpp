@@ -350,6 +350,12 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
           }))
       // --- Misc ---------------------------------------------------------------
       .withNativeFunction(
+          // Single source of truth is the CMake project version; the UI uses
+          // this for the startup update check against the tone3000.com API.
+          "getPluginVersion", guarded(0, juce::var(""), [](const juce::Array<juce::var>&) {
+            return juce::var(JucePlugin_VersionString);
+          }))
+      .withNativeFunction(
           // Called by the main webview after the OAuth Select flow completes
           // (and again on every refresh). Stored on the processor so that
           // background model downloads can attach the Bearer header.

@@ -32,6 +32,8 @@ const itemStyle: React.CSSProperties = {
   borderRadius: '8px',
   color: '#ffffff',
   fontSize: '14px',
+  // Menu rows are body text: reset the global 600 default.
+  fontWeight: 400,
   textAlign: 'left',
   cursor: 'pointer',
   whiteSpace: 'nowrap',

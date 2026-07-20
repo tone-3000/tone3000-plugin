@@ -52,7 +52,8 @@ export const OAuthOverlay: React.FC<OAuthOverlayProps> = ({
       {(phase === 'leaving' || phase === 'returning') && <LoadingDots />}
       {phase === 'error' && (
         <>
-          <div style={{ fontSize: 14, opacity: 0.95, maxWidth: 360 }}>
+          {/* Body copy: reset the global 600 default. */}
+          <div style={{ fontSize: 14, fontWeight: 400, opacity: 0.95, maxWidth: 360 }}>
             {error ?? 'Something went wrong completing TONE3000 sign-in.'}
           </div>
           <div style={{ display: 'flex', gap: 12 }}>

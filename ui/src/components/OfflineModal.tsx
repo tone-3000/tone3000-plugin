@@ -39,7 +39,8 @@ export const OfflineModal: React.FC<OfflineModalProps> = ({ open, onRetry, onDis
       }}
     >
       <WifiOff size={28} style={{ opacity: 0.9 }} />
-      <div style={{ fontSize: 14, opacity: 0.95, maxWidth: 360 }}>
+      {/* Body copy: reset the global 600 default. */}
+      <div style={{ fontSize: 14, fontWeight: 400, opacity: 0.95, maxWidth: 360 }}>
         No internet connection. Connect to browse and load tones from TONE3000.
       </div>
       <div style={{ display: 'flex', gap: 12 }}>

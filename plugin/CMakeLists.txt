@@ -3,7 +3,15 @@ cmake_minimum_required(VERSION 3.22.1)
 # Required by JUCE (Change these to project specs)
 set(PLUGIN_NAME "TONE3000")            # Name of the plugin (used in the UI)
 set(PLUGIN_CODE T3K0)                # Unique 4-letter code for the plugin
-project(TONE3000 VERSION 0.0.1)        # Set version of the plugin
+
+# Version comes from the repo-root VERSION file (single source of truth;
+# bump with script/set-version.sh). Read here too so this directory still
+# configures standalone.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION" T3K_VERSION)
+string(STRIP "${T3K_VERSION}" T3K_VERSION)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ../VERSION)
+
+project(TONE3000 VERSION ${T3K_VERSION})   # Set version of the plugin
 
 option(HEADLESS "Disable GUI (headless/embedded build)" OFF)
 option(BUILD_AAX "Build AAX (Avid) format" ON)

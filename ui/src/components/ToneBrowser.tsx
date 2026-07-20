@@ -502,6 +502,7 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
             padding: '64px 0',
             color: MUTED,
             fontSize: '13px',
+            fontWeight: 400,
             textAlign: 'center',
           }}
         >
@@ -662,7 +663,11 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
                 ))}
               </FadedScrollRow>
             )}
-            {pickError && <span style={{ fontSize: '12px', color: '#ff6b5e' }}>{pickError}</span>}
+            {pickError && (
+              <span style={{ fontSize: '12px', fontWeight: 400, color: '#ff6b5e' }}>
+                {pickError}
+              </span>
+            )}
           </div>
         )}
 

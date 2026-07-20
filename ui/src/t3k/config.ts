@@ -26,6 +26,15 @@ export const T3K_API = (
 export const PUBLISHABLE_KEY =
   (import.meta.env.VITE_T3K_PUBLISHABLE_KEY as string | undefined) ?? '';
 
+// UPDATE_NOTICE_ENABLED: startup update check (see useUpdateNotice). Off by
+//   default so forks never ping tone3000.com; enable with
+//   `VITE_T3K_UPDATE_NOTICE=true`. The endpoint lives on the same origin as
+//   everything else (T3K_API), so a staging override redirects it too.
+export const UPDATE_NOTICE_ENABLED =
+  (import.meta.env.VITE_T3K_UPDATE_NOTICE as string | undefined) === 'true';
+
+export const UPDATE_CHECK_URL = `${T3K_API}/api/v1/plugin/version`;
+
 // Model-architecture `2` — passed to the Select OAuth URL and to `GET /api/v1/models`
 // only when the tone is format=nam. IR and other formats omit the list-models filter.
 // Hardcoded because the plugin runtime only loads v2 NAM weights.

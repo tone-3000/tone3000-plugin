@@ -44,6 +44,13 @@ jobs:
         with:
           submodules: recursive
 
+      # Single source of truth: the repo-root VERSION file (CMake and the
+      # packaging scripts read it directly; CI exports it for the steps that
+      # can't).
+      - name: Read version
+        shell: bash
+        run: echo "T3K_VERSION=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_ENV"
+
       - name: Install Linux dependencies
         if: matrix.os == 'linux'
         run: |
@@ -227,9 +234,10 @@ jobs:
           set -euo pipefail
           ./script/create-pkg.sh
 
-          # Tag the installer as universal.
+          # Tag the installer with platform + arch (matches the Windows/Linux
+          # artifact naming: TONE3000-v<version>-<platform>-<arch>).
           SRC=$(ls build/TONE3000-v*.pkg | head -n 1)
-          DEST="build/$(basename "${SRC%.pkg}")-universal.pkg"
+          DEST="build/$(basename "${SRC%.pkg}")-macos-universal.pkg"
           mv "$SRC" "$DEST"
           echo "Renamed installer → $DEST"
 
@@ -247,8 +255,8 @@ jobs:
         if: matrix.os == 'macos' && success()
         uses: actions/upload-artifact@v4
         with:
-          name: TONE3000-${{ matrix.name }}-${{ env.BUILD_TYPE }}
-          path: build/TONE3000-v*-universal.pkg
+          name: TONE3000-v${{ env.T3K_VERSION }}-${{ matrix.os }}-${{ matrix.arch }}
+          path: build/TONE3000-v*-macos-universal.pkg
           if-no-files-found: error
 
       # ── Windows: build a setup.exe with Inno Setup ───────────────────────────
@@ -262,7 +270,7 @@ jobs:
           if (-not (Test-Path $iscc)) {
             choco install innosetup -y --no-progress
           }
-          & $iscc /DVersion=0.0.1 `
+          & $iscc /DVersion=$env:T3K_VERSION `
             /DArtefactsDir="$env:GITHUB_WORKSPACE\build\plugin\TONE3000_artefacts\${{ env.BUILD_TYPE }}" `
             /DOutputDir="$env:GITHUB_WORKSPACE\build" `
             script\installer\windows\tone3000.iss
@@ -272,7 +280,7 @@ jobs:
         if: matrix.os == 'windows' && success()
         uses: actions/upload-artifact@v4
         with:
-          name: TONE3000-${{ matrix.name }}-${{ env.BUILD_TYPE }}
+          name: TONE3000-v${{ env.T3K_VERSION }}-${{ matrix.os }}-${{ matrix.arch }}
           path: build/TONE3000-v*-setup.exe
           if-no-files-found: error
 
@@ -281,7 +289,7 @@ jobs:
         if: matrix.os == 'linux'
         run: |
           set -euo pipefail
-          PKG="TONE3000-v0.0.1-linux-x64"
+          PKG="TONE3000-v${T3K_VERSION}-linux-x64"
           ARTEFACTS="build/plugin/TONE3000_artefacts/${{ env.BUILD_TYPE }}"
           STAGE="build/${PKG}"
           mkdir -p "$STAGE"
@@ -298,6 +306,6 @@ jobs:
         if: matrix.os == 'linux' && success()
         uses: actions/upload-artifact@v4
         with:
-          name: TONE3000-${{ matrix.name }}-${{ env.BUILD_TYPE }}
+          name: TONE3000-v${{ env.T3K_VERSION }}-${{ matrix.os }}-${{ matrix.arch }}
           path: build/TONE3000-v*-linux-x64.tar.gz
           if-no-files-found: error

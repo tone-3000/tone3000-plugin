@@ -4,6 +4,7 @@ import { useParameter } from '../hooks/useParameter';
 import { useNativeFunction } from '../hooks/useFunction';
 import { setHintsEnabled, useHintsEnabled } from './helpText';
 import type { InputMode } from '../types/chain';
+import type { UpdateNoticeData } from '../hooks/useUpdateNotice';
 import { MUTED, SUBTLE } from './theme';
 
 /**
@@ -22,6 +23,11 @@ interface SettingsProps {
   standalone: boolean;
   inputMode: InputMode;
   onSetInputMode: (mode: InputMode) => void;
+  /** Running build version ("" outside the plugin). */
+  version: string;
+  /** Newer published build, if the startup check found one (even if the
+      startup modal was dismissed) — shows an update button in the footer. */
+  update: UpdateNoticeData | null;
 }
 
 const INPUT_MODE_OPTIONS: { value: InputMode; label: string }[] = [
@@ -232,6 +238,8 @@ export const Settings: React.FC<SettingsProps> = ({
   standalone,
   inputMode,
   onSetInputMode,
+  version,
+  update,
 }) => {
   const [screen, setScreen] = useState<'main' | 'advanced'>('main');
 
@@ -376,6 +384,34 @@ export const Settings: React.FC<SettingsProps> = ({
           Advanced
         </button>
       </div>
+
+      {/* Version footer. When the startup check found a newer build (even if
+          its modal was dismissed), offer the update here too. */}
+      {(version || update) && (
+        <div style={{ marginTop: '8px' }}>
+          {update && (
+            <a
+              href={update.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                ...ctaButtonStyle,
+                display: 'block',
+                boxSizing: 'border-box',
+                textDecoration: 'none',
+                marginBottom: '12px',
+              }}
+            >
+              Update to v{update.version}
+            </a>
+          )}
+          {version && (
+            <p style={{ ...descriptionStyle, fontSize: '12px', color: SUBTLE, margin: 0 }}>
+              TONE3000 v{version}
+            </p>
+          )}
+        </div>
+      )}
     </>
   );
 

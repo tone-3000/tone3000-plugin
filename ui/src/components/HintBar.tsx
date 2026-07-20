@@ -36,6 +36,8 @@ export const HintBar: React.FC = () => {
           flex: 1,
           minWidth: 0,
           fontSize: '10px',
+          // Hint sentences are body text: reset the global 600 default.
+          fontWeight: 400,
           lineHeight: 1,
           color: GRAY,
           whiteSpace: 'nowrap',

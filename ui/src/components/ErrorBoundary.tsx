@@ -64,6 +64,7 @@ export class ErrorBoundary extends React.Component<
         <div
           style={{
             fontSize: 12,
+            fontWeight: 400,
             opacity: 0.7,
             maxWidth: 480,
             maxHeight: 120,
@@ -105,7 +106,7 @@ export class ErrorBoundary extends React.Component<
             Copy logs
           </button>
         </div>
-        <div style={{ fontSize: 11, opacity: 0.45 }}>
+        <div style={{ fontSize: 11, fontWeight: 400, opacity: 0.45 }}>
           The error has been written to the TONE3000 log file.
         </div>
       </div>

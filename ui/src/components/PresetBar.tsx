@@ -38,6 +38,8 @@ const inputStyle: React.CSSProperties = {
   borderRadius: '10px',
   color: '#ffffff',
   fontSize: '13px',
+  // Typed text and placeholders are body text: reset the global 600 default.
+  fontWeight: 400,
   padding: '9px 12px',
   outline: 'none',
 };
@@ -197,6 +199,7 @@ export const PresetBar: React.FC<PresetBarProps> = ({
               textAlign: 'left',
               color: isActive ? '#ffffff' : MUTED,
               fontSize: '13px',
+              fontWeight: 400,
               cursor: 'pointer',
               padding: 0,
               overflow: 'hidden',
@@ -260,6 +263,7 @@ export const PresetBar: React.FC<PresetBarProps> = ({
             border: 'none',
             color: active ? '#ffffff' : MUTED,
             fontSize: '12px',
+            fontWeight: 400,
             cursor: 'pointer',
             // Constant width so the pill never resizes with the name; long
             // names ellipsize.
@@ -376,7 +380,7 @@ export const PresetBar: React.FC<PresetBarProps> = ({
               </>
             )}
             {filtered.length === 0 && (
-              <div style={{ color: MUTED, fontSize: '13px', padding: '12px 4px' }}>
+              <div style={{ color: MUTED, fontSize: '13px', fontWeight: 400, padding: '12px 4px' }}>
                 {presets.length === 0 ? 'No presets yet — save one to get started.' : 'No matches.'}
               </div>
             )}

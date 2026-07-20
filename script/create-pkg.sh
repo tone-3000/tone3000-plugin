@@ -41,7 +41,8 @@
 
 set -euo pipefail
 
-VERSION="0.0.1"
+# Version comes from the repo-root VERSION file (single source of truth).
+VERSION="$(tr -d '[:space:]' < "$(dirname "$0")/../VERSION")"
 PKG_NAME="TONE3000-v${VERSION}"
 RELEASE="${RELEASE:-./build/plugin/TONE3000_artefacts/Release}"
 STAGE="${STAGE:-./build/pkg-stage}"

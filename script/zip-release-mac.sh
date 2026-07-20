@@ -16,7 +16,8 @@
 
 set -euo pipefail
 
-VERSION="0.0.1"
+# Version comes from the repo-root VERSION file (single source of truth).
+VERSION="$(tr -d '[:space:]' < "$(dirname "$0")/../VERSION")"
 ZIP_NAME="TONE3000-v${VERSION}-mac"
 BUILD_DIR="${BUILD_DIR:-./build/plugin/TONE3000_artefacts/Release}"
 ZIP_STAGE="${ZIP_STAGE:-./build/zip-mac-temp}"

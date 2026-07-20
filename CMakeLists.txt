@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.22.1)
 
-project(TONE3000 VERSION 0.0.1 LANGUAGES CXX)
+# Single source of truth for the plugin version (also read by
+# plugin/CMakeLists.txt, the packaging scripts and CI). Bump with
+# script/set-version.sh.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" T3K_VERSION)
+string(STRIP "${T3K_VERSION}" T3K_VERSION)
+# Reconfigure automatically when the VERSION file changes.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS VERSION)
+
+project(TONE3000 VERSION ${T3K_VERSION} LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs)

@@ -26,6 +26,8 @@ import { T3K_API, T3K_ARCHITECTURE } from '../t3k/config';
 import { OAuthOverlay } from './OAuthOverlay';
 import { OfflineModal } from './OfflineModal';
 import { ToneBrowser } from './ToneBrowser';
+import { UpdateNotice } from './UpdateNotice';
+import { useUpdateNotice } from '../hooks/useUpdateNotice';
 
 // Swap targets must survive the Select flow's full-page OAuth redirect (the
 // webview navigates to tone3000.com and back, remounting React), so the
@@ -296,6 +298,10 @@ export const Plugin: React.FC = () => {
   const internetGate = useInternetGate();
   const { requireInternet } = internetGate;
 
+  // Non-blocking update check (enabled via VITE_T3K_UPDATE_NOTICE); also
+  // resolves the running build's version for the Settings footer.
+  const { notice: updateNotice, update, localVersion, remindLater } = useUpdateNotice();
+
   // Adding routes to a lane via the native active-edit side (it has to
   // survive the OAuth redirect, so it lives in native state, not React's).
   // Signed in: straight to the in-plugin tone browser. Signed out: run the
@@ -556,6 +562,8 @@ export const Plugin: React.FC = () => {
           standalone={standalone}
           inputMode={inputMode}
           onSetInputMode={(mode) => actions.setInputMode(mode)}
+          version={localVersion}
+          update={update}
         />
       )}
 
@@ -576,6 +584,9 @@ export const Plugin: React.FC = () => {
         onRetry={internetGate.retry}
         onDismiss={internetGate.dismiss}
       />
+
+      {/* Update available — below OAuth/offline (z 3000) so those always win. */}
+      <UpdateNotice notice={updateNotice} onRemindLater={remindLater} />
     </div>
   );
 };

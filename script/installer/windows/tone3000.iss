@@ -1,16 +1,18 @@
 ; Inno Setup script for the TONE3000 Windows installer.
 ; Compiled in CI with ISCC (preinstalled on GitHub windows-latest runners):
 ;
-;   iscc /DVersion=0.0.1 /DArtefactsDir=..\..\..\build\plugin\TONE3000_artefacts\Release script\installer\windows\tone3000.iss
+;   iscc /DVersion=x.y.z /DArtefactsDir=..\..\..\build\plugin\TONE3000_artefacts\Release script\installer\windows\tone3000.iss
 ;
 ; Defines (override with /D on the command line):
-;   Version       plugin version string (default 0.0.1)
+;   Version       plugin version string — REQUIRED; pass the contents of the
+;                 repo-root VERSION file (single source of truth, no default
+;                 here so the installer can never ship a stale version)
 ;   ArtefactsDir  path to the JUCE Release artefacts dir, absolute or relative
 ;                 to this script (default ..\..\..\build\plugin\TONE3000_artefacts\Release)
 ;   OutputDir     where the setup exe is written (default ..\..\..\build)
 
 #ifndef Version
-  #define Version "0.0.1"
+  #pragma error "Version not set - pass /DVersion=x.y.z (from the repo-root VERSION file)"
 #endif
 #ifndef ArtefactsDir
   #define ArtefactsDir "..\..\..\build\plugin\TONE3000_artefacts\Release"
