@@ -13,8 +13,8 @@ import type { Model } from '../types/tone';
  * it is either a `useChainState` action (stable) or a stable callback.
  */
 export interface ChainActions {
-  /** Launch the Select flow, adding to the given lane's insert slot. */
-  addModel: (side: ChainSide) => void;
+  /** Launch the Select flow, adding into the clicked insert slot. */
+  addModel: (side: ChainSide, insertBlockId: string) => void;
   removeBlock: (blockId: string) => void;
   /** Launch the Select flow to replace this block's tone in place. */
   swapBlock: (blockId: string) => void;

@@ -34,10 +34,13 @@ enum class ChainSide { Left, Right };
 constexpr int kNumLanes = 2;
 inline int laneIndex(ChainSide side) { return side == ChainSide::Right ? 1 : 0; }
 
-// Fixed IDs for the insert/select placeholder blocks (pass-through, no audio effect).
-// Each chain owns its own placeholder so block ids stay globally unique.
-constexpr const char* INSERT_BLOCK_ID = "select-insert";
-constexpr const char* INSERT_BLOCK_ID_RIGHT = "select-insert-right";
+// Minimum tiles per lane. A lane always presents at least this many blocks
+// (tones + insert placeholders), and always at least one insert placeholder —
+// so an empty lane shows kMinLaneSlots empty slots, and once the user has
+// filled them all there is still one trailing empty slot to add into. The
+// invariant (insertCount == max(kMinLaneSlots - toneCount, 1)) is enforced by
+// TONE3000Processor::normalizeLaneInserts after every structural change.
+constexpr int kMinLaneSlots = 5;
 
 // Chain block data structure
 struct ChainBlock {

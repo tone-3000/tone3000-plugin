@@ -25,9 +25,11 @@ TONE3000Processor::TONE3000Processor()
       trebleFilter(juce::dsp::IIR::Coefficients<float>::makeHighShelf(48000, 4000.0f, 1.0f, 1.0f)),
       loadingThreadPool(2) {  // 2 threads for background loading
   resolveParamRefs();
-  // Always start with the insert block (pass-through placeholder for "add tone" position)
-  lane(ChainSide::Left)
-      .push_back(std::make_unique<ChainBlock>(INSERT_BLOCK_ID, ChainBlockType::INSERT));
+  // Every lane starts at its minimum slot layout (kMinLaneSlots pass-through
+  // insert placeholders). The right lane stays invisible until stereo mode is
+  // enabled, but seeding it now keeps the invariant unconditional.
+  for (auto& l : lanes)
+    normalizeLaneInserts(l);
   // Built once (capturing only `this`) so invoking the boundary on the audio
   // thread never constructs a std::function per block.
   chainStageFunc = [this](float** inputs, float** outputs, int numFrames) {

@@ -19,6 +19,13 @@ const SIDE_COLORS = ['#0000FF', '#FFFF00', '#FFFF00', '#FF0000', '#FF0000', '#FF
 const DIM_OPACITY = 0.14;
 const POLL_MS = 50;
 
+// Tapered panel geometry from the reference SVG (50×181 with the short inner
+// edge running from y=30 to y=151).
+const BAR_WIDTH = 50;
+const BAR_HEIGHT = 181;
+const BAR_TAPER_TOP = (30 / 181) * 100;
+const BAR_TAPER_BOTTOM = (151 / 181) * 100;
+
 const frequencyToNote = (frequency: number) => {
   const midi = 69 + 12 * Math.log2(frequency / 440);
   const nearest = Math.round(midi);
@@ -102,14 +109,20 @@ export const TunerView: React.FC = () => {
   const renderBars = (side: 'left' | 'right', litCount: number) => {
     // Bars ordered outermost → innermost for the left side, mirrored for right.
     const indices = side === 'left' ? [5, 4, 3, 2, 1, 0] : [0, 1, 2, 3, 4, 5];
+    // Tapered panel from the reference SVG (50×181: full-height outer edge,
+    // inner edge running 30→151). The short edge faces the center, so both
+    // sides read as receding toward the note.
+    const clipPath =
+      side === 'left'
+        ? `polygon(0 0, 100% ${BAR_TAPER_TOP}%, 100% ${BAR_TAPER_BOTTOM}%, 0 100%)`
+        : `polygon(100% 0, 0 ${BAR_TAPER_TOP}%, 0 ${BAR_TAPER_BOTTOM}%, 100% 100%)`;
     return (
       <div
         style={{
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'center',
-          gap: '16px',
-          transform: `perspective(700px) rotateY(${side === 'left' ? 30 : -30}deg)`,
+          gap: '12px',
         }}
       >
         {indices.map((i) => {
@@ -118,9 +131,10 @@ export const TunerView: React.FC = () => {
             <div
               key={i}
               style={{
-                width: '36px',
-                height: `${170 + i * 18}px`,
+                width: `${BAR_WIDTH}px`,
+                height: `${BAR_HEIGHT}px`,
                 backgroundColor: SIDE_COLORS[i],
+                clipPath,
                 opacity: lit ? 1 : DIM_OPACITY,
                 transition: 'opacity 90ms linear',
                 flexShrink: 0,
@@ -132,14 +146,17 @@ export const TunerView: React.FC = () => {
     );
   };
 
+  // 61×53 triangle per the reference SVG (wider than tall, point centered).
   const triangle = (direction: 'up' | 'down', lit: boolean) => (
     <div
       style={{
-        width: 0,
-        height: 0,
-        borderLeft: '26px solid transparent',
-        borderRight: '26px solid transparent',
-        [direction === 'up' ? 'borderBottom' : 'borderTop']: '32px solid #0000FF',
+        width: '61px',
+        height: '53px',
+        backgroundColor: '#0000FF',
+        clipPath:
+          direction === 'up'
+            ? 'polygon(50% 0, 100% 100%, 0 100%)'
+            : 'polygon(0 0, 100% 0, 50% 100%)',
         opacity: lit ? 1 : DIM_OPACITY,
         transition: 'opacity 90ms linear',
       }}
@@ -166,7 +183,7 @@ export const TunerView: React.FC = () => {
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: '48px',
+          gap: '16px',
         }}
       >
         {renderBars('left', leftLit)}
@@ -178,7 +195,7 @@ export const TunerView: React.FC = () => {
             flexDirection: 'column',
             alignItems: 'center',
             gap: '18px',
-            minWidth: '160px',
+            minWidth: '120px',
           }}
         >
           {/* Top triangle points down: lit when sharp ("tune down") or in tune */}
@@ -208,7 +225,7 @@ export const TunerView: React.FC = () => {
               transition: 'opacity 150ms linear',
             }}
           >
-            {`${cents > 0 ? '+' : ''}${Math.round(cents)}¢ · ${frequency.toFixed(1)} Hz`}
+            {`${frequency.toFixed(1)} Hz`}
           </div>
           {/* Bottom triangle points up: lit when flat ("tune up") or in tune */}
           {triangle('up', inTune || isFlat)}

@@ -160,34 +160,36 @@ const TileSurface: React.FC<{
           <GripVertical size={14} />
         </div>
         <div style={{ flex: 1 }} />
-        <button
-          onClick={actions?.onTogglePower}
-          onMouseDown={preventFocus}
-          {...(actions ? helpProps(HELP.blockPower) : {})}
-          style={{
-            ...actionButtonStyle,
-            color: enabled ? '#ffffff' : GRAY,
-            backgroundColor: enabled ? 'transparent' : HIGHLIGHT,
-          }}
-        >
-          <Power size={14} />
-        </button>
-        <button
-          onClick={actions?.onSwap}
-          onMouseDown={preventFocus}
-          {...(actions ? helpProps(HELP.swapTone) : {})}
-          style={{ ...actionButtonStyle, color: '#ffffff' }}
-        >
-          <ArrowLeftRight size={14} />
-        </button>
-        <button
-          onClick={actions?.onRemove}
-          onMouseDown={preventFocus}
-          {...(actions ? helpProps(HELP.removeBlock) : {})}
-          style={{ ...actionButtonStyle, color: '#ffffff' }}
-        >
-          <Trash2 size={14} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <button
+            onClick={actions?.onTogglePower}
+            onMouseDown={preventFocus}
+            {...(actions ? helpProps(HELP.blockPower) : {})}
+            style={{
+              ...actionButtonStyle,
+              color: enabled ? '#ffffff' : GRAY,
+              backgroundColor: enabled ? 'transparent' : HIGHLIGHT,
+            }}
+          >
+            <Power size={14} />
+          </button>
+          <button
+            onClick={actions?.onSwap}
+            onMouseDown={preventFocus}
+            {...(actions ? helpProps(HELP.swapTone) : {})}
+            style={{ ...actionButtonStyle, color: '#ffffff' }}
+          >
+            <ArrowLeftRight size={14} />
+          </button>
+          <button
+            onClick={actions?.onRemove}
+            onMouseDown={preventFocus}
+            {...(actions ? helpProps(HELP.removeBlock) : {})}
+            style={{ ...actionButtonStyle, color: '#ffffff' }}
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
       </div>
 
       {/* Corner LED: output level + latching clip (bottom corner keeps it
@@ -300,34 +302,57 @@ const addTileFaceStyle = (size: number): React.CSSProperties => ({
   boxSizing: 'border-box',
 });
 
+/** Header chrome for an insert tile, mirroring the tone tiles' layout: the
+    drag grip at the top-left. No translucent strip — there's no artwork to
+    read against, only the tile's flat surface. Revealed on hover via the
+    shared `.gallery-tile .tile-chrome` CSS (always visible on touch-only
+    devices — see index.css); the drag ghost pins it with tile-chrome-visible. */
+const AddTileHeader: React.FC<{ grip?: React.HTMLAttributes<HTMLDivElement> }> = ({ grip }) => (
+  <div
+    className="tile-chrome"
+    style={{
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      display: 'flex',
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: '4px',
+    }}
+  >
+    <div
+      {...(grip ?? {})}
+      onClick={(e) => e.stopPropagation()}
+      {...(grip ? helpProps(HELP.dragGrip) : {})}
+      // touch-action: none — otherwise touch devices claim the gesture
+      // for lane scrolling and pointercancel kills the drag instantly.
+      style={{
+        ...actionButtonStyle,
+        cursor: grip ? 'grab' : 'grabbing',
+        color: '#ffffff',
+        touchAction: 'none',
+      }}
+    >
+      <GripVertical size={14} />
+    </div>
+  </div>
+);
+
 interface AddTileProps {
-  /** Insert slot block id ('select-insert' or 'select-insert-right'). */
+  /** Insert slot block id. */
   id: string;
   size: number;
   routing: AddTileRouting;
-  /** Reorderable via its grip. Off for an empty lane's tiles (nothing to
-      reorder around) — the grip hides too. */
-  draggable?: boolean;
-  /** Accepts drops (cross-lane moves land before it). Off for the purely
-      decorative second tile of an empty lane's pair. */
-  droppable?: boolean;
   onClick: () => void;
 }
 
 /** The insert slot as a dashed add tile — sortable so the insert point can be
     repositioned within its lane, like any other block. Routing lines continue
     the lane's connector line through to the plus circle. */
-export const AddTile: React.FC<AddTileProps> = ({
-  id,
-  size,
-  routing,
-  draggable = true,
-  droppable = true,
-  onClick,
-}) => {
+export const AddTile: React.FC<AddTileProps> = ({ id, size, routing, onClick }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
-    disabled: { draggable: !draggable, droppable: !droppable },
   });
 
   const routingLine = (edge: 'left' | 'right') => (
@@ -347,6 +372,7 @@ export const AddTile: React.FC<AddTileProps> = ({
     <div
       ref={setNodeRef}
       onClick={onClick}
+      className="gallery-tile"
       {...helpProps(HELP.addTile)}
       style={{
         ...addTileFaceStyle(size),
@@ -358,25 +384,7 @@ export const AddTile: React.FC<AddTileProps> = ({
     >
       {!isDragging && (routing === 'left' || routing === 'both') && routingLine('left')}
       {!isDragging && (routing === 'right' || routing === 'both') && routingLine('right')}
-      {draggable && (
-        <div
-          {...attributes}
-          {...listeners}
-          onClick={(e) => e.stopPropagation()}
-          {...helpProps(HELP.dragGrip)}
-          style={{
-            position: 'absolute',
-            top: '4px',
-            left: '4px',
-            ...actionButtonStyle,
-            cursor: 'grab',
-            color: '#ffffff',
-            touchAction: 'none',
-          }}
-        >
-          <GripVertical size={14} />
-        </div>
-      )}
+      <AddTileHeader grip={{ ...attributes, ...listeners }} />
       <PlusCircle size={40} strokeWidth={1} />
     </div>
   );
@@ -389,19 +397,11 @@ export const AddTile: React.FC<AddTileProps> = ({
 export const GalleryTileGhost: React.FC<{ item: ChainItem; size: number }> = ({ item, size }) => {
   if (isInsertSlot(item)) {
     return (
-      <div style={{ ...addTileFaceStyle(size), opacity: DRAG_GHOST_OPACITY, cursor: 'grabbing' }}>
-        <div
-          style={{
-            position: 'absolute',
-            top: '4px',
-            left: '4px',
-            ...actionButtonStyle,
-            cursor: 'grabbing',
-            color: '#ffffff',
-          }}
-        >
-          <GripVertical size={14} />
-        </div>
+      <div
+        className="gallery-tile tile-chrome-visible"
+        style={{ ...addTileFaceStyle(size), opacity: DRAG_GHOST_OPACITY, cursor: 'grabbing' }}
+      >
+        <AddTileHeader />
         <PlusCircle size={40} strokeWidth={1} />
       </div>
     );

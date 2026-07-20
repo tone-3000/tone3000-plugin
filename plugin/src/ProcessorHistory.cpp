@@ -68,7 +68,7 @@ void TONE3000Processor::queueActiveModelLoad(const ChainBlock& block) {
 }
 
 void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState, Lane& target,
-                                               const char* insertBlockId, Lane& retired) {
+                                               Lane& retired) {
   // Park the live blocks by id so matching ones can be moved back with their
   // engines/model caches intact. Anything left over at the end is a removal
   // and goes into `retired` — the caller destroys those after releasing
@@ -78,8 +78,6 @@ void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState
     if (b)
       existing[b->id] = std::move(b);
   target.clear();
-
-  bool hasInsertBlock = false;
 
   for (int i = 0; i < chainState.getNumChildren(); ++i) {
     juce::ValueTree blockState = chainState.getChild(i);
@@ -106,7 +104,6 @@ void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState
     applyBlockSettings(*block, blockState);
 
     if (type == ChainBlockType::INSERT) {
-      hasInsertBlock = true;
       target.push_back(std::move(block));
       continue;
     }
@@ -151,9 +148,10 @@ void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState
     target.push_back(std::move(block));
   }
 
-  // Reconciled chains always keep an insert placeholder at hand.
-  if (!hasInsertBlock)
-    target.push_back(std::make_unique<ChainBlock>(insertBlockId, ChainBlockType::INSERT));
+  // Reconciled chains always come back up to the minimum slot layout —
+  // snapshots from this build already satisfy the invariant (no-op); legacy
+  // states/presets that carried a single insert get padded here.
+  normalizeLaneInserts(target);
 
   // Whatever is still parked was removed by this restore.
   for (auto& [id, b] : existing)
@@ -165,18 +163,14 @@ TONE3000Processor::Lane TONE3000Processor::restoreChainSnapshot(const juce::Valu
   if (!snapshot.isValid())
     return retired;
 
-  reconcileChainFromTree(snapshot.getChildWithName("ChainBlocks"), lane(ChainSide::Left),
-                         INSERT_BLOCK_ID, retired);
+  reconcileChainFromTree(snapshot.getChildWithName("ChainBlocks"), lane(ChainSide::Left), retired);
   reconcileChainFromTree(snapshot.getChildWithName("RightChainBlocks"), lane(ChainSide::Right),
-                         INSERT_BLOCK_ID_RIGHT, retired);
+                         retired);
 
   const bool wasStereo = stereoEnabled.load();
   const bool snapStereo = static_cast<bool>(snapshot.getProperty("stereoEnabled", false));
 
   auto& right = lane(ChainSide::Right);
-  if (snapStereo && right.empty())
-    right.push_back(std::make_unique<ChainBlock>(INSERT_BLOCK_ID_RIGHT, ChainBlockType::INSERT));
-
   stereoEnabled.store(snapStereo);
   if (!snapStereo)
     pendingAddSide = ChainSide::Left;

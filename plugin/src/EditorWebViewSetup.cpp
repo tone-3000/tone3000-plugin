@@ -157,8 +157,13 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
       .withOptionsFrom(editor->inputCalibrationLevelRelay)
       // --- Chain mutations -------------------------------------------------
       .withNativeFunction(
+          // (toneJson, targetInsertId?) — the tone lands in the insert slot
+          // the user clicked; absent/stale ids fall back to the active lane's
+          // first insert.
           "loadTone", guarded(1, juce::var(""), [editor](const juce::Array<juce::var>& args) {
-            return juce::var(editor->processor.loadTone(args[0].toString()));
+            const std::string targetInsertId =
+                args.size() >= 2 ? args[1].toString().toStdString() : std::string();
+            return juce::var(editor->processor.loadTone(args[0].toString(), targetInsertId));
           }))
       .withNativeFunction(
           // Replace the tone of an existing block (Swap action). Keeps the

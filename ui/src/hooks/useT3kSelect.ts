@@ -66,6 +66,22 @@ function detectInitialCallback(): boolean {
 }
 
 /**
+ * True on the very first render after returning from a *browse-intent* redirect
+ * (Browse CTA / + / swap) that did **not** carry a picked tone — i.e. sign-in
+ * only, catalog closed, or canceled. The consumer seeds `showToneBrowser` from
+ * this so the in-plugin browser is already mounted under the busy scrim as the
+ * callback resolves, instead of the main chain flashing through first. When a
+ * tone *was* picked (`tone_id` present) it resolves into the chain, so we leave
+ * the browser closed and avoid a reverse flash.
+ */
+export function shouldRestoreToneBrowser(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (!detectInitialCallback()) return false;
+  if (sessionStorage.getItem(LOGIN_INTENT_KEY) !== 'browse') return false;
+  return !new URLSearchParams(window.location.search).has('tone_id');
+}
+
+/**
  * Set by native when a webview navigation to tone3000.com failed (offline /
  * site down) and it recovered by reloading the plugin UI — see
  * GuardedWebView::pageLoadHadNetworkError. Detected here so the reload lands

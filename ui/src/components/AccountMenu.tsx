@@ -77,11 +77,7 @@ export const AccountMenu: React.FC<AccountMenuProps> = ({
           display: 'flex',
           alignItems: 'center',
           gap: '10px',
-          // The pill reads slightly larger than the flat icon buttons (like
-          // the web navbar), but only contributes a 28px row footprint via
-          // the negative margins so the header keeps its original height.
-          height: '34px',
-          margin: '-3px 0',
+          height: '40px',
           padding: '0 5px 0 12px',
           boxSizing: 'border-box',
           backgroundColor: 'transparent',

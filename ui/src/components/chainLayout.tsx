@@ -5,5 +5,8 @@
  */
 
 export const CARD_WIDTH = 800;
-// Header (40) + body padding (32) + 200px image + gap (22) + model select (36).
-export const CARD_HEIGHT = 330;
+// Matches the main I/O meters (DbMeter height=368) so the detail view lines up
+// with them: header (40) + body top pad (16) + 224px image + model select (36),
+// with the leftover space distributed under the image (center column is
+// space-between).
+export const CARD_HEIGHT = 368;

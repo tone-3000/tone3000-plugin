@@ -16,7 +16,6 @@ import type {
   DragStartEvent,
 } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import { ChevronLeft } from 'lucide-react';
 import { ChainBlock } from './ChainBlock';
 import { GalleryTileGhost } from './GalleryBlock';
 import {
@@ -28,8 +27,6 @@ import {
   TILE_SIZE,
   EDGE_FADE_WIDTH,
 } from './GalleryLane';
-import { CARD_WIDTH } from './chainLayout';
-import { HELP, helpProps } from './helpText';
 import { useChainActions } from '../hooks/useChainActions';
 import type { ChainItem, ChainSide, ToneBlock } from '../types/chain';
 import { isInsertSlot } from '../types/chain';
@@ -49,6 +46,12 @@ import { isInsertSlot } from '../types/chain';
  * Clicking a tile opens the detail takeover (the full card view) with a
  * Back button.
  */
+
+/**
+ * The block whose detail takeover is open, persisted so it survives this
+ * component unmounting while the tone browser (and its OAuth redirect) is up.
+ */
+const DETAIL_BLOCK_STORAGE_KEY = 't3k.detailBlockId';
 
 interface ChainViewProps {
   /** Left lane (the only lane in mono mode). */
@@ -73,7 +76,19 @@ type Lanes = Record<ChainSide, ChainItem[]>;
 
 export const ChainView: React.FC<ChainViewProps> = ({ chain, chainRight, sampleRate }) => {
   const actions = useChainActions();
-  const [detailBlockId, setDetailBlockId] = useState<string | null>(null);
+  // Persisted so the detail takeover survives this component unmounting — a
+  // swap from the detail view opens the tone browser (which replaces the whole
+  // chain view, and may bounce through the tone3000.com OAuth redirect). The
+  // swap keeps the same blockId, so we reopen the detail view for it on return.
+  // Cleared when the user backs out, so gallery-initiated swaps land on the
+  // gallery, not a stale detail view.
+  const [detailBlockId, setDetailBlockId] = useState<string | null>(
+    () => sessionStorage.getItem(DETAIL_BLOCK_STORAGE_KEY)
+  );
+  useEffect(() => {
+    if (detailBlockId) sessionStorage.setItem(DETAIL_BLOCK_STORAGE_KEY, detailBlockId);
+    else sessionStorage.removeItem(DETAIL_BLOCK_STORAGE_KEY);
+  }, [detailBlockId]);
   /** The item under drag — drives the DragOverlay ghost. */
   const [activeDrag, setActiveDrag] = useState<ChainItem | null>(null);
 
@@ -236,31 +251,18 @@ export const ChainView: React.FC<ChainViewProps> = ({ chain, chainRight, sampleR
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: '12px',
           height: '100%',
-          justifyContent: 'center',
-          padding: '0 12px',
+          justifyContent: 'flex-start',
           boxSizing: 'border-box',
+          // try to get it to match the back btn on the tone browser 24px + 4px
+          paddingTop: '28px'
         }}
       >
-        <div style={{ width: `${CARD_WIDTH}px`, maxWidth: '100%' }}>
-          <button
-            onClick={() => setDetailBlockId(null)}
-            {...helpProps(HELP.backToChain)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              background: 'transparent',
-              border: 'none',
-              color: '#ffffff',
-              cursor: 'pointer',
-              padding: '6px 8px 6px 0',
-            }}
-          >
-            <ChevronLeft size={20} />
-          </button>
-        </div>
-        <ChainBlock block={detailBlock} sampleRate={sampleRate} />
+        <ChainBlock
+          block={detailBlock}
+          sampleRate={sampleRate}
+          onBack={() => setDetailBlockId(null)}
+        />
       </div>
     );
   }
@@ -273,7 +275,7 @@ export const ChainView: React.FC<ChainViewProps> = ({ chain, chainRight, sampleR
       items={lanes[side]}
       tileSize={tileSize}
       onOpen={setDetailBlockId}
-      onAdd={() => actions.addModel(side)}
+      onAdd={(insertBlockId) => actions.addModel(side, insertBlockId)}
     />
   );
 

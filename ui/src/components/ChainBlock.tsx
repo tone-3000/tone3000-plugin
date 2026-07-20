@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeftRight, Check, Power, RotateCcw, Share, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowLeftRight, Check, Power, RotateCcw, Share, Trash2 } from 'lucide-react';
 import { ToneImage } from './GearIcon';
 import { KnobControl } from './KnobControl';
 import { gainDbScale } from './knobScale';
@@ -24,14 +24,12 @@ import {
   GRAY,
   HIGHLIGHT,
   MUTED,
-  SURFACE,
-  SURFACE_RAISED,
   iconButtonStyle,
 } from './theme';
 
 const HEADER_HEIGHT = 40;
-const IMAGE_SIZE = 200;
-const KNOB_SIZE = 30;
+const IMAGE_SIZE = 224;
+const KNOB_SIZE = 36;
 /** Mini meter height in the side rails (meter sits centered above its knob). */
 const RAIL_METER_HEIGHT = 180;
 
@@ -98,12 +96,14 @@ interface ChainBlockProps {
   block: ToneBlock;
   /** Host sample rate, for the EQ curve math. */
   sampleRate: number;
+  /** Return to the chain gallery (back arrow lives in this card's header). */
+  onBack: () => void;
 }
 
 /** The detail card (full block view). All mutations come from the
     ChainActions context; only the block itself and the sample rate arrive
     as props. */
-export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => {
+export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBack }) => {
   const { blockId, tone, params } = block;
   const actions = useChainActions();
 
@@ -255,30 +255,33 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
       style={{
         display: 'flex',
         flexDirection: 'column',
-        border: BORDER,
-        backgroundColor: SURFACE,
         position: 'relative',
-        borderRadius: '16px',
         width: `${CARD_WIDTH}px`,
         height: `${CARD_HEIGHT}px`,
         boxSizing: 'border-box',
-        overflow: 'hidden',
       }}
     >
-      {/* Header */}
+      {/* Header — a plain row separated from the body by a hairline rule. */}
       <div
         style={{
           height: `${HEADER_HEIGHT}px`,
           flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
-          gap: '4px',
-          padding: '8px 12px',
+          gap: '24px',
+          padding: '0 0 16px',
           boxSizing: 'border-box',
-          backgroundColor: SURFACE_RAISED,
           borderBottom: BORDER,
         }}
       >
+        <button
+          onClick={onBack}
+          {...helpProps(HELP.backToChain)}
+          style={{ ...headerButtonStyle, color: '#ffffff' }}
+        >
+          <ArrowLeft size={18} />
+        </button>
+
         <button
           onClick={handleToggleEnabled}
           {...helpProps(HELP.blockPower)}
@@ -296,14 +299,15 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
         {isNam && (
           <div
             style={{
-              display: 'flex',
-              flexDirection: 'row',
-              marginLeft: '4px',
-              borderRadius: '6px',
-              // Same grey as the model select bar so the header controls match.
-              backgroundColor: 'rgba(120, 120, 128, 0.36)',
-              overflow: 'hidden',
-              flexShrink: 0,
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            height: '24px',
+            borderRadius: '4px',
+            // Same grey as the model select bar so the header controls match.
+            backgroundColor: 'rgba(120, 120, 128, 0.36)',
+            overflow: 'hidden',
+            flexShrink: 0,
               opacity: block.loaded && !isSwitchingModel ? 1 : 0.45,
               pointerEvents: block.loaded && !isSwitchingModel ? 'auto' : 'none',
             }}
@@ -313,9 +317,13 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
               onClick={() => handleNamSizeMode(true)}
               {...helpProps(HELP.namLite)}
               style={{
-                padding: '3px 4px 3px 10px',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '0 4px 0 10px',
                 fontSize: '11px',
                 fontWeight: 400,
+                fontFamily: 'monospace',
                 border: 'none',
                 cursor: 'pointer',
                 backgroundColor: 'transparent',
@@ -330,9 +338,13 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
               onClick={() => handleNamSizeMode(false)}
               {...helpProps(HELP.namFull)}
               style={{
-                padding: '3px 10px 3px 4px',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '0 10px 0 4px',
                 fontSize: '11px',
                 fontWeight: 400,
+                fontFamily: 'monospace',
                 border: 'none',
                 cursor: 'pointer',
                 backgroundColor: 'transparent',
@@ -350,7 +362,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
         {/* EQ menu — lives here (not floating over the grid) while the EQ
             editor is open: view switcher, then reset + power. */}
         {showEq && (
-          <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <div style={headerGroupStyle}>
               <button
                 onClick={() => setEqView('sliders')}
@@ -396,7 +408,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
             >
               <Power size={14} />
             </button>
-          </>
+          </div>
         )}
 
         {/* EQ view toggle. Two independent signals (see theme.ts patterns):
@@ -411,11 +423,11 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
             width: 'auto',
             padding: '0 8px',
             fontSize: '11px',
-            fontWeight: 700,
+            fontWeight: 400,
+            fontFamily: 'monospace',
             border: eqActive ? ACTIVE_OUTLINE : BORDER,
             color: eqActive || showEq ? '#ffffff' : MUTED,
             backgroundColor: showEq ? HIGHLIGHT : 'transparent',
-            marginRight: '4px',
           }}
         >
           EQ
@@ -452,12 +464,19 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'stretch',
-          // The EQ grid bleeds edge-to-edge; the normal view keeps its gutters.
-          gap: showEq ? 0 : '12px',
-          padding: showEq ? 0 : '16px',
+          // The EQ grid bleeds edge-to-edge; the normal view only breathes
+          // below the header rule (no side/bottom gutters — the card has no
+          // border or background to inset from).
+          gap: showEq ? 0 : '24px',
+          padding: showEq ? 0 : '16px 0 0',
           boxSizing: 'border-box',
           opacity: enabled ? 1 : 0.45,
           transition: 'opacity 0.2s ease',
+          // Keep the body on its own pixel-snapped compositor layer so the
+          // opacity fade (power toggle) can't promote/demote a temporary layer
+          // that nudges inner content — notably the scaled EQ SVG — by a pixel.
+          transform: 'translateZ(0)',
+          willChange: 'opacity',
         }}
       >
         {showEq ? (
@@ -495,7 +514,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
                 size={KNOB_SIZE}
                 labelSize={12}
                 labelBottom={false}
-                innerColor={SURFACE}
+                innerColor="#000000"
                 scale={gainDbScale}
                 defaultValue={0.5}
                 help={HELP.blockIn}
@@ -671,7 +690,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
                 size={KNOB_SIZE}
                 labelSize={12}
                 labelBottom={false}
-                innerColor={SURFACE}
+                innerColor="#000000"
                 defaultValue={defaultMix}
                 help={HELP.blockMix}
               />
@@ -701,7 +720,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate }) => 
                 size={KNOB_SIZE}
                 labelSize={12}
                 labelBottom={false}
-                innerColor={SURFACE}
+                innerColor="#000000"
                 scale={gainDbScale}
                 defaultValue={0.5}
                 help={isNam ? HELP.blockOut : HELP.blockOutIr}

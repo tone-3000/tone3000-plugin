@@ -24,6 +24,38 @@ ChainBlock* TONE3000Processor::findBlockById(const std::string& blockId) {
 
 namespace {
 
+bool isInsertBlock(const std::unique_ptr<ChainBlock>& b) {
+  return b != nullptr && b->type == ChainBlockType::INSERT;
+}
+
+}  // namespace
+
+// See the declaration for the invariant. Called after every structural lane
+// change (load/remove/cross-lane move/stereo seed/snapshot restore); pure
+// bookkeeping — no revision bump, no history entry of its own.
+void TONE3000Processor::normalizeLaneInserts(Lane& l) {
+  const int total = static_cast<int>(l.size());
+  int inserts = static_cast<int>(std::count_if(l.begin(), l.end(), isInsertBlock));
+  const int tones = total - inserts;
+  const int required = std::max(kMinLaneSlots - tones, 1);
+
+  // Trim overshoot back-to-front so slots the user positioned stay put.
+  for (int i = total - 1; i >= 0 && inserts > required; --i) {
+    if (isInsertBlock(l[static_cast<size_t>(i)])) {
+      l.erase(l.begin() + i);
+      --inserts;
+    }
+  }
+
+  while (inserts < required) {
+    l.push_back(std::make_unique<ChainBlock>(juce::Uuid().toString().toStdString(),
+                                             ChainBlockType::INSERT));
+    ++inserts;
+  }
+}
+
+namespace {
+
 // Everything loadTone/swapTone need from a raw tone JSON string.
 struct ParsedTone {
   bool valid = false;
@@ -184,7 +216,8 @@ void TONE3000Processor::queueToneLoad(const std::string& blockId, int modelId,
                            true);
 }
 
-std::string TONE3000Processor::loadTone(const juce::String& toneJsonString) {
+std::string TONE3000Processor::loadTone(const juce::String& toneJsonString,
+                                        const std::string& targetInsertId) {
   juce::ScopedLock lock(chainMutex);
 
   const ParsedTone parsed = parseToneForLoading(toneJsonString);
@@ -206,31 +239,38 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString) {
   DBG("Created tone block: " << parsed.toneId << " (block: " << blockId << ")");
   DBG("Queueing first model for background loading: " << parsed.modelName);
 
-  // Add to whichever chain is currently being edited (Left in mono mode).
-  auto& chain = activeChain();
-
-  // Insert new block at the insert block position, then move insert block to end
-  auto insertIt = std::find_if(
-      chain.begin(), chain.end(),
-      [](const std::unique_ptr<ChainBlock>& b) {
-        return b && b->type == ChainBlockType::INSERT;
+  // Resolve the slot the tone lands in: the insert the user clicked (looked
+  // up across both lanes — ids are globally unique), or the active lane's
+  // first insert when the id is stale/absent (chain edited mid-flow, or an
+  // older UI that doesn't send one).
+  Lane* targetLane = nullptr;
+  Lane::iterator slot;
+  if (!targetInsertId.empty()) {
+    for (auto& l : lanes) {
+      auto it = std::find_if(l.begin(), l.end(), [&](const std::unique_ptr<ChainBlock>& b) {
+        return isInsertBlock(b) && b->id == targetInsertId;
       });
-  if (insertIt != chain.end()) {
-    chain.insert(insertIt, std::move(block));
-    // Move insert block to end so it's always last after adding a tone
-    insertIt = std::find_if(
-        chain.begin(), chain.end(),
-        [](const std::unique_ptr<ChainBlock>& b) {
-          return b && b->type == ChainBlockType::INSERT;
-        });
-    if (insertIt != chain.end()) {
-      auto insertBlock = std::move(*insertIt);
-      chain.erase(insertIt);
-      chain.push_back(std::move(insertBlock));
+      if (it != l.end()) {
+        targetLane = &l;
+        slot = it;
+        break;
+      }
     }
-  } else {
-    chain.push_back(std::move(block));
   }
+  if (targetLane == nullptr) {
+    targetLane = &activeChain();
+    slot = std::find_if(targetLane->begin(), targetLane->end(), isInsertBlock);
+  }
+
+  // The tone takes the slot's position; the consumed insert dies here (it has
+  // no engines, so destroying it under the lock is fine). normalizeLaneInserts
+  // then re-pads the lane — which appends a fresh trailing insert once every
+  // minimum slot holds a tone.
+  if (slot != targetLane->end())
+    *slot = std::move(block);
+  else
+    targetLane->push_back(std::move(block));
+  normalizeLaneInserts(*targetLane);
 
   bumpChainRevision();
   queueToneLoad(blockId, parsed.firstModelId, parsed.modelUrl, parsed.modelName, parsed.type);
@@ -347,19 +387,20 @@ bool TONE3000Processor::removeChainBlock(const std::string& blockId) {
   {
     juce::ScopedLock lock(chainMutex);
 
-    if (blockId == INSERT_BLOCK_ID || blockId == INSERT_BLOCK_ID_RIGHT) {
-      DBG("Cannot remove insert block");
-      return false;
-    }
-
     for (auto& chain : lanes) {
       auto it = std::find_if(
           chain.begin(), chain.end(),
           [&blockId](const std::unique_ptr<ChainBlock>& block) { return block->id == blockId; });
       if (it != chain.end()) {
+        if (isInsertBlock(*it)) {
+          DBG("Cannot remove insert block");
+          return false;
+        }
         pushChainHistory();
         removed = std::move(*it);
         chain.erase(it);
+        // Dropping below the minimum grows the lane back to it (at the end).
+        normalizeLaneInserts(chain);
         bumpChainRevision();
         break;
       }
@@ -435,10 +476,6 @@ bool TONE3000Processor::moveBlockToChain(const std::string& blockId, const juce:
     DBG("moveBlockToChain: only valid in stereo mode");
     return false;
   }
-  if (blockId == INSERT_BLOCK_ID || blockId == INSERT_BLOCK_ID_RIGHT) {
-    DBG("moveBlockToChain: insert slots stay in their lane");
-    return false;
-  }
 
   auto& target = lane(side == "right" ? ChainSide::Right : ChainSide::Left);
   auto& source = lane(side == "right" ? ChainSide::Left : ChainSide::Right);
@@ -451,6 +488,10 @@ bool TONE3000Processor::moveBlockToChain(const std::string& blockId, const juce:
     DBG("moveBlockToChain: block not found in the other lane: " << blockId);
     return false;
   }
+  if (isInsertBlock(*it)) {
+    DBG("moveBlockToChain: insert slots stay in their lane");
+    return false;
+  }
 
   pushChainHistory();
 
@@ -458,6 +499,11 @@ bool TONE3000Processor::moveBlockToChain(const std::string& blockId, const juce:
   source.erase(it);
   index = juce::jlimit(0, static_cast<int>(target.size()), index);
   target.insert(target.begin() + index, std::move(block));
+
+  // The tone count changed on both sides: the source may need a slot back,
+  // the target may shed a (trailing) surplus one.
+  normalizeLaneInserts(source);
+  normalizeLaneInserts(target);
 
   bumpChainRevision();
   DBG("Moved block " << blockId << " to " << side << " chain at index " << index);
@@ -783,12 +829,12 @@ void TONE3000Processor::setStereoMode(bool enabled) {
 
   pushChainHistory();
 
-  // Seed the right chain's insert placeholder the first time stereo is enabled.
+  // Seed the right chain's minimum slot layout the first time stereo is
+  // enabled (no-op when it already satisfies the invariant — e.g. legacy
+  // states that only carried one insert get padded here too).
   auto& right = lane(ChainSide::Right);
-  if (enabled && right.empty()) {
-    right.push_back(
-        std::make_unique<ChainBlock>(INSERT_BLOCK_ID_RIGHT, ChainBlockType::INSERT));
-  }
+  if (enabled)
+    normalizeLaneInserts(right);
 
   stereoEnabled.store(enabled);
 
@@ -819,18 +865,10 @@ bool TONE3000Processor::swapChains() {
     return false;
 
   pushChainHistory();
+  // Insert slots travel with their lane (ids are lane-agnostic UUIDs, so
+  // global uniqueness is preserved); each lane's slot invariant moves
+  // wholesale with its blocks.
   std::swap(lane(ChainSide::Left), lane(ChainSide::Right));
-
-  // Keep the insert placeholder ids side-invariant: they are fixed per-side
-  // keys used by the UI and by snapshot reconciliation, so they must not
-  // travel with the swap.
-  auto claimInsert = [](std::vector<std::unique_ptr<ChainBlock>>& chain, const char* id) {
-    for (auto& block : chain)
-      if (block->type == ChainBlockType::INSERT)
-        block->id = id;
-  };
-  claimInsert(lane(ChainSide::Left), INSERT_BLOCK_ID);
-  claimInsert(lane(ChainSide::Right), INSERT_BLOCK_ID_RIGHT);
 
   bumpChainRevision();
   DBG("Swapped Left/Right chains");

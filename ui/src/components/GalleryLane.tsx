@@ -92,73 +92,49 @@ const GhostRail: React.FC<{ slots: number; tileSize: number }> = ({ slots, tileS
 );
 
 /** One lane of tiles over its ghost rail (no scroll of its own — both lanes
-    share the outer scroll area). An empty lane (just its insert slot) shows
-    the classic pair of add tiles joined by a connector, like the old chain. */
+    share the outer scroll area). Native keeps every lane at its minimum slot
+    layout (5 tiles, always ≥1 insert), so each item here is a real block —
+    insert slots included — and every tile is reorderable. */
 export const GalleryLane: React.FC<{
   items: ChainItem[];
   tileSize: number;
   onOpen: (blockId: string) => void;
-  onAdd: () => void;
-}> = ({ items, tileSize, onOpen, onAdd }) => {
-  const emptyLane = items.length === 1 && isInsertSlot(items[0]);
-
-  return (
-    <div style={{ position: 'relative', width: 'max-content' }}>
-      <GhostRail slots={emptyLane ? 2 : items.length} tileSize={tileSize} />
-      <SortableContext
-        items={items.map((item) => item.blockId)}
-        strategy={horizontalListSortingStrategy}
+  /** Open the tone browser targeting the clicked insert slot. */
+  onAdd: (insertBlockId: string) => void;
+}> = ({ items, tileSize, onOpen, onAdd }) => (
+  <div style={{ position: 'relative', width: 'max-content' }}>
+    <GhostRail slots={items.length} tileSize={tileSize} />
+    <SortableContext
+      items={items.map((item) => item.blockId)}
+      strategy={horizontalListSortingStrategy}
+    >
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: `${TILE_GAP}px`,
+          position: 'relative',
+          zIndex: 2,
+        }}
       >
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: `${TILE_GAP}px`,
-            position: 'relative',
-            zIndex: 2,
-          }}
-        >
-          {emptyLane ? (
-            <>
-              {/* The real insert slot stays droppable so cross-lane drags can
-                  land in an empty lane; its twin is purely decorative. */}
-              <AddTile
-                id={items[0].blockId}
-                size={tileSize}
-                routing="right"
-                draggable={false}
-                onClick={onAdd}
-              />
-              <AddTile
-                id={`${items[0].blockId}-pair`}
-                size={tileSize}
-                routing="left"
-                draggable={false}
-                droppable={false}
-                onClick={onAdd}
-              />
-            </>
+        {items.map((item, index) =>
+          isInsertSlot(item) ? (
+            <AddTile
+              key={item.blockId}
+              id={item.blockId}
+              size={tileSize}
+              routing={addTileRouting(index, items.length)}
+              onClick={() => onAdd(item.blockId)}
+            />
           ) : (
-            items.map((item, index) =>
-              isInsertSlot(item) ? (
-                <AddTile
-                  key={item.blockId}
-                  id={item.blockId}
-                  size={tileSize}
-                  routing={addTileRouting(index, items.length)}
-                  onClick={onAdd}
-                />
-              ) : (
-                <GalleryBlock key={item.blockId} block={item} size={tileSize} onOpen={onOpen} />
-              )
-            )
-          )}
-        </div>
-      </SortableContext>
-    </div>
-  );
-};
+            <GalleryBlock key={item.blockId} block={item} size={tileSize} onOpen={onOpen} />
+          )
+        )}
+      </div>
+    </SortableContext>
+  </div>
+);
 
 /**
  * Right rail for stereo: per-lane pan knobs (each centered on its lane), with

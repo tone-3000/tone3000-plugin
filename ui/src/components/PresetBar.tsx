@@ -245,8 +245,8 @@ export const PresetBar: React.FC<PresetBarProps> = ({
         style={{
           display: 'flex',
           alignItems: 'center',
-          height: '28px',
-          borderRadius: '14px',
+          height: '36px',
+          borderRadius: '8px',
           backgroundColor: '#1C1C1E',
           padding: '0 4px',
           flexShrink: 0,

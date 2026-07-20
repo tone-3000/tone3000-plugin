@@ -20,7 +20,7 @@ import type { ChainSide, ToneBlock } from '../types/chain';
 import Settings from './Settings';
 import { DbMeter } from './DbMeter';
 import { TunerView } from './TunerView';
-import { useT3kSelect } from '../hooks/useT3kSelect';
+import { useT3kSelect, shouldRestoreToneBrowser } from '../hooks/useT3kSelect';
 import { useInternetGate } from '../hooks/useInternetGate';
 import { T3K_API, T3K_ARCHITECTURE } from '../t3k/config';
 import { OAuthOverlay } from './OAuthOverlay';
@@ -33,6 +33,9 @@ import { useUpdateNotice } from '../hooks/useUpdateNotice';
 // webview navigates to tone3000.com and back, remounting React), so the
 // pending swap block id lives in sessionStorage rather than component state.
 const SWAP_STORAGE_KEY = 't3k.pendingSwapBlockId';
+// Same story for adds: the insert slot the user clicked, so the picked tone
+// lands in that slot. Native falls back gracefully when the id went stale.
+const INSERT_TARGET_STORAGE_KEY = 't3k.pendingInsertBlockId';
 
 // Lucide has no tuning fork, so this mimics its 24x24 stroke style.
 const TuningForkIcon: React.FC<{ size?: number }> = ({ size = 18 }) => (
@@ -56,8 +59,10 @@ export const Plugin: React.FC = () => {
   const [showTuner, setShowTuner] = useState(false);
   // In-plugin tone browser takeover (streams of TONE3000 tones). Opened by
   // the + when already authenticated, or right after the no-prompt login
-  // flow returns.
-  const [showToneBrowser, setShowToneBrowser] = useState(false);
+  // flow returns. Seeded true when we're returning from a browse-intent
+  // redirect without a picked tone (Browse closed/canceled) so the browser is
+  // already mounted under the busy scrim — no flash of the main chain first.
+  const [showToneBrowser, setShowToneBrowser] = useState(shouldRestoreToneBrowser);
 
   // Chain state: revision-gated polling + mutation actions, owned by one hook.
   const {
@@ -135,10 +140,13 @@ export const Plugin: React.FC = () => {
         return;
       }
 
-      // Consume the pending swap target up front so it can never leak into a
-      // later selection. (Add flows clear it before starting; see below.)
+      // Consume the pending swap/insert targets up front so they can never
+      // leak into a later selection. (Each flow clears the other's key before
+      // starting; see handleAddModel / handleSwapBlock.)
       const swapBlockId = sessionStorage.getItem(SWAP_STORAGE_KEY);
       sessionStorage.removeItem(SWAP_STORAGE_KEY);
+      const insertBlockId = sessionStorage.getItem(INSERT_TARGET_STORAGE_KEY);
+      sessionStorage.removeItem(INSERT_TARGET_STORAGE_KEY);
 
       // Make sure native has the freshest access token before it tries to
       // download the model from `model_url` (which now requires Bearer auth).
@@ -157,7 +165,7 @@ export const Plugin: React.FC = () => {
       }
 
       console.log('Loading tone:', tone.title);
-      const blockId = await actions.loadTone(toneJson);
+      const blockId = await actions.loadTone(toneJson, insertBlockId ?? undefined);
       if (!blockId) console.error('Failed to load tone');
     },
     [actions, pushAccessTokenToNative]
@@ -231,6 +239,7 @@ export const Plugin: React.FC = () => {
   const handleLogout = useCallback(async () => {
     t3kClient.logout();
     sessionStorage.removeItem(SWAP_STORAGE_KEY);
+    sessionStorage.removeItem(INSERT_TARGET_STORAGE_KEY);
     setUser(null);
     setShowToneBrowser(false);
     await Promise.all([pushAccessTokenToNative(''), clearAuthCookies()]);
@@ -307,9 +316,12 @@ export const Plugin: React.FC = () => {
   // Signed in: straight to the in-plugin tone browser. Signed out: run the
   // no-prompt login flow first; its callback opens the browser.
   const handleAddModel = useCallback(
-    (side: ChainSide) => {
+    (side: ChainSide, insertBlockId: string) => {
       requireInternet(async () => {
         sessionStorage.removeItem(SWAP_STORAGE_KEY);
+        // The clicked slot; the active side stays the native-state fallback
+        // for when the slot id goes stale (e.g. undone away mid-flow).
+        sessionStorage.setItem(INSERT_TARGET_STORAGE_KEY, insertBlockId);
         if (stereoEnabled) await actions.setActiveSide(side);
         if (t3kClient.isAuthenticated()) setShowToneBrowser(true);
         else startLoginFlow({ openBrowser: true });
@@ -323,6 +335,7 @@ export const Plugin: React.FC = () => {
   const handleSwapBlock = useCallback(
     (blockId: string) => {
       requireInternet(() => {
+        sessionStorage.removeItem(INSERT_TARGET_STORAGE_KEY);
         sessionStorage.setItem(SWAP_STORAGE_KEY, blockId);
         if (t3kClient.isAuthenticated()) setShowToneBrowser(true);
         else startLoginFlow({ openBrowser: true });
@@ -388,12 +401,14 @@ export const Plugin: React.FC = () => {
       <div
         style={{
           width: '100%',
+          height: '64px',
+          flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           backgroundColor: '#000000',
-          padding: '12px 24px',
-          flexShrink: 0,
+          padding: '0 24px',
+          boxSizing: 'border-box',
           borderBottom: BORDER,
         }}
       >
@@ -407,7 +422,7 @@ export const Plugin: React.FC = () => {
             src="/t3k.svg"
             alt="T3K"
             style={{
-              height: '30px',
+              width: '160px',
             }}
           />
           {/* <img
@@ -418,8 +433,8 @@ export const Plugin: React.FC = () => {
             }}
           /> */}
         </a>
-        {/* 24px between header items; tight pairs (undo/redo) group inside. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+        {/* 40px between header items; tight pairs (undo/redo) group inside. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '40px' }}>
           <PresetBar
             active={activePreset}
             presets={presetStore.presets}
@@ -440,7 +455,7 @@ export const Plugin: React.FC = () => {
           >
             <TuningForkIcon size={18} />
           </IconButton>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <IconButton onClick={() => actions.undo()} disabled={!canUndo} help={HELP.undo}>
               <Undo2 size={18} />
             </IconButton>
@@ -500,17 +515,30 @@ export const Plugin: React.FC = () => {
               overflow: 'hidden',
               minHeight: 0,
               minWidth: 0,
-              padding: '12px 0',
               boxSizing: 'border-box',
             }}
           >
-            <ChainActionsProvider value={chainActions}>
-              <ChainView
-                chain={chain}
-                chainRight={stereoEnabled ? (chainRight ?? []) : null}
-                sampleRate={sampleRate}
+            {showToneBrowser ? (
+              <ToneBrowser
+                client={t3kClient}
+                onPickTone={selectToneById}
+                onBrowseTone3000={startSelectFlow}
+                onClose={() => {
+                  // Closing without picking abandons any pending swap/insert target.
+                  sessionStorage.removeItem(SWAP_STORAGE_KEY);
+                  sessionStorage.removeItem(INSERT_TARGET_STORAGE_KEY);
+                  setShowToneBrowser(false);
+                }}
               />
-            </ChainActionsProvider>
+            ) : (
+              <ChainActionsProvider value={chainActions}>
+                <ChainView
+                  chain={chain}
+                  chainRight={stereoEnabled ? (chainRight ?? []) : null}
+                  sampleRate={sampleRate}
+                />
+              </ChainActionsProvider>
+            )}
           </div>
 
           {/* Right Meter - Output */}
@@ -537,22 +565,6 @@ export const Plugin: React.FC = () => {
         stereoChains={stereoEnabled}
       />
       <HintBar />
-
-      {/* Tone browser takeover — quick links into the TONE3000 streams plus
-          the full-catalog Select CTA. Mounted only while open (like
-          Settings) so its fetches don't run behind the main UI. */}
-      {showToneBrowser && (
-        <ToneBrowser
-          client={t3kClient}
-          onPickTone={selectToneById}
-          onBrowseTone3000={startSelectFlow}
-          onClose={() => {
-            // Closing without picking also abandons any pending swap.
-            sessionStorage.removeItem(SWAP_STORAGE_KEY);
-            setShowToneBrowser(false);
-          }}
-        />
-      )}
 
       {/* Settings takeover — mounted only while open so its parameter
           subscriptions and screen state don't run behind the main UI. */}

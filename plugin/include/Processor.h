@@ -61,7 +61,12 @@ public:
   juce::AudioProcessorValueTreeState& getParameters() { return parameters; }
 
   // Chain management methods
-  std::string loadTone(const juce::String& toneJsonString);
+  // Load a tone into an insert slot. `targetInsertId` is the insert block the
+  // user clicked (it survives the OAuth redirect in the UI's sessionStorage);
+  // the new tone block takes that slot's position. When the id is absent or
+  // stale (undone away mid-flow), the active lane's first insert is used.
+  std::string loadTone(const juce::String& toneJsonString,
+                       const std::string& targetInsertId = {});
   // Replace the tone of an existing block in place. Keeps the block's chain
   // position and user params (enabled/gains/mix); the new tone's first model
   // is queued for background loading.
@@ -155,9 +160,10 @@ public:
     }
     return "input1";
   }
-  // Which lane the next loadTone inserts into ("left"/"right"). The UI sets
-  // this before launching the Select flow so the choice survives the OAuth
-  // redirect. Not a view mode and not part of undo history.
+  // Which lane loadTone falls back to ("left"/"right") when no valid target
+  // insert id is supplied. The UI sets this before launching the Select flow
+  // so the choice survives the OAuth redirect. Not a view mode and not part
+  // of undo history.
   void setActiveEditChain(const juce::String& side);
   // Swap the Left and Right chains wholesale (stereo mode only). Undoable.
   bool swapChains();
@@ -266,6 +272,13 @@ private:
   // The chain the UI edits/adds to right now (Left in mono mode, or the active side in stereo).
   std::vector<std::unique_ptr<ChainBlock>>& activeChain();
 
+  // Enforce the lane's insert-slot invariant after any structural change:
+  // insertCount == max(kMinLaneSlots - toneCount, 1). Shortfalls append fresh
+  // placeholders (UUID ids) at the end; overshoot trims inserts from the end
+  // so slots the user positioned earlier in the lane stay put. Inserts own no
+  // engines, so add/remove is trivially cheap. Caller holds chainMutex.
+  void normalizeLaneInserts(Lane& l);
+
   // Find a block by id across both chains (ids are globally unique). Returns nullptr if absent.
   ChainBlock* findBlockById(const std::string& blockId);
 
@@ -302,8 +315,7 @@ private:
   // background load. Caller must hold chainMutex — and must destroy the
   // returned retired blocks *after* releasing it (engine teardown is heavy).
   [[nodiscard]] Lane restoreChainSnapshot(const juce::ValueTree& snapshot);
-  void reconcileChainFromTree(const juce::ValueTree& chainState, Lane& target,
-                              const char* insertBlockId, Lane& retired);
+  void reconcileChainFromTree(const juce::ValueTree& chainState, Lane& target, Lane& retired);
   // Queue a background download+prepare of `block`'s active model, resolving
   // url/name from its tone JSON. Used by undo/redo when a restored block's
   // model isn't cached in memory anymore.

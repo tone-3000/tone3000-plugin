@@ -81,7 +81,12 @@ export interface BlockParams {
   eq: BlockEqParams;
 }
 
-/** The insert placeholder (pass-through slot where new tones are added). */
+/**
+ * An insert placeholder (pass-through slot where new tones are added).
+ * Native keeps each lane at its minimum slot layout — at least 5 tiles and
+ * always one trailing insert once every minimum slot holds a tone — so a
+ * lane can carry several of these, each independently reorderable.
+ */
 export interface InsertSlot {
   blockId: string;
   kind: 'insert';

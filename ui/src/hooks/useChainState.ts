@@ -116,8 +116,11 @@ export function useChainState() {
 
   const actions = useMemo(
     () => ({
-      /** Add a tone at the insert slot. Resolves to the new blockId ('' on failure). */
-      loadTone: (toneJson: string) => run<string>('loadTone', () => native.loadTone(toneJson)),
+      /** Add a tone at an insert slot (the one the user clicked, when given —
+          stale/absent ids land at the active lane's first insert). Resolves
+          to the new blockId ('' on failure). */
+      loadTone: (toneJson: string, targetInsertId?: string) =>
+        run<string>('loadTone', () => native.loadTone(toneJson, targetInsertId ?? '')),
       /** Replace an existing block's tone in place (keeps position + params). */
       swapTone: (blockId: string, toneJson: string) =>
         run<boolean>('swapTone', () => native.swapTone(blockId, toneJson)),

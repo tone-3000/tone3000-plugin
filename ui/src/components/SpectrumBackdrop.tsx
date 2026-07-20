@@ -11,7 +11,7 @@ import { GRAPH_W, GRAPH_H, clamp } from './eqShared';
  */
 export const SpectrumBackdrop: React.FC<{ blockId: string }> = ({ blockId }) => {
   const bins = useBlockSpectrum(blockId);
-  const path = useMemo(() => {
+  const areaPath = useMemo(() => {
     if (bins.length < 2) return '';
     // Display window: -80..0 dB across the graph height.
     const topDb = 0;
@@ -21,10 +21,12 @@ export const SpectrumBackdrop: React.FC<{ blockId: string }> = ({ blockId }) => 
       const t = clamp((db - bottomDb) / (topDb - bottomDb), 0, 1);
       return `${x.toFixed(1)} ${(GRAPH_H * (1 - t)).toFixed(1)}`;
     });
+    // Filled area only (no outline stroke): at idle every bin sits on the
+    // floor, so a stroked curve would draw a hairline across the bottom.
     return `M0 ${GRAPH_H} L${points.join(' L')} L${GRAPH_W} ${GRAPH_H} Z`;
   }, [bins]);
 
-  if (!path) return null;
+  if (!areaPath) return null;
   const gradientId = `eq-spectrum-${blockId}`;
   return (
     <>
@@ -44,13 +46,7 @@ export const SpectrumBackdrop: React.FC<{ blockId: string }> = ({ blockId }) => 
           <stop offset="100%" stopColor="#FF0000" />
         </linearGradient>
       </defs>
-      <path
-        d={path}
-        fill={`url(#${gradientId})`}
-        fillOpacity={0.3}
-        stroke="rgba(235, 235, 245, 0.2)"
-        strokeWidth={1}
-      />
+      <path d={areaPath} fill={`url(#${gradientId})`} fillOpacity={0.3} />
     </>
   );
 };
