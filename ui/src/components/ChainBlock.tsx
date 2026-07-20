@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowLeftRight, Check, Power, RotateCcw, Share, Trash2 } fro
 import { ToneImage } from './GearIcon';
 import { KnobControl } from './KnobControl';
 import { gainDbScale } from './knobScale';
+import { LoadingDots } from './LoadingDots';
 import { ModelSelect } from './ModelSelect';
 import { RetryLoadBadge } from './RetryLoadBadge';
 import { BlockMeter } from './BlockMeter';
@@ -233,6 +234,14 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
     }
   };
 
+  // A model download/prepare is in flight (switch, swap or first load). The
+  // previous model keeps playing during a switch (`loaded` stays true), so
+  // loading affordances key off `modelLoading`, not `loaded`.
+  const modelBusy = block.modelLoading || (!block.loaded && !block.loadFailed);
+  // LITE/FULL is inert while a model is in flight or nothing is loaded
+  // (failed load): stable look, not-allowed cursor, clicks no-op.
+  const namSizeLocked = modelBusy || !block.loaded;
+
   const isNam = tone.format?.toLowerCase() === 'nam';
   // Reverb-style IRs (gear "space"/"pedal") load half wet by default (native
   // sets it in parseToneForLoading); Alt-click reset on Mix must agree.
@@ -295,26 +304,27 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
         </button>
 
         {/* LITE/FULL for every NAM block (architecture=2 = always A2).
-            Subtle segmented control: the active side just reads white. */}
+            Subtle segmented control: the active side just reads white.
+            While a model loads the control keeps its normal look (no
+            opacity flicker) — clicks just no-op behind a not-allowed
+            cursor until the new engine is in. */}
         {isNam && (
           <div
             style={{
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            height: '24px',
-            borderRadius: '4px',
-            // Same grey as the model select bar so the header controls match.
-            backgroundColor: 'rgba(120, 120, 128, 0.36)',
-            overflow: 'hidden',
-            flexShrink: 0,
-              opacity: block.loaded && !isSwitchingModel ? 1 : 0.45,
-              pointerEvents: block.loaded && !isSwitchingModel ? 'auto' : 'none',
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              height: '24px',
+              borderRadius: '4px',
+              // Same grey as the model select bar so the header controls match.
+              backgroundColor: 'rgba(120, 120, 128, 0.36)',
+              overflow: 'hidden',
+              flexShrink: 0,
             }}
           >
             <button
               type="button"
-              onClick={() => handleNamSizeMode(true)}
+              onClick={() => !namSizeLocked && handleNamSizeMode(true)}
               {...helpProps(HELP.namLite)}
               style={{
                 height: '100%',
@@ -325,7 +335,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                 fontWeight: 400,
                 fontFamily: 'monospace',
                 border: 'none',
-                cursor: 'pointer',
+                cursor: namSizeLocked ? 'not-allowed' : 'pointer',
                 backgroundColor: 'transparent',
                 color: isLite ? '#ffffff' : MUTED,
                 transition: 'color 0.15s ease',
@@ -335,7 +345,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
             </button>
             <button
               type="button"
-              onClick={() => handleNamSizeMode(false)}
+              onClick={() => !namSizeLocked && handleNamSizeMode(false)}
               {...helpProps(HELP.namFull)}
               style={{
                 height: '100%',
@@ -346,7 +356,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                 fontWeight: 400,
                 fontFamily: 'monospace',
                 border: 'none',
-                cursor: 'pointer',
+                cursor: namSizeLocked ? 'not-allowed' : 'pointer',
                 backgroundColor: 'transparent',
                 color: !isLite ? '#ffffff' : MUTED,
                 transition: 'color 0.15s ease',
@@ -556,7 +566,12 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                   }}
                 >
                   <div
-                    style={{ opacity: block.loadFailed ? 0.35 : 1, width: '100%', height: '100%' }}
+                    style={{
+                      opacity: modelBusy || block.loadFailed ? 0.35 : 1,
+                      transition: 'opacity 0.2s ease',
+                      width: '100%',
+                      height: '100%',
+                    }}
                   >
                     <ToneImage
                       src={tone.images?.[0]}
@@ -565,10 +580,12 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                       boxSize={IMAGE_SIZE}
                     />
                   </div>
-                  {/* Failed model download (e.g. a model switch while offline):
-                      surface the retry here too — the switch is driven from
-                      this card, so the failure must be visible in place. */}
-                  {block.loadFailed && (
+                  {/* Loading dots while a model downloads/prepares (mirrors
+                      the gallery tile); if it failed (e.g. a model switch
+                      while offline), the retry affordance instead — the
+                      switch is driven from this card, so the failure must
+                      be visible in place. */}
+                  {(modelBusy || block.loadFailed) && (
                     <div
                       style={{
                         position: 'absolute',
@@ -578,7 +595,11 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                         justifyContent: 'center',
                       }}
                     >
-                      <RetryLoadBadge onRetry={() => actions.retryLoad(blockId)} />
+                      {block.loadFailed ? (
+                        <RetryLoadBadge onRetry={() => actions.retryLoad(blockId)} />
+                      ) : (
+                        <LoadingDots />
+                      )}
                     </div>
                   )}
                 </div>

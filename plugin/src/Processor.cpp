@@ -236,6 +236,8 @@ void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& b
     block->outputGainSmoother.setCurrentAndTargetValue(1.0f);  // updated on first process
     block->mixSmoother.setCurrentAndTargetValue(block->mixNormalized);
     block->namNormalizationSmoother.setCurrentAndTargetValue(1.0f);
+    block->wetFadeGain.reset(kChainSampleRate, kWetFadeSeconds);
+    block->wetFadeGain.setCurrentAndTargetValue(block->enabled ? 1.0f : 0.0f);
 
     // Post-block EQ + spectrum analyzer need the sample rate for their math.
     block->eq.prepare(kChainSampleRate);
@@ -248,6 +250,15 @@ void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& b
 static std::pair<float, float> constantPowerPanGains(float pan) {
   const float angle = juce::jlimit(0.0f, 1.0f, pan) * juce::MathConstants<float>::halfPi;
   return {std::cos(angle), std::sin(angle)};
+}
+
+// Per-channel gain for a main stage: main level ±24 dB, plus the balance
+// trim (0.5 = centered) which adds up to ±12 dB opposing between L and R.
+// Mono buffers pass ch == 0 only, so balance is inert there by construction.
+static float mainStageChannelGain(float level, float balance, int channel) {
+  const float levelDb = (level - 0.5f) * 48.0f;
+  const float trimDb = (balance - 0.5f) * 24.0f * (channel == 0 ? -1.0f : 1.0f);
+  return juce::Decibels::decibelsToGain(levelDb + trimDb);
 }
 
 // Stereo input = stereo main bus, minus the standalone cases where it isn't
@@ -341,6 +352,28 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   trebleFilter.prepare(spec);
   dcBlocker.prepare(spec);
   spread.prepare(sampleRate, samplesPerBlock);
+
+  // Chain-edit fade (reorder / cross-lane move): host-rate, primed audible.
+  chainEditFadeGain.reset(sampleRate, kWetFadeSeconds);
+  chainEditFadeGain.setCurrentAndTargetValue(1.0f);
+
+  // Spread mono-double blend: primed at "no double"; the first running
+  // spread block ramps it in (see the post-chain stereo image stage).
+  spreadDoubleBlend.reset(sampleRate, kWetFadeSeconds);
+  spreadDoubleBlend.setCurrentAndTargetValue(0.0f);
+
+  // Output-stage gains, primed from the current parameters so a restored
+  // session doesn't glide in from the wrong level.
+  {
+    const bool applyOutputBalance = stereoEnabled.load() || cacheSpreadEnabled;
+    const float outputBalance = applyOutputBalance ? cacheOutputBalance : 0.5f;
+    outputGainSmootherL.reset(sampleRate, 0.02);
+    outputGainSmootherR.reset(sampleRate, 0.02);
+    outputGainSmootherL.setCurrentAndTargetValue(
+        mainStageChannelGain(cacheOutputLevel, outputBalance, 0));
+    outputGainSmootherR.setCurrentAndTargetValue(
+        mainStageChannelGain(cacheOutputLevel, outputBalance, 1));
+  }
 
   // Chain-pan blend gains: 20 ms ramps, primed from the current parameters
   // so a restored session doesn't fade in from the wrong image.
@@ -499,17 +532,6 @@ void TONE3000Processor::updateCachedParameters() {
   cacheSpreadEnabled = loadBool(paramRefs.spreadEnabled);
 }
 
-// Per-channel gain for a main stage: main level ±24 dB, plus the balance
-// trim (0.5 = centered) which adds up to ±12 dB opposing between L and R.
-// Mono buffers pass ch == 0 only, so balance is inert there by construction.
-static float mainStageChannelGain(float level, float balance, int channel) {
-  const float levelDb = (level - 0.5f) * 48.0f;
-  const float trimDb = (balance - 0.5f) * 24.0f * (channel == 0 ? -1.0f : 1.0f);
-  return juce::Decibels::decibelsToGain(levelDb + trimDb);
-}
-
-
-
 // ##########################
 // RT PROCESS A SINGLE CHAIN
 // ##########################
@@ -537,7 +559,19 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
     if (block->type == ChainBlockType::INSERT) {
       continue;  // Insert block is pass-through, no audio effect
     }
-    if (!block->loaded || !block->enabled) {
+
+    // Wet-path fade (see ChainBlock.h): power toggles and pending engine
+    // swaps glide the block's wet mix to/from bypass instead of splicing the
+    // waveform. A disabled block keeps processing until the glide reaches
+    // bypass, then is skipped exactly like before.
+    const bool wantsWet = block->enabled && !block->swapFadePending.load();
+    block->wetFadeGain.setTargetValue(block->loaded && wantsWet ? 1.0f : 0.0f);
+    const bool wetSilent =
+        !block->wetFadeGain.isSmoothing() && block->wetFadeGain.getCurrentValue() <= 0.001f;
+    if (wetSilent)
+      block->swapFadeDone.store(true);  // a waiting requester may splice now
+
+    if (!block->loaded || (!wantsWet && wetSilent)) {
       // Not processing: park the block's meters at the floor. The EQ view can
       // still be open, so keep its analyzer fed with the pass-through audio.
       block->inputMeterDb.store(-60.0f);
@@ -726,7 +760,9 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
     float blockOutputPeak = 0.0f;
     for (int i = 0; i < numSamples; ++i) {
       const float g = block->outputGainSmoother.getNextValue();
-      const float m = block->mixSmoother.getNextValue();
+      // wetFadeGain rides the mix so every block transition (swap, power
+      // toggle, add/remove) glides through bypass — see ChainBlock.h.
+      const float m = block->mixSmoother.getNextValue() * block->wetFadeGain.getNextValue();
       float wetL = buffer.getWritePointer(0)[i] * g;
       float dryL = tempDryBuffer.getReadPointer(0)[i];
       buffer.getWritePointer(0)[i] = dryL * (1.0f - m) + wetL * m;
@@ -738,6 +774,12 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
         blockOutputPeak = std::max(blockOutputPeak, std::abs(buffer.getWritePointer(1)[i]));
       }
     }
+
+    // Fade handshake: tell a waiting requester the wet path is fully
+    // bypassed and its change (swap/removal) can splice in silently.
+    if (block->swapFadePending.load() && !block->wetFadeGain.isSmoothing() &&
+        block->wetFadeGain.getCurrentValue() <= 0.001f)
+      block->swapFadeDone.store(true);
 
     // Post-block EQ: the last stage of the block, applied after gain + mix so
     // it shapes exactly what leaves the block. Skipped entirely when flat.
@@ -818,6 +860,10 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   }
 
   updateCachedParameters();
+
+  // Heartbeat for isAudioActive(): fade handshakes skip their bounded waits
+  // when no callbacks are running (nothing is audible then).
+  lastAudioCallbackMs.store(juce::Time::currentTimeMillis());
 
   // Standalone input fold-down, up front so everything downstream (meters,
   // tuner, chains, spread detection) sees the real source:
@@ -938,6 +984,28 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   }
 
   // ##########
+  // Chain-edit fade (see ChainEditFade): structural edits that can't be
+  // expressed as one block's wet fade (reorder, cross-lane move) glide the
+  // whole chain output to silence, splice the edit in between callbacks,
+  // and glide back. Idle cost: one atomic load + one branch.
+  // ##########
+  {
+    const bool editPending = chainEditFadePending.load();
+    chainEditFadeGain.setTargetValue(editPending ? 0.0f : 1.0f);
+    if (chainEditFadeGain.isSmoothing()) {
+      for (int i = 0; i < numSamples; ++i) {
+        const float g = chainEditFadeGain.getNextValue();
+        for (int ch = 0; ch < numChannels; ++ch)
+          buffer.getWritePointer(ch)[i] *= g;
+      }
+    } else if (editPending && chainEditFadeGain.getCurrentValue() <= 0.001f) {
+      // Fully faded: hold silence until the editor thread finishes its splice.
+      buffer.clear();
+      chainEditFadeDone.store(true);
+    }
+  }
+
+  // ##########
   // Post-chain stereo image, before the downstream stereo stages (DC / tone
   // stack / output balance + meters) so they see the real image. Order
   // matters: spread runs first so the delay always shifts one full chain,
@@ -952,11 +1020,33 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // ##########
   {
     const bool isStereo = stereoEnabled.load() && numChannels >= 2;
-    if (spread.isRunning()) {
-      if (!isStereo && numChannels >= 2)
-        buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);  // seed the double
-      spread.process(buffer);
+
+    // Mono-double seed, crossfaded: with a true stereo source the two
+    // channels carry different chain output, so the spread power toggle
+    // glides channel 1 between its own signal and the channel-0 double
+    // instead of hard-copying it (pop). Settled at 1 it's the plain copy;
+    // settled at 0 it costs nothing. (For mono sources ch0 == ch1 and the
+    // blend is inert either way.)
+    if (!isStereo && numChannels >= 2) {
+      spreadDoubleBlend.setTargetValue(cacheSpreadEnabled ? 1.0f : 0.0f);
+      if (spreadDoubleBlend.isSmoothing()) {
+        const auto* l = buffer.getReadPointer(0);
+        auto* r = buffer.getWritePointer(1);
+        for (int i = 0; i < numSamples; ++i) {
+          const float b = spreadDoubleBlend.getNextValue();
+          r[i] += (l[i] - r[i]) * b;
+        }
+      } else if (spreadDoubleBlend.getCurrentValue() >= 0.999f) {
+        buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
+      }
+    } else {
+      // Stereo mode owns both channels; park the blend so the next mono use
+      // starts from the right resting point.
+      spreadDoubleBlend.setCurrentAndTargetValue(cacheSpreadEnabled ? 1.0f : 0.0f);
     }
+
+    if (spread.isRunning())
+      spread.process(buffer);
 
     if (isStereo) {
       const auto [gLtoL, gLtoR] = constantPowerPanGains(cacheChainPanLeft);
@@ -1021,19 +1111,26 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // mode, or mono mode with spread powered on. Otherwise force center so a
   // leftover Bal setting from a prior mono+spread session can't skew a
   // mono (identical L/R) bus — matches the UI hiding the Bal knob.
-  // Per-channel output meters ride the same pass.
+  // The gains are smoothed so knob moves AND the balance on/off gating
+  // (spread/stereo toggles) glide instead of stepping (pop). Per-channel
+  // output meters ride the same pass.
   // ###########
   {
     const bool applyOutputBalance = stereoEnabled.load() || cacheSpreadEnabled;
     const float outputBalance = applyOutputBalance ? cacheOutputBalance : 0.5f;
+    outputGainSmootherL.setTargetValue(mainStageChannelGain(cacheOutputLevel, outputBalance, 0));
+    outputGainSmootherR.setTargetValue(mainStageChannelGain(cacheOutputLevel, outputBalance, 1));
+
     float peakL = 0.0f, peakR = 0.0f;
-    for (int ch = 0; ch < numChannels; ++ch) {
-      const float gainLinear = mainStageChannelGain(cacheOutputLevel, outputBalance, ch);
-      float& peak = (ch == 0) ? peakL : peakR;
-      auto* channelData = buffer.getWritePointer(ch);
-      for (int i = 0; i < numSamples; ++i) {
-        channelData[i] *= gainLinear;
-        peak = std::max(peak, std::abs(channelData[i]));
+    auto* l = buffer.getWritePointer(0);
+    auto* r = numChannels > 1 ? buffer.getWritePointer(1) : nullptr;
+    for (int i = 0; i < numSamples; ++i) {
+      l[i] *= outputGainSmootherL.getNextValue();
+      peakL = std::max(peakL, std::abs(l[i]));
+      const float gainR = outputGainSmootherR.getNextValue();
+      if (r) {
+        r[i] *= gainR;
+        peakR = std::max(peakR, std::abs(r[i]));
       }
     }
     if (numChannels < 2)

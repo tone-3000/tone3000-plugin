@@ -125,6 +125,7 @@ void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState
     if (modelChanged || !block->loaded) {
       block->loaded = false;
       block->loadFailed = false;  // fresh load queued below — back to loading UI
+      block->modelLoading = true;
       // Project files and presets embed model bytes; seed the in-memory cache
       // with *all* of them so offline model switching keeps working and a
       // later save doesn't silently drop the non-active models. Undo
@@ -185,6 +186,19 @@ TONE3000Processor::Lane TONE3000Processor::restoreChainSnapshot(const juce::Valu
 }
 
 bool TONE3000Processor::undoChain() {
+  // No-op undos (hotkey spam at the stack end) must not dip the audio, so
+  // check the stack before arming the fade.
+  {
+    juce::ScopedLock lock(chainMutex);
+    if (!chainHistory.canUndo())
+      return false;
+  }
+
+  // A restore can restructure the chain arbitrarily — mute-splice it like
+  // any structural edit. Constructed before the lock: the audio thread
+  // needs chainMutex to run the fade down.
+  ChainEditFade editFade(*this);
+
   Lane retired;  // destroyed after the lock — see restoreChainSnapshot
   {
     juce::ScopedLock lock(chainMutex);
@@ -197,6 +211,15 @@ bool TONE3000Processor::undoChain() {
 }
 
 bool TONE3000Processor::redoChain() {
+  {
+    juce::ScopedLock lock(chainMutex);
+    if (!chainHistory.canRedo())
+      return false;
+  }
+
+  // See undoChain: mute-splice the restore.
+  ChainEditFade editFade(*this);
+
   Lane retired;  // destroyed after the lock — see restoreChainSnapshot
   {
     juce::ScopedLock lock(chainMutex);

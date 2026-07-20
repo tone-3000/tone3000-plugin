@@ -89,6 +89,11 @@ bool TONE3000Processor::loadPreset(const juce::String& presetId) {
   if (!snapshot.isValid())
     return false;
 
+  // A preset replaces the whole chain (and jumps the faceplate parameters
+  // below) — mute-splice the transition like any structural edit. The fade
+  // holds until everything is in place, then glides back in on the new rig.
+  ChainEditFade editFade(*this);
+
   Lane retired;  // destroyed after the lock — see restoreChainSnapshot
   {
     juce::ScopedLock lock(chainMutex);

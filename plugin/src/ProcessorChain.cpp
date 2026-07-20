@@ -72,6 +72,22 @@ struct ParsedTone {
   juce::String toneJson;  // `toneVar` re-serialized (what the block persists)
 };
 
+// The engine type a tone requires, from its parsed JSON (`format`, with the
+// legacy `platform` fallback). While a tone swap is in flight the block's own
+// `type` still describes the *old* engine (which keeps processing until the
+// new model is applied), so loads must key off the tone, not the block.
+ChainBlockType toneEngineType(const juce::var& toneVar, ChainBlockType fallback) {
+  auto* obj = toneVar.getDynamicObject();
+  if (obj == nullptr)
+    return fallback;
+  juce::String format = obj->getProperty("format").toString().toLowerCase();
+  if (format.isEmpty())
+    format = obj->getProperty("platform").toString().toLowerCase();
+  if (format.isEmpty())
+    return fallback;
+  return format == "nam" ? ChainBlockType::NAM : ChainBlockType::IR;
+}
+
 ParsedTone parseToneForLoading(const juce::String& toneJsonString) {
   ParsedTone out;
 
@@ -235,6 +251,7 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString,
   block->activeModelId = parsed.firstModelId;
   block->mixNormalized = parsed.defaultMix;
   block->loaded = false;
+  block->modelLoading = true;
 
   DBG("Created tone block: " << parsed.toneId << " (block: " << blockId << ")");
   DBG("Queueing first model for background loading: " << parsed.modelName);
@@ -294,16 +311,16 @@ bool TONE3000Processor::swapTone(const std::string& blockId, const juce::String&
   pushChainHistory();
 
   // Replace the tone in place: same block id (chain position preserved), same
-  // user params (enabled/gains/mix). Engines stay until the new model swaps in
-  // via applyPreparedModelToChainBlock, but loaded=false stops processing now.
-  block->type = parsed.type;
+  // user params (enabled/gains/mix). The old engines — and the block type
+  // they belong to — stay live and keep processing until the new model is
+  // spliced in by applyPreparedModelToChainBlock (which also stamps the new
+  // type); `modelLoading` drives the UI's loading state meanwhile.
   setToneOnBlock(*block, parsed.toneId, parsed.toneJson, parsed.toneVar);
   block->activeModelId = parsed.firstModelId;
-  block->loaded = false;
+  block->modelLoading = true;
   block->loadFailed = false;
   block->modelCache.clear();
-  block->namIsSlimmable = false;
-  block->namSlimmableSize = 1.0;
+  block->namSlimmableSize = 1.0;  // new tone starts at FULL
 
   DBG("Swapped tone on block " << blockId << " -> tone " << parsed.toneId);
 
@@ -351,8 +368,10 @@ bool TONE3000Processor::switchModel(const std::string& blockId, int modelId,
   block->toneJson = juce::JSON::toString(block->toneVar);
   block->toneSummary = makeToneSummary(block->toneVar);
 
+  // The previous engine keeps processing (loaded stays true) while the new
+  // model downloads/prepares; the swap itself is spliced in with a fade.
   block->activeModelId = modelId;
-  block->loaded = false;
+  block->modelLoading = true;
   block->loadFailed = false;
   bumpChainRevision();
 
@@ -380,6 +399,11 @@ bool TONE3000Processor::switchModel(const std::string& blockId, int modelId,
 }
 
 bool TONE3000Processor::removeChainBlock(const std::string& blockId) {
+  // Removal is bypass, so glide the block's wet mix to bypass first — then
+  // detaching it is inaudible. Bounded wait (~one fade; skipped when audio
+  // is stopped), on the message thread — imperceptible for a click gesture.
+  requestSwapFadeAndWait(blockId);
+
   // Detached under the lock, destroyed after releasing it: engine teardown
   // (NAM graph, convolution state) is heavy and the audio thread may be
   // waiting on chainMutex.
@@ -417,6 +441,10 @@ bool TONE3000Processor::removeChainBlock(const std::string& blockId) {
 }
 
 bool TONE3000Processor::reorderChainBlocks(const std::vector<std::string>& newOrder) {
+  // Reordering nonlinear blocks changes the chain's waveform discontinuously
+  // (no single block to fade), so mute-splice: glide the chain output to
+  // silence, apply, glide back (~25 ms each way; see ChainEditFade).
+  ChainEditFade editFade(*this);
   juce::ScopedLock lock(chainMutex);
 
   // Both lanes render at once now, so the target chain is inferred from the
@@ -470,6 +498,8 @@ bool TONE3000Processor::reorderChainBlocks(const std::vector<std::string>& newOr
 
 bool TONE3000Processor::moveBlockToChain(const std::string& blockId, const juce::String& side,
                                          int index) {
+  // Cross-lane moves change both chains at once — mute-splice like reorder.
+  ChainEditFade editFade(*this);
   juce::ScopedLock lock(chainMutex);
 
   if (!stereoEnabled.load()) {
@@ -514,9 +544,17 @@ bool TONE3000Processor::moveBlockToChain(const std::string& blockId, const juce:
 // loadFailed (with a revision bump) so the UI swaps its loading dots for a
 // retry affordance instead of spinning forever.
 void TONE3000Processor::markBlockLoadFailed(const std::string& blockId) {
+  // The previous engine kept playing during the download; the UI already
+  // shows the new tone/model, so on failure the block drops out of
+  // processing to match — glided to bypass first, never spliced.
+  requestSwapFadeAndWait(blockId);
+
   juce::ScopedLock lock(chainMutex);
   if (ChainBlock* block = findBlockById(blockId)) {
+    block->loaded = false;
     block->loadFailed = true;
+    block->modelLoading = false;
+    block->swapFadePending.store(false);  // never leave the block faded out
     bumpChainRevision();
   }
 }
@@ -527,10 +565,11 @@ void TONE3000Processor::markBlockLoadFailed(const std::string& blockId) {
 bool TONE3000Processor::retryModelLoad(const std::string& blockId) {
   juce::ScopedLock lock(chainMutex);
   ChainBlock* block = findBlockById(blockId);
-  if (block == nullptr || block->type == ChainBlockType::INSERT || block->loaded)
+  if (block == nullptr || block->type == ChainBlockType::INSERT || !block->loadFailed)
     return false;
 
   block->loadFailed = false;
+  block->modelLoading = true;
   bumpChainRevision();  // back to the loading state in the UI
   queueActiveModelLoad(*block);
   return true;
@@ -568,6 +607,11 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, int fir
       prepareBlockModelOffThread(type, modelData, filename, namPersistedSlimmable);
   const bool applied = prepared.success;
 
+  // A swapped tone's previous engine may still be audibly processing — let
+  // the audio thread fade it to bypass before the outcome is applied (new
+  // engine spliced in, or the block dropped from processing on failure).
+  requestSwapFadeAndWait(blockId);
+
   {
     juce::ScopedLock lock(chainMutex);
 
@@ -577,7 +621,15 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, int fir
       return;
     }
 
-    applyPreparedModelToChainBlock(*block, prepared);
+    if (block->activeModelId != firstModelId) {
+      // Superseded by a newer switch/swap while this one loaded; that job
+      // owns the block's loading state now — just make sure the block isn't
+      // left faded out.
+      block->swapFadePending.store(false);
+      return;
+    }
+
+    applyPreparedModelToChainBlock(*block, type, prepared);
   }
   // `prepared` now holds the block's *previous* engines (if any); they are
   // destroyed here, after the lock — teardown is too heavy to hold it.
@@ -606,7 +658,15 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
       return;
     }
 
-    blockTypeForPrepare = block->type;
+    if (block->activeModelId != modelId) {
+      DBG("[Background] Model switch superseded before it started");
+      return;
+    }
+
+    // Key the prepare off the *tone's* format, not block->type: during an
+    // in-flight tone swap the block keeps its previous type (that engine is
+    // still processing) while this job builds the new tone's engine.
+    blockTypeForPrepare = toneEngineType(block->toneVar, block->type);
     namPersistedSlimmable = block->namSlimmableSize;
     auto cacheIt = block->modelCache.find(modelId);
 
@@ -636,6 +696,11 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
                                                            namPersistedSlimmable);
   const bool applied = prepared.success;
 
+  // The outgoing model keeps processing until this moment — fade it to
+  // bypass on the audio thread so the outcome (engine swap, or dropping the
+  // block on a failed prepare) can't click.
+  requestSwapFadeAndWait(blockId);
+
   {
     juce::ScopedLock lock(chainMutex);
 
@@ -648,7 +713,15 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
     if (needsFetch) {
       block->modelCache[modelId] = modelData;
     }
-    applyPreparedModelToChainBlock(*block, prepared);
+
+    if (block->activeModelId != modelId) {
+      // Superseded by a newer switch/swap while this one downloaded; that
+      // job owns the block's loading state now. The bytes stay cached above.
+      block->swapFadePending.store(false);
+      return;
+    }
+
+    applyPreparedModelToChainBlock(*block, blockTypeForPrepare, prepared);
   }
   // `prepared` now holds the block's *previous* engines (if any); they are
   // destroyed here, after the lock — teardown is too heavy to hold it.
@@ -732,6 +805,7 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
       item->setProperty("activeModelId", block->activeModelId);
       item->setProperty("loaded", block->loaded);
       item->setProperty("loadFailed", block->loadFailed);
+      item->setProperty("modelLoading", block->modelLoading);
       item->setProperty("namSlimmable", block->type == ChainBlockType::NAM &&
                                             block->namIsSlimmable && block->loaded);
 
@@ -822,6 +896,13 @@ juce::var TONE3000Processor::getMeterLevels() const {
 // STEREO MODE
 // ####################
 void TONE3000Processor::setStereoMode(bool enabled) {
+  // Mono ↔ stereo rewires the whole routing (one chain on both channels ↔
+  // two independent lanes) — no single block to fade, so mute-splice like
+  // reorder. Cheap early-out first: no fade when nothing changes.
+  if (stereoEnabled.load() == enabled)
+    return;
+
+  ChainEditFade editFade(*this);
   juce::ScopedLock lock(chainMutex);
 
   if (stereoEnabled.load() == enabled)
@@ -859,6 +940,8 @@ void TONE3000Processor::setActiveEditChain(const juce::String& side) {
 }
 
 bool TONE3000Processor::swapChains() {
+  // Both lanes change output channel at once — mute-splice like reorder.
+  ChainEditFade editFade(*this);
   juce::ScopedLock lock(chainMutex);
 
   if (!stereoEnabled.load())
@@ -877,6 +960,14 @@ bool TONE3000Processor::swapChains() {
 
 bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::String& param,
                                       double value) {
+  // LITE/FULL swaps the NAM weights inside a playing engine — glide the
+  // block's wet mix to bypass first (same handshake as a model swap) so the
+  // tier change can't splice the waveform. Requested before the lock: the
+  // audio thread needs chainMutex to run the fade down. Every path below
+  // clears swapFadePending so the block can't be left bypassed.
+  if (param == "namSlimmableSize")
+    requestSwapFadeAndWait(blockId);
+
   juce::ScopedLock lock(chainMutex);
   ChainBlock* block = findBlockById(blockId);
   if (block == nullptr || block->type == ChainBlockType::INSERT)
@@ -891,8 +982,10 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
   }
   if (param == "namSlimmableSize" &&
       (block->type != ChainBlockType::NAM || !block->namIsSlimmable ||
-       block->namEngine == nullptr))
+       block->namEngine == nullptr)) {
+    block->swapFadePending.store(false);  // fade may be armed — release it
     return false;
+  }
 
   // Continuous params coalesce a whole knob drag into one undo step.
   pushChainHistory(isContinuous ? "param:" + juce::String(blockId) + ":" + param
@@ -910,6 +1003,7 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
     const double clamped = juce::jlimit(0.0, 1.0, value);
     block->namSlimmableSize = clamped;
     block->namEngine->setSlimmableSize(clamped);
+    block->swapFadePending.store(false);  // fade back in on the new tier
   }
 
   // Continuous drags settle into one bump after the gesture ends; discrete

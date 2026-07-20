@@ -58,6 +58,11 @@ const TileSurface: React.FC<{
 }> = ({ block, size, enabled, actions }) => {
   const { blockId, tone } = block;
 
+  // A model download/prepare is in flight: `modelLoading` covers switches
+  // (where the previous model keeps playing, so `loaded` stays true) and
+  // `!loaded` covers fresh blocks that have nothing to play yet.
+  const busy = block.modelLoading || (!block.loaded && !block.loadFailed);
+
   return (
     <div
       // Header reveals on :hover via CSS (see index.css) — JS hover state
@@ -78,12 +83,12 @@ const TileSurface: React.FC<{
         boxSizing: 'border-box',
       }}
     >
-      {/* Tone image (dimmed while powered off or still loading) */}
+      {/* Tone image (dimmed while powered off, loading, or failed) */}
       <div
         style={{
           position: 'absolute',
           inset: 0,
-          opacity: enabled && block.loaded ? 1 : 0.35,
+          opacity: enabled && !busy && !block.loadFailed ? 1 : 0.35,
           transition: 'opacity 0.2s ease',
         }}
       >
@@ -98,7 +103,7 @@ const TileSurface: React.FC<{
 
       {/* Busy dots while the model downloads natively; if the download
           failed, a retry affordance instead (dots would spin forever). */}
-      {!block.loaded && (
+      {(busy || block.loadFailed) && (
         <div
           style={{
             position: 'absolute',

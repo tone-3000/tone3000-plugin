@@ -247,15 +247,79 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
   return out;
 }
 
-void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block,
+void TONE3000Processor::requestSwapFadeAndWait(const std::string& blockId) {
+  // No callbacks running → nothing audible; the change can apply directly
+  // (and a click gesture on the message thread shouldn't stall on the
+  // timeout below).
+  if (!isAudioActive())
+    return;
+
+  {
+    juce::ScopedLock lock(chainMutex);
+    ChainBlock* block = findBlockById(blockId);
+    if (block == nullptr)
+      return;
+    // Nothing audible to fade: fresh block, failed/unloaded block, powered
+    // off, or no engine yet. The change can splice in directly.
+    const bool audible = block->loaded && block->enabled &&
+                         (block->namEngine != nullptr || block->convolverMono != nullptr);
+    if (!audible)
+      return;
+    block->swapFadeDone.store(false);
+    block->swapFadePending.store(true);
+  }
+
+  // The audio thread completes the fade within a few callbacks; the deadline
+  // is a backstop for audio stopping mid-wait. Every path past this point
+  // clears swapFadePending, so a timed-out fade can't leave the block
+  // bypassed.
+  const juce::uint32 deadline = juce::Time::getMillisecondCounter() + 250;
+  while (juce::Time::getMillisecondCounter() < deadline) {
+    juce::Thread::sleep(2);
+    juce::ScopedLock lock(chainMutex);
+    ChainBlock* block = findBlockById(blockId);
+    if (block == nullptr || block->swapFadeDone.load())
+      return;
+  }
+}
+
+void TONE3000Processor::requestChainEditFadeAndWait() {
+  if (!isAudioActive())
+    return;  // no callbacks → the edit is inaudible; apply directly
+
+  chainEditFadeDone.store(false);
+  chainEditFadePending.store(true);
+
+  // The caller (ChainEditFade) clears chainEditFadePending after its edit,
+  // so a timed-out fade can't leave the chain muted.
+  const juce::uint32 deadline = juce::Time::getMillisecondCounter() + 250;
+  while (juce::Time::getMillisecondCounter() < deadline) {
+    juce::Thread::sleep(2);
+    if (chainEditFadeDone.load())
+      return;
+  }
+}
+
+void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainBlockType newType,
                                                        PreparedBlockModel& prepared) {
   // Loaded state is part of what getChainState reports, so any outcome here
   // must wake up the UI's revision-gated poll.
   bumpChainRevision();
 
+  // Whatever the outcome, this load attempt is over. Clearing the fade flag
+  // lets the audio thread ramp the wet mix back up when there is something
+  // to hear.
+  block.modelLoading = false;
+  block.swapFadePending.store(false);
+  block.swapFadeDone.store(false);
+
   if (!prepared.success) {
+    // Corrupt/unreadable model — surface the retry UI. The UI already shows
+    // the new tone/model, so the block drops out of processing to match
+    // (the caller's pre-apply fade already glided it to bypass); its old
+    // engines are swapped out by the next successful load.
     block.loaded = false;
-    block.loadFailed = true;  // corrupt/unreadable model — surface the retry UI
+    block.loadFailed = true;
     return;
   }
 
@@ -263,7 +327,8 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block,
   // `prepared`, and the caller destroys them after releasing chainMutex —
   // NAM graph / convolution teardown must never run while the audio thread
   // can be blocked on the lock.
-  if (block.type == ChainBlockType::NAM && prepared.namEngine != nullptr) {
+  if (newType == ChainBlockType::NAM && prepared.namEngine != nullptr) {
+    block.type = newType;  // may differ while a tone swap was in flight
     std::swap(block.namEngine, prepared.namEngine);            // new engine in, old out
     std::swap(block.convolverMono, prepared.convolverMono);    // null in, any old IR out
     std::swap(block.convolverStereo, prepared.convolverStereo);
@@ -281,7 +346,8 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block,
     block.loaded = true;
     block.loadFailed = false;
 
-  } else if (block.type == ChainBlockType::IR && prepared.convolverMono != nullptr) {
+  } else if (newType == ChainBlockType::IR && prepared.convolverMono != nullptr) {
+    block.type = newType;
     std::swap(block.namEngine, prepared.namEngine);            // null in, any old NAM out
     std::swap(block.convolverMono, prepared.convolverMono);
     std::swap(block.convolverStereo, prepared.convolverStereo);
@@ -296,9 +362,26 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block,
     block.loaded = true;
     block.loadFailed = false;
   } else {
-    DBG("Prepared model type/engine mismatch vs chain block — leaving block unloaded");
+    DBG("Prepared model type/engine mismatch — dropping block from processing");
     block.loaded = false;
     block.loadFailed = true;
+    return;
   }
+
+  // Per-block smoothers: prepareChain only covers blocks that existed at
+  // prepareToPlay, so (re)arm them here for blocks added mid-session — a
+  // never-reset LinearSmoothedValue jumps instantly (zipper noise on the
+  // first knob drag). Snapping to target is inaudible: the wet path is at
+  // bypass right now (fade below / fresh block).
+  block.inputGainSmoother.reset(kChainSampleRate, 0.05f);
+  block.outputGainSmoother.reset(kChainSampleRate, 0.05f);
+  block.mixSmoother.reset(kChainSampleRate, 0.05f);
+  block.mixSmoother.setCurrentAndTargetValue(block.mixNormalized);
+
+  // Splice-in fade: the new engine enters from bypass instead of jumping in
+  // mid-waveform (the outgoing one faded to bypass before the swap — see
+  // requestSwapFadeAndWait).
+  block.wetFadeGain.reset(kChainSampleRate, kWetFadeSeconds);
+  block.wetFadeGain.setCurrentAndTargetValue(0.0f);
 }
 

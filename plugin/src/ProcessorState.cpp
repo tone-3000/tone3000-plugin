@@ -138,6 +138,12 @@ void TONE3000Processor::setStateInformation(const void* data, int sizeInBytes) {
   // just a reconciling restore: matching blocks keep their loaded engines,
   // everything else decodes its embedded model bytes and loads in the
   // background — no synchronous model prepare under the chain lock.
+  //
+  // Hosts can re-set state mid-playback (DAW preset browsers) — mute-splice
+  // the restore like any structural edit. Free on project load: no audio
+  // callbacks are running yet, so the fade is skipped entirely.
+  ChainEditFade editFade(*this);
+
   Lane retired;  // destroyed after the lock — see restoreChainSnapshot
   {
     juce::ScopedLock lock(chainMutex);

@@ -244,12 +244,49 @@ private:
   PreparedBlockModel prepareBlockModelOffThread(ChainBlockType type, const std::vector<uint8_t>& modelData,
                                                 const juce::String& filename,
                                                 double namPersistedSlimmableSize);
-  /** Short path under `chainMutex` only: swaps the new engines onto `block`.
-      The block's *old* engines end up back in `prepared` — the caller must let
+  /** Short path under `chainMutex` only: swaps the new engines onto `block`
+      and stamps `newType` (a tone swap may change the block's type — the old
+      engine kept processing under the old type until this moment). The
+      block's *old* engines end up back in `prepared` — the caller must let
       `prepared` die *after* releasing the lock, because engine destructors
       (NAM graphs, convolution state) are far too heavy to run while the audio
       thread may be blocked on chainMutex. */
-  void applyPreparedModelToChainBlock(ChainBlock& block, PreparedBlockModel& prepared);
+  void applyPreparedModelToChainBlock(ChainBlock& block, ChainBlockType newType,
+                                      PreparedBlockModel& prepared);
+
+  /** Ask the audio thread to glide `blockId`'s wet mix down to bypass, then
+      wait (bounded) for the fade, so the caller's change (engine swap,
+      failure drop, block removal) never splices the waveform (audible
+      click). Returns immediately when the block isn't audibly processing or
+      no audio callbacks are running (the change is inaudible then anyway).
+      Must be called WITHOUT holding chainMutex. */
+  void requestSwapFadeAndWait(const std::string& blockId);
+
+  /** Same idea for structural edits that can't be expressed as one block's
+      wet fade (reorder, cross-lane move): glide the whole chain output to
+      silence and wait (bounded) so the edit splices in silently. The caller
+      clears `chainEditFadePending` afterwards to glide back — use the
+      ChainEditFade RAII below. Must be called WITHOUT holding chainMutex. */
+  void requestChainEditFadeAndWait();
+
+  /** RAII wrapper for the chain-edit fade: fades the chain output to silence
+      on construction, lets it glide back on scope exit (after the mutation,
+      including early-error returns). */
+  struct ChainEditFade {
+    explicit ChainEditFade(TONE3000Processor& proc) : p(proc) {
+      p.requestChainEditFadeAndWait();
+    }
+    ~ChainEditFade() { p.chainEditFadePending.store(false); }
+    TONE3000Processor& p;
+  };
+
+  /** True while the audio thread is actively receiving callbacks (updated
+      every processBlock). The fade handshakes skip their bounded waits when
+      audio is stopped — nothing is audible, and blocking a click gesture on
+      the message thread for the full timeout would feel sluggish. */
+  bool isAudioActive() const {
+    return juce::Time::currentTimeMillis() - lastAudioCallbackMs.load() < 150;
+  }
 
   // Run one chain (the per-block loop) over the supplied working buffer. The buffer may have
   // 1 channel (a single side in stereo mode) or 1-2 channels (mono mode). All per-channel work
@@ -356,6 +393,27 @@ private:
   // Select flow (the choice must survive the OAuth redirect); not a view mode.
   ChainSide pendingAddSide{ChainSide::Left};
   juce::CriticalSection chainMutex;
+
+  // ── Global chain-edit fade (see ChainEditFade / requestChainEditFadeAndWait) ──
+  // The gain rides the host-rate buffer right after the chain stage; the
+  // smoother is audio-thread-only, the flags are the cross-thread handshake.
+  std::atomic<bool> chainEditFadePending{false};
+  std::atomic<bool> chainEditFadeDone{false};
+  juce::LinearSmoothedValue<float> chainEditFadeGain;
+
+  // Milliseconds timestamp of the last processBlock, for isAudioActive().
+  std::atomic<juce::int64> lastAudioCallbackMs{0};
+
+  // Crossfade for the mono-double seed (spread in mono mode): 0 = channel 1
+  // keeps its own chain output, 1 = channel 1 mirrors channel 0 (the
+  // double). On true stereo sources the two chain outputs differ, so the
+  // spread power switch must glide this instead of hard-copying (pop).
+  juce::SmoothedValue<float> spreadDoubleBlend;
+
+  // Output-stage gains, smoothed per channel: level/balance knob moves and
+  // the balance on/off gating (it only applies in stereo or mono+spread)
+  // glide instead of stepping once per block. Audio thread only.
+  juce::SmoothedValue<float> outputGainSmootherL, outputGainSmootherR;
 
   // Monotonic revision of everything getChainState() reports. Bumped on every
   // chain mutation (structure, params, load completion, stereo/side changes)

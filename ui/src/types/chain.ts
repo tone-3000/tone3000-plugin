@@ -120,12 +120,20 @@ export interface ToneBlock {
   /** Tone metadata for rendering (slim projection of the API tone). */
   tone: ToneSummary;
   activeModelId: number;
-  /** True when the active model is downloaded, prepared and processing. */
+  /** True when a model is loaded and processing. During a model switch this
+      stays true — the previous model keeps playing until the new one is
+      spliced in natively (with a short fade). On a failed load it drops to
+      false: the block falls out of processing (matching the new tone/model
+      already shown in the UI) until a retry succeeds. */
   loaded: boolean;
   /** True when the last download/prepare of the active model failed (network
       down, TONE3000 unreachable). The block renders a retry affordance
       instead of loading dots; retry re-queues via `retryModelLoad`. */
   loadFailed: boolean;
+  /** True while a download/prepare of the active model is in flight. Drives
+      the loading overlays (not `loaded`, which stays true mid-switch so the
+      old model keeps playing). */
+  modelLoading: boolean;
   /** Capability flag from native (model is a SlimmableContainer). UI no longer
       gates on this — architecture=2 NAM tones always show LITE/FULL. */
   namSlimmable: boolean;

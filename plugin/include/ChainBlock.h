@@ -34,6 +34,13 @@ enum class ChainSide { Left, Right };
 constexpr int kNumLanes = 2;
 inline int laneIndex(ChainSide side) { return side == ChainSide::Right ? 1 : 0; }
 
+// Wet-path fade time (see ChainBlock::wetFadeGain): every discontinuous
+// per-block transition — engine swap, power toggle, block add/removal —
+// glides the block's wet mix through bypass over this ramp instead of
+// splicing the waveform (audible click). Also the ramp for the global
+// chain-edit fade (reorder/cross-lane moves mute-splice the chain output).
+constexpr double kWetFadeSeconds = 0.025;
+
 // Minimum tiles per lane. A lane always presents at least this many blocks
 // (tones + insert placeholders), and always at least one insert placeholder —
 // so an empty lane shows kMinLaneSlots empty slots, and once the user has
@@ -72,6 +79,29 @@ struct ChainBlock {
   // dots for a retry affordance targeting retryModelLoad. Runtime-only —
   // never persisted; cleared whenever a new load is queued.
   bool loadFailed{false};
+
+  // True while a background download/prepare of the active model is in
+  // flight. Split from `loaded` so a model switch/tone swap keeps the
+  // previous engine processing (`loaded` stays true) while the replacement
+  // downloads; the UI keys its loading affordances off this flag.
+  // Runtime-only — never persisted.
+  bool modelLoading{false};
+
+  // ── Click-free wet-path fade (audio thread) + swap handshake ──
+  // `wetFadeGain` multiplies the block's wet mix and is the single smoothing
+  // path for every discontinuous block transition: the audio thread targets
+  // it at 1 while the block wants to be heard (`enabled` and no swap
+  // pending) and 0 otherwise, so power toggles glide through bypass, new
+  // engines fade in from bypass, and removals fade out before detaching.
+  //
+  // The handshake: another thread raises `swapFadePending` (engine swap,
+  // failure drop, removal), the audio thread fades to bypass and raises
+  // `swapFadeDone` once silent, and the requester then applies its change
+  // under the chain lock (see requestSwapFadeAndWait — bounded wait; when no
+  // callbacks are running the change applies directly, nothing is audible).
+  std::atomic<bool> swapFadePending{false};
+  std::atomic<bool> swapFadeDone{false};
+  juce::LinearSmoothedValue<float> wetFadeGain;
 
   // Set by the audio thread when NAM processing throws (the block is disabled
   // in the same breath). The message thread drains it in getChainState and
