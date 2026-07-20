@@ -111,15 +111,22 @@ void TONE3000Processor::getStateInformation(juce::MemoryBlock& destData) {
 void TONE3000Processor::setStateInformation(const void* data, int sizeInBytes) {
   std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
   if (xmlState == nullptr) {
-    DBG("Failed to parse plugin state XML");
+    juce::Logger::writeToLog("[Restore] Failed to parse plugin state XML (" +
+                             juce::String(sizeInBytes) + " bytes)");
     return;
   }
 
   juce::ValueTree state = juce::ValueTree::fromXml(*xmlState);
   if (!state.isValid()) {
-    DBG("Invalid plugin state ValueTree");
+    juce::Logger::writeToLog("[Restore] Invalid plugin state ValueTree");
     return;
   }
+
+  juce::Logger::writeToLog(
+      "[Restore] Restoring state (" + juce::String(sizeInBytes) + " bytes, " +
+      juce::String(state.getChildWithName("ChainBlocks").getNumChildren()) + " left / " +
+      juce::String(state.getChildWithName("RightChainBlocks").getNumChildren()) +
+      " right blocks)");
 
   juce::ValueTree parameterState = state.getChildWithName("PARAMETERS");
   if (parameterState.isValid()) {

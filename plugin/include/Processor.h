@@ -355,8 +355,11 @@ private:
   void reconcileChainFromTree(const juce::ValueTree& chainState, Lane& target, Lane& retired);
   // Queue a background download+prepare of `block`'s active model, resolving
   // url/name from its tone JSON. Used by undo/redo when a restored block's
-  // model isn't cached in memory anymore.
-  void queueActiveModelLoad(const ChainBlock& block);
+  // model isn't cached in memory anymore. When the model can't even be
+  // resolved from the stored tone JSON (corrupt/legacy state), the block is
+  // flagged loadFailed so the UI shows the retry affordance instead of an
+  // eternal loader.
+  void queueActiveModelLoad(ChainBlock& block);
 
   ChainHistory chainHistory;
 

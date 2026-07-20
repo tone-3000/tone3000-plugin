@@ -37,14 +37,30 @@ void TONE3000Processor::pushChainHistory(const juce::String& coalesceKey) {
   chainHistory.push(captureChainSnapshot(), coalesceKey);
 }
 
-void TONE3000Processor::queueActiveModelLoad(const ChainBlock& block) {
+void TONE3000Processor::queueActiveModelLoad(ChainBlock& block) {
+  // Every bail below leaves the block unloadable — flag it so the UI shows
+  // the retry affordance instead of a loader that can never resolve, and log
+  // at release level (these paths are the needle for "stuck loading after
+  // relaunch" reports).
+  auto bail = [&block](const juce::String& reason) {
+    juce::Logger::writeToLog("[ModelLoader] Cannot queue load for block " +
+                             juce::String(block.id) + ": " + reason);
+    block.loaded = false;
+    block.loadFailed = true;
+    block.modelLoading = false;
+  };
+
   juce::DynamicObject* toneObj = block.toneVar.getDynamicObject();
-  if (toneObj == nullptr)
+  if (toneObj == nullptr) {
+    bail("stored tone JSON did not parse");
     return;
+  }
 
   juce::var modelsVar = toneObj->getProperty("models");
-  if (!modelsVar.isArray())
+  if (!modelsVar.isArray()) {
+    bail("stored tone JSON has no models array");
     return;
+  }
 
   for (const auto& modelVar : *modelsVar.getArray()) {
     juce::DynamicObject* modelObj = modelVar.getDynamicObject();
@@ -63,8 +79,7 @@ void TONE3000Processor::queueActiveModelLoad(const ChainBlock& block) {
     return;
   }
 
-  DBG("queueActiveModelLoad: model " << block.activeModelId
-                                     << " not found in tone JSON for block " << block.id);
+  bail("active model " + juce::String(block.activeModelId) + " not in stored tone JSON");
 }
 
 void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState, Lane& target,
@@ -141,8 +156,19 @@ void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState
         if (juce::Base64::convertFromBase64(decoded, cachedModel.getProperty("data").toString())) {
           const auto* bytes = static_cast<const uint8_t*>(decoded.getData());
           block->modelCache[modelId].assign(bytes, bytes + decoded.getDataSize());
+        } else {
+          juce::Logger::writeToLog("[Restore] Embedded model bytes for model " +
+                                   juce::String(modelId) + " failed to decode (block " +
+                                   juce::String(block->id) + ") — will refetch");
         }
       }
+      // One release-level line per reloading block: enough to diagnose
+      // "stuck loading after relaunch" reports from a user's log file.
+      juce::Logger::writeToLog(
+          "[Restore] Block " + juce::String(block->id) + " tone " + juce::String(toneId) +
+          " model " + juce::String(activeModelId) +
+          (block->modelCache.count(activeModelId) != 0 ? " (cached)" : " (needs fetch)") +
+          " queued for load");
       queueActiveModelLoad(*block);
     }
 

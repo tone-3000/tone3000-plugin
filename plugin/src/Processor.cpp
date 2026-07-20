@@ -24,6 +24,13 @@ TONE3000Processor::TONE3000Processor()
       midFilter(juce::dsp::IIR::Coefficients<float>::makePeakFilter(48000, 1000.0f, 1.0f, 1.0f)),
       trebleFilter(juce::dsp::IIR::Coefficients<float>::makeHighShelf(48000, 4000.0f, 1.0f, 1.0f)),
       loadingThreadPool(2) {  // 2 threads for background loading
+  // Attach the file logger first thing: state restore (and the background
+  // model loads it queues) runs before prepareToPlay, and its diagnostics
+  // used to vanish because the logger didn't exist yet.
+  if (!juce::Logger::getCurrentLogger()) {
+    juce::Logger::setCurrentLogger(new juce::FileLogger(getLogFile(), "TONE3000 JUCE Log"));
+  }
+
   resolveParamRefs();
   // Every lane starts at its minimum slot layout (kMinLaneSlots pass-through
   // insert placeholders). The right lane stays invisible until stereo mode is
@@ -285,20 +292,13 @@ void TONE3000Processor::setStandaloneInputMode(InputMode mode) {
 // PREPARATIONS BEFORE RT THREAD
 // #############################
 void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
-  // Set up JUCE logger to write to file (only if not already set). Logs go to a
-  // user-discoverable location (see getLogFile) so users can send them for
-  // debugging via the Settings → Diagnostics actions.
-  if (!juce::Logger::getCurrentLogger()) {
-    juce::Logger::setCurrentLogger(
-        new juce::FileLogger(getLogFile(), "TONE3000 JUCE Log"));
-  }
-
   hostSampleRate = sampleRate;
   maxBlockSize = samplesPerBlock;
 
   tuner.prepare(sampleRate);
 
-  DBG("Preparing to play: sampleRate=" << sampleRate << ", samplesPerBlock=" << samplesPerBlock);
+  juce::Logger::writeToLog("[Processor] prepareToPlay: sampleRate=" + juce::String(sampleRate) +
+                           ", samplesPerBlock=" + juce::String(samplesPerBlock));
 
   // Prime the cached parameter values from the resolved atomics.
   updateCachedParameters();

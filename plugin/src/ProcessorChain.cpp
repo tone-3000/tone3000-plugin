@@ -551,6 +551,8 @@ void TONE3000Processor::markBlockLoadFailed(const std::string& blockId) {
 
   juce::ScopedLock lock(chainMutex);
   if (ChainBlock* block = findBlockById(blockId)) {
+    juce::Logger::writeToLog("[ModelLoader] Load failed for block " + juce::String(blockId) +
+                             " — showing retry");
     block->loaded = false;
     block->loadFailed = true;
     block->modelLoading = false;
@@ -595,7 +597,8 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, int fir
     juce::ScopedLock lock(chainMutex);
     ChainBlock* block = findBlockById(blockId);
     if (block == nullptr) {
-      DBG("[Background] Block not found: " << blockId);
+      juce::Logger::writeToLog("[Background] Tone load dropped — block not found: " +
+                               juce::String(blockId));
       return;
     }
 
@@ -654,12 +657,13 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
 
     ChainBlock* block = findBlockById(blockId);
     if (block == nullptr) {
-      DBG("[Background] Block not found: " << blockId);
+      juce::Logger::writeToLog("[Background] Load dropped — block not found: " + juce::String(blockId));
       return;
     }
 
     if (block->activeModelId != modelId) {
-      DBG("[Background] Model switch superseded before it started");
+      juce::Logger::writeToLog("[Background] Load for model " + juce::String(modelId) +
+                               " superseded before it started (block " + juce::String(blockId) + ")");
       return;
     }
 

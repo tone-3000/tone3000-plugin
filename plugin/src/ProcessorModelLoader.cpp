@@ -62,6 +62,11 @@ std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& mo
   const juce::String extraHeaders =
       token.isNotEmpty() ? juce::String("Authorization: Bearer ") + token
                          : juce::String();
+  if (token.isEmpty()) {
+    // Happens when a restore-time load misses the embedded cache before the
+    // UI has pushed the auth token — the API rejects anonymous model fetches.
+    juce::Logger::writeToLog("[ModelLoader] Fetching model without auth token (may be rejected)");
+  }
 
   auto options =
       juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
@@ -80,7 +85,16 @@ std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& mo
   const size_t blockSize = 8192;
   char buffer[blockSize];
 
+  // The connection timeout above only covers the connect; a stalled response
+  // body would otherwise pin a loader thread forever (an eternal "loading"
+  // block in the UI). Bound the whole download instead.
+  const juce::uint32 readDeadline = juce::Time::getMillisecondCounter() + 120000;
+
   while (!stream->isExhausted()) {
+    if (juce::Time::getMillisecondCounter() > readDeadline) {
+      juce::Logger::writeToLog("[ModelLoader] Model download timed out: " + modelUrl);
+      return {};
+    }
     int bytesRead = stream->read(buffer, blockSize);
     if (bytesRead > 0) {
       memoryBlock.append(buffer, bytesRead);
