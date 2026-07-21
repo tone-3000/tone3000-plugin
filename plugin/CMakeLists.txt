@@ -9,7 +9,13 @@ set(PLUGIN_CODE T3K0)                # Unique 4-letter code for the plugin
 # configures standalone.
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION" T3K_VERSION)
 string(STRIP "${T3K_VERSION}" T3K_VERSION)
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ../VERSION)
+# Only when configured standalone. As a subdirectory the root CMakeLists
+# already registers VERSION as a configure dependency; registering it
+# again (via ../VERSION) makes Ninja reject the duplicate output path.
+if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION")
+endif()
 
 project(TONE3000 VERSION ${T3K_VERSION})   # Set version of the plugin
 

@@ -6,7 +6,10 @@ cmake_minimum_required(VERSION 3.22.1)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" T3K_VERSION)
 string(STRIP "${T3K_VERSION}" T3K_VERSION)
 # Reconfigure automatically when the VERSION file changes.
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS VERSION)
+# Use an absolute path so it doesn't collide with plugin/CMakeLists.txt's
+# ../VERSION entry if both ever end up in the same ninja graph.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
 
 project(TONE3000 VERSION ${T3K_VERSION} LANGUAGES CXX)
 
