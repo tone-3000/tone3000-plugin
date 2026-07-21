@@ -13,28 +13,40 @@ const subscribe = (listener: () => void) => {
   return () => listeners.delete(listener);
 };
 
+/** Boolean preference backed by localStorage (off by default). */
+function boolPref(key: string) {
+  let value = (() => {
+    try {
+      return localStorage.getItem(key) === 'true';
+    } catch {
+      return false;
+    }
+  })();
+
+  const set = (enabled: boolean) => {
+    if (value === enabled) return;
+    value = enabled;
+    try {
+      localStorage.setItem(key, String(enabled));
+    } catch {
+      // Storage unavailable — the toggle still works for this session.
+    }
+    emit();
+  };
+
+  const useValue = () => useSyncExternalStore(subscribe, () => value);
+  return { set, useValue };
+}
+
 // Whether the faceplate tone stack exposes its optional PRE (pre-EQ) toggle.
 // Off by default: the tone stack runs post-chain unless the user opts in.
-const PRE_EQ_CONTROL_KEY = 't3k.showPreEqControl';
+const preEqControl = boolPref('t3k.showPreEqControl');
+export const setPreEqControlEnabled = preEqControl.set;
+export const usePreEqControlEnabled = preEqControl.useValue;
 
-let preEqControlEnabled = (() => {
-  try {
-    return localStorage.getItem(PRE_EQ_CONTROL_KEY) === 'true';
-  } catch {
-    return false;
-  }
-})();
-
-export const setPreEqControlEnabled = (enabled: boolean) => {
-  if (preEqControlEnabled === enabled) return;
-  preEqControlEnabled = enabled;
-  try {
-    localStorage.setItem(PRE_EQ_CONTROL_KEY, String(enabled));
-  } catch {
-    // Storage unavailable — the toggle still works for this session.
-  }
-  emit();
-};
-
-export const usePreEqControlEnabled = () =>
-  useSyncExternalStore(subscribe, () => preEqControlEnabled);
+// Whether NAM block cards expose the (=) per-block normalization toggle.
+// Off by default: every block simply stays normalized (the block flag itself
+// defaults to on and lives in the chain state, not here).
+const blockNormalizeControl = boolPref('t3k.showBlockNormalizeControl');
+export const setBlockNormalizeControlEnabled = blockNormalizeControl.set;
+export const useBlockNormalizeControlEnabled = blockNormalizeControl.useValue;

@@ -65,7 +65,6 @@ void TONE3000Processor::resolveParamRefs() {
   paramRefs.toneEqEnabled = get("toneEqEnabled");
   paramRefs.toneEqPre = get("toneEqPre");
   paramRefs.targetLoudness = get("targetLoudness");
-  paramRefs.normalize = get("normalize");
   paramRefs.calibrateInput = get("calibrateInput");
   paramRefs.inputCalibrationLevel = get("inputCalibrationLevel");
 }
@@ -88,8 +87,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
       juce::ParameterID{"gateThreshold", 6}, "gateThreshold", -100.0f, 0.0f, -80.0f));
   layout.add(std::make_unique<juce::AudioParameterFloat>(
       juce::ParameterID{"targetLoudness", 7}, "targetLoudness", -60.0f, 0.0f, -18.0f));
-  layout.add(std::make_unique<juce::AudioParameterBool>(
-      juce::ParameterID{"normalize", 8}, "normalize", true));
   layout.add(std::make_unique<juce::AudioParameterBool>(
       juce::ParameterID{"calibrateInput", 9}, "calibrateInput", false));
   layout.add(std::make_unique<juce::AudioParameterFloat>(
@@ -524,7 +521,6 @@ void TONE3000Processor::updateCachedParameters() {
   updateFloat(cacheInputCalibrationLevel, paramRefs.inputCalibrationLevel);
 
   auto loadBool = [](const std::atomic<float>* param) { return param->load() > 0.5f; };
-  cacheNormalize = loadBool(paramRefs.normalize);
   cacheCalibrateInput = loadBool(paramRefs.calibrateInput);
   cacheGateEnabled = loadBool(paramRefs.gateEnabled);
   cacheToneEqEnabled = loadBool(paramRefs.toneEqEnabled);
@@ -680,7 +676,7 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
             calibratedHandOff = true;
           }
         }
-        if (!calibratedHandOff && cacheNormalize) {
+        if (!calibratedHandOff && block->normalizeEnabled) {
           float modelLoudnessDb = targetLufs;  // Default fallback
           if (block->namEngine->hasLoudness()) {
             modelLoudnessDb = static_cast<float>(block->namEngine->getLoudness());
@@ -732,7 +728,8 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
         // RMS-based normalization (attenuation-only). Smoother is prepared in
         // prepareChain / model apply; only the target moves on the RT path.
         const float targetGain =
-            cacheNormalize ? juce::jlimit(0.0f, 1.0f, block->irNormalizationGainLinear) : 1.0f;
+            block->normalizeEnabled ? juce::jlimit(0.0f, 1.0f, block->irNormalizationGainLinear)
+                                    : 1.0f;
         block->irNormalizationSmoother.setTargetValue(targetGain);
         for (int i = 0; i < numSamples; ++i) {
           const float g = block->irNormalizationSmoother.getNextValue();

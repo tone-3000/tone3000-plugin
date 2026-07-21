@@ -1,5 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowLeftRight, Check, Power, RotateCcw, Share, Trash2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowLeftRight,
+  Check,
+  Equal,
+  Power,
+  RotateCcw,
+  Share,
+  Trash2,
+} from 'lucide-react';
 import { ToneImage } from './GearIcon';
 import { KnobControl } from './KnobControl';
 import { gainDbScale } from './knobScale';
@@ -19,6 +28,7 @@ import { formatLabel, gearLabel } from '../t3k/labels';
 import { AvatarImage } from './AvatarFallback';
 import { FormatBadge } from './FormatBadge';
 import { HELP, helpProps } from './helpText';
+import { useBlockNormalizeControlEnabled } from './uiPreferences';
 import {
   ACTIVE_OUTLINE,
   BORDER,
@@ -108,8 +118,12 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
   const { blockId, tone, params } = block;
   const actions = useChainActions();
 
+  // Optional (=) normalization toggle, revealed by the Advanced setting.
+  const showNormalizeControl = useBlockNormalizeControlEnabled();
+
   // Optimistic local values for the controls; native converges via polling.
   const [enabled, setEnabled] = useState(params.enabled);
+  const [normalizeOn, setNormalizeOn] = useState(params.normalize ?? true);
   const [inputGain, setInputGain] = useState(params.inputGain ?? 0.5);
   const [outputGain, setOutputGain] = useState(params.outputGain ?? 0.5);
   const [mix, setMix] = useState(params.mix ?? 1.0);
@@ -132,6 +146,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
   // Params can change from outside (undo/redo, state restore, other editor
   // window); follow the backend when it reports a new value.
   useEffect(() => setEnabled(params.enabled), [params.enabled]);
+  useEffect(() => setNormalizeOn(params.normalize ?? true), [params.normalize]);
   useEffect(() => {
     if (!knobDragRef.current) setInputGain(params.inputGain ?? 0.5);
   }, [params.inputGain]);
@@ -157,6 +172,13 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
   const handleToggleEnabled = useCallback(() => {
     setEnabled((prev) => {
       setParam('enabled', !prev);
+      return !prev;
+    });
+  }, [setParam]);
+
+  const handleToggleNormalize = useCallback(() => {
+    setNormalizeOn((prev) => {
+      setParam('normalize', !prev);
       return !prev;
     });
   }, [setParam]);
@@ -302,6 +324,23 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
         >
           <Power size={14} />
         </button>
+
+        {/* Per-block normalization (=) — NAM only, revealed by the Advanced
+            "Per-Block Normalization" setting. On by default; off plays the
+            capture at its raw loudness. Same on/off look as the power button. */}
+        {isNam && showNormalizeControl && (
+          <button
+            onClick={handleToggleNormalize}
+            {...helpProps(HELP.blockNormalize)}
+            style={{
+              ...headerButtonStyle,
+              color: normalizeOn ? '#ffffff' : GRAY,
+              backgroundColor: normalizeOn ? 'transparent' : HIGHLIGHT,
+            }}
+          >
+            <Equal size={14} />
+          </button>
+        )}
 
         {/* LITE/FULL for every NAM block (architecture=2 = always A2).
             Subtle segmented control: the active side just reads white.

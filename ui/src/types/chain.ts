@@ -68,6 +68,10 @@ export function isEqFlat(eq: BlockEqParams): boolean {
 export interface BlockParams {
   /** Block participates in processing (per-block on/off). */
   enabled: boolean;
+  /** Loudness normalization for this block (NAM: loudness-matched output,
+      IR: RMS attenuation). On by default; part of the chain state so presets
+      carry their own gain staging. */
+  normalize: boolean;
   /** Normalized 0..1; 0.5 = unity, ±24 dB. Drives the block's DSP. */
   inputGain: number;
   /** Normalized 0..1; 0.5 = unity, ±24 dB. */
@@ -204,7 +208,13 @@ export function isUnchanged(res: ChainStateResponse): res is ChainStateUnchanged
 }
 
 /** Param names accepted by the native `setBlockParam` function. */
-export type BlockParamName = 'enabled' | 'inputGain' | 'outputGain' | 'mix' | 'namSlimmableSize';
+export type BlockParamName =
+  | 'enabled'
+  | 'normalize'
+  | 'inputGain'
+  | 'outputGain'
+  | 'mix'
+  | 'namSlimmableSize';
 
 /** Payload of the native `getMeterLevels` function (all values dB, -60 floor).
     Main meters ship as [L, R] pairs; mono sources report L == R. */

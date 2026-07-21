@@ -10,6 +10,7 @@ juce::ValueTree TONE3000Processor::serializeBlockSettings(const ChainBlock& bloc
   blockState.setProperty("id", juce::String(block.id), nullptr);
   blockState.setProperty("type", chainBlockTypeToString(block.type), nullptr);
   blockState.setProperty("enabled", block.enabled, nullptr);
+  blockState.setProperty("normalize", block.normalizeEnabled, nullptr);
   blockState.setProperty("inputGain", block.inputGainNormalized, nullptr);
   blockState.setProperty("outputGain", block.outputGainNormalized, nullptr);
   blockState.setProperty("mix", block.mixNormalized, nullptr);
@@ -29,6 +30,7 @@ juce::ValueTree TONE3000Processor::serializeBlockSettings(const ChainBlock& bloc
 
 void TONE3000Processor::applyBlockSettings(ChainBlock& block, const juce::ValueTree& blockState) {
   block.enabled = static_cast<bool>(blockState.getProperty("enabled", true));
+  block.normalizeEnabled = static_cast<bool>(blockState.getProperty("normalize", true));
   // inputGain arrived after the first release; older projects default to unity.
   block.inputGainNormalized = blockState.hasProperty("inputGain")
                                   ? static_cast<float>(blockState.getProperty("inputGain"))

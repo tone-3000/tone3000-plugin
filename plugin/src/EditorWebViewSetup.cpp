@@ -152,7 +152,6 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
       .withOptionsFrom(editor->gateEnabledRelay)
       .withOptionsFrom(editor->toneEqEnabledRelay)
       .withOptionsFrom(editor->toneEqPreRelay)
-      .withOptionsFrom(editor->normalizeRelay)
       .withOptionsFrom(editor->calibrateInputRelay)
       .withOptionsFrom(editor->inputCalibrationLevelRelay)
       // --- Chain mutations -------------------------------------------------
@@ -223,8 +222,8 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
       // --- Per-block params / EQ / spectrum ---------------------------------
       .withNativeFunction(
           // Single entry point for per-block user params:
-          // (blockId, "enabled" | "inputGain" | "outputGain" | "mix" |
-          //  "namSlimmableSize", numeric value — booleans as 0/1).
+          // (blockId, "enabled" | "normalize" | "inputGain" | "outputGain" |
+          //  "mix" | "namSlimmableSize", numeric value — booleans as 0/1).
           "setBlockParam", guarded(3, false, [editor](const juce::Array<juce::var>& args) {
             return juce::var(editor->processor.setBlockParam(
                 args[0].toString().toStdString(), args[1].toString(), coerceDouble(args[2])));

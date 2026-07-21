@@ -817,6 +817,7 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
       // serialize { tone ref, activeModelId, params } per block verbatim.
       juce::DynamicObject::Ptr params = new juce::DynamicObject();
       params->setProperty("enabled", block->enabled);
+      params->setProperty("normalize", block->normalizeEnabled);
       params->setProperty("inputGain", block->inputGainNormalized);
       params->setProperty("outputGain", block->outputGainNormalized);
       params->setProperty("mix", block->mixNormalized);
@@ -979,7 +980,8 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
 
   // Validate before recording history, so failed calls never leave an entry.
   const bool isContinuous = param == "inputGain" || param == "outputGain" || param == "mix";
-  const bool isKnown = isContinuous || param == "enabled" || param == "namSlimmableSize";
+  const bool isKnown =
+      isContinuous || param == "enabled" || param == "normalize" || param == "namSlimmableSize";
   if (!isKnown) {
     DBG("setBlockParam: unknown param: " << param);
     return false;
@@ -997,6 +999,8 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
 
   if (param == "enabled") {
     block->enabled = value > 0.5;
+  } else if (param == "normalize") {
+    block->normalizeEnabled = value > 0.5;
   } else if (param == "inputGain") {
     block->inputGainNormalized = juce::jlimit(0.0f, 1.0f, static_cast<float>(value));
   } else if (param == "outputGain") {

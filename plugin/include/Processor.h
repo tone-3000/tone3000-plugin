@@ -109,9 +109,9 @@ public:
   // mutations instead of fast-polling.
   juce::uint32 getCurrentChainRevision() const;
   // Single entry point for all per-block user params. Supported params:
-  // "enabled" (0/1), "inputGain", "outputGain", "mix" (normalized 0..1),
-  // "namSlimmableSize" (0.0 lite .. 1.0 full). Returns false for unknown
-  // blocks/params. Continuous params defer their revision bump to the end of
+  // "enabled" (0/1), "normalize" (0/1), "inputGain", "outputGain", "mix"
+  // (normalized 0..1), "namSlimmableSize" (0.0 lite .. 1.0 full). Returns
+  // false for unknown blocks/params. Continuous params defer their revision bump to the end of
   // the gesture (see deferredRevisionBump) so drag-rate calls never force
   // full chain resyncs.
   bool setBlockParam(const std::string& blockId, const juce::String& param, double value);
@@ -370,9 +370,10 @@ private:
 
   // ── Preset internals (ProcessorPresets.cpp) ──
   // The faceplate parameters a preset carries. Explicitly scoped: rig
-  // calibration (calibrateInput, inputCalibrationLevel) and global loudness
-  // preferences (normalize, targetLoudness) describe the user's setup, not
-  // the tone, so they stay out of presets.
+  // calibration (calibrateInput, inputCalibrationLevel) and the global
+  // loudness target (targetLoudness) describe the user's setup, not the
+  // tone, so they stay out of presets. (Per-block normalization rides the
+  // chain snapshot itself.)
   static const std::vector<juce::String>& presetParameterIds();
   void setActivePreset(const juce::String& id, const juce::String& name);
 
@@ -503,7 +504,6 @@ private:
     std::atomic<float>* toneEqEnabled = nullptr;
     std::atomic<float>* toneEqPre = nullptr;
     std::atomic<float>* targetLoudness = nullptr;
-    std::atomic<float>* normalize = nullptr;
     std::atomic<float>* calibrateInput = nullptr;
     std::atomic<float>* inputCalibrationLevel = nullptr;
   } paramRefs;
@@ -527,7 +527,6 @@ private:
   bool cacheToneEqEnabled = true;
   bool cacheToneEqPre = false;  // tone stack before (true) or after (false) the chain
   float cacheTargetLoudness = -18.0f;
-  bool cacheNormalize = true;
   bool cacheCalibrateInput = false;
   float cacheInputCalibrationLevel = 12.0f;
 

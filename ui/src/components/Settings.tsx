@@ -3,7 +3,12 @@ import { X as XIcon, Info, ChevronDown } from 'lucide-react';
 import { useParameter } from '../hooks/useParameter';
 import { useNativeFunction } from '../hooks/useFunction';
 import { setHintsEnabled, useHintsEnabled } from './helpText';
-import { setPreEqControlEnabled, usePreEqControlEnabled } from './uiPreferences';
+import {
+  setBlockNormalizeControlEnabled,
+  setPreEqControlEnabled,
+  useBlockNormalizeControlEnabled,
+  usePreEqControlEnabled,
+} from './uiPreferences';
 import type { InputMode } from '../types/chain';
 import type { UpdateNoticeData } from '../hooks/useUpdateNotice';
 import { GRAY, MUTED, SUBTLE } from './theme';
@@ -259,8 +264,8 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const hintsEnabled = useHintsEnabled();
   const preEqControlEnabled = usePreEqControlEnabled();
+  const blockNormalizeControlEnabled = useBlockNormalizeControlEnabled();
 
-  const [normalizationEnabled, setNormalizationEnabled] = useParameter('normalize', 'toggle');
   const [calibrationEnabled, setCalibrationEnabled] = useParameter('calibrateInput', 'toggle');
   const [dbuValueNormalized, setDbuValueNormalized] = useParameter(
     'inputCalibrationLevel',
@@ -433,10 +438,10 @@ export const Settings: React.FC<SettingsProps> = ({
   const advancedScreen = (
     <>
       <ToggleRow
-        label="Normalization"
-        description="Levels output across different NAM captures for consistent volume. Recommended on."
-        value={normalizationEnabled}
-        onChange={setNormalizationEnabled}
+        label="Per-Block Normalization"
+        description="Each block has normalization enabled, which levels output for consistent volume across signal blocks. Turning this on reveals an optional control that lets you disable normalization per block."
+        value={blockNormalizeControlEnabled}
+        onChange={setBlockNormalizeControlEnabled}
       />
 
       <ToggleRow

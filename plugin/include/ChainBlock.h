@@ -124,6 +124,12 @@ struct ChainBlock {
   juce::LinearSmoothedValue<float> irNormalizationSmoother;
   float irNormalizationGainLinear{1.0f};
 
+  // Per-block loudness normalization (NAM: loudness-matched to the global
+  // target; IR: RMS attenuation). On by default; part of the chain state so
+  // presets carry their own gain staging. The UI exposes it as an optional
+  // (=) header control behind an advanced preference.
+  bool normalizeEnabled{true};
+
   // Per-block controls (normalized 0..1)
   float inputGainNormalized{0.5f};  // 0.5 = unity gain; drives the block harder/softer
   juce::LinearSmoothedValue<float> inputGainSmoother;

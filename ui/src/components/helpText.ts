@@ -187,6 +187,8 @@ export const HELP = {
   blockOut: knobHelp('Out', 'gain out of this block, ±24 dB.'),
   blockOutIr: knobHelp('Out', 'gain out of this block, ±24 dB (IR level is pre-trimmed 18 dB).'),
   blockMix: knobHelp('Mix', 'dry/wet blend — 100%: fully processed.'),
+  blockNormalize:
+    'Normalize: levels this block\u2019s output loudness. Off: the capture\u2019s raw level.',
   namLite: 'LITE: half-size NAM model — lighter on CPU, slightly less detail.',
   namFull: 'FULL: full-size NAM model — best quality.',
   eqToggle: 'EQ: opens the 6-band EQ editor. Outline: EQ is shaping the sound.',
