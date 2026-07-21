@@ -118,7 +118,12 @@ std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& mo
 
 
 int TONE3000Processor::chainDomainBlockSize() const noexcept {
-  const int hostBlockSize = juce::jmax(1, juce::jmax(maxBlockSize, getBlockSize()));
+  // Before prepareToPlay has reported the real host config (state-restore
+  // loads race it at launch), assume a conservatively large host block so
+  // engines prepared early can absorb whatever the device settles on.
+  // prepareChain / applyPreparedModelToChainBlock re-prepare on drift.
+  const int knownHostBlock = juce::jmax(maxBlockSize, getBlockSize());
+  const int hostBlockSize = knownHostBlock > 0 ? knownHostBlock : 4096;
   const double sr = hostSampleRate > 0.0 ? hostSampleRate : kChainSampleRate;
   // Upsampling hosts below 48k (e.g. 44.1k) yield MORE frames per boundary
   // callback than the host block size; never go below the host size either,
@@ -145,6 +150,7 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
                            filename + " (" + juce::String((juce::int64)modelData.size()) + " bytes)");
 
   const int domainBlockSize = chainDomainBlockSize();
+  out.preparedBlockSize = domainBlockSize;
 
   try {
     if (type == ChainBlockType::NAM) {
@@ -335,6 +341,26 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
     block.loaded = false;
     block.loadFailed = true;
     return;
+  }
+
+  // A restore-time prepare can race prepareToPlay: the engine may have been
+  // sized off a stale (or defaulted) host config, and prepareChain can't have
+  // covered it — the engine wasn't on the block yet. Re-prepare before it
+  // goes live; feeding an engine more frames than it was prepared for is what
+  // used to silently kill blocks on relaunch ("Processing failed").
+  const int requiredBlockSize = chainDomainBlockSize();
+  if (prepared.preparedBlockSize < requiredBlockSize) {
+    juce::Logger::writeToLog("[ModelLoader] Domain block size grew " +
+                             juce::String(prepared.preparedBlockSize) + " -> " +
+                             juce::String(requiredBlockSize) + " during prepare — re-preparing");
+    if (prepared.namEngine != nullptr)
+      prepared.namEngine->prepare(requiredBlockSize);
+    const juce::dsp::ProcessSpec spec{kChainSampleRate,
+                                      static_cast<juce::uint32>(requiredBlockSize), 2};
+    if (prepared.convolverMono != nullptr)
+      prepared.convolverMono->prepare(spec);  // keeps the loaded impulse
+    if (prepared.convolverStereo != nullptr)
+      prepared.convolverStereo->prepare(spec);
   }
 
   // Engines are *swapped*, not reset: the block's previous engines end up in

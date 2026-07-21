@@ -6,6 +6,7 @@ import { SpreadGroup } from './SpreadControls';
 import { useParameter } from '../hooks/useParameter';
 import { useNativeFunction } from '../hooks/useFunction';
 import { HELP, helpProps } from './helpText';
+import { usePreEqControlEnabled } from './uiPreferences';
 import { ACTIVE_OUTLINE, BORDER, GRAY, HIGHLIGHT } from './theme';
 
 /**
@@ -229,6 +230,12 @@ export const Faceplate: React.FC<FaceplateProps> = ({
   const [gateEnabled, setGateEnabled] = useParameter('gateEnabled', 'toggle');
   const [toneEqEnabled, setToneEqEnabled] = useParameter('toneEqEnabled', 'toggle');
   const [toneEqPre, setToneEqPre] = useParameter('toneEqPre', 'toggle');
+  // Opt-in (Settings › Advanced): the PRE toggle is hidden unless the user
+  // reveals it, keeping the tone stack post-chain by default. It also shows
+  // whenever PRE is actually engaged (e.g. a loaded preset turned it on), so
+  // the state is never stuck on with no way to switch it off.
+  const preEqControlEnabled = usePreEqControlEnabled();
+  const showPreEqControl = preEqControlEnabled || toneEqPre;
 
   return (
     <div
@@ -338,16 +345,18 @@ export const Faceplate: React.FC<FaceplateProps> = ({
             onClick={() => setToneEqEnabled(!toneEqEnabled)}
             offsetY={0}
           />
-          <div
-            style={{
-              position: 'absolute',
-              top: 'calc(100% + 5px)',
-              left: '50%',
-              transform: 'translateX(-50%)',
-            }}
-          >
-            <PreButton on={toneEqPre} onClick={() => setToneEqPre(!toneEqPre)} />
-          </div>
+          {showPreEqControl && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 'calc(100% + 5px)',
+                left: '50%',
+                transform: 'translateX(-50%)',
+              }}
+            >
+              <PreButton on={toneEqPre} onClick={() => setToneEqPre(!toneEqPre)} />
+            </div>
+          )}
         </div>
       </div>
 

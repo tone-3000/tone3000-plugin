@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { X as XIcon } from 'lucide-react';
 import { useNativeFunction } from '../hooks/useFunction';
 import { GRAY } from './theme';
 
@@ -44,7 +45,7 @@ const litCountForCents = (absCents: number): number => {
   return Math.min(6, 1 + Math.floor(t * 5 + 0.5));
 };
 
-export const TunerView: React.FC = () => {
+export const TunerView: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   // Stateless binding — this polls at 20 Hz, so it must not set hook state.
   const getTunerReading = useNativeFunction<TunerReading>('getTunerReading');
   const [note, setNote] = useState<string | null>(null);
@@ -177,55 +178,105 @@ export const TunerView: React.FC = () => {
         overflow: 'hidden',
       }}
     >
+      {/* Redundant close affordance mirroring Settings' top-right X. */}
+      <button
+        onClick={onClose}
+        aria-label="Close tuner"
+        style={{
+          position: 'absolute',
+          top: '16px',
+          right: '20px',
+          background: 'transparent',
+          border: 'none',
+          color: '#ffffff',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          padding: '4px',
+          zIndex: 1,
+        }}
+      >
+        <XIcon size={20} />
+      </button>
       <div
         style={{
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: '16px',
+          gap: '40px',
         }}
       >
         {renderBars('left', leftLit)}
 
-        {/* Center: triangles + note letter */}
+        {/* Center: triangles + note letter. The note sits in a relatively
+            positioned box with the Hz readout floated beneath it (out of
+            flow), so the letter stays vertically centered between the two
+            triangles regardless of whether the frequency is showing. */}
         <div
           style={{
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: '18px',
+            gap: '36px',
             minWidth: '120px',
           }}
         >
           {/* Top triangle points down: lit when sharp ("tune down") or in tune */}
           {triangle('down', inTune || isSharp)}
-          <div
-            style={{
-              fontSize: '110px',
-              lineHeight: 1,
-              fontWeight: 700,
-              color: '#ffffff',
-              opacity: hasSignal ? 1 : 0.25,
-              transition: 'opacity 150ms linear',
-              textAlign: 'center',
-              userSelect: 'none',
-              fontVariantNumeric: 'tabular-nums',
-            }}
-          >
-            {note ?? '—'}
-          </div>
-          <div
-            style={{
-              height: '14px',
-              fontSize: '13px',
-              fontFamily: 'monospace',
-              color: GRAY,
-              opacity: hasSignal ? 1 : 0,
-              transition: 'opacity 150ms linear',
-            }}
-          >
-            {`${frequency.toFixed(1)} Hz`}
+          <div style={{ position: 'relative' }}>
+            <div
+              style={{
+                fontSize: '110px',
+                lineHeight: 1,
+                fontWeight: 700,
+                color: '#ffffff',
+                opacity: hasSignal ? 1 : 0.25,
+                transition: 'opacity 150ms linear',
+                textAlign: 'center',
+                userSelect: 'none',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {/* Letter wrapper is inline-block, so it stays centered under
+                  the triangles; the accidental hangs off to the right
+                  (absolute) instead of shifting the letter off-center. */}
+              <span style={{ position: 'relative', display: 'inline-block' }}>
+                {note ? note.charAt(0) : '—'}
+                {note && note.length > 1 && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      left: '100%',
+                      top: '0.05em',
+                      fontSize: '0.55em',
+                    }}
+                  >
+                    {note.slice(1)}
+                  </span>
+                )}
+              </span>
+            </div>
+            {/* Pulled up into the line box's descender whitespace so it sits
+                just under the visible letter, not down by the triangle. */}
+            <div
+              style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                marginTop: '-6px',
+                fontSize: '13px',
+                fontWeight: 400,
+                fontFamily: 'monospace',
+                textAlign: 'center',
+                color: GRAY,
+                opacity: hasSignal ? 1 : 0,
+                transition: 'opacity 150ms linear',
+              }}
+            >
+              {`${frequency.toFixed(1)} Hz`}
+            </div>
           </div>
           {/* Bottom triangle points up: lit when flat ("tune up") or in tune */}
           {triangle('up', inTune || isFlat)}

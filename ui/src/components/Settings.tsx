@@ -3,9 +3,29 @@ import { X as XIcon, Info, ChevronDown } from 'lucide-react';
 import { useParameter } from '../hooks/useParameter';
 import { useNativeFunction } from '../hooks/useFunction';
 import { setHintsEnabled, useHintsEnabled } from './helpText';
+import { setPreEqControlEnabled, usePreEqControlEnabled } from './uiPreferences';
 import type { InputMode } from '../types/chain';
 import type { UpdateNoticeData } from '../hooks/useUpdateNotice';
-import { MUTED, SUBTLE } from './theme';
+import { GRAY, MUTED, SUBTLE } from './theme';
+
+// External docs: how to measure your rig's calibration levels.
+const CALIBRATION_DOCS_URL =
+  'https://neural-amp-modeler.readthedocs.io/en/latest/tutorials/calibration.html';
+
+// Outlined field styling ported from the web app's basic Input
+// (bg-black, 1px zinc-700 border, rounded-md) — outlines instead of the
+// filled grey used by the in-chain model select.
+const FIELD_BORDER = '1px solid #3f3f46';
+const outlinedFieldStyle: React.CSSProperties = {
+  backgroundColor: 'transparent',
+  border: FIELD_BORDER,
+  borderRadius: '6px',
+  color: '#ffffff',
+  fontSize: '14px',
+  fontWeight: 400,
+  outline: 'none',
+  boxSizing: 'border-box',
+};
 
 /**
  * Settings: full-window takeover with a main screen (section cards that open
@@ -133,20 +153,14 @@ const SelectField: React.FC<{
       <button
         onClick={() => setOpen((prev) => !prev)}
         style={{
+          ...outlinedFieldStyle,
           width: '100%',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: '10px',
-          padding: '12px 14px 12px 16px',
-          borderRadius: '8px',
-          border: 'none',
-          backgroundColor: 'rgba(120, 120, 128, 0.36)',
-          color: '#ffffff',
-          fontSize: '14px',
-          fontWeight: 400,
+          padding: '12px 16px',
           cursor: 'pointer',
-          boxSizing: 'border-box',
         }}
       >
         {selected?.label}
@@ -168,8 +182,9 @@ const SelectField: React.FC<{
             top: 'calc(100% + 4px)',
             left: 0,
             right: 0,
-            borderRadius: '8px',
-            background: '#39393D',
+            borderRadius: '6px',
+            background: '#000000',
+            border: FIELD_BORDER,
             overflow: 'hidden',
             zIndex: 100,
           }}
@@ -195,8 +210,7 @@ const SelectField: React.FC<{
                 fontSize: '14px',
                 fontWeight: 400,
                 background: option.value === value ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-                borderBottom:
-                  index < options.length - 1 ? '1px solid rgba(84, 84, 88, 0.65)' : 'none',
+                borderBottom: index < options.length - 1 ? FIELD_BORDER : 'none',
               }}
             >
               {option.label}
@@ -244,6 +258,7 @@ export const Settings: React.FC<SettingsProps> = ({
   const [screen, setScreen] = useState<'main' | 'advanced'>('main');
 
   const hintsEnabled = useHintsEnabled();
+  const preEqControlEnabled = usePreEqControlEnabled();
 
   const [normalizationEnabled, setNormalizationEnabled] = useParameter('normalize', 'toggle');
   const [calibrationEnabled, setCalibrationEnabled] = useParameter('calibrateInput', 'toggle');
@@ -441,42 +456,68 @@ export const Settings: React.FC<SettingsProps> = ({
                 }
                 .settings-number-input:focus { outline: none; }`}
             </style>
-            <input
-              type="number"
-              className="settings-number-input"
-              value={dbuDraft ?? dbuValue.toFixed(1)}
-              onFocus={() => setDbuDraft(dbuValue.toFixed(1))}
-              onChange={(e) => setDbuDraft(e.target.value)}
-              onBlur={commitDbuDraft}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') e.currentTarget.blur();
-              }}
-              step="0.1"
-              min="-60"
-              max="60"
-              placeholder="Value"
-              style={{
-                width: '100%',
-                boxSizing: 'border-box',
-                padding: '12px 16px',
-                borderRadius: '8px',
-                border: 'none',
-                backgroundColor: 'rgba(120, 120, 128, 0.36)',
-                color: '#ffffff',
-                fontSize: '14px',
-                fontWeight: 400,
-                appearance: 'none',
-                WebkitAppearance: 'none',
-                outline: 'none',
-              }}
-            />
+            {/* 232px field with "dBu" pinned to the right; padding-right
+                leaves room so typed values never run under the unit. */}
+            <div style={{ position: 'relative', width: '232px' }}>
+              <input
+                type="number"
+                className="settings-number-input"
+                value={dbuDraft ?? dbuValue.toFixed(1)}
+                onFocus={() => setDbuDraft(dbuValue.toFixed(1))}
+                onChange={(e) => setDbuDraft(e.target.value)}
+                onBlur={commitDbuDraft}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.currentTarget.blur();
+                }}
+                step="0.1"
+                min="-60"
+                max="60"
+                placeholder="Value"
+                style={{
+                  ...outlinedFieldStyle,
+                  width: '100%',
+                  padding: '12px 52px 12px 16px',
+                  appearance: 'none',
+                  WebkitAppearance: 'none',
+                }}
+              />
+              <span
+                style={{
+                  position: 'absolute',
+                  right: '16px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: GRAY,
+                  fontSize: '14px',
+                  fontWeight: 700,
+                  pointerEvents: 'none',
+                }}
+              >
+                dBu
+              </span>
+            </div>
             <p style={{ ...descriptionStyle, fontSize: '12px', marginTop: '8px' }}>
               Set the dBu level that matches your DAW's max digital level. Typical values: +12 dBu
-              (professional gear), +4 dBu (semi-pro).
+              (professional gear), +4 dBu (semi-pro).{' '}
+              <a
+                href={CALIBRATION_DOCS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: '#ffffff', textDecoration: 'underline' }}
+              >
+                Learn More
+              </a>
             </p>
           </div>
         )}
       </ToggleRow>
+
+      <ToggleRow
+        label="Show Pre-EQ Control"
+        description="The EQ on the bottom panel defaults to post-EQ. Enabling this setting reveals an optional pre-EQ toggle, which is disabled by default."
+        value={preEqControlEnabled}
+        onChange={setPreEqControlEnabled}
+      />
 
       <div>
         <span style={sectionLabelStyle}>Diagnostics</span>
@@ -521,7 +562,7 @@ export const Settings: React.FC<SettingsProps> = ({
     >
       <div
         style={{
-          maxWidth: '600px',
+          maxWidth: '480px',
           margin: '0 auto',
           padding: '28px 24px 40px',
           color: '#ffffff',

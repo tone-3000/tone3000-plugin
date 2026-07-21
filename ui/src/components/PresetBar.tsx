@@ -44,6 +44,13 @@ const inputStyle: React.CSSProperties = {
   outline: 'none',
 };
 
+const sectionHeaderStyle: React.CSSProperties = {
+  color: GRAY,
+  fontSize: '14px',
+  fontWeight: 700,
+  padding: '8px 4px',
+};
+
 const iconButtonStyle: React.CSSProperties = {
   background: 'transparent',
   border: 'none',
@@ -198,7 +205,7 @@ export const PresetBar: React.FC<PresetBarProps> = ({
               border: 'none',
               textAlign: 'left',
               color: isActive ? '#ffffff' : MUTED,
-              fontSize: '13px',
+              fontSize: '14px',
               fontWeight: 400,
               cursor: 'pointer',
               padding: 0,
@@ -262,7 +269,7 @@ export const PresetBar: React.FC<PresetBarProps> = ({
             background: 'transparent',
             border: 'none',
             color: active ? '#ffffff' : MUTED,
-            fontSize: '12px',
+            fontSize: '14px',
             fontWeight: 400,
             cursor: 'pointer',
             // Constant width so the pill never resizes with the name; long
@@ -351,31 +358,13 @@ export const PresetBar: React.FC<PresetBarProps> = ({
           <div className="hide-scrollbar" style={{ maxHeight: '340px', overflowY: 'auto' }}>
             {factoryPresets.length > 0 && (
               <>
-                <div
-                  style={{
-                    color: '#ffffff',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    padding: '8px 4px',
-                  }}
-                >
-                  TONE3000
-                </div>
+                <div style={sectionHeaderStyle}>TONE3000</div>
                 {factoryPresets.map(renderRow)}
               </>
             )}
             {userPresets.length > 0 && (
               <>
-                <div
-                  style={{
-                    color: '#ffffff',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    padding: '8px 4px',
-                  }}
-                >
-                  Your Presets
-                </div>
+                <div style={sectionHeaderStyle}>Your Presets</div>
                 {userPresets.map(renderRow)}
               </>
             )}

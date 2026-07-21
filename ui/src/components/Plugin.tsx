@@ -36,6 +36,10 @@ const SWAP_STORAGE_KEY = 't3k.pendingSwapBlockId';
 // Same story for adds: the insert slot the user clicked, so the picked tone
 // lands in that slot. Native falls back gracefully when the id went stale.
 const INSERT_TARGET_STORAGE_KEY = 't3k.pendingInsertBlockId';
+// Signed-in identity, cached so the header avatar/name paint instantly on
+// relaunch instead of waiting for the getUser round trip; overwritten with
+// fresh data once that request resolves, cleared on logout.
+const USER_CACHE_KEY = 't3k.cachedUser';
 
 // Lucide has no tuning fork, so this mimics its 24x24 stroke style.
 const TuningForkIcon: React.FC<{ size?: number }> = ({ size = 18 }) => (
@@ -212,15 +216,32 @@ export const Plugin: React.FC = () => {
   }, [ensureNativeAuth, t3kClient]);
 
   // Signed-in identity for the header's account pill. Refreshed on mount
-  // (tokens persist in localStorage) and after each OAuth return.
-  const [user, setUser] = useState<User | null>(null);
+  // (tokens persist in localStorage) and after each OAuth return. Seeded from
+  // the localStorage cache (only when a session is present) so the avatar +
+  // name paint instantly on relaunch rather than after the getUser round trip.
+  const [user, setUser] = useState<User | null>(() => {
+    if (!t3kClient.isAuthenticated()) return null;
+    try {
+      const cached = localStorage.getItem(USER_CACHE_KEY);
+      return cached ? (JSON.parse(cached) as User) : null;
+    } catch {
+      return null;
+    }
+  });
   useEffect(() => {
     if (oauthPhase !== 'idle' || !t3kClient.isAuthenticated()) return;
     let cancelled = false;
     t3kClient
       .getUser()
       .then((u) => {
-        if (!cancelled) setUser(u);
+        if (cancelled) return;
+        setUser(u);
+        // Overwrite the cache with the freshly-resolved identity.
+        try {
+          localStorage.setItem(USER_CACHE_KEY, JSON.stringify(u));
+        } catch {
+          // Cache is a nicety; storage failures are non-fatal.
+        }
       })
       .catch(() => {
         // Avatar is decorative — auth failures surface via the flows.
@@ -240,6 +261,11 @@ export const Plugin: React.FC = () => {
     t3kClient.logout();
     sessionStorage.removeItem(SWAP_STORAGE_KEY);
     sessionStorage.removeItem(INSERT_TARGET_STORAGE_KEY);
+    try {
+      localStorage.removeItem(USER_CACHE_KEY);
+    } catch {
+      // Non-fatal — the stale cache is only read when a session is present.
+    }
     setUser(null);
     setShowToneBrowser(false);
     await Promise.all([pushAccessTokenToNative(''), clearAuthCookies()]);
@@ -475,7 +501,7 @@ export const Plugin: React.FC = () => {
 
       {/* Middle Section: Tuner (when toggled on) or Meters + Chain View */}
       {showTuner ? (
-        <TunerView />
+        <TunerView onClose={() => handleToggleTuner(false)} />
       ) : (
         <div
           style={{

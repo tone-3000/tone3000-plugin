@@ -46,29 +46,35 @@ void NamEngine::setSlimmableSize(double val) {
 }
 
 void NamEngine::process(juce::AudioBuffer<float>& buffer) {
-  if (!isPrepared) {
+  if (!isPrepared || maxBlockSize < 1) {
     throw std::runtime_error("NamEngine must be prepared before processing");
   }
 
   const int numSamples = buffer.getNumSamples();
   const int numChannels = buffer.getNumChannels();
 
-  if (numSamples > maxBlockSize) {
-    throw std::runtime_error("Block size exceeds maximum prepared size");
-  }
-
-  // NAM models are mono: process channel 0 through the model...
+  // NAM models are mono: process channel 0 through the model... Buffers
+  // larger than the prepared size are run in prepared-size slices (models
+  // stream statefully, so slicing is exact) — throwing here used to
+  // permanently disable the block when a startup prepare raced the host's
+  // actual block size.
   float* leftChannel = buffer.getWritePointer(0);
-  for (int i = 0; i < numSamples; ++i) {
-    inputConversionBuffer[static_cast<size_t>(i)] = static_cast<double>(leftChannel[i]);
-  }
+  for (int offset = 0; offset < numSamples; offset += maxBlockSize) {
+    const int chunk = juce::jmin(maxBlockSize, numSamples - offset);
 
-  NAM_SAMPLE* inputPtrs[] = {inputConversionBuffer.data()};
-  NAM_SAMPLE* outputPtrs[] = {outputConversionBuffer.data()};
-  wrappedModel->process(inputPtrs, outputPtrs, numSamples);
+    for (int i = 0; i < chunk; ++i) {
+      inputConversionBuffer[static_cast<size_t>(i)] =
+          static_cast<double>(leftChannel[offset + i]);
+    }
 
-  for (int i = 0; i < numSamples; ++i) {
-    leftChannel[i] = static_cast<float>(outputConversionBuffer[static_cast<size_t>(i)]);
+    NAM_SAMPLE* inputPtrs[] = {inputConversionBuffer.data()};
+    NAM_SAMPLE* outputPtrs[] = {outputConversionBuffer.data()};
+    wrappedModel->process(inputPtrs, outputPtrs, chunk);
+
+    for (int i = 0; i < chunk; ++i) {
+      leftChannel[offset + i] =
+          static_cast<float>(outputConversionBuffer[static_cast<size_t>(i)]);
+    }
   }
 
   // ...and fan the result out to the other channels.

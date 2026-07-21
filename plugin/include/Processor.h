@@ -230,6 +230,11 @@ private:
   struct PreparedBlockModel {
     bool success = false;
 
+    // The chain-domain block size the engines were prepared for. Prepares can
+    // race prepareToPlay at startup (restore-time loads run first), so the
+    // apply step re-prepares when this is smaller than the live domain size.
+    int preparedBlockSize = 0;
+
     std::unique_ptr<NamEngine> namEngine;
     bool namIsSlimmable = false;
 

@@ -21,8 +21,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background-color: #000000;
   color: #ffffff;
-  font-weight: 600;
-  letter-spacing: 0.5px;
+  font-weight: 400;
 }
 
 input,
