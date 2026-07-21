@@ -144,7 +144,8 @@ struct ChainBlock {
   std::atomic<float> inputMeterDb{-60.0f};
   std::atomic<float> outputMeterDb{-60.0f};
 
-  // Post-block 6-band EQ (runs after output gain + mix). Flat by default, in
+  // Per-block 6-band EQ: after output gain + mix by default, or between the
+  // input gain and the model when its pre flag is on. Flat by default, in
   // which case processing is skipped entirely (single branch per audio block).
   BlockEq eq;
 

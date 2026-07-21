@@ -6,7 +6,6 @@ import { SpreadGroup } from './SpreadControls';
 import { useParameter } from '../hooks/useParameter';
 import { useNativeFunction } from '../hooks/useFunction';
 import { HELP, helpProps } from './helpText';
-import { usePreEqControlEnabled } from './uiPreferences';
 import { ACTIVE_OUTLINE, BORDER, GRAY, HIGHLIGHT } from './theme';
 
 /**
@@ -34,10 +33,7 @@ const PowerButton: React.FC<{
   on: boolean;
   help: string;
   onClick: () => void;
-  /** Vertical nudge; defaults to centering on a lone knob. Pass 0 when the
-      button sits inside a pre-positioned stack. */
-  offsetY?: number;
-}> = ({ on, help, onClick, offsetY = KNOB_CENTER_OFFSET }) => (
+}> = ({ on, help, onClick }) => (
   <button
     onClick={onClick}
     {...helpProps(help)}
@@ -54,35 +50,10 @@ const PowerButton: React.FC<{
       flexShrink: 0,
       color: on ? '#ffffff' : GRAY,
       backgroundColor: on ? 'transparent' : HIGHLIGHT,
-      transform: `translateY(${offsetY}px)`,
+      transform: `translateY(${KNOB_CENTER_OFFSET}px)`,
     }}
   >
     <Power size={12} />
-  </button>
-);
-
-/** PRE/POST position toggle for the tone stack: lit pill = EQ before the
-    chain, dimmed = after (default). Same grayscale language as PowerButton. */
-const PreButton: React.FC<{ on: boolean; onClick: () => void }> = ({ on, onClick }) => (
-  <button
-    onClick={onClick}
-    {...helpProps(HELP.tonePre)}
-    style={{
-      height: '15px',
-      padding: '0 5px',
-      borderRadius: '4px',
-      border: on ? ACTIVE_OUTLINE : BORDER,
-      background: on ? HIGHLIGHT : 'transparent',
-      color: on ? '#ffffff' : GRAY,
-      fontSize: '8px',
-      fontWeight: 700,
-      letterSpacing: '0.8px',
-      lineHeight: 1,
-      cursor: 'pointer',
-      flexShrink: 0,
-    }}
-  >
-    PRE
   </button>
 );
 
@@ -229,13 +200,6 @@ export const Faceplate: React.FC<FaceplateProps> = ({
   const [noiseGate, setNoiseGate] = useParameter('gateThreshold', 'slider');
   const [gateEnabled, setGateEnabled] = useParameter('gateEnabled', 'toggle');
   const [toneEqEnabled, setToneEqEnabled] = useParameter('toneEqEnabled', 'toggle');
-  const [toneEqPre, setToneEqPre] = useParameter('toneEqPre', 'toggle');
-  // Opt-in (Settings › Advanced): the PRE toggle is hidden unless the user
-  // reveals it, keeping the tone stack post-chain by default. It also shows
-  // whenever PRE is actually engaged (e.g. a loaded preset turned it on), so
-  // the state is never stuck on with no way to switch it off.
-  const preEqControlEnabled = usePreEqControlEnabled();
-  const showPreEqControl = preEqControlEnabled || toneEqPre;
 
   return (
     <div
@@ -328,36 +292,11 @@ export const Faceplate: React.FC<FaceplateProps> = ({
           defaultValue={toneScale.fromDisplay(5)}
           help={HELP.toneTreble}
         />
-        {/* Power sits exactly where the other power buttons do; PRE hangs
-            below it out-of-flow so it never shifts the power position. */}
-        <div
-          style={{
-            position: 'relative',
-            width: '22px',
-            height: '22px',
-            flexShrink: 0,
-            transform: `translateY(${KNOB_CENTER_OFFSET}px)`,
-          }}
-        >
-          <PowerButton
-            on={toneEqEnabled}
-            help={HELP.tonePower}
-            onClick={() => setToneEqEnabled(!toneEqEnabled)}
-            offsetY={0}
-          />
-          {showPreEqControl && (
-            <div
-              style={{
-                position: 'absolute',
-                top: 'calc(100% + 5px)',
-                left: '50%',
-                transform: 'translateX(-50%)',
-              }}
-            >
-              <PreButton on={toneEqPre} onClick={() => setToneEqPre(!toneEqPre)} />
-            </div>
-          )}
-        </div>
+        <PowerButton
+          on={toneEqEnabled}
+          help={HELP.tonePower}
+          onClick={() => setToneEqEnabled(!toneEqEnabled)}
+        />
       </div>
 
       {/* Spread/jitter (mono doubler & stereo offset) lives on the plate now,

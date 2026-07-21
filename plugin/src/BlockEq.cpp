@@ -65,6 +65,7 @@ bool BlockEq::setBandFromVar(int index, const juce::var& bandVar) {
 void BlockEq::resetToDefault() {
   bands = defaultBands();
   enabled = true;
+  pre = false;
   for (int i = 0; i < kNumBands; ++i) {
     updateBand(i);
     filters[static_cast<size_t>(i)].resetState();
@@ -79,6 +80,15 @@ void BlockEq::setEnabled(bool shouldBeEnabled) {
     for (auto& f : filters)
       f.resetState();
   enabled = shouldBeEnabled;
+}
+
+void BlockEq::setPre(bool shouldBePre) {
+  // Moving position mid-signal: the filters hold history from the other tap
+  // point, clear it so the first processed block doesn't ring.
+  if (pre != shouldBePre)
+    for (auto& f : filters)
+      f.resetState();
+  pre = shouldBePre;
 }
 
 void BlockEq::process(juce::AudioBuffer<float>& buffer) {
@@ -206,6 +216,7 @@ juce::var BlockEq::toVar() const {
   }
   auto* eq = new juce::DynamicObject();
   eq->setProperty("enabled", enabled);
+  eq->setProperty("pre", pre);
   eq->setProperty("bands", bandArray);
   return juce::var(eq);
 }
@@ -213,6 +224,7 @@ juce::var BlockEq::toVar() const {
 juce::ValueTree BlockEq::toValueTree() const {
   juce::ValueTree tree("Eq");
   tree.setProperty("enabled", enabled, nullptr);
+  tree.setProperty("pre", pre, nullptr);
   for (const auto& band : bands) {
     juce::ValueTree bandTree("Band");
     bandTree.setProperty("type", bandTypeToString(band.type), nullptr);
@@ -227,8 +239,10 @@ juce::ValueTree BlockEq::toValueTree() const {
 void BlockEq::restoreFromValueTree(const juce::ValueTree& tree) {
   bands = defaultBands();
   enabled = true;
+  pre = false;
   if (tree.isValid() && tree.hasType("Eq")) {
     enabled = static_cast<bool>(tree.getProperty("enabled", true));
+    pre = static_cast<bool>(tree.getProperty("pre", false));
     const int count = juce::jmin(tree.getNumChildren(), kNumBands);
     for (int i = 0; i < count; ++i) {
       const auto bandTree = tree.getChild(i);

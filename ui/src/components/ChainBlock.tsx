@@ -29,6 +29,7 @@ import { AvatarImage } from './AvatarFallback';
 import { FormatBadge } from './FormatBadge';
 import { HELP, helpProps } from './helpText';
 import { useBlockNormalizeControlEnabled } from './uiPreferences';
+import { KNOB_CENTER_OFFSET } from './SpreadControls';
 import {
   ACTIVE_OUTLINE,
   BORDER,
@@ -131,8 +132,10 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
   const [isSwitchingModel, setIsSwitchingModel] = useState(false);
   const [showEq, setShowEq] = useState(false);
   const [eqView, setEqView] = useState<EqViewMode>('sliders');
-  // Optimistic EQ power state (native converges via polling, like `enabled`).
+  // Optimistic EQ power/position state (native converges via polling, like
+  // `enabled`).
   const [eqOn, setEqOn] = useState(params.eq?.enabled ?? true);
+  const [eqPre, setEqPre] = useState(params.eq?.pre ?? false);
   const [copied, setCopied] = useState(false);
   const copiedTimeoutRef = useRef<number | undefined>(undefined);
   // True while one of this card's knobs is grabbed — knob prop syncs pause
@@ -157,6 +160,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
     if (!knobDragRef.current) setMix(params.mix ?? 1.0);
   }, [params.mix]);
   useEffect(() => setEqOn(params.eq?.enabled ?? true), [params.eq?.enabled]);
+  useEffect(() => setEqPre(params.eq?.pre ?? false), [params.eq?.pre]);
   useEffect(
     () => setSlimmableSize(params.namSlimmableSize ?? 1),
     [blockId, params.namSlimmableSize]
@@ -186,6 +190,13 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
   const handleToggleEqEnabled = useCallback(() => {
     setEqOn((prev) => {
       actions.setBlockEqEnabled(blockId, !prev);
+      return !prev;
+    });
+  }, [actions, blockId]);
+
+  const handleToggleEqPre = useCallback(() => {
+    setEqPre((prev) => {
+      actions.setBlockEqPre(blockId, !prev);
       return !prev;
     });
   }, [actions, blockId]);
@@ -325,23 +336,6 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
           <Power size={14} />
         </button>
 
-        {/* Per-block normalization (=) — NAM only, revealed by the Advanced
-            "Per-Block Normalization" setting. On by default; off plays the
-            capture at its raw loudness. Same on/off look as the power button. */}
-        {isNam && showNormalizeControl && (
-          <button
-            onClick={handleToggleNormalize}
-            {...helpProps(HELP.blockNormalize)}
-            style={{
-              ...headerButtonStyle,
-              color: normalizeOn ? '#ffffff' : GRAY,
-              backgroundColor: normalizeOn ? 'transparent' : HIGHLIGHT,
-            }}
-          >
-            <Equal size={14} />
-          </button>
-        )}
-
         {/* LITE/FULL for every NAM block (architecture=2 = always A2).
             Subtle segmented control: the active side just reads white.
             While a model loads the control keeps its normal look (no
@@ -437,6 +431,26 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                 <EqCurveIcon />
               </button>
             </div>
+            {/* PRE moves the EQ before the block's model (after In Gain);
+                off = the default post-block position. Same two-state look
+                as the EQ toggle: outline + white text while engaged. */}
+            <button
+              onClick={handleToggleEqPre}
+              {...helpProps(HELP.eqPre)}
+              style={{
+                ...headerButtonStyle,
+                width: 'auto',
+                padding: '0 8px',
+                fontSize: '11px',
+                fontWeight: 400,
+                fontFamily: 'monospace',
+                border: eqPre ? ACTIVE_OUTLINE : BORDER,
+                color: eqPre ? '#ffffff' : MUTED,
+                backgroundColor: eqPre ? HIGHLIGHT : 'transparent',
+              }}
+            >
+              PRE
+            </button>
             {/* Reset and power stand alone (no bordered group). */}
             <button
               onClick={() => actions.resetBlockEq(blockId)}
@@ -757,7 +771,9 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
             </div>
 
             {/* Output rail: knob pinned at the bottom, meter centered in the
-                space between it and the card header */}
+                space between it and the card header. Per-block normalization
+                (=) sits left of Out — same placement language as the faceplate
+                auto-balance (=) beside Bal. NAM only, revealed by Advanced. */}
             <div
               style={{
                 display: 'flex',
@@ -769,22 +785,55 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', minHeight: 0 }}>
                 <BlockMeter meterId={meterId.blockOut(blockId)} length={RAIL_METER_HEIGHT} />
               </div>
-              <KnobControl
-                label="Out"
-                value={outputGain}
-                onChange={(val) => {
-                  setOutputGain(val);
-                  setParam('outputGain', val);
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'flex-end',
+                  gap: '10px',
                 }}
-                onDragStateChange={handleKnobDragState}
-                size={KNOB_SIZE}
-                labelSize={12}
-                labelBottom={false}
-                innerColor="#000000"
-                scale={gainDbScale}
-                defaultValue={0.5}
-                help={isNam ? HELP.blockOut : HELP.blockOutIr}
-              />
+              >
+                {isNam && showNormalizeControl && (
+                  <button
+                    onClick={handleToggleNormalize}
+                    {...helpProps(HELP.blockNormalize)}
+                    style={{
+                      width: '18px',
+                      height: '18px',
+                      borderRadius: '5px',
+                      border: normalizeOn ? ACTIVE_OUTLINE : BORDER,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      padding: 0,
+                      flexShrink: 0,
+                      boxSizing: 'border-box',
+                      color: normalizeOn ? '#ffffff' : GRAY,
+                      backgroundColor: normalizeOn ? HIGHLIGHT : 'transparent',
+                      transform: `translateY(${KNOB_CENTER_OFFSET}px)`,
+                    }}
+                  >
+                    <Equal size={12} />
+                  </button>
+                )}
+                <KnobControl
+                  label="Out"
+                  value={outputGain}
+                  onChange={(val) => {
+                    setOutputGain(val);
+                    setParam('outputGain', val);
+                  }}
+                  onDragStateChange={handleKnobDragState}
+                  size={KNOB_SIZE}
+                  labelSize={12}
+                  labelBottom={false}
+                  innerColor="#000000"
+                  scale={gainDbScale}
+                  defaultValue={0.5}
+                  help={isNam ? HELP.blockOut : HELP.blockOutIr}
+                />
+              </div>
             </div>
           </>
         )}

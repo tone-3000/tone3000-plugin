@@ -393,6 +393,7 @@ export const Plugin: React.FC = () => {
       setBlockParam: actions.setBlockParam,
       setBlockEqBand: actions.setBlockEqBand,
       setBlockEqEnabled: actions.setBlockEqEnabled,
+      setBlockEqPre: actions.setBlockEqPre,
       resetBlockEq: actions.resetBlockEq,
       authenticated,
     }),
@@ -547,6 +548,10 @@ export const Plugin: React.FC = () => {
             {showToneBrowser ? (
               <ToneBrowser
                 client={t3kClient}
+                // Pre-mounted during an OAuth return ('returning'), the client
+                // has no tokens until the callback's code exchange finishes —
+                // hold the stream fetch so it doesn't fire unauthenticated.
+                authPending={oauthPhase === 'returning'}
                 onPickTone={selectToneById}
                 onBrowseTone3000={startSelectFlow}
                 onClose={() => {

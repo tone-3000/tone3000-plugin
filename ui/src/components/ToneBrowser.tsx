@@ -316,6 +316,13 @@ const Paginator: React.FC<{
 
 interface ToneBrowserProps {
   client: T3KClient;
+  /**
+   * True while an OAuth callback is still being resolved (token exchange in
+   * flight). The browser is pre-mounted under the busy scrim on the first
+   * render after the redirect — before `client` has tokens — so the stream
+   * fetch must wait for this to clear or it fails with not_authenticated.
+   */
+  authPending?: boolean;
   /** Resolve + load a picked tone; the parent closes the browser on success. */
   onPickTone: (toneId: number) => Promise<void>;
   /** Launch the full-catalog Select flow (prompt=select_tone). */
@@ -332,6 +339,7 @@ interface StreamResult {
 
 export const ToneBrowser: React.FC<ToneBrowserProps> = ({
   client,
+  authPending = false,
   onPickTone,
   onBrowseTone3000,
   onClose,
@@ -357,6 +365,11 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
   }, [result]);
 
   useEffect(() => {
+    // Pre-mounted during an OAuth return: the token exchange hasn't finished
+    // yet, so the client can't authenticate this request. Keep showing the
+    // loading state; the fetch fires when authPending flips false.
+    if (authPending) return;
+
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -382,7 +395,7 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [client, stream, page, retryKey]);
+  }, [authPending, client, stream, page, retryKey]);
 
   const handlePick = useCallback(
     async (toneId: number) => {

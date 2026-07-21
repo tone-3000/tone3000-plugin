@@ -120,11 +120,13 @@ public:
   // Values in dB with a -60 floor. Designed to be polled once per UI frame.
   juce::var getMeterLevels() const;
 
-  // Per-block post EQ. setBlockEqBand takes { type, freqHz, gainDb, q } for
-  // one band — the undo stack's mutation granularity. Band drags defer their
-  // revision bump like continuous block params (see deferredRevisionBump).
+  // Per-block EQ (post-block by default, pre-model when its pre flag is on).
+  // setBlockEqBand takes { type, freqHz, gainDb, q } for one band — the undo
+  // stack's mutation granularity. Band drags defer their revision bump like
+  // continuous block params (see deferredRevisionBump).
   bool setBlockEqBand(const std::string& blockId, int bandIndex, const juce::var& bandVar);
   bool setBlockEqEnabled(const std::string& blockId, bool enabled);
+  bool setBlockEqPre(const std::string& blockId, bool pre);
   bool resetBlockEq(const std::string& blockId);
 
   // Per-block spectrum for the EQ editor backdrop. The UI enables a block's
@@ -502,7 +504,6 @@ private:
     std::atomic<float>* gateThreshold = nullptr;
     std::atomic<float>* gateEnabled = nullptr;
     std::atomic<float>* toneEqEnabled = nullptr;
-    std::atomic<float>* toneEqPre = nullptr;
     std::atomic<float>* targetLoudness = nullptr;
     std::atomic<float>* calibrateInput = nullptr;
     std::atomic<float>* inputCalibrationLevel = nullptr;
@@ -525,7 +526,6 @@ private:
   float cacheGateThreshold = -80.0f;
   bool cacheGateEnabled = true;
   bool cacheToneEqEnabled = true;
-  bool cacheToneEqPre = false;  // tone stack before (true) or after (false) the chain
   float cacheTargetLoudness = -18.0f;
   bool cacheCalibrateInput = false;
   float cacheInputCalibrationLevel = 12.0f;

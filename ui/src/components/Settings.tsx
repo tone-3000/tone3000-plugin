@@ -5,9 +5,7 @@ import { useNativeFunction } from '../hooks/useFunction';
 import { setHintsEnabled, useHintsEnabled } from './helpText';
 import {
   setBlockNormalizeControlEnabled,
-  setPreEqControlEnabled,
   useBlockNormalizeControlEnabled,
-  usePreEqControlEnabled,
 } from './uiPreferences';
 import type { InputMode } from '../types/chain';
 import type { UpdateNoticeData } from '../hooks/useUpdateNotice';
@@ -263,7 +261,6 @@ export const Settings: React.FC<SettingsProps> = ({
   const [screen, setScreen] = useState<'main' | 'advanced'>('main');
 
   const hintsEnabled = useHintsEnabled();
-  const preEqControlEnabled = usePreEqControlEnabled();
   const blockNormalizeControlEnabled = useBlockNormalizeControlEnabled();
 
   const [calibrationEnabled, setCalibrationEnabled] = useParameter('calibrateInput', 'toggle');
@@ -516,13 +513,6 @@ export const Settings: React.FC<SettingsProps> = ({
           </div>
         )}
       </ToggleRow>
-
-      <ToggleRow
-        label="Show Pre-EQ Control"
-        description="The EQ on the bottom panel defaults to post-EQ. Enabling this setting reveals an optional pre-EQ toggle, which is disabled by default."
-        value={preEqControlEnabled}
-        onChange={setPreEqControlEnabled}
-      />
 
       <div>
         <span style={sectionLabelStyle}>Diagnostics</span>

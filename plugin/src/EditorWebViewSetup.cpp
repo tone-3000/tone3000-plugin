@@ -151,7 +151,6 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
       .withOptionsFrom(editor->gateThresholdRelay)
       .withOptionsFrom(editor->gateEnabledRelay)
       .withOptionsFrom(editor->toneEqEnabledRelay)
-      .withOptionsFrom(editor->toneEqPreRelay)
       .withOptionsFrom(editor->calibrateInputRelay)
       .withOptionsFrom(editor->inputCalibrationLevelRelay)
       // --- Chain mutations -------------------------------------------------
@@ -242,6 +241,13 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
           "setBlockEqEnabled", guarded(2, false, [editor](const juce::Array<juce::var>& args) {
             return juce::var(editor->processor.setBlockEqEnabled(args[0].toString().toStdString(),
                                                                  coerceBool(args[1])));
+          }))
+      .withNativeFunction(
+          // EQ position: true = before the block's model (after its input
+          // gain), false = after the block (default).
+          "setBlockEqPre", guarded(2, false, [editor](const juce::Array<juce::var>& args) {
+            return juce::var(editor->processor.setBlockEqPre(args[0].toString().toStdString(),
+                                                             coerceBool(args[1])));
           }))
       .withNativeFunction(
           "resetBlockEq", guarded(1, false, [editor](const juce::Array<juce::var>& args) {

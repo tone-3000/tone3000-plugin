@@ -144,7 +144,6 @@ export const HELP = {
   toneMiddle: knobHelp('Middle', 'tone stack mids, 0–10.'),
   toneTreble: knobHelp('Treble', 'tone stack highs, 0–10.'),
   tonePower: 'Tone Stack Power: toggles the Bass/Middle/Treble EQ on/off.',
-  tonePre: 'PRE: runs the tone stack before the chain. Off: after the chain.',
   spread: knobHelp(
     'Spread',
     'delays one side up to 24 ms for width. Center: off · Left/right of center: delays L/R.'
@@ -194,7 +193,8 @@ export const HELP = {
   eqToggle: 'EQ: opens the 6-band EQ editor. Outline: EQ is shaping the sound.',
   eqSlidersView: 'Sliders View: graphic-EQ faders, gain only.',
   eqCurveView: 'Curve View: parametric editor — frequency, gain, Q and band type.',
-  eqReset: 'Reset EQ: returns all six bands to flat.',
+  eqReset: 'Reset EQ: returns all six bands to flat and the position to post.',
+  eqPre: 'PRE: runs this EQ before the model, right after In Gain. Off: after the block.',
   eqPower: 'EQ Power: bypasses the block EQ without losing its settings.',
   shareTone: 'Share: copies this tone\u2019s TONE3000 link to the clipboard.',
   modelSelectSignedOut: 'Models: sign in to TONE3000 (account menu) to switch models.',

@@ -1060,6 +1060,20 @@ bool TONE3000Processor::setBlockEqEnabled(const std::string& blockId, bool enabl
   return true;
 }
 
+bool TONE3000Processor::setBlockEqPre(const std::string& blockId, bool pre) {
+  juce::ScopedLock lock(chainMutex);
+  ChainBlock* block = findBlockById(blockId);
+  if (block == nullptr || block->type == ChainBlockType::INSERT)
+    return false;
+  if (block->eq.isPre() == pre)
+    return true;
+
+  pushChainHistory();
+  block->eq.setPre(pre);
+  bumpChainRevision();
+  return true;
+}
+
 bool TONE3000Processor::resetBlockEq(const std::string& blockId) {
   juce::ScopedLock lock(chainMutex);
   ChainBlock* block = findBlockById(blockId);

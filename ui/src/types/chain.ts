@@ -17,7 +17,8 @@
 export type ChainSide = 'left' | 'right';
 
 /**
- * Per-block post EQ (runs after the block's output gain + mix).
+ * Per-block 6-band EQ. Runs after the block's output gain + mix by default,
+ * or between the block's input gain and its model when `pre` is on.
  * Band curve types match BlockEq::BandType on the native side.
  */
 export type EqBandType = 'lowcut' | 'lowshelf' | 'bell' | 'highshelf' | 'highcut';
@@ -32,6 +33,9 @@ export interface EqBand {
 export interface BlockEqParams {
   /** EQ power/bypass. Band settings persist while disabled. */
   enabled: boolean;
+  /** Position: true = before the block's model (after its input gain),
+      false = after the block (default). */
+  pre: boolean;
   bands: EqBand[];
 }
 
@@ -81,7 +85,7 @@ export interface BlockParams {
   /** NAM slimmable size: 0.0 = lite, 1.0 = full (tier boundaries live in
       the native mapper — see ChainBlock's LITE/FULL toggle). */
   namSlimmableSize: number;
-  /** Post-block 6-band EQ. Flat = skipped entirely on the audio thread. */
+  /** Per-block 6-band EQ. Flat = skipped entirely on the audio thread. */
   eq: BlockEqParams;
 }
 

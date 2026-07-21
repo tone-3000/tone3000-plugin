@@ -192,8 +192,7 @@ The full path, in processing order (`TONE3000Processor::processBlock` in `plugin
 flowchart LR
     IN([In]) --> IG["Input Level<br/>+ Balance"]
     IG --> GATE["Noise Gate&nbsp;*"]
-    GATE --> TSPRE["Tone Stack&nbsp;*<br/>(PRE position)"]
-    TSPRE --> RS(("⇅ 48k"))
+    GATE --> RS(("⇅ 48k"))
     subgraph CHAINS["Tone chains — run at 48 kHz"]
         direction LR
         CL["Left chain<br/>(NAM / IR blocks)"]
@@ -206,14 +205,14 @@ flowchart LR
     RS2 --> SPREAD["Spread&nbsp;*<br/>(delay one side + jitter)"]
     SPREAD --> PAN["Pan L / Pan R&nbsp;*<br/>(stereo, constant-power)"]
     PAN --> DCB["DC Blocker<br/>(~20 Hz HPF)"]
-    DCB --> TSPOST["Tone Stack&nbsp;*<br/>(POST position)"]
-    TSPOST --> OG["Output Level<br/>+ Balance"]
+    DCB --> TS["Tone Stack&nbsp;*"]
+    TS --> OG["Output Level<br/>+ Balance"]
     OG --> OUT([Out])
 ```
 
 - **Mono mode** — only the Left chain runs (a stereo bus passes both channels through it together) and the pan stage is skipped. If Spread is on, the chain output is doubled to stereo first, then one side is delayed.
 - **Stereo mode** — channel 0 feeds the Left chain and channel 1 the Right chain independently; the two pan knobs then place each chain in the stereo image with constant-power law.
-- **Tone stack** — one Bass/Middle/Treble EQ that sits either before the chains (**PRE**) or after the DC blocker (**POST**), never both.
+- **Tone stack** — one global Bass/Middle/Treble EQ after the DC blocker.
 - **48 kHz boundary** — the chains always run at 48 kHz; a Lanczos resampler wraps them when the host rate differs (bypassed at 48 kHz).
 
 Inside every tone block:
@@ -222,14 +221,17 @@ Inside every tone block:
 flowchart LR
     BIN([block in]) --> BIG["In Gain<br/>±24 dB"]
     BIN -. dry .-> MIX
-    BIG --> MODEL["NAM model / IR<br/>(+ calibration or<br/>loudness normalize)"]
+    BIG --> PEQ["6-band EQ&nbsp;*<br/>(PRE position)"]
+    PEQ --> MODEL["NAM model / IR<br/>(+ calibration or<br/>loudness normalize)"]
     MODEL --> BOG["Out Gain<br/>±24 dB"]
     BOG --> MIX["Dry/Wet Mix"]
-    MIX --> BEQ["6-band EQ&nbsp;*"]
+    MIX --> BEQ["6-band EQ&nbsp;*<br/>(POST position)"]
     BEQ --> BOUT([block out])
 ```
 
-Meters tap the signal after input gain (input meters, pre-gate), after each block's In Gain and after its EQ (block LEDs), and after output gain (output meters).
+Each block's 6-band EQ runs in exactly one position: after the dry/wet mix (**POST**, the default) or between In Gain and the model (**PRE**, the EQ menu's PRE toggle) — never both. A flat or bypassed EQ costs nothing on the audio thread.
+
+Meters tap the signal after input gain (input meters, pre-gate), after each block's In Gain (plus its EQ in the PRE position) and after its final stage (block LEDs), and after output gain (output meters).
 
 ---
 

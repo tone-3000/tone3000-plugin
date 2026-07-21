@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ArrowLeftRight, GripVertical, PlusCircle, Power, Trash2 } from 'lucide-react';
-import { BlockLed } from './BlockLed';
+import { BlockEnergyBorder, BlockLed } from './BlockLed';
 import { ToneImage } from './GearIcon';
 import { LoadingDots } from './LoadingDots';
 import { RetryLoadBadge } from './RetryLoadBadge';
@@ -62,148 +62,159 @@ const TileSurface: React.FC<{
   // (where the previous model keeps playing, so `loaded` stays true) and
   // `!loaded` covers fresh blocks that have nothing to play yet.
   const busy = block.modelLoading || (!block.loaded && !block.loadFailed);
+  const outMeterId = meterId.blockOut(blockId);
 
   return (
+    // Outer shell stays overflow-visible so inset energy glow isn't needed
+    // outside the tile; kept for a stable size box around the face.
     <div
-      // Header reveals on :hover via CSS (see index.css) — JS hover state
-      // dies across drag re-renders. The inert drag ghost pins it visible.
-      className={actions ? 'gallery-tile' : 'gallery-tile tile-chrome-visible'}
-      onClick={actions?.onOpen}
-      // The inert drag ghost skips help — it rides under the pointer, so its
-      // hover events would pin the hint for the whole drag.
-      {...(actions ? helpProps(toneTileHelp(tone.title)) : {})}
       style={{
         width: `${size}px`,
         height: `${size}px`,
-        borderRadius: '12px',
-        backgroundColor: SURFACE,
         position: 'relative',
-        overflow: 'hidden',
-        cursor: actions ? 'pointer' : 'grabbing',
-        boxSizing: 'border-box',
+        flexShrink: 0,
       }}
     >
-      {/* Tone image (dimmed while powered off, loading, or failed) */}
       <div
+        // Header reveals on :hover via CSS (see index.css) — JS hover state
+        // dies across drag re-renders. The inert drag ghost pins it visible.
+        className={actions ? 'gallery-tile' : 'gallery-tile tile-chrome-visible'}
+        onClick={actions?.onOpen}
+        // The inert drag ghost skips help — it rides under the pointer, so its
+        // hover events would pin the hint for the whole drag.
+        {...(actions ? helpProps(toneTileHelp(tone.title)) : {})}
         style={{
-          position: 'absolute',
-          inset: 0,
-          opacity: enabled && !busy && !block.loadFailed ? 1 : 0.35,
-          transition: 'opacity 0.2s ease',
+          width: `${size}px`,
+          height: `${size}px`,
+          borderRadius: '12px',
+          backgroundColor: SURFACE,
+          position: 'relative',
+          overflow: 'hidden',
+          cursor: actions ? 'pointer' : 'grabbing',
+          boxSizing: 'border-box',
         }}
       >
-        <ToneImage
-          src={tone.images?.[0]}
-          alt={tone.title}
-          gear={tone.gear}
-          boxSize={size}
-          draggable={false}
-        />
-      </div>
-
-      {/* Busy dots while the model downloads natively; if the download
-          failed, a retry affordance instead (dots would spin forever). */}
-      {(busy || block.loadFailed) && (
+        {/* Tone image (dimmed while powered off, loading, or failed) */}
         <div
           style={{
             position: 'absolute',
             inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            // Clicks pass through to the tile except on the retry button.
-            pointerEvents: 'none',
+            opacity: enabled && !busy && !block.loadFailed ? 1 : 0.35,
+            transition: 'opacity 0.2s ease',
           }}
         >
-          {block.loadFailed && actions ? (
-            <div style={{ pointerEvents: 'auto' }}>
-              <RetryLoadBadge onRetry={actions.onRetryLoad} />
-            </div>
-          ) : (
-            !block.loadFailed && <LoadingDots />
-          )}
+          <ToneImage
+            src={tone.images?.[0]}
+            alt={tone.title}
+            gear={tone.gear}
+            boxSize={size}
+            draggable={false}
+          />
         </div>
-      )}
 
-      {/* Translucent strip under the quick actions so they read on any art.
-          Fades in with the header (opacity only — never a layout change). */}
-      <div
-        className="tile-chrome"
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          height: '32px',
-          background: 'rgba(0, 0, 0, 0.35)',
-          pointerEvents: 'none',
-        }}
-      />
-
-      {/* Top quick-action bar: drag / power / swap / trash (hover-revealed) */}
-      <div
-        className="tile-chrome"
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'center',
-          padding: '4px',
-        }}
-      >
-        <div
-          {...(actions?.grip ?? {})}
-          onClick={(e) => e.stopPropagation()}
-          {...(actions ? helpProps(HELP.dragGrip) : {})}
-          // touch-action: none — otherwise touch devices claim the gesture
-          // for lane scrolling and pointercancel kills the drag instantly.
-          style={{ ...actionButtonStyle, cursor: 'grab', color: '#ffffff', touchAction: 'none' }}
-        >
-          <GripVertical size={14} />
-        </div>
-        <div style={{ flex: 1 }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <button
-            onClick={actions?.onTogglePower}
-            onMouseDown={preventFocus}
-            {...(actions ? helpProps(HELP.blockPower) : {})}
+        {/* Busy dots while the model downloads natively; if the download
+            failed, a retry affordance instead (dots would spin forever). */}
+        {(busy || block.loadFailed) && (
+          <div
             style={{
-              ...actionButtonStyle,
-              color: enabled ? '#ffffff' : GRAY,
-              backgroundColor: enabled ? 'transparent' : HIGHLIGHT,
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              // Clicks pass through to the tile except on the retry button.
+              pointerEvents: 'none',
             }}
           >
-            <Power size={14} />
-          </button>
-          <button
-            onClick={actions?.onSwap}
-            onMouseDown={preventFocus}
-            {...(actions ? helpProps(HELP.swapTone) : {})}
-            style={{ ...actionButtonStyle, color: '#ffffff' }}
+            {block.loadFailed && actions ? (
+              <div style={{ pointerEvents: 'auto' }}>
+                <RetryLoadBadge onRetry={actions.onRetryLoad} />
+              </div>
+            ) : (
+              !block.loadFailed && <LoadingDots />
+            )}
+          </div>
+        )}
+
+        {/* Translucent strip under the quick actions so they read on any art.
+            Fades in with the header (opacity only — never a layout change). */}
+        <div
+          className="tile-chrome"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: '32px',
+            background: 'rgba(0, 0, 0, 0.35)',
+            pointerEvents: 'none',
+          }}
+        />
+
+        {/* Top quick-action bar: drag / power / swap / trash (hover-revealed) */}
+        <div
+          className="tile-chrome"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            padding: '4px',
+          }}
+        >
+          <div
+            {...(actions?.grip ?? {})}
+            onClick={(e) => e.stopPropagation()}
+            {...(actions ? helpProps(HELP.dragGrip) : {})}
+            // touch-action: none — otherwise touch devices claim the gesture
+            // for lane scrolling and pointercancel kills the drag instantly.
+            style={{ ...actionButtonStyle, cursor: 'grab', color: '#ffffff', touchAction: 'none' }}
           >
-            <ArrowLeftRight size={14} />
-          </button>
-          <button
-            onClick={actions?.onRemove}
-            onMouseDown={preventFocus}
-            {...(actions ? helpProps(HELP.removeBlock) : {})}
-            style={{ ...actionButtonStyle, color: '#ffffff' }}
-          >
-            <Trash2 size={14} />
-          </button>
+            <GripVertical size={14} />
+          </div>
+          <div style={{ flex: 1 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <button
+              onClick={actions?.onTogglePower}
+              onMouseDown={preventFocus}
+              {...(actions ? helpProps(HELP.blockPower) : {})}
+              style={{
+                ...actionButtonStyle,
+                color: enabled ? '#ffffff' : GRAY,
+                backgroundColor: enabled ? 'transparent' : HIGHLIGHT,
+              }}
+            >
+              <Power size={14} />
+            </button>
+            <button
+              onClick={actions?.onSwap}
+              onMouseDown={preventFocus}
+              {...(actions ? helpProps(HELP.swapTone) : {})}
+              style={{ ...actionButtonStyle, color: '#ffffff' }}
+            >
+              <ArrowLeftRight size={14} />
+            </button>
+            <button
+              onClick={actions?.onRemove}
+              onMouseDown={preventFocus}
+              {...(actions ? helpProps(HELP.removeBlock) : {})}
+              style={{ ...actionButtonStyle, color: '#ffffff' }}
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
         </div>
+
+        {/* Clip latch lives outside the overflow:hidden face so it stacks
+            above the inset glow; red dot only while clipped. */}
       </div>
 
-      {/* Corner LED: output level + latching clip (bottom corner keeps it
-          clear of the hover-revealed action bar along the top edge) */}
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{ position: 'absolute', bottom: '8px', right: '8px' }}
-      >
-        <BlockLed meterId={meterId.blockOut(blockId)} size={16} />
+      <BlockEnergyBorder meterId={outMeterId} borderRadius={12} />
+      <div style={{ position: 'absolute', bottom: '8px', right: '8px', zIndex: 4 }}>
+        <BlockLed meterId={outMeterId} size={10} />
       </div>
     </div>
   );
@@ -221,7 +232,11 @@ interface GalleryBlockProps {
     reaches tiles whose block snapshot actually changed. Mutations come from
     the ChainActions context, so there are no per-render callback props to
     defeat the memo. */
-export const GalleryBlock: React.FC<GalleryBlockProps> = React.memo(({ block, size, onOpen }) => {
+export const GalleryBlock: React.FC<GalleryBlockProps> = React.memo(({
+  block,
+  size,
+  onOpen,
+}) => {
   const { blockId, params } = block;
   const actions = useChainActions();
 
@@ -399,7 +414,10 @@ export const AddTile: React.FC<AddTileProps> = ({ id, size, routing, onClick }) 
     (identical chrome, dimmed like the old chain's dragged card), following
     the pointer so drags can cross lanes without being clipped by the lane's
     overflow. */
-export const GalleryTileGhost: React.FC<{ item: ChainItem; size: number }> = ({ item, size }) => {
+export const GalleryTileGhost: React.FC<{
+  item: ChainItem;
+  size: number;
+}> = ({ item, size }) => {
   if (isInsertSlot(item)) {
     return (
       <div

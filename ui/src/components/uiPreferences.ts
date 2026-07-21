@@ -38,12 +38,6 @@ function boolPref(key: string) {
   return { set, useValue };
 }
 
-// Whether the faceplate tone stack exposes its optional PRE (pre-EQ) toggle.
-// Off by default: the tone stack runs post-chain unless the user opts in.
-const preEqControl = boolPref('t3k.showPreEqControl');
-export const setPreEqControlEnabled = preEqControl.set;
-export const usePreEqControlEnabled = preEqControl.useValue;
-
 // Whether NAM block cards expose the (=) per-block normalization toggle.
 // Off by default: every block simply stays normalized (the block flag itself
 // defaults to on and lives in the chain state, not here).

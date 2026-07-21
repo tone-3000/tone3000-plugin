@@ -5,10 +5,13 @@
 #include <array>
 
 /**
- * Six-band parametric EQ applied post-block (after the block's output gain +
- * mix stage). Self-contained module: band parameters, biquad coefficient math
- * (RBJ cookbook — mirrored exactly by ui/src/components/eqMath.ts so the drawn
- * curve is the audio truth), processing, and (de)serialization.
+ * Six-band parametric EQ, one per chain block. Runs post-block by default
+ * (after the block's output gain + mix stage); the `pre` flag moves it
+ * between the block's input gain and its model instead, shaping the signal
+ * that drives the amp/IR. Self-contained module: band parameters, biquad
+ * coefficient math (RBJ cookbook — mirrored exactly by
+ * ui/src/components/eqMath.ts so the drawn curve is the audio truth),
+ * processing, and (de)serialization.
  *
  * Threading model: setters run on the message thread while `chainMutex` is
  * held (the audio thread holds the same lock during processing), so plain
@@ -76,13 +79,20 @@ public:
   void setEnabled(bool shouldBeEnabled);
   bool isEnabled() const { return enabled; }
 
+  /** Message thread (under chainMutex). Position toggle: true = before the
+      block's model (after its input gain), false = after gain + mix
+      (default). Filter state resets on change — the EQ taps a different
+      signal point. */
+  void setPre(bool shouldBePre);
+  bool isPre() const { return pre; }
+
   bool isActive() const { return enabled && anyBandActive; }
 
   /** Audio thread (under chainMutex). Processes up to 2 channels in place.
       Only call when isActive(). */
   void process(juce::AudioBuffer<float>& buffer);
 
-  /** { enabled, bands: [{ type, freqHz, gainDb, q } x6] } for the UI chain state. */
+  /** { enabled, pre, bands: [{ type, freqHz, gainDb, q } x6] } for the UI chain state. */
   juce::var toVar() const;
 
   /** ValueTree persistence (plugin state save/restore). */
@@ -116,5 +126,6 @@ private:
   std::array<bool, kNumBands> bandActive{};
   bool anyBandActive{false};
   bool enabled{true};
+  bool pre{false};
   double sampleRate{48000.0};
 };

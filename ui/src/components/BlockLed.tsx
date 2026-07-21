@@ -6,29 +6,26 @@ import { HELP, helpProps } from './helpText';
 interface BlockLedProps {
   /** Meter id from useMeters (e.g. meterId.blockOut(blockId)). */
   meterId: string;
-  /** Outer ring diameter, px. */
+  /** Dot diameter, px. */
   size?: number;
 }
 
 type Rgb = [number, number, number];
 
-// Pure primaries matching the meter ramp (meterColor.ts) so the lens reads
-// as the same family as the dot-strip meters.
+// Pure primaries matching the meter ramp (meterColor.ts).
 const BLUE: Rgb = [0, 0, 255];
 const YELLOW: Rgb = [255, 255, 0];
 const RED: Rgb = [255, 0, 0];
 
 /**
- * Brightness fade at the bottom of the scale. A hard silence cutoff near the
- * -60 dB meter floor doesn't work here: NAM captures emit their own noise
- * floor (hiss) even with no input, so the output meter idles around
- * -50…-40 dB and the lens would never turn off. Instead the lens brightness
- * ramps from fully dark at OFF_DB to fully lit at FULL_DB, so residual amp
- * noise reads as off/barely-glowing and real signal lights it up.
+ * Noise-floor gate: NAM captures idle around -50…-40 dB, so we fade the glow
+ * in across that band. Intensity itself tracks the full meter scale (-60→0)
+ * so blur/opacity keep growing through -20 dB up to 0 dBFS (the old curve
+ * topped out at -32 dB and felt stuck for the whole hot range).
  */
-const OFF_DB = -50;
-const FULL_DB = -32;
-const DARK_LENS: Rgb = [34, 34, 34];
+const GATE_OFF_DB = -50;
+const GATE_ON_DB = -40;
+const DARK: Rgb = [34, 34, 34];
 
 const lerpRgb = (c0: Rgb, c1: Rgb, t: number): Rgb => [
   Math.round(c0[0] + (c1[0] - c0[0]) * t),
@@ -36,14 +33,10 @@ const lerpRgb = (c0: Rgb, c1: Rgb, t: number): Rgb => [
   Math.round(c0[2] + (c1[2] - c0[2]) * t),
 ];
 
-/**
- * Level → lens color: blue and yellow plateaus with short crossfades, red at
- * the top. Plateaus (rather than a continuous ramp) keep the single dot
- * readable at a glance: blue = healthy, yellow = hot, red = at 0 dBFS.
- */
 const dbToUnit = (db: number): number =>
   Math.min(1, Math.max(0, (db - METER_MIN_DB) / (METER_MAX_DB - METER_MIN_DB)));
 
+/** Level → color: blue/yellow plateaus with short crossfades, red at the top. */
 const levelColor = (unit: number): Rgb => {
   const fade = 0.06;
   const toYellow = 0.5;
@@ -56,61 +49,97 @@ const levelColor = (unit: number): Rgb => {
 };
 
 /**
- * Single-LED level indicator for gallery tiles: a lens in a dark ring. Dark
- * when silent; with signal present the lens tracks the level from blue
- * through yellow to red at 0 dBFS. Clipping latches the lens solid red
- * (click to clear). The detail card keeps the full dot-strip BlockMeter.
+ * Realtime level → color/presence for the gallery inset glow. Does not latch
+ * on clip — that lives only on the corner clip dot.
  *
- * Memoized: level updates arrive through the meter store subscription, so a
- * parent re-render with identical props never needs to re-run this.
+ * `presence` is gated against the noise floor, then scaled by the full-range
+ * meter unit so intensity keeps moving from quiet through 0 dBFS.
+ */
+export function useBlockEnergy(meterId: string) {
+  const db = useMeter(meterId);
+
+  const unit = dbToUnit(db);
+  const gate = Math.min(1, Math.max(0, (db - GATE_OFF_DB) / (GATE_ON_DB - GATE_OFF_DB)));
+  // Gate kills hiss; unit carries intensity travel all the way to 0 dBFS.
+  const presence = gate * unit;
+  const color = lerpRgb(DARK, levelColor(unit), gate);
+
+  return { color, unit, presence };
+}
+
+/**
+ * Clip latch indicator for gallery tiles: a red dot that appears only while
+ * clip is latched. Click to clear. No bezel / no level metering — the inset
+ * glow handles realtime viz.
  */
 export const BlockLed: React.FC<BlockLedProps> = React.memo(function BlockLed({
   meterId,
-  size = 20,
+  size = 10,
 }) {
-  const db = useMeter(meterId);
   const [clipped, clearClip] = useMeterClip(meterId);
-
-  const unit = clipped ? 1 : dbToUnit(db);
-  // 0 = off (dark lens), 1 = fully lit; see OFF_DB/FULL_DB above.
-  const presence = clipped ? 1 : Math.min(1, Math.max(0, (db - OFF_DB) / (FULL_DB - OFF_DB)));
-  const lens = lerpRgb(DARK_LENS, clipped ? RED : levelColor(unit), presence);
-
-  // Soft halo around the ring in the lens color; blur and strength both
-  // grow with signal energy so louder blocks visibly radiate. Gated by
-  // presence so an idle (noise-floor) lens doesn't glow.
-  const glow =
-    presence > 0
-      ? `0 0 ${(2 + unit * 6).toFixed(1)}px ${(unit * 1.5).toFixed(1)}px rgba(${lens[0]}, ${lens[1]}, ${lens[2]}, ${(presence * (0.25 + unit * 0.45)).toFixed(2)})`
-      : 'none';
+  if (!clipped) return null;
 
   return (
     <div
-      onClick={clipped ? clearClip : undefined}
-      {...(clipped ? helpProps(HELP.clipDot) : {})}
+      onClick={(e) => {
+        e.stopPropagation();
+        clearClip();
+      }}
+      {...helpProps(HELP.clipDot)}
       style={{
         width: `${size}px`,
         height: `${size}px`,
         borderRadius: '50%',
-        backgroundColor: '#0c0c0c',
-        boxShadow: glow,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        cursor: clipped ? 'pointer' : undefined,
+        backgroundColor: 'rgb(255, 0, 0)',
+        cursor: 'pointer',
         flexShrink: 0,
-        transition: 'box-shadow 60ms linear',
       }}
-    >
-      <div
-        style={{
-          width: `${Math.round(size * 0.65)}px`,
-          height: `${Math.round(size * 0.65)}px`,
-          borderRadius: '50%',
-          backgroundColor: `rgb(${lens[0]}, ${lens[1]}, ${lens[2]})`,
-          transition: 'background-color 60ms linear',
-        }}
-      />
-    </div>
+    />
   );
 });
+
+interface BlockEnergyBorderProps {
+  /** Meter id from useMeters (e.g. meterId.blockOut(blockId)). */
+  meterId: string;
+  /** Match the tile's corner radius. */
+  borderRadius?: number;
+}
+
+/** Inset blur into the artwork: presence 0 → 2px, presence 1 → 24px. */
+const INSET_BLUR_MIN_PX = 2;
+const INSET_BLUR_MAX_PX = 18;
+/** Peak shadow alpha at full presence. */
+const INSET_OPACITY = 0.75;
+
+/**
+ * Realtime inset energy glow on gallery tiles: blue→yellow→red / presence
+ * from the live meter only (no clip latch). Blur 2px→24px with presence.
+ * `mix-blend-mode: screen` keeps the tint additive.
+ */
+export const BlockEnergyBorder: React.FC<BlockEnergyBorderProps> = React.memo(
+  function BlockEnergyBorder({ meterId, borderRadius = 12 }) {
+    const { color, presence } = useBlockEnergy(meterId);
+
+    const blur =
+      INSET_BLUR_MIN_PX + presence * (INSET_BLUR_MAX_PX - INSET_BLUR_MIN_PX);
+    const shadow =
+      presence > 0
+        ? `inset 0 0 ${blur.toFixed(1)}px 0 rgba(${color[0]}, ${color[1]}, ${color[2]}, ${(INSET_OPACITY * presence).toFixed(2)})`
+        : 'none';
+
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          borderRadius: `${borderRadius}px`,
+          boxShadow: shadow,
+          mixBlendMode: 'screen',
+          pointerEvents: 'none',
+          transition: 'box-shadow 60ms linear',
+          zIndex: 3,
+        }}
+      />
+    );
+  }
+);

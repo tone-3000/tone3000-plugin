@@ -44,6 +44,8 @@ export interface ChainActions {
   setBlockEqBand: (blockId: string, bandIndex: number, band: EqBand) => void;
   /** EQ power/bypass — band settings persist, processing is skipped. */
   setBlockEqEnabled: (blockId: string, enabled: boolean) => void;
+  /** EQ position — pre = before the block's model, off = after the block. */
+  setBlockEqPre: (blockId: string, pre: boolean) => void;
   resetBlockEq: (blockId: string) => void;
   /**
    * Whether a TONE3000 session is present. Auth-dependent block actions

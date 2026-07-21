@@ -63,7 +63,6 @@ void TONE3000Processor::resolveParamRefs() {
   paramRefs.gateThreshold = get("gateThreshold");
   paramRefs.gateEnabled = get("gateEnabled");
   paramRefs.toneEqEnabled = get("toneEqEnabled");
-  paramRefs.toneEqPre = get("toneEqPre");
   paramRefs.targetLoudness = get("targetLoudness");
   paramRefs.calibrateInput = get("calibrateInput");
   paramRefs.inputCalibrationLevel = get("inputCalibrationLevel");
@@ -97,9 +96,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
       juce::ParameterID{"gateEnabled", 11}, "gateEnabled", true));
   layout.add(std::make_unique<juce::AudioParameterBool>(
       juce::ParameterID{"toneEqEnabled", 12}, "toneEqEnabled", true));
-  // Tone stack position: false = after the chain (default), true = before it.
-  layout.add(std::make_unique<juce::AudioParameterBool>(
-      juce::ParameterID{"toneEqPre", 25}, "toneEqPre", false));
 
   // Stereo balance trims for the main gains: 0.5 = centered (no effect),
   // otherwise an opposing ±12 dB trim between L and R on top of the main
@@ -243,7 +239,7 @@ void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& b
     block->wetFadeGain.reset(kChainSampleRate, kWetFadeSeconds);
     block->wetFadeGain.setCurrentAndTargetValue(block->enabled ? 1.0f : 0.0f);
 
-    // Post-block EQ + spectrum analyzer need the sample rate for their math.
+    // Per-block EQ + spectrum analyzer need the sample rate for their math.
     block->eq.prepare(kChainSampleRate);
     block->spectrum.prepare(kChainSampleRate);
   }
@@ -254,6 +250,17 @@ void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& b
 static std::pair<float, float> constantPowerPanGains(float pan) {
   const float angle = juce::jlimit(0.0f, 1.0f, pan) * juce::MathConstants<float>::halfPi;
   return {std::cos(angle), std::sin(angle)};
+}
+
+// Peak absolute sample across the buffer's first `numChannels` channels.
+static float bufferPeak(const juce::AudioBuffer<float>& buffer, int numChannels, int numSamples) {
+  float peak = 0.0f;
+  for (int ch = 0; ch < numChannels; ++ch) {
+    const auto* data = buffer.getReadPointer(ch);
+    for (int i = 0; i < numSamples; ++i)
+      peak = std::max(peak, std::abs(data[i]));
+  }
+  return peak;
 }
 
 // Per-channel gain for a main stage: main level ±24 dB, plus the balance
@@ -463,9 +470,8 @@ void TONE3000Processor::updateEqCoefficients() {
 // ######################
 // GLOBAL 3-BAND TONE STACK
 // ######################
-// One call site runs per block — before the chain when toneEqPre is set,
-// after it otherwise. Skipped entirely while powered off; filters reset on
-// re-enable so no stale state rings in.
+// Runs once per block, after the DC blocker (post-chain). Skipped entirely
+// while powered off; filters reset on re-enable so no stale state rings in.
 void TONE3000Processor::processToneStack(juce::AudioBuffer<float>& buffer) {
   if (cacheToneEqEnabled) {
     if (!toneEqWasEnabled) {
@@ -524,7 +530,6 @@ void TONE3000Processor::updateCachedParameters() {
   cacheCalibrateInput = loadBool(paramRefs.calibrateInput);
   cacheGateEnabled = loadBool(paramRefs.gateEnabled);
   cacheToneEqEnabled = loadBool(paramRefs.toneEqEnabled);
-  cacheToneEqPre = loadBool(paramRefs.toneEqPre);
   cacheSpreadEnabled = loadBool(paramRefs.spreadEnabled);
 }
 
@@ -607,6 +612,16 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
           blockInputPeak = std::max(blockInputPeak, std::abs(right[i]));
         }
       }
+
+      // EQ in the PRE position: between the block's input gain and its model,
+      // shaping what drives the amp/IR. Skipped entirely when flat/bypassed
+      // (or in the default post position — see the post-block stage below).
+      if (block->eq.isPre() && block->eq.isActive()) {
+        block->eq.process(buffer);
+        // Re-measure so the input meter still reads what the model receives.
+        blockInputPeak = bufferPeak(buffer, numChannels, numSamples);
+      }
+
       const float blockInputDb =
           blockInputPeak > 0.0f ? juce::Decibels::gainToDecibels(blockInputPeak) : -60.0f;
       block->inputMeterDb.store(std::max(-60.0f, blockInputDb));
@@ -778,18 +793,14 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
         block->wetFadeGain.getCurrentValue() <= 0.001f)
       block->swapFadeDone.store(true);
 
-    // Post-block EQ: the last stage of the block, applied after gain + mix so
-    // it shapes exactly what leaves the block. Skipped entirely when flat.
-    if (block->eq.isActive()) {
+    // EQ in the POST position (default): the last stage of the block, applied
+    // after gain + mix so it shapes exactly what leaves the block. Skipped
+    // entirely when flat/bypassed (the PRE position ran before the model).
+    if (!block->eq.isPre() && block->eq.isActive()) {
       block->eq.process(buffer);
       // The mix-loop peak is pre-EQ; re-measure so the meter reflects the
       // block's true output.
-      blockOutputPeak = 0.0f;
-      for (int ch = 0; ch < numChannels; ++ch) {
-        const auto* data = buffer.getReadPointer(ch);
-        for (int i = 0; i < numSamples; ++i)
-          blockOutputPeak = std::max(blockOutputPeak, std::abs(data[i]));
-      }
+      blockOutputPeak = bufferPeak(buffer, numChannels, numSamples);
     }
 
     // Block output meter: post gain + mix + EQ, i.e. what this block hands to
@@ -943,11 +954,6 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   if (spread.isRunning())
     spread.analyzeOnsets(buffer.getReadPointer(0), numSamples);
 
-  // Tone stack in the PRE position: shape the signal before it hits the
-  // chain (after the onset detector, which wants the raw picked signal).
-  if (cacheToneEqPre)
-    processToneStack(buffer);
-
   // ####################
   // MODULAR CHAIN PROCESSING (chain domain — fixed 48 kHz, see ChainDomain.h)
   // ####################
@@ -1086,12 +1092,9 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   }
 
   // ##########
-  // EQ section (global 3-band tone stack) — post-chain position (default).
-  // The pre-chain position runs before the modular chain above; see
-  // processToneStack().
+  // EQ section (global 3-band tone stack), post-chain.
   // ##########
-  if (!cacheToneEqPre)
-    processToneStack(buffer);
+  processToneStack(buffer);
 
   // ##########
   // Auto balance listening pass: accumulate L/R energy right before the
