@@ -9,6 +9,7 @@ import type {
   InputMode,
 } from '../types/chain';
 import { isUnchanged } from '../types/chain';
+import { getDefaultNamA2SlimmableSize } from '../components/uiPreferences';
 
 /**
  * Fallback poll cadence for chain state. The primary sync channel is the
@@ -119,12 +120,18 @@ export function useChainState() {
     () => ({
       /** Add a tone at an insert slot (the one the user clicked, when given —
           stale/absent ids land at the active lane's first insert). Resolves
-          to the new blockId ('' on failure). */
+          to the new blockId ('' on failure). The user's "Default NAM A2 Size"
+          preference rides along to seed the block's lite/full tier. */
       loadTone: (toneJson: string, targetInsertId?: string) =>
-        run<string>('loadTone', () => native.loadTone(toneJson, targetInsertId ?? '')),
-      /** Replace an existing block's tone in place (keeps position + params). */
+        run<string>('loadTone', () =>
+          native.loadTone(toneJson, targetInsertId ?? '', getDefaultNamA2SlimmableSize())
+        ),
+      /** Replace an existing block's tone in place (keeps position + params;
+          the incoming tone starts at the preferred A2 tier). */
       swapTone: (blockId: string, toneJson: string) =>
-        run<boolean>('swapTone', () => native.swapTone(blockId, toneJson)),
+        run<boolean>('swapTone', () =>
+          native.swapTone(blockId, toneJson, getDefaultNamA2SlimmableSize())
+        ),
       /** `modelJson` is the full model object (id/name/model_url) — native
           only stores the active model and resolves the switch from this. */
       switchModel: (blockId: string, modelId: number, modelJson: string) =>

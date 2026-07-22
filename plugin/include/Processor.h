@@ -66,12 +66,18 @@ public:
   // user clicked (it survives the OAuth redirect in the UI's sessionStorage);
   // the new tone block takes that slot's position. When the id is absent or
   // stale (undone away mid-flow), the active lane's first insert is used.
+  // `defaultSlimmableSize` seeds the block's NAM A2 tier (0.0 = lite,
+  // 1.0 = full) — the UI passes its "Default NAM A2 Size" preference; it only
+  // applies to this load and never touches persisted chains/presets.
   std::string loadTone(const juce::String& toneJsonString,
-                       const std::string& targetInsertId = {});
+                       const std::string& targetInsertId = {},
+                       double defaultSlimmableSize = 0.0);
   // Replace the tone of an existing block in place. Keeps the block's chain
   // position and user params (enabled/gains/mix); the new tone's first model
-  // is queued for background loading.
-  bool swapTone(const std::string& blockId, const juce::String& toneJsonString);
+  // is queued for background loading. `defaultSlimmableSize` as in loadTone —
+  // the incoming tone starts at the user's preferred A2 tier.
+  bool swapTone(const std::string& blockId, const juce::String& toneJsonString,
+                double defaultSlimmableSize = 0.0);
   // Switch the block's active model. Native only stores the active model, so
   // `modelData` (JSON object with id/name/model_url, paged in from the API by
   // the UI) is required and becomes the tone's new sole stored model.

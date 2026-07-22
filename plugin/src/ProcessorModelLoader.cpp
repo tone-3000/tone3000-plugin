@@ -375,9 +375,10 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
     block.irNumChannels = 1;
     block.irTempFile = juce::File();
 
+    // The block's size only means anything while a slimmable model is active,
+    // so it survives non-slimmable loads untouched — toggling through a tone's
+    // models keeps the block's lite/full tier for the next A2 model.
     block.namIsSlimmable = prepared.namIsSlimmable;
-    if (!block.namIsSlimmable)
-      block.namSlimmableSize = 1.0;
     block.namEngine->setSlimmableSize(
         block.namIsSlimmable ? block.namSlimmableSize : 1.0);
 

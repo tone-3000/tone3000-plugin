@@ -6,6 +6,9 @@ import { setHintsEnabled, useHintsEnabled } from './helpText';
 import {
   setBlockNormalizeControlEnabled,
   useBlockNormalizeControlEnabled,
+  setDefaultNamA2Size,
+  useDefaultNamA2Size,
+  type NamA2Size,
 } from './uiPreferences';
 import type { InputMode } from '../types/chain';
 import type { UpdateNoticeData } from '../hooks/useUpdateNotice';
@@ -57,6 +60,11 @@ const INPUT_MODE_OPTIONS: { value: InputMode; label: string }[] = [
   { value: 'input1', label: 'Input 1 (mono)' },
   { value: 'input2', label: 'Input 2 (mono)' },
   { value: 'stereo', label: 'Stereo (inputs 1 + 2)' },
+];
+
+const NAM_A2_SIZE_OPTIONS: { value: NamA2Size; label: string }[] = [
+  { value: 'lite', label: 'Lite' },
+  { value: 'full', label: 'Full' },
 ];
 
 // Only headers carry weight; everything else is regular (the app's global
@@ -132,11 +140,15 @@ const PillToggle: React.FC<{ value: boolean; onChange: (value: boolean) => void 
 
 /** Custom dropdown select styled like the plugin's other pickers (model
     select dropdown): grey trigger, dark panel, hover-highlight rows. */
-const SelectField: React.FC<{
-  value: InputMode;
-  options: { value: InputMode; label: string }[];
-  onChange: (value: InputMode) => void;
-}> = ({ value, options, onChange }) => {
+function SelectField<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (value: T) => void;
+}) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -223,7 +235,7 @@ const SelectField: React.FC<{
       )}
     </div>
   );
-};
+}
 
 /** Section label with a pill toggle on the right, description underneath. */
 const ToggleRow: React.FC<{
@@ -262,6 +274,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const hintsEnabled = useHintsEnabled();
   const blockNormalizeControlEnabled = useBlockNormalizeControlEnabled();
+  const defaultNamA2Size = useDefaultNamA2Size();
 
   const [calibrationEnabled, setCalibrationEnabled] = useParameter('calibrateInput', 'toggle');
   const [dbuValueNormalized, setDbuValueNormalized] = useParameter(
@@ -440,6 +453,22 @@ export const Settings: React.FC<SettingsProps> = ({
         value={blockNormalizeControlEnabled}
         onChange={setBlockNormalizeControlEnabled}
       />
+
+      <div style={{ marginBottom: '32px' }}>
+        <span style={sectionLabelStyle}>Default NAM A2 Size</span>
+        <p style={{ ...descriptionStyle, marginBottom: '14px' }}>
+          The size NAM A2 tones start at when you load them through Select Tone. Lite uses less
+          CPU; Full is the highest quality. You can still switch any block between Lite and Full
+          on its card, and existing chains and presets keep their saved size.
+        </p>
+        <div style={{ width: '232px' }}>
+          <SelectField
+            value={defaultNamA2Size}
+            options={NAM_A2_SIZE_OPTIONS}
+            onChange={setDefaultNamA2Size}
+          />
+        </div>
+      </div>
 
       <ToggleRow
         label="Calibration"

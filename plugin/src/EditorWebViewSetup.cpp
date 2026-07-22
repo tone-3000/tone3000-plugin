@@ -155,20 +155,26 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
       .withOptionsFrom(editor->inputCalibrationLevelRelay)
       // --- Chain mutations -------------------------------------------------
       .withNativeFunction(
-          // (toneJson, targetInsertId?) — the tone lands in the insert slot
-          // the user clicked; absent/stale ids fall back to the active lane's
-          // first insert.
+          // (toneJson, targetInsertId?, defaultSlimmableSize?) — the tone
+          // lands in the insert slot the user clicked; absent/stale ids fall
+          // back to the active lane's first insert. The size (0 = lite,
+          // 1 = full) is the UI's "Default NAM A2 Size" preference; absent
+          // means lite.
           "loadTone", guarded(1, juce::var(""), [editor](const juce::Array<juce::var>& args) {
             const std::string targetInsertId =
                 args.size() >= 2 ? args[1].toString().toStdString() : std::string();
-            return juce::var(editor->processor.loadTone(args[0].toString(), targetInsertId));
+            const double defaultSlimmableSize = args.size() >= 3 ? coerceDouble(args[2]) : 0.0;
+            return juce::var(editor->processor.loadTone(args[0].toString(), targetInsertId,
+                                                        defaultSlimmableSize));
           }))
       .withNativeFunction(
           // Replace the tone of an existing block (Swap action). Keeps the
-          // block's chain position and user params.
+          // block's chain position and user params; the incoming tone starts
+          // at the passed A2 size (0 = lite, 1 = full; absent means lite).
           "swapTone", guarded(2, false, [editor](const juce::Array<juce::var>& args) {
-            return juce::var(
-                editor->processor.swapTone(args[0].toString().toStdString(), args[1].toString()));
+            const double defaultSlimmableSize = args.size() >= 3 ? coerceDouble(args[2]) : 0.0;
+            return juce::var(editor->processor.swapTone(
+                args[0].toString().toStdString(), args[1].toString(), defaultSlimmableSize));
           }))
       .withNativeFunction(
           // (blockId, modelId, modelJson) — native only stores the active

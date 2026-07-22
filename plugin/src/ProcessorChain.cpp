@@ -233,7 +233,8 @@ void TONE3000Processor::queueToneLoad(const std::string& blockId, int modelId,
 }
 
 std::string TONE3000Processor::loadTone(const juce::String& toneJsonString,
-                                        const std::string& targetInsertId) {
+                                        const std::string& targetInsertId,
+                                        double defaultSlimmableSize) {
   juce::ScopedLock lock(chainMutex);
 
   const ParsedTone parsed = parseToneForLoading(toneJsonString);
@@ -252,6 +253,9 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString,
   block->mixNormalized = parsed.defaultMix;
   block->loaded = false;
   block->modelLoading = true;
+  // Seed the A2 tier from the caller's preference (Select-flow loads only —
+  // persisted chains/presets restore their own saved size elsewhere).
+  block->namSlimmableSize = juce::jlimit(0.0, 1.0, defaultSlimmableSize);
 
   DBG("Created tone block: " << parsed.toneId << " (block: " << blockId << ")");
   DBG("Queueing first model for background loading: " << parsed.modelName);
@@ -295,7 +299,8 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString,
   return blockId;
 }
 
-bool TONE3000Processor::swapTone(const std::string& blockId, const juce::String& toneJsonString) {
+bool TONE3000Processor::swapTone(const std::string& blockId, const juce::String& toneJsonString,
+                                 double defaultSlimmableSize) {
   juce::ScopedLock lock(chainMutex);
 
   ChainBlock* block = findBlockById(blockId);
@@ -320,7 +325,9 @@ bool TONE3000Processor::swapTone(const std::string& blockId, const juce::String&
   block->modelLoading = true;
   block->loadFailed = false;
   block->modelCache.clear();
-  block->namSlimmableSize = 1.0;  // new tone starts at FULL
+  // The incoming tone starts at the caller's preferred A2 tier (the outgoing
+  // tone's size belongs to the old tone, not this one).
+  block->namSlimmableSize = juce::jlimit(0.0, 1.0, defaultSlimmableSize);
 
   DBG("Swapped tone on block " << blockId << " -> tone " << parsed.toneId);
 
