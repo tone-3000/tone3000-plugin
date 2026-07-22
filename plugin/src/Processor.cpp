@@ -169,14 +169,14 @@ bool TONE3000Processor::isMidiEffect() const {
 }
 double TONE3000Processor::getTailLengthSeconds() const {
   // Two tail sources, report the longer one:
-  //  - IR convolution tails run up to 32768 samples (see
-  //    prepareBlockModelOffThread's maxIrLength) at the fixed chain rate.
-  //    Checking whether an IR is actually loaded would need the chain lock,
-  //    which this (potentially RT-adjacent) query must not take, so report it
-  //    unconditionally.
+  //  - The longest loaded IR (reverb IRs run whole seconds; cab IRs sit far
+  //    below the DC-blocker floor). Tracked lock-free in irTailChainSamples —
+  //    this (potentially RT-adjacent) query must not take the chain lock —
+  //    and refreshed wherever the set of live IR engines changes (see
+  //    refreshIrTailLength).
   //  - The 5 Hz first-order DC blocker decays over ~10 cycles (2 s); the
   //    reference NAM plugin reports the same allowance for VST3 tail checks.
-  const double irTailSeconds = 32768.0 / kChainSampleRate;
+  const double irTailSeconds = irTailChainSamples.load() / kChainSampleRate;
   const double dcBlockerTailSeconds = 10.0 / 5.0;
   return std::max(irTailSeconds, dcBlockerTailSeconds);
 }
@@ -248,6 +248,18 @@ void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& b
     block->eq.prepare(kChainSampleRate);
     block->spectrum.prepare(kChainSampleRate);
   }
+}
+
+// See the declaration. Both lanes are scanned regardless of stereo mode —
+// counting a disabled right lane's IR is a harmless over-report, and it means
+// stereo toggles can never truncate a host's tail rendering mid-session.
+void TONE3000Processor::refreshIrTailLength() {
+  int maxSamples = 0;
+  for (const auto& l : lanes)
+    for (const auto& b : l)
+      if (b->type == ChainBlockType::IR && b->convolverMono != nullptr)
+        maxSamples = std::max(maxSamples, b->irLengthChainSamples);
+  irTailChainSamples.store(maxSamples);
 }
 
 // Constant-power pan gains for a chain at position `pan` (0 = hard left,

@@ -117,9 +117,16 @@ struct ChainBlock {
   //   every audio channel. Always present for a loaded IR; used as the mono fallback.
   // convolverStereo: IR loaded with Stereo::yes — audio ch0 ⊗ IR ch0, audio ch1 ⊗ IR ch1.
   //   Only created when the IR file actually has >= 2 channels (true stereo IR).
+  // The convolution engine is picked at load time by IR length: cab IRs use
+  // JUCE's uniform zero-latency engine, reverb-length IRs the two-stage
+  // non-uniform engine (also zero latency) — see prepareBlockModelOffThread.
   std::unique_ptr<juce::dsp::Convolution> convolverMono;
   std::unique_ptr<juce::dsp::Convolution> convolverStereo;
   int irNumChannels{1};  // channels in the loaded IR file (1 or 2)
+  // Loaded IR length in chain-rate samples (an upper bound — the load-time
+  // trim can shorten the actual kernel). Feeds refreshIrTailLength /
+  // getTailLengthSeconds so hosts render real reverb tails.
+  int irLengthChainSamples{0};
   juce::File irTempFile;
   juce::LinearSmoothedValue<float> irNormalizationSmoother;
   float irNormalizationGainLinear{1.0f};

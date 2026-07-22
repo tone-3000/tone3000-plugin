@@ -9,7 +9,35 @@
 // MODEL LOADING HELPERS
 // #####################################
 
-float TONE3000Processor::computeIrNormalizationGain(const juce::File& irFile, size_t maxIrLength) {
+// ── IR block sizing constants ──
+// TONE3000 IR tones cover two very different species: cab IRs (tens of
+// milliseconds) and convolution-reverb IRs (whole seconds). These constants
+// bound the load and pick the convolution engine per file.
+namespace {
+
+// Hard cap on loaded IR length. Bounds memory and engine-build time for
+// arbitrary downloads while comfortably covering any published reverb IR
+// (the longest cathedral tails run ~8 s).
+constexpr double kMaxIrSeconds = 10.0;
+
+// IRs at or below this length (chain-rate samples) keep JUCE's uniform
+// zero-latency engine — the exact engine (and CPU profile) every IR used
+// before long-reverb support, so cab IRs behave identically. 32768 samples
+// ≈ 0.68 s at 48 kHz, far above any cab IR.
+constexpr int kUniformIrMaxChainSamples = 32768;
+
+// Longer IRs use JUCE's two-stage non-uniform engine (still zero latency):
+// the first kIrNonUniformHeadSamples convolve in callback-sized partitions,
+// the tail in partitions of this size — per-callback CPU stops scaling
+// linearly with tail length. Bigger head = more per-callback FFT work;
+// smaller = chunkier tail batches. 8192 (~170 ms) is a conventional
+// reverb head size.
+constexpr int kIrNonUniformHeadSamples = 8192;
+
+}  // namespace
+
+float TONE3000Processor::computeIrNormalizationGain(const juce::File& irFile,
+                                                    size_t maxIrFileSamples) {
   juce::AudioFormatManager formatManager;
   formatManager.registerBasicFormats();
   std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(irFile));
@@ -19,7 +47,7 @@ float TONE3000Processor::computeIrNormalizationGain(const juce::File& irFile, si
   }
 
   const juce::int64 totalSamples =
-      std::min<juce::int64>(reader->lengthInSamples, static_cast<juce::int64>(maxIrLength));
+      std::min<juce::int64>(reader->lengthInSamples, static_cast<juce::int64>(maxIrFileSamples));
   juce::AudioBuffer<float> tmp(static_cast<int>(reader->numChannels),
                                static_cast<int>(totalSamples));
   reader->read(&tmp, 0, static_cast<int>(totalSamples), 0, true, true);
@@ -39,14 +67,28 @@ float TONE3000Processor::computeIrNormalizationGain(const juce::File& irFile, si
     return 1.0f;
   }
 
-  const double l2norm = std::sqrt(sumSquares);
+  // The convolver resamples the IR to kChainSampleRate and (with
+  // Normalise::no) scales it by fileRate/chainRate to preserve the filter's
+  // magnitude response; the net effect on kernel *energy* is one factor of
+  // fileRate/chainRate. Fold that in so the gain matches what the engine
+  // actually convolves regardless of the file's sample rate (a no-op for
+  // 48 kHz files).
+  const double rateScale =
+      reader->sampleRate > 0.0 ? reader->sampleRate / kChainSampleRate : 1.0;
+  const double l2norm = std::sqrt(sumSquares * rateScale);
   if (!std::isfinite(l2norm) || l2norm <= 0.0) {
     return 1.0f;
   }
 
+  // Attenuation-only unit-energy normalization: the wet path leaves the
+  // block at roughly the dry level for cabs and reverbs alike. The 1.0
+  // ceiling never boosts a quiet IR; the floor is a safety net against
+  // absurdly hot files — −48 dB rather than −24 because a dense
+  // multi-second reverb IR peaked at 0 dBFS legitimately carries 25–35 dB
+  // more energy than a cab hit.
   const double linear = 1.0 / l2norm;
   const double linearClamped =
-      juce::jlimit(juce::Decibels::decibelsToGain(-24.0), 1.0, linear);
+      juce::jlimit(juce::Decibels::decibelsToGain(-48.0), 1.0, linear);
 
   return static_cast<float>(linearClamped);
 }
@@ -222,37 +264,67 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
         return out;
       }
 
-      const size_t maxIrLength = 32768;
+      // The load cap is a time bound, not a fixed sample count — truncating
+      // a multi-second reverb IR audibly chops its decay. It is passed to
+      // JUCE in *file-rate* samples (truncation happens before the convolver
+      // resamples to the chain rate).
+      const double fileSampleRate = reader->sampleRate > 0.0 ? reader->sampleRate : kChainSampleRate;
+      const auto maxIrFileSamples = static_cast<size_t>(kMaxIrSeconds * fileSampleRate);
+      const juce::int64 fileSamplesToLoad = std::min<juce::int64>(
+          reader->lengthInSamples, static_cast<juce::int64>(maxIrFileSamples));
+      // Upper bound on the engine's kernel length at the chain rate (the
+      // Trim::yes loads below can only shorten it). Rides the block for
+      // getTailLengthSeconds' lock-free tail report.
+      const int irLengthChainSamples = static_cast<int>(std::llround(
+          static_cast<double>(fileSamplesToLoad) * kChainSampleRate / fileSampleRate));
       const int irNumChannels = juce::jlimit(1, 2, static_cast<int>(reader->numChannels));
+
+      // Engine by length: cab IRs keep the uniform zero-latency engine,
+      // reverb-length IRs the two-stage non-uniform one (see the constants
+      // at the top of this file).
+      const bool longIr = irLengthChainSamples > kUniformIrMaxChainSamples;
+      auto makeConvolver = [longIr] {
+        return longIr ? std::make_unique<juce::dsp::Convolution>(
+                            juce::dsp::Convolution::NonUniform{kIrNonUniformHeadSamples})
+                      : std::make_unique<juce::dsp::Convolution>();
+      };
 
       // IRs live in the chain domain too: the convolver resamples the IR file
       // to kChainSampleRate at load, and processing always runs at that rate.
       juce::dsp::ProcessSpec spec{kChainSampleRate, static_cast<juce::uint32>(domainBlockSize), 2};
 
+      // Load *before* prepare: prepare() drains the convolver's background
+      // message queue synchronously, so the engine (FFT segmentation and
+      // all) is fully built right here on the loader thread — the block can
+      // never go live with its IR still initialising in the background.
+
       // Mono fallback convolver: IR channel 0 applied to every audio channel.
-      auto convolverMono = std::make_unique<juce::dsp::Convolution>();
-      convolverMono->prepare(spec);
+      auto convolverMono = makeConvolver();
       convolverMono->loadImpulseResponse(tempFile, juce::dsp::Convolution::Stereo::no,
-                                         juce::dsp::Convolution::Trim::yes, maxIrLength,
+                                         juce::dsp::Convolution::Trim::yes, maxIrFileSamples,
                                          juce::dsp::Convolution::Normalise::no);
+      convolverMono->prepare(spec);
       out.convolverMono = std::move(convolverMono);
 
       // True-stereo convolver: only meaningful when the file actually has 2 channels.
       if (irNumChannels > 1) {
-        auto convolverStereo = std::make_unique<juce::dsp::Convolution>();
-        convolverStereo->prepare(spec);
+        auto convolverStereo = makeConvolver();
         convolverStereo->loadImpulseResponse(tempFile, juce::dsp::Convolution::Stereo::yes,
-                                             juce::dsp::Convolution::Trim::yes, maxIrLength,
+                                             juce::dsp::Convolution::Trim::yes, maxIrFileSamples,
                                              juce::dsp::Convolution::Normalise::no);
+        convolverStereo->prepare(spec);
         out.convolverStereo = std::move(convolverStereo);
       }
 
       out.irNumChannels = irNumChannels;
+      out.irLengthChainSamples = irLengthChainSamples;
       out.irTempFile = tempFile;
-      out.irNormalizationGainLinear = computeIrNormalizationGain(tempFile, maxIrLength);
+      out.irNormalizationGainLinear = computeIrNormalizationGain(tempFile, maxIrFileSamples);
 
-      DBG("IR prepared successfully (" << irNumChannels << " channel"
-                                       << (irNumChannels > 1 ? "s" : "") << ")");
+      juce::Logger::writeToLog(
+          "[ModelLoader] IR prepared: " + juce::String(irNumChannels) + " ch, " +
+          juce::String(irLengthChainSamples / kChainSampleRate, 2) + " s at chain rate (" +
+          (longIr ? "non-uniform" : "uniform") + " engine)");
       out.success = true;
     }
   } catch (const std::exception& e) {
@@ -348,6 +420,9 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
   // covered it — the engine wasn't on the block yet. Re-prepare before it
   // goes live; feeding an engine more frames than it was prepared for is what
   // used to silently kill blocks on relaunch ("Processing failed").
+  // (Convolver re-prepare rebuilds the FFT engine under chainMutex — heavier
+  // for reverb-length IRs, but this path only fires on that startup race,
+  // when audio has barely started.)
   const int requiredBlockSize = chainDomainBlockSize();
   if (prepared.preparedBlockSize < requiredBlockSize) {
     juce::Logger::writeToLog("[ModelLoader] Domain block size grew " +
@@ -373,6 +448,7 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
     std::swap(block.convolverMono, prepared.convolverMono);    // null in, any old IR out
     std::swap(block.convolverStereo, prepared.convolverStereo);
     block.irNumChannels = 1;
+    block.irLengthChainSamples = 0;
     block.irTempFile = juce::File();
 
     // The block's size only means anything while a slimmable model is active,
@@ -393,6 +469,7 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
     std::swap(block.convolverMono, prepared.convolverMono);
     std::swap(block.convolverStereo, prepared.convolverStereo);
     block.irNumChannels = prepared.irNumChannels;
+    block.irLengthChainSamples = prepared.irLengthChainSamples;
     block.irTempFile = prepared.irTempFile;
     prepared.irTempFile = juce::File();
 
@@ -408,6 +485,10 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
     block.loadFailed = true;
     return;
   }
+
+  // The set of live IR engines changed — keep the host-facing tail length in
+  // sync (caller holds chainMutex through this whole apply).
+  refreshIrTailLength();
 
   // Per-block smoothers: prepareChain only covers blocks that existed at
   // prepareToPlay, so (re)arm them here for blocks added mid-session — a

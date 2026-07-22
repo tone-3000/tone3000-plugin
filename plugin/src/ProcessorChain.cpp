@@ -432,6 +432,7 @@ bool TONE3000Processor::removeChainBlock(const std::string& blockId) {
         chain.erase(it);
         // Dropping below the minimum grows the lane back to it (at the end).
         normalizeLaneInserts(chain);
+        refreshIrTailLength();  // a long-tailed IR may just have left the chain
         bumpChainRevision();
         break;
       }

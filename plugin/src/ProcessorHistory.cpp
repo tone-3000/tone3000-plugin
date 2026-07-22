@@ -207,6 +207,10 @@ TONE3000Processor::Lane TONE3000Processor::restoreChainSnapshot(const juce::Valu
   if (snapStereo && !wasStereo)
     prepareChain(right);
 
+  // Restores can add/remove/retire IR blocks wholesale (undo/redo, presets,
+  // project load) — resync the host-facing tail length.
+  refreshIrTailLength();
+
   bumpChainRevision();
   return retired;
 }

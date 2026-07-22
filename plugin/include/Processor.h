@@ -225,7 +225,10 @@ private:
   using Lane = std::vector<std::unique_ptr<ChainBlock>>;
 
   // Helper methods
-  float computeIrNormalizationGain(const juce::File& irFile, size_t maxIrLength);
+  // Attenuation-only unit-energy gain for an IR file, matched to what the
+  // convolver actually runs (rate-corrected, same length cap). `maxIrFileSamples`
+  // is in the file's own sample rate, like the cap passed to loadImpulseResponse.
+  float computeIrNormalizationGain(const juce::File& irFile, size_t maxIrFileSamples);
   juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
   
   // Tone loading helpers
@@ -250,6 +253,7 @@ private:
     std::unique_ptr<juce::dsp::Convolution> convolverMono;
     std::unique_ptr<juce::dsp::Convolution> convolverStereo;
     int irNumChannels = 1;
+    int irLengthChainSamples = 0;  // chain-rate length upper bound (tail reporting)
     juce::File irTempFile;
     float irNormalizationGainLinear = 1.0f;
   };
@@ -319,6 +323,13 @@ private:
   // Prepare every engine in a chain for the fixed chain rate (kChainSampleRate)
   // and the current chain-domain block size. Holds no lock.
   void prepareChain(std::vector<std::unique_ptr<ChainBlock>>& blocks);
+
+  // Recompute the longest loaded IR across both lanes into irTailChainSamples
+  // (chain-rate samples). Called wherever the set of live IR engines can
+  // change: model apply, block removal, snapshot restore. Caller must hold
+  // chainMutex; getTailLengthSeconds reads the atomic lock-free.
+  void refreshIrTailLength();
+  std::atomic<int> irTailChainSamples{0};
 
   // The chain the UI edits/adds to right now (Left in mono mode, or the active side in stereo).
   std::vector<std::unique_ptr<ChainBlock>>& activeChain();
