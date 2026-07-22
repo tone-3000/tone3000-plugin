@@ -19,6 +19,7 @@
 #include "ChainBlock.h"
 #include "ChainDomain.h"
 #include "ChainHistory.h"
+#include "NoiseGate.h"
 #include "Spread.h"
 #include "PresetManager.h"
 #include "TunerDetector.h"
@@ -484,6 +485,12 @@ private:
   // Tracks the tone stack's power switch across blocks so re-enabling can
   // reset the filters (stale biquad state would otherwise ring).
   bool toneEqWasEnabled = true;
+
+  // Input-stage noise gate (post input gain, host rate). The power switch is
+  // tracked across blocks so re-enabling resets the detector — a stale
+  // envelope must never decide the first block after power-on.
+  NoiseGate inputGate;
+  bool gateWasEnabled = true;
 
   // Raw APVTS parameter atomics, resolved once in the constructor. The audio
   // thread reads these every block; getRawParameterValue is a string-keyed

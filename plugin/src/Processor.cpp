@@ -168,12 +168,17 @@ bool TONE3000Processor::isMidiEffect() const {
   return false;
 }
 double TONE3000Processor::getTailLengthSeconds() const {
-  // IR convolution tails run up to 32768 samples (see prepareBlockModelOffThread's
-  // maxIrLength) at the fixed chain rate. Report that conservatively so hosts
-  // don't cut reverb/cab tails when audio stops; checking whether an IR is
-  // actually loaded would need the chain lock, which this (potentially
-  // RT-adjacent) query must not take.
-  return 32768.0 / kChainSampleRate;
+  // Two tail sources, report the longer one:
+  //  - IR convolution tails run up to 32768 samples (see
+  //    prepareBlockModelOffThread's maxIrLength) at the fixed chain rate.
+  //    Checking whether an IR is actually loaded would need the chain lock,
+  //    which this (potentially RT-adjacent) query must not take, so report it
+  //    unconditionally.
+  //  - The 5 Hz first-order DC blocker decays over ~10 cycles (2 s); the
+  //    reference NAM plugin reports the same allowance for VST3 tail checks.
+  const double irTailSeconds = 32768.0 / kChainSampleRate;
+  const double dcBlockerTailSeconds = 10.0 / 5.0;
+  return std::max(irTailSeconds, dcBlockerTailSeconds);
 }
 
 int TONE3000Processor::getNumPrograms() {
@@ -356,6 +361,7 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   trebleFilter.prepare(spec);
   dcBlocker.prepare(spec);
   spread.prepare(sampleRate, samplesPerBlock);
+  inputGate.prepare(sampleRate);
 
   // Chain-edit fade (reorder / cross-lane move): host-rate, primed audible.
   chainEditFadeGain.reset(sampleRate, kWetFadeSeconds);
@@ -399,7 +405,11 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
       *juce::dsp::IIR::Coefficients<float>::makePeakFilter(sampleRate, 1000.0f, 1.0f, 1.0f);
   *trebleFilter.state =
       *juce::dsp::IIR::Coefficients<float>::makeHighShelf(sampleRate, 4000.0f, 1.0f, 1.0f);
-  *dcBlocker.state = *juce::dsp::IIR::Coefficients<float>::makeHighPass(sampleRate, 20.0f);
+  // First-order high-pass at 5 Hz: removes DC offset from nonlinear NAM models
+  // while staying audibly and phase-wise transparent down to the lowest bass
+  // fundamentals (matches the reference NeuralAmpModelerPlugin behavior).
+  *dcBlocker.state =
+      *juce::dsp::IIR::Coefficients<float>::makeFirstOrderHighPass(sampleRate, 5.0f);
 
   bassFilter.reset();
   midFilter.reset();
@@ -433,6 +443,7 @@ void TONE3000Processor::releaseResources() {
   midFilter.reset();
   trebleFilter.reset();
   dcBlocker.reset();
+  inputGate.reset();
 }
 
 bool TONE3000Processor::isBusesLayoutSupported(const BusesLayout& layouts) const {
@@ -930,20 +941,21 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   if (tuner.isEnabled())
     tuner.pushSamples(buffer.getReadPointer(0), numSamples);
 
-  // Apply the input gain per channel. The gate rides the same loop but only
-  // when its power switch is on.
-  const float gateThresholdLinear = juce::Decibels::decibelsToGain(cacheGateThreshold);
-  const bool gateOn = cacheGateEnabled;
-  for (int ch = 0; ch < numChannels; ++ch) {
-    const float gainLinear = ch == 0 ? inputGainL : inputGainR;
-    auto* channelData = buffer.getWritePointer(ch);
-    for (int i = 0; i < numSamples; ++i) {
-      float& sample = channelData[i];
-      sample *= gainLinear;
-      if (gateOn && std::abs(sample) < gateThresholdLinear)
-        sample = 0.0f;
-    }
+  // Apply the input gain per channel (vectorized).
+  for (int ch = 0; ch < numChannels; ++ch)
+    buffer.applyGain(ch, 0, numSamples, ch == 0 ? inputGainL : inputGainR);
+
+  // Noise gate, post input gain so the threshold knob's dB meaning matches
+  // the level heading into the chain. Envelope/hysteresis gate (NoiseGate.h);
+  // re-enabling resets the detector so a stale envelope never gates the
+  // first block.
+  if (cacheGateEnabled) {
+    if (!gateWasEnabled)
+      inputGate.reset();
+    inputGate.setThresholdDb(cacheGateThreshold);
+    inputGate.process(buffer);
   }
+  gateWasEnabled = cacheGateEnabled;
 
   // Spread parameter sync + onset analysis, pre-chain: the detector must see
   // the raw picked signal (post-gain/gate) — amp/IR processing compresses
