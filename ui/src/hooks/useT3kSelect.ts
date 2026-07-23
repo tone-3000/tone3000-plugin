@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PUBLISHABLE_KEY, T3K_ARCHITECTURE, getRedirectUri } from '../t3k/config';
+import {
+  PUBLISHABLE_KEY,
+  T3K_ARCHITECTURE,
+  PREVIEW_PLAYERS_ENABLED,
+  getRedirectUri,
+} from '../t3k/config';
 import {
   T3KClient,
   startSelectFlow as startSelectFlowRedirect,
@@ -249,6 +254,7 @@ export const useT3kSelect = ({
     startSelectFlowRedirect(PUBLISHABLE_KEY, getRedirectUri(), {
       menubar: true,
       architecture: T3K_ARCHITECTURE,
+      preview: PREVIEW_PLAYERS_ENABLED,
     }).catch((err) => {
       console.error('Failed to start TONE3000 select flow', err);
       setOauthError(err instanceof Error ? err.message : String(err));

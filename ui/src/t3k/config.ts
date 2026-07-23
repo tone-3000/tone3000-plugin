@@ -35,6 +35,13 @@ export const UPDATE_NOTICE_ENABLED =
 
 export const UPDATE_CHECK_URL = `${T3K_API}/api/v1/plugin/version`;
 
+// PREVIEW_PLAYERS_ENABLED: opt the in-plugin Select view into tone3000's in-flow
+//   preview players (audition tones before loading) by passing `preview=true` on
+//   the authorize URL. On by default; set `VITE_T3K_PREVIEW=false` to disable for
+//   a build (e.g. a platform where webview audio/SharedArrayBuffer isn't verified).
+export const PREVIEW_PLAYERS_ENABLED =
+  (import.meta.env.VITE_T3K_PREVIEW as string | undefined) !== 'false';
+
 // Model-architecture `2` — passed to the Select OAuth URL and to `GET /api/v1/models`
 // only when the tone is format=nam. IR and other formats omit the list-models filter.
 // Hardcoded because the plugin runtime only loads v2 NAM weights.

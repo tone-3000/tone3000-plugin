@@ -107,6 +107,8 @@ export async function startSelectFlow(
     architecture?: string | number;
     menubar?: boolean;
     loginHint?: string;
+    /** Opt into the in-flow preview players (audition tones in the Select view). */
+    preview?: boolean;
   }
 ): Promise<void> {
   const pkce = await buildPkceParams();
@@ -116,6 +118,7 @@ export async function startSelectFlow(
   if (options?.architecture !== undefined) extra.architecture = String(options.architecture);
   if (options?.menubar) extra.menubar = 'true';
   if (options?.loginHint) extra.login_hint = options.loginHint;
+  if (options?.preview) extra.preview = 'true';
   window.location.href = buildAuthorizeUrl(publishableKey, redirectUri, extra, pkce);
 }
 
