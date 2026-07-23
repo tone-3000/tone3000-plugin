@@ -72,9 +72,9 @@ export function isEqFlat(eq: BlockEqParams): boolean {
 export interface BlockParams {
   /** Block participates in processing (per-block on/off). */
   enabled: boolean;
-  /** Loudness normalization for this block (NAM: loudness-matched output,
-      IR: RMS attenuation). On by default; part of the chain state so presets
-      carry their own gain staging. */
+  /** Loudness normalization toggle — NAM blocks only (off = the capture's
+      raw level). IR blocks are always normalized natively; this flag is
+      inert for them. */
   normalize: boolean;
   /** Normalized 0..1; 0.5 = unity, ±24 dB. Drives the block's DSP. */
   inputGain: number;
@@ -143,8 +143,12 @@ export interface ToneBlock {
       old model keeps playing). */
   modelLoading: boolean;
   /** Capability flag from native (model is a SlimmableContainer). UI no longer
-      gates on this — architecture=2 NAM tones always show LITE/FULL. */
+      gates on this — architecture=2 NAM tones always support LITE/FULL. */
   namSlimmable: boolean;
+  /** True for long (reverb-like) IRs — classified natively by kernel length
+      once the model loads. Drives the Mix knob's default (long = 50% wet)
+      and the Out knob help (long IRs carry no −18 dB pad). */
+  irLong: boolean;
   params: BlockParams;
 }
 

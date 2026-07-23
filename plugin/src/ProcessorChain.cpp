@@ -64,7 +64,6 @@ struct ParsedTone {
   juce::String modelUrl;
   juce::String modelName;
   ChainBlockType type = ChainBlockType::NAM;
-  float defaultMix = 1.0f;  // gear-dependent (reverb-style IRs start at 50%)
   // Parsed tone with its models pruned to just the one being loaded — native
   // only ever stores the active model; the catalog stays on the API and the
   // UI pages it in for the picker.
@@ -127,16 +126,6 @@ ParsedTone parseToneForLoading(const juce::String& toneJsonString) {
   juce::Array<juce::var> prunedModels;
   prunedModels.add(modelsVar.getArray()->getReference(0));
   toneObj->setProperty("models", prunedModels);
-
-  // Default mix by gear: "space"/"pedal" IRs are typically reverbs, meant to
-  // be blended, so they start half wet. Cab IRs and NAM captures replace the
-  // signal and stay fully wet. (Mirrored by defaultMix in ChainBlock.tsx for
-  // the knob's Alt-click reset.)
-  if (out.type == ChainBlockType::IR) {
-    const juce::String gear = toneObj->getProperty("gear").toString().toLowerCase();
-    if (gear == "space" || gear == "pedal")
-      out.defaultMix = 0.5f;
-  }
 
   out.toneVar = toneVar;
   out.toneJson = juce::JSON::toString(toneVar);
@@ -250,9 +239,12 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString,
   auto block = std::make_unique<ChainBlock>(blockId, parsed.type);
   setToneOnBlock(*block, parsed.toneId, parsed.toneJson, parsed.toneVar);
   block->activeModelId = parsed.firstModelId;
-  block->mixNormalized = parsed.defaultMix;
   block->loaded = false;
   block->modelLoading = true;
+  // The right default mix depends on the model itself (long IR = half wet),
+  // which is only known after download — the first successful apply sets it
+  // (see applyPreparedModelToChainBlock).
+  block->applyDefaultMixOnLoad = true;
   // Seed the A2 tier from the caller's preference (Select-flow loads only —
   // persisted chains/presets restore their own saved size elsewhere).
   block->namSlimmableSize = juce::jlimit(0.0, 1.0, defaultSlimmableSize);
@@ -820,6 +812,9 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
       item->setProperty("modelLoading", block->modelLoading);
       item->setProperty("namSlimmable", block->type == ChainBlockType::NAM &&
                                             block->namIsSlimmable && block->loaded);
+      // Long (reverb-like) IR — drives the UI's Mix knob default/Alt-click
+      // reset and the Out knob help (long IRs carry no −18 dB pad).
+      item->setProperty("irLong", block->type == ChainBlockType::IR && block->irIsLong);
 
       // User-editable params, grouped so a future "shareable chain preset" can
       // serialize { tone ref, activeModelId, params } per block verbatim.

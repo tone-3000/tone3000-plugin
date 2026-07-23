@@ -28,7 +28,11 @@ import { formatLabel, gearLabel } from '../t3k/labels';
 import { AvatarImage } from './AvatarFallback';
 import { FormatBadge } from './FormatBadge';
 import { HELP, helpProps } from './helpText';
-import { useBlockNormalizeControlEnabled } from './uiPreferences';
+import {
+  useBlockNormalizeControlEnabled,
+  useDefaultNamA2Size,
+  useNamA2ChoosePerTone,
+} from './uiPreferences';
 import { KNOB_CENTER_OFFSET } from './SpreadControls';
 import {
   ACTIVE_OUTLINE,
@@ -121,6 +125,10 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
 
   // Optional (=) normalization toggle, revealed by the Advanced setting.
   const showNormalizeControl = useBlockNormalizeControlEnabled();
+  // LITE/FULL toggle only when Advanced is "Choose per tone"; otherwise a
+  // static label appears if this block's size differs from the Select default.
+  const chooseNamSizePerTone = useNamA2ChoosePerTone();
+  const defaultNamA2Size = useDefaultNamA2Size();
 
   // Optimistic local values for the controls; native converges via polling.
   const [enabled, setEnabled] = useState(params.enabled);
@@ -276,10 +284,10 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
   const namSizeLocked = modelBusy || !block.loaded;
 
   const isNam = tone.format?.toLowerCase() === 'nam';
-  // Reverb-style IRs (gear "space"/"pedal") load half wet by default (native
-  // sets it in parseToneForLoading); Alt-click reset on Mix must agree.
-  const isReverbIr = !isNam && ['space', 'pedal'].includes(tone.gear?.toLowerCase() ?? '');
-  const defaultMix = isReverbIr ? 0.5 : 1;
+  // Long (reverb-like) IRs load half wet by default (native classifies by
+  // kernel length and sets the mix on first load); Alt-click reset on Mix
+  // must agree.
+  const defaultMix = block.irLong ? 0.5 : 1;
   // All NAM blocks are A2, so the badge is just the format name.
   const formatBadge = formatLabel(tone.format);
 
@@ -336,69 +344,89 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
           <Power size={14} />
         </button>
 
-        {/* LITE/FULL for every NAM block (architecture=2 = always A2).
-            Subtle segmented control: the active side just reads white.
-            While a model loads the control keeps its normal look (no
-            opacity flicker) — clicks just no-op behind a not-allowed
+        {/* LITE/FULL for NAM blocks (architecture=2 = always A2).
+            Interactive only when Advanced is "Choose per tone". Otherwise
+            hide when the block matches the Select default, or show the
+            current size as a static label when a preset/saved chain
+            differs. While a model loads the control keeps its normal look
+            (no opacity flicker) — clicks just no-op behind a not-allowed
             cursor until the new engine is in. */}
-        {isNam && (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'center',
-              height: '24px',
-              borderRadius: '4px',
-              // Same grey as the model select bar so the header controls match.
-              backgroundColor: 'rgba(120, 120, 128, 0.36)',
-              overflow: 'hidden',
-              flexShrink: 0,
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => !namSizeLocked && handleNamSizeMode(true)}
-              {...helpProps(HELP.namLite)}
+        {isNam &&
+          (chooseNamSizePerTone ? (
+            <div
               style={{
-                height: '100%',
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                height: '24px',
+                borderRadius: '4px',
+                // Same grey as the model select bar so the header controls match.
+                backgroundColor: 'rgba(120, 120, 128, 0.36)',
+                overflow: 'hidden',
+                flexShrink: 0,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => !namSizeLocked && handleNamSizeMode(true)}
+                {...helpProps(HELP.namLite)}
+                style={{
+                  height: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '0 4px 0 10px',
+                  fontSize: '11px',
+                  fontWeight: 400,
+                  fontFamily: 'monospace',
+                  border: 'none',
+                  cursor: namSizeLocked ? 'not-allowed' : 'pointer',
+                  backgroundColor: 'transparent',
+                  color: isLite ? '#ffffff' : MUTED,
+                  transition: 'color 0.15s ease',
+                }}
+              >
+                LITE
+              </button>
+              <button
+                type="button"
+                onClick={() => !namSizeLocked && handleNamSizeMode(false)}
+                {...helpProps(HELP.namFull)}
+                style={{
+                  height: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '0 10px 0 4px',
+                  fontSize: '11px',
+                  fontWeight: 400,
+                  fontFamily: 'monospace',
+                  border: 'none',
+                  cursor: namSizeLocked ? 'not-allowed' : 'pointer',
+                  backgroundColor: 'transparent',
+                  color: !isLite ? '#ffffff' : MUTED,
+                  transition: 'color 0.15s ease',
+                }}
+              >
+                FULL
+              </button>
+            </div>
+          ) : (isLite ? 'lite' : 'full') !== defaultNamA2Size ? (
+            <span
+              {...helpProps(isLite ? HELP.namLite : HELP.namFull)}
+              style={{
+                height: '24px',
                 display: 'flex',
                 alignItems: 'center',
-                padding: '0 4px 0 10px',
+                padding: '0 10px',
                 fontSize: '11px',
                 fontWeight: 400,
                 fontFamily: 'monospace',
-                border: 'none',
-                cursor: namSizeLocked ? 'not-allowed' : 'pointer',
-                backgroundColor: 'transparent',
-                color: isLite ? '#ffffff' : MUTED,
-                transition: 'color 0.15s ease',
+                color: '#ffffff',
+                flexShrink: 0,
               }}
             >
-              LITE
-            </button>
-            <button
-              type="button"
-              onClick={() => !namSizeLocked && handleNamSizeMode(false)}
-              {...helpProps(HELP.namFull)}
-              style={{
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                padding: '0 10px 0 4px',
-                fontSize: '11px',
-                fontWeight: 400,
-                fontFamily: 'monospace',
-                border: 'none',
-                cursor: namSizeLocked ? 'not-allowed' : 'pointer',
-                backgroundColor: 'transparent',
-                color: !isLite ? '#ffffff' : MUTED,
-                transition: 'color 0.15s ease',
-              }}
-            >
-              FULL
-            </button>
-          </div>
-        )}
+              {isLite ? 'LITE' : 'FULL'}
+            </span>
+          ) : null)}
 
         <div style={{ flex: 1, minWidth: 0 }} />
 
@@ -831,7 +859,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                   innerColor="#000000"
                   scale={gainDbScale}
                   defaultValue={0.5}
-                  help={isNam ? HELP.blockOut : HELP.blockOutIr}
+                  help={isNam || block.irLong ? HELP.blockOut : HELP.blockOutIr}
                 />
               </div>
             </div>

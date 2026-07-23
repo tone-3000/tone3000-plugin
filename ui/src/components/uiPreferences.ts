@@ -76,3 +76,52 @@ export const useDefaultNamA2Size = () => useSyncExternalStore(subscribe, () => n
 /** The preference as the numeric slimmable size loadTone/swapTone expect
     (0.0 = lite, 1.0 = full). Non-hook: read at call time by chain actions. */
 export const getDefaultNamA2SlimmableSize = () => (namA2SizeValue === 'full' ? 1.0 : 0.0);
+
+/**
+ * How the Advanced "Default NAM A2 Size" radios behave:
+ *   lite / full — global default; block cards hide the LITE/FULL control
+ *                 (a static label appears only when a loaded block differs)
+ *   perTone     — LITE/FULL toggle on each NAM block; Set Default picks the
+ *                 size used for new Select Tone loads
+ *
+ * Migrates from the older size-only preference: if the user had Full saved
+ * and no mode yet, land on the Full radio (not Choose per tone).
+ */
+export type NamA2SizeMode = 'lite' | 'full' | 'perTone';
+const NAM_A2_MODE_KEY = 't3k.namA2SizeMode';
+
+const parseNamA2SizeMode = (raw: string | null): NamA2SizeMode | null => {
+  if (raw === 'lite' || raw === 'full' || raw === 'perTone') return raw;
+  return null;
+};
+
+let namA2SizeModeValue: NamA2SizeMode = (() => {
+  try {
+    const stored = parseNamA2SizeMode(localStorage.getItem(NAM_A2_MODE_KEY));
+    if (stored) return stored;
+  } catch {
+    // fall through
+  }
+  // No mode yet — mirror the already-loaded size preference.
+  return namA2SizeValue;
+})();
+
+export const setNamA2SizeMode = (mode: NamA2SizeMode) => {
+  if (namA2SizeModeValue === mode) return;
+  namA2SizeModeValue = mode;
+  try {
+    localStorage.setItem(NAM_A2_MODE_KEY, mode);
+  } catch {
+    // Storage unavailable — the choice still works for this session.
+  }
+  // Picking A2-Lite / A2-Full also sets the Select Tone default so the two
+  // stay aligned; Choose per tone keeps the existing Set Default value.
+  if (mode === 'lite' || mode === 'full') setDefaultNamA2Size(mode);
+  emit();
+};
+
+export const useNamA2SizeMode = () => useSyncExternalStore(subscribe, () => namA2SizeModeValue);
+
+/** True when Advanced is set to "Choose per tone" (interactive LITE/FULL). */
+export const useNamA2ChoosePerTone = () =>
+  useSyncExternalStore(subscribe, () => namA2SizeModeValue === 'perTone');

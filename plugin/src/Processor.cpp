@@ -763,12 +763,13 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
         auto& convolver = useStereoIr ? *block->convolverStereo : *block->convolverMono;
         convolver.process(juce::dsp::ProcessContextReplacing<float>(irBlock));
 
-        // RMS-based normalization (attenuation-only). Smoother is prepared in
-        // prepareChain / model apply; only the target moves on the RT path.
-        const float targetGain =
-            block->normalizeEnabled ? juce::jlimit(0.0f, 1.0f, block->irNormalizationGainLinear)
-                                    : 1.0f;
-        block->irNormalizationSmoother.setTargetValue(targetGain);
+        // Unit-energy normalization, always on: an IR file's absolute level
+        // is an accident of capture/export (unlike a NAM capture's, which is
+        // real information — hence NAM's normalize toggle). Attenuation-only;
+        // smoother is prepared in prepareChain / model apply, only the
+        // target moves on the RT path.
+        block->irNormalizationSmoother.setTargetValue(
+            juce::jlimit(0.0f, 1.0f, block->irNormalizationGainLinear));
         for (int i = 0; i < numSamples; ++i) {
           const float g = block->irNormalizationSmoother.getNextValue();
           for (int ch = 0; ch < numChannels; ++ch) {
@@ -782,11 +783,15 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
 
     // Apply per-block output gain (centered at 0.5 == unity) and mix with dry
     // Map normalized gain to linear: 0.5 -> 1.0, +/-0.5 -> +/-24 dB range.
-    // IR blocks carry a fixed -18 dB offset on top: IR files are typically
-    // peak-normalized to 0 dBFS, far too hot at unity. The UI knob still
-    // reads relative dB (0 at center) to keep it simple for the user; the
-    // trim is invisible chain gain staging (see gainDbScale in knobScale.ts).
-    const float irOffsetDb = (block->type == ChainBlockType::IR) ? -18.0f : 0.0f;
+    // Short (cab-like) IR blocks carry a fixed -18 dB pad on top: cab files
+    // are peak-normalized to 0 dBFS and spectrally concentrated, far too hot
+    // at unity. Long (reverb-like) IRs get no pad — unit-energy
+    // normalization already puts them at ≈ dry level (see irIsLong in
+    // ChainBlock.h). The UI knob still reads relative dB (0 at center); the
+    // pad is invisible chain gain staging (see gainDbScale in knobScale.ts).
+    // Classified at load, so changes ride the engine-swap fade.
+    const float irOffsetDb =
+        (block->type == ChainBlockType::IR && !block->irIsLong) ? -18.0f : 0.0f;
     const float gainDb = (block->outputGainNormalized - 0.5f) * 48.0f + irOffsetDb;
     const float targetLinear = juce::Decibels::decibelsToGain(gainDb);
     block->outputGainSmoother.setTargetValue(targetLinear);

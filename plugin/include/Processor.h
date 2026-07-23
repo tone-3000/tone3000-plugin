@@ -253,7 +253,8 @@ private:
     std::unique_ptr<juce::dsp::Convolution> convolverMono;
     std::unique_ptr<juce::dsp::Convolution> convolverStereo;
     int irNumChannels = 1;
-    int irLengthChainSamples = 0;  // chain-rate length upper bound (tail reporting)
+    int irLengthChainSamples = 0;  // chain-rate kernel length (tail reporting)
+    bool irIsLong = false;         // short/long classification (see ChainBlock.h)
     juce::File irTempFile;
     float irNormalizationGainLinear = 1.0f;
   };

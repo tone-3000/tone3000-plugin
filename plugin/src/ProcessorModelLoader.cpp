@@ -11,8 +11,11 @@
 
 // ── IR block sizing constants ──
 // TONE3000 IR tones cover two very different species: cab IRs (tens of
-// milliseconds) and convolution-reverb IRs (whole seconds). These constants
-// bound the load and pick the convolution engine per file.
+// milliseconds) and convolution-reverb IRs (whole seconds). ONE length
+// cutoff — kShortIrMaxSeconds — classifies every IR as short or long, and
+// that classification drives everything downstream:
+//   short: uniform zero-latency engine, −18 dB output pad, 100% default mix
+//   long:  non-uniform engine,           no output pad,     50% default mix
 namespace {
 
 // Hard cap on loaded IR length. Bounds memory and engine-build time for
@@ -20,13 +23,12 @@ namespace {
 // (the longest cathedral tails run ~8 s).
 constexpr double kMaxIrSeconds = 10.0;
 
-// IRs at or below this length (chain-rate samples) keep JUCE's uniform
-// zero-latency engine — the exact engine (and CPU profile) every IR used
-// before long-reverb support, so cab IRs behave identically. 32768 samples
-// ≈ 0.68 s at 48 kHz, far above any cab IR.
-constexpr int kUniformIrMaxChainSamples = 32768;
+// The short/long cutoff: cab IRs top out around 0.5 s, reverbs start well
+// above 1 s — nothing meaningful lives at the boundary.
+constexpr double kShortIrMaxSeconds = 1.0;
+constexpr int kShortIrMaxChainSamples = static_cast<int>(kShortIrMaxSeconds * kChainSampleRate);
 
-// Longer IRs use JUCE's two-stage non-uniform engine (still zero latency):
+// Long IRs use JUCE's two-stage non-uniform engine (still zero latency):
 // the first kIrNonUniformHeadSamples convolve in callback-sized partitions,
 // the tail in partitions of this size — per-callback CPU stops scaling
 // linearly with tail length. Bigger head = more per-callback FFT work;
@@ -272,21 +274,24 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
       const auto maxIrFileSamples = static_cast<size_t>(kMaxIrSeconds * fileSampleRate);
       const juce::int64 fileSamplesToLoad = std::min<juce::int64>(
           reader->lengthInSamples, static_cast<juce::int64>(maxIrFileSamples));
-      // Upper bound on the engine's kernel length at the chain rate (the
-      // Trim::yes loads below can only shorten it). Rides the block for
-      // getTailLengthSeconds' lock-free tail report.
-      const int irLengthChainSamples = static_cast<int>(std::llround(
+      // Upper bound on the engine's kernel length at the chain rate; the
+      // authoritative (trimmed) length is read back off the built engine
+      // below — a cab IR padded with trailing silence must still classify
+      // as short for the level logic.
+      const int irLengthUpperBound = static_cast<int>(std::llround(
           static_cast<double>(fileSamplesToLoad) * kChainSampleRate / fileSampleRate));
       const int irNumChannels = juce::jlimit(1, 2, static_cast<int>(reader->numChannels));
 
-      // Engine by length: cab IRs keep the uniform zero-latency engine,
-      // reverb-length IRs the two-stage non-uniform one (see the constants
-      // at the top of this file).
-      const bool longIr = irLengthChainSamples > kUniformIrMaxChainSamples;
-      auto makeConvolver = [longIr] {
-        return longIr ? std::make_unique<juce::dsp::Convolution>(
-                            juce::dsp::Convolution::NonUniform{kIrNonUniformHeadSamples})
-                      : std::make_unique<juce::dsp::Convolution>();
+      // Engine by the short/long cutoff. The engine must be constructed
+      // before the trimmed size is known, so this one decision uses the
+      // pre-trim upper bound; a silence-padded cab merely lands on the
+      // non-uniform engine — a CPU choice, not an audible one. All audible
+      // logic (output pad, default mix) uses the trimmed length below.
+      const bool engineLongIr = irLengthUpperBound > kShortIrMaxChainSamples;
+      auto makeConvolver = [engineLongIr] {
+        return engineLongIr ? std::make_unique<juce::dsp::Convolution>(
+                                  juce::dsp::Convolution::NonUniform{kIrNonUniformHeadSamples})
+                            : std::make_unique<juce::dsp::Convolution>();
       };
 
       // IRs live in the chain domain too: the convolver resamples the IR file
@@ -316,15 +321,24 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
         out.convolverStereo = std::move(convolverStereo);
       }
 
+      // The engine was built synchronously above, so it can report the real
+      // (trimmed + resampled) kernel length — the basis for the short/long
+      // classification and the host tail report. Fall back to the pre-trim
+      // bound defensively.
+      const int engineIrSamples = out.convolverMono->getCurrentIRSize();
+      const int irLengthChainSamples = engineIrSamples > 0 ? engineIrSamples : irLengthUpperBound;
+
       out.irNumChannels = irNumChannels;
       out.irLengthChainSamples = irLengthChainSamples;
+      out.irIsLong = irLengthChainSamples > kShortIrMaxChainSamples;
       out.irTempFile = tempFile;
       out.irNormalizationGainLinear = computeIrNormalizationGain(tempFile, maxIrFileSamples);
 
       juce::Logger::writeToLog(
           "[ModelLoader] IR prepared: " + juce::String(irNumChannels) + " ch, " +
           juce::String(irLengthChainSamples / kChainSampleRate, 2) + " s at chain rate (" +
-          (longIr ? "non-uniform" : "uniform") + " engine)");
+          (out.irIsLong ? "long" : "short") + ", norm " +
+          juce::String(juce::Decibels::gainToDecibels(out.irNormalizationGainLinear), 1) + " dB)");
       out.success = true;
     }
   } catch (const std::exception& e) {
@@ -449,6 +463,7 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
     std::swap(block.convolverStereo, prepared.convolverStereo);
     block.irNumChannels = 1;
     block.irLengthChainSamples = 0;
+    block.irIsLong = false;
     block.irTempFile = juce::File();
 
     // The block's size only means anything while a slimmable model is active,
@@ -470,8 +485,17 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
     std::swap(block.convolverStereo, prepared.convolverStereo);
     block.irNumChannels = prepared.irNumChannels;
     block.irLengthChainSamples = prepared.irLengthChainSamples;
+    block.irIsLong = prepared.irIsLong;
     block.irTempFile = prepared.irTempFile;
     prepared.irTempFile = juce::File();
+
+    // Fresh blocks (Select-flow loads) default their mix by IR length: long
+    // IRs are reverbs/effects meant to be blended (half wet), short cab IRs
+    // replace the signal (fully wet). Length is only known here — after the
+    // download — so loadTone arms this one-shot flag instead of guessing
+    // from tone metadata. Swaps/restores keep the user's mix.
+    if (block.applyDefaultMixOnLoad)
+      block.mixNormalized = block.irIsLong ? 0.5f : 1.0f;
 
     block.irNormalizationGainLinear = prepared.irNormalizationGainLinear;
     block.irNormalizationSmoother.reset(kChainSampleRate, 0.05f);
@@ -489,6 +513,10 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
   // The set of live IR engines changed — keep the host-facing tail length in
   // sync (caller holds chainMutex through this whole apply).
   refreshIrTailLength();
+
+  // First successful load done — later loads on this block (model switches,
+  // tone swaps) must keep the user's mix.
+  block.applyDefaultMixOnLoad = false;
 
   // Per-block smoothers: prepareChain only covers blocks that existed at
   // prepareToPlay, so (re)arm them here for blocks added mid-session — a

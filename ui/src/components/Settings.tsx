@@ -8,7 +8,10 @@ import {
   useBlockNormalizeControlEnabled,
   setDefaultNamA2Size,
   useDefaultNamA2Size,
+  setNamA2SizeMode,
+  useNamA2SizeMode,
   type NamA2Size,
+  type NamA2SizeMode,
 } from './uiPreferences';
 import type { InputMode } from '../types/chain';
 import type { UpdateNoticeData } from '../hooks/useUpdateNotice';
@@ -63,8 +66,54 @@ const INPUT_MODE_OPTIONS: { value: InputMode; label: string }[] = [
 ];
 
 const NAM_A2_SIZE_OPTIONS: { value: NamA2Size; label: string }[] = [
-  { value: 'lite', label: 'Lite' },
-  { value: 'full', label: 'Full' },
+  { value: 'lite', label: 'A2-Lite' },
+  { value: 'full', label: 'A2-Full' },
+];
+
+const NAM_A2_MODE_OPTIONS: {
+  value: NamA2SizeMode;
+  label: string;
+  description: React.ReactNode;
+}[] = [
+  {
+    value: 'lite',
+    label: 'A2-Lite',
+    description: 'Sounds great and uses less CPU',
+  },
+  {
+    value: 'full',
+    label: 'A2-Full',
+    description: 'Maximum accuracy model',
+  },
+  {
+    value: 'perTone',
+    label: 'Choose per tone',
+    description: (
+      <>
+        A{' '}
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            height: '18px',
+            borderRadius: '4px',
+            backgroundColor: 'rgba(120, 120, 128, 0.36)',
+            padding: '0 6px',
+            gap: '4px',
+            verticalAlign: 'middle',
+            fontFamily: 'monospace',
+            fontSize: '10px',
+            fontWeight: 400,
+            color: MUTED,
+          }}
+        >
+          <span>LITE</span>
+          <span>FULL</span>
+        </span>{' '}
+        switch appears on each tone
+      </>
+    ),
+  },
 ];
 
 // Only headers carry weight; everything else is regular (the app's global
@@ -262,6 +311,90 @@ const ToggleRow: React.FC<{
   </div>
 );
 
+/** Radio row for the Default NAM A2 Size options. */
+const RadioOption: React.FC<{
+  selected: boolean;
+  label: string;
+  description: React.ReactNode;
+  onSelect: () => void;
+  children?: React.ReactNode;
+}> = ({ selected, label, description, onSelect, children }) => (
+  <div style={{ marginBottom: '16px' }}>
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      onClick={onSelect}
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: '12px',
+        width: '100%',
+        padding: 0,
+        border: 'none',
+        background: 'transparent',
+        cursor: 'pointer',
+        textAlign: 'left',
+        color: 'inherit',
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          width: '18px',
+          height: '18px',
+          borderRadius: '50%',
+          border: '2px solid #ffffff',
+          boxSizing: 'border-box',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          marginTop: '1px',
+        }}
+      >
+        {selected && (
+          <span
+            style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: '#ffffff',
+              display: 'block',
+            }}
+          />
+        )}
+      </span>
+      <span style={{ minWidth: 0, flex: 1 }}>
+        <span
+          style={{
+            display: 'block',
+            fontSize: '14px',
+            fontWeight: 400,
+            color: '#ffffff',
+            lineHeight: 1.3,
+          }}
+        >
+          {label}
+        </span>
+        <span
+          style={{
+            display: 'block',
+            fontSize: '13px',
+            fontWeight: 400,
+            color: MUTED,
+            marginTop: '4px',
+            lineHeight: 1.45,
+          }}
+        >
+          {description}
+        </span>
+      </span>
+    </button>
+    {children}
+  </div>
+);
+
 export const Settings: React.FC<SettingsProps> = ({
   onClose,
   standalone,
@@ -274,6 +407,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const hintsEnabled = useHintsEnabled();
   const blockNormalizeControlEnabled = useBlockNormalizeControlEnabled();
+  const namA2SizeMode = useNamA2SizeMode();
   const defaultNamA2Size = useDefaultNamA2Size();
 
   const [calibrationEnabled, setCalibrationEnabled] = useParameter('calibrateInput', 'toggle');
@@ -447,28 +581,58 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const advancedScreen = (
     <>
+      <div style={{ marginBottom: '32px' }} role="radiogroup" aria-label="Default NAM A2 Size">
+        <span style={sectionLabelStyle}>Default NAM A2 Size</span>
+        <p style={{ ...descriptionStyle, marginBottom: '18px' }}>
+          This setting is for the default size when selecting a tone.
+        </p>
+        {NAM_A2_MODE_OPTIONS.map((option) => (
+          <RadioOption
+            key={option.value}
+            selected={namA2SizeMode === option.value}
+            label={option.label}
+            description={option.description}
+            onSelect={() => setNamA2SizeMode(option.value)}
+          >
+            {option.value === 'perTone' && namA2SizeMode === 'perTone' && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  marginTop: '12px',
+                  marginLeft: '30px',
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: '13px',
+                    fontWeight: 400,
+                    color: '#ffffff',
+                    flexShrink: 0,
+                  }}
+                >
+                  Set Default
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <SelectField
+                    value={defaultNamA2Size}
+                    options={NAM_A2_SIZE_OPTIONS}
+                    onChange={setDefaultNamA2Size}
+                  />
+                </div>
+              </div>
+            )}
+          </RadioOption>
+        ))}
+      </div>
+
       <ToggleRow
         label="Per-Block Normalization"
         description="Each block has normalization enabled, which levels output for consistent volume across signal blocks. Turning this on reveals an optional control that lets you disable normalization per block."
         value={blockNormalizeControlEnabled}
         onChange={setBlockNormalizeControlEnabled}
       />
-
-      <div style={{ marginBottom: '32px' }}>
-        <span style={sectionLabelStyle}>Default NAM A2 Size</span>
-        <p style={{ ...descriptionStyle, marginBottom: '14px' }}>
-          The size NAM A2 tones start at when you load them through Select Tone. Lite uses less
-          CPU; Full is the highest quality. You can still switch any block between Lite and Full
-          on its card, and existing chains and presets keep their saved size.
-        </p>
-        <div style={{ width: '232px' }}>
-          <SelectField
-            value={defaultNamA2Size}
-            options={NAM_A2_SIZE_OPTIONS}
-            onChange={setDefaultNamA2Size}
-          />
-        </div>
-      </div>
 
       <ToggleRow
         label="Calibration"

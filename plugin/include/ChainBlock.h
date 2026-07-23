@@ -87,6 +87,13 @@ struct ChainBlock {
   // Runtime-only — never persisted.
   bool modelLoading{false};
 
+  // One-shot: armed by loadTone (Select-flow) so the block's first
+  // successful load sets the default mix from the actual model (long IR =
+  // half wet — only known once the file arrives). Cleared on first apply;
+  // never set by swaps/switches/restores, which keep the user's mix.
+  // Runtime-only — never persisted.
+  bool applyDefaultMixOnLoad{false};
+
   // ── Click-free wet-path fade (audio thread) + swap handshake ──
   // `wetFadeGain` multiplies the block's wet mix and is the single smoothing
   // path for every discontinuous block transition: the audio thread targets
@@ -123,18 +130,26 @@ struct ChainBlock {
   std::unique_ptr<juce::dsp::Convolution> convolverMono;
   std::unique_ptr<juce::dsp::Convolution> convolverStereo;
   int irNumChannels{1};  // channels in the loaded IR file (1 or 2)
-  // Loaded IR length in chain-rate samples (an upper bound — the load-time
-  // trim can shorten the actual kernel). Feeds refreshIrTailLength /
-  // getTailLengthSeconds so hosts render real reverb tails.
+  // Loaded IR length in chain-rate samples (post trim + resample, read off
+  // the built engine). Feeds refreshIrTailLength / getTailLengthSeconds so
+  // hosts render real reverb tails.
   int irLengthChainSamples{0};
+  // The single short/long classification (kernel length vs the cutoff in
+  // ProcessorModelLoader.cpp). Short = cab-like: −18 dB output pad
+  // (spectrally concentrated kernels play back hot at unit energy), 100%
+  // default mix. Long = reverb-like: no pad (diffuse kernels sit at ≈ dry
+  // level at unit energy), 50% default mix. Shipped to the UI as `irLong`.
+  bool irIsLong{false};
   juce::File irTempFile;
   juce::LinearSmoothedValue<float> irNormalizationSmoother;
   float irNormalizationGainLinear{1.0f};
 
-  // Per-block loudness normalization (NAM: loudness-matched to the global
-  // target; IR: RMS attenuation). On by default; part of the chain state so
-  // presets carry their own gain staging. The UI exposes it as an optional
-  // (=) header control behind an advanced preference.
+  // Per-block loudness normalization toggle — NAM only (off = the capture's
+  // true level, which is real information; IR normalization is always on
+  // because an IR file's absolute level means nothing). On by default; part
+  // of the chain state so presets carry their own gain staging. The UI
+  // exposes it as an optional (=) header control behind an advanced
+  // preference.
   bool normalizeEnabled{true};
 
   // Per-block controls (normalized 0..1)
