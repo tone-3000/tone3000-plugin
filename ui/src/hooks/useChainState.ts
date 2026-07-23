@@ -6,7 +6,6 @@ import type {
   ChainState,
   ChainStateResponse,
   EqBand,
-  InputMode,
 } from '../types/chain';
 import { isUnchanged } from '../types/chain';
 import { getDefaultNamA2SlimmableSize } from '../components/uiPreferences';
@@ -64,7 +63,6 @@ export function useChainState() {
       setStereoMode: backend.getPluginFunction('setStereoMode'),
       setActiveEditChain: backend.getPluginFunction('setActiveEditChain'),
       swapChains: backend.getPluginFunction('swapChains'),
-      setInputMode: backend.getPluginFunction('setInputMode'),
       undoChain: backend.getPluginFunction('undoChain'),
       redoChain: backend.getPluginFunction('redoChain'),
     }),
@@ -152,9 +150,6 @@ export function useChainState() {
         run('setActiveEditChain', () => native.setActiveEditChain(side)),
       /** Swap the Left and Right chains wholesale (stereo only). Undoable. */
       swapChains: () => run<boolean>('swapChains', () => native.swapChains()),
-      /** Standalone input channel mode (Settings). */
-      setInputMode: (mode: InputMode) =>
-        run<boolean>('setInputMode', () => native.setInputMode(mode)),
       /**
        * Fire-and-forget param setter (safe at knob-drag rates). Booleans are
        * sent as 0/1; the revision bump on native makes pollers converge.
@@ -199,7 +194,6 @@ export function useChainState() {
     stereoEnabled: state.stereoEnabled,
     stereoInput: state.stereoInput ?? false,
     standalone: state.standalone ?? false,
-    inputMode: state.inputMode ?? 'input1',
     sampleRate: state.sampleRate || 48000,
     refresh,
     actions,

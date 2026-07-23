@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Undo2, Redo2 } from 'lucide-react';
 import { useNativeFunction } from '../hooks/useFunction';
 import { useChainState } from '../hooks/useChainState';
@@ -7,17 +7,19 @@ import type { ChainActions } from '../hooks/useChainActions';
 import { usePresets } from '../hooks/usePresets';
 import { ChainView } from './ChainView';
 import { Faceplate } from './Faceplate';
-import { HintBar } from './HintBar';
+import { HintBar, HINT_HEIGHT } from './HintBar';
 import { PresetBar } from './PresetBar';
 import { StereoModeToggle } from './StereoModeToggle';
 import { IconButton } from './IconButton';
-import { HELP } from './helpText';
+import { HELP, useHintsEnabled } from './helpText';
 import { BORDER } from './theme';
 import { useParameter } from '../hooks/useParameter';
 import type { Model, Tone, User } from '../types/tone';
 import { AccountMenu } from './AccountMenu';
 import type { ChainSide, ToneBlock } from '../types/chain';
-import Settings from './Settings';
+import Settings, { type SettingsTab } from './Settings';
+import { useAudioDevice } from '../hooks/useAudioDevice';
+import { AppBanner, BANNER_HEIGHT, useAppBanner, type BannerAction } from './AppBanner';
 import { DbMeter } from './DbMeter';
 import { TunerView } from './TunerView';
 import { useT3kSelect, shouldRestoreToneBrowser } from '../hooks/useT3kSelect';
@@ -60,6 +62,8 @@ const TuningForkIcon: React.FC<{ size?: number }> = ({ size = 18 }) => (
 
 export const Plugin: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
+  // Which tab Settings opens on — banner actions land directly on System.
+  const settingsTabRef = useRef<SettingsTab>('plugin');
   const [showTuner, setShowTuner] = useState(false);
   // In-plugin tone browser takeover (streams of TONE3000 tones). Opened by
   // the + when already authenticated, or right after the no-prompt login
@@ -78,11 +82,14 @@ export const Plugin: React.FC = () => {
     stereoEnabled,
     stereoInput,
     standalone,
-    inputMode,
     sampleRate,
     refresh,
     actions,
   } = useChainState();
+
+  // Audio device state (standalone only): shared by the System Settings tab
+  // and the app banner so both read the same snapshot.
+  const audioDevice = useAudioDevice(standalone);
 
   // Internal presets. Mutations resync the chain state immediately (loading a
   // preset replaces the chain; saving/renaming changes the active preset).
@@ -98,6 +105,33 @@ export const Plugin: React.FC = () => {
   const setTunerEnabled = useNativeFunction<boolean>('setTunerEnabled');
   const copyToClipboard = useNativeFunction<boolean>('copyToClipboard');
   const clearAuthCookies = useNativeFunction<boolean>('clearAuthCookies');
+  const setExtraContentHeight = useNativeFunction<boolean>('setExtraContentHeight');
+
+  const openSettings = useCallback((tab: SettingsTab) => {
+    settingsTabRef.current = tab;
+    setShowSettings(true);
+  }, []);
+
+  // App banner: one priority-picked banner over the audio device state
+  // (standalone only). Both the banner (top) and the hint bar (bottom) are
+  // chrome strips that grow the window rather than squish the 600px core — we
+  // report their combined height to native whenever either toggles.
+  const { banner, dismiss: dismissBanner } = useAppBanner(standalone ? audioDevice.state : null);
+  const bannerVisible = banner !== null;
+  const hintsVisible = useHintsEnabled();
+  const extraHeight = (bannerVisible ? BANNER_HEIGHT : 0) + (hintsVisible ? HINT_HEIGHT : 0);
+  useEffect(() => {
+    setExtraContentHeight(extraHeight);
+  }, [extraHeight, setExtraContentHeight]);
+
+  const handleBannerAction = useCallback(
+    (kind: BannerAction) => {
+      if (kind === 'openSettings') openSettings('system');
+      else if (kind === 'switchToAsio') audioDevice.actions.setDeviceType('ASIO');
+      else if (kind === 'openMicSettings') audioDevice.actions.openMicSettings();
+    },
+    [audioDevice.actions, openSettings]
+  );
 
   // Toggle the tuner screen; native only feeds the pitch detector while it's on.
   const handleToggleTuner = async (show: boolean) => {
@@ -415,7 +449,9 @@ export const Plugin: React.FC = () => {
         position: 'relative',
         width: '100%',
         maxWidth: '100%',
-        height: '600px',
+        // The window grows by the chrome-strip height (see setExtraContentHeight
+        // above), so the 600px core UI between them keeps its full space.
+        height: `${600 + extraHeight}px`,
         display: 'flex',
         flexDirection: 'column',
         backgroundColor: '#000000',
@@ -424,6 +460,10 @@ export const Plugin: React.FC = () => {
         color: '#ffffff',
       }}
     >
+      {banner && (
+        <AppBanner banner={banner} onAction={handleBannerAction} onDismiss={dismissBanner} />
+      )}
+
       {/* Header with T3K Logo and Settings - Full Width */}
       <div
         style={{
@@ -493,7 +533,7 @@ export const Plugin: React.FC = () => {
           <AccountMenu
             user={user}
             authenticated={authenticated}
-            onOpenSettings={() => setShowSettings(true)}
+            onOpenSettings={() => openSettings('plugin')}
             onLogin={() => requireInternet(() => startLoginFlow())}
             onLogout={handleLogout}
           />
@@ -603,8 +643,8 @@ export const Plugin: React.FC = () => {
         <Settings
           onClose={() => setShowSettings(false)}
           standalone={standalone}
-          inputMode={inputMode}
-          onSetInputMode={(mode) => actions.setInputMode(mode)}
+          device={audioDevice}
+          initialTab={settingsTabRef.current}
           version={localVersion}
           update={update}
         />

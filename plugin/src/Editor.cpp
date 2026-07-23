@@ -4,8 +4,8 @@
 void TONE3000Editor::parentHierarchyChanged() {
   if (auto* window = dynamic_cast<juce::DocumentWindow*>(getTopLevelComponent())) {
     window->setUsingNativeTitleBar(true);
-    window->centreWithSize(1024, 628);  // Add extra height for title bar
-    setSize(1024, 600);
+    window->centreWithSize(kWidth, totalHeight() + 28);  // Extra height for title bar
+    setSize(kWidth, totalHeight());
   }
 
 #if JUCE_MAC
@@ -42,12 +42,33 @@ TONE3000Editor::TONE3000Editor(TONE3000Processor& p) : AudioProcessorEditor(&p),
   mainWebView->setOpaque(true);
   addAndMakeVisible(*mainWebView);
 
+  // Bespoke audio settings (standalone only): the controller listens to the
+  // device manager and pushes changes to the UI, which re-pulls state.
+  if (StandaloneAudioSettings::isAvailable())
+    audioSettings = std::make_unique<StandaloneAudioSettings>(processor, [this] {
+      if (mainWebView != nullptr)
+        mainWebView->emitEventIfBrowserIsVisible("audioDeviceChanged", juce::var{});
+    });
+
   // Chain-change push (see Editor.h). 20 Hz keeps mutation→UI latency at
   // ~50 ms worst case for the cost of one atomic read per tick.
   lastPushedRevision = processor.getCurrentChainRevision();
   startTimerHz(20);
 
-  setSize(1024, 600);
+  setSize(kWidth, totalHeight());
+}
+
+void TONE3000Editor::setExtraContentHeight(int pixels) {
+  // Standalone only: hosts own the editor's surroundings and never show these
+  // strips; resizing under a host would fight its layout.
+  if (processor.wrapperType != juce::AudioProcessor::wrapperType_Standalone)
+    return;
+  // Generous ceiling: banner (~44) + hint bar (~36) with headroom to spare.
+  const int clamped = juce::jlimit(0, 160, pixels);
+  if (clamped == extraContentHeight)
+    return;
+  extraContentHeight = clamped;
+  setSize(kWidth, totalHeight());
 }
 
 void TONE3000Editor::timerCallback() {
@@ -61,6 +82,10 @@ void TONE3000Editor::timerCallback() {
 
 TONE3000Editor::~TONE3000Editor() {
   stopTimer();
+  // Tear down the audio settings bridge first: it holds a device-manager
+  // change listener (and possibly the input meter tap) that must not outlive
+  // the webview it reports to.
+  audioSettings.reset();
   // The tuner and block spectrum analyzers are only useful while the UI is
   // visible; stop feeding them when the editor goes away (the webview can't
   // send the disables itself on teardown).

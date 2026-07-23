@@ -120,7 +120,7 @@ export const useHintsEnabled = () => useSyncExternalStore(subscribe, () => hints
 /** Shared legend for every KnobControl (they all support these gestures). */
 const KNOB_KEYS = 'Drag: adjust · Shift: fine · Double-click: type value · Alt-click: reset';
 
-export const knobHelp = (name: string, desc: string) => `${name}: ${desc} — ${KNOB_KEYS}`;
+export const knobHelp = (name: string, desc: string) => `${name}: ${desc} ${KNOB_KEYS}`;
 
 export const HELP = {
   // Faceplate — gains
@@ -163,13 +163,14 @@ export const HELP = {
   // Presets
   presetPrev: 'Previous Preset: steps backward through the preset list.',
   presetNext: 'Next Preset: steps forward through the preset list.',
-  presetBrowse: 'Presets: opens the browser — factory and user presets, with search.',
+  presetBrowse: 'Presets: opens the browser with factory and user presets, plus search.',
   presetSave: 'Save Preset: stores the current chain. Same name: overwrites in place.',
   presetRename: 'Rename: edits this preset\u2019s name. Enter: commit · Esc: cancel.',
   presetDelete: 'Delete: removes this preset.',
 
   // Chain gallery
-  addTile: 'Add Tone: opens the TONE3000 tone browser for this slot. Drag grip: move the insert point.',
+  addTile:
+    'Add Tone: opens the TONE3000 tone browser for this slot. Drag grip: move the insert point.',
   closeToneBrowser: 'Close: back to the chain without picking a tone.',
   dragGrip: 'Grip: drag to reorder. In stereo, drop on the other lane to move chains.',
   blockPower: 'Power: bypasses this block.',
@@ -185,14 +186,14 @@ export const HELP = {
   blockIn: knobHelp('In', 'gain into this block, ±24 dB.'),
   blockOut: knobHelp('Out', 'gain out of this block, ±24 dB.'),
   blockOutIr: knobHelp('Out', 'gain out of this block, ±24 dB (IR level is pre-trimmed 18 dB).'),
-  blockMix: knobHelp('Mix', 'dry/wet blend — 100%: fully processed.'),
+  blockMix: knobHelp('Mix', 'dry/wet blend. 100%: fully processed.'),
   blockNormalize:
     'Normalize: levels this block\u2019s output loudness. Off: the capture\u2019s raw level.',
-  namLite: 'LITE: half-size NAM model — lighter on CPU, slightly less detail.',
-  namFull: 'FULL: full-size NAM model — best quality.',
+  namLite: 'LITE: half-size NAM model. Lighter on CPU, slightly less detail.',
+  namFull: 'FULL: full-size NAM model. Best quality.',
   eqToggle: 'EQ: opens the 6-band EQ editor. Outline: EQ is shaping the sound.',
   eqSlidersView: 'Sliders View: graphic-EQ faders, gain only.',
-  eqCurveView: 'Curve View: parametric editor — frequency, gain, Q and band type.',
+  eqCurveView: 'Curve View: parametric editor for frequency, gain, Q and band type.',
   eqReset: 'Reset EQ: returns all six bands to flat and the position to post.',
   eqPre: 'PRE: runs this EQ before the model, right after In Gain. Off: after the block.',
   eqPower: 'EQ Power: bypasses the block EQ without losing its settings.',
@@ -202,11 +203,11 @@ export const HELP = {
 
   // EQ editor
   eqFader: 'Band Fader: gain, ±15 dB. Shift: fine · Double-click / Alt-click: reset flat.',
-  eqFaderPass: 'Pass Band: no gain to set — shape it in the Curve view.',
+  eqFaderPass: 'Pass Band: no gain to set. Shape it in the Curve view.',
   eqDot:
     'Band Dot: drag for freq + gain (cuts: vertical sets Q). Scroll: Q · Shift: fine · Alt-click: reset.',
   eqFreqChip:
-    'Freq: click to type — accepts \u201c800\u201d or \u201c1.2k\u201d. Enter: commit · Esc: cancel.',
+    'Freq: click to type, accepts \u201c800\u201d or \u201c1.2k\u201d. Enter: commit · Esc: cancel.',
   eqGainChip: 'Gain: click to type, ±15 dB. Enter: commit · Esc: cancel.',
   eqQChip: 'Q: scroll over the graph (Shift: fine) or click to type.',
 
@@ -218,7 +219,7 @@ export const HELP = {
 } as const;
 
 /** Gallery tile: leads with the tone's own name. */
-export const toneTileHelp = (title: string) => `${title} — Click: open editor.`;
+export const toneTileHelp = (title: string) => `${title}. Click: open editor.`;
 
 /** Curve-type selector buttons in the EQ editor. */
 export const bandTypeHelp = (label: string) => `${label}: sets this band\u2019s curve shape.`;

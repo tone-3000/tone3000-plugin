@@ -315,21 +315,103 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
           "deletePreset", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
             return juce::var(editor->processor.deletePreset(args[0].toString()));
           }))
-      // --- Audio device / input --------------------------------------------
+      // --- Audio device settings (standalone only) ---------------------------
+      // All of these route through the StandaloneAudioSettings controller,
+      // which exists only under the standalone holder — in hosts they resolve
+      // to void/{ok:false} and the UI never renders the System Settings tab.
       .withNativeFunction(
-          "showAudioSettings", guarded(0, false, [](const juce::Array<juce::var>&) {
-#if JucePlugin_Build_Standalone && !JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP
-            if (auto* pluginHolder = juce::StandalonePluginHolder::getInstance()) {
-              pluginHolder->showAudioSettingsDialog();
-              return juce::var(true);
-            }
-#endif
-            return juce::var(false);
+          "getAudioDeviceState", guarded(0, juce::var(), [editor](const juce::Array<juce::var>&) {
+            return editor->audioSettings != nullptr ? editor->audioSettings->getState()
+                                                    : juce::var();
           }))
       .withNativeFunction(
-          "setInputMode", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
-            editor->processor.setStandaloneInputMode(
-                TONE3000Processor::inputModeFromString(args[0].toString()));
+          "setAudioDeviceType", guarded(1, juce::var(), [editor](const juce::Array<juce::var>& args) {
+            return editor->audioSettings != nullptr
+                       ? editor->audioSettings->setDeviceType(args[0].toString())
+                       : juce::var();
+          }))
+      .withNativeFunction(
+          // ("input" | "output" | "linked", deviceName — "" = no device)
+          "setAudioDevice", guarded(2, juce::var(), [editor](const juce::Array<juce::var>& args) {
+            return editor->audioSettings != nullptr
+                       ? editor->audioSettings->setDevice(args[0].toString(), args[1].toString())
+                       : juce::var();
+          }))
+      .withNativeFunction(
+          // ([deviceChannelIndices]) — 1 = mono, 2 = stereo.
+          "setAudioInputChannels",
+          guarded(1, juce::var(), [editor](const juce::Array<juce::var>& args) {
+            if (editor->audioSettings == nullptr || !args[0].isArray())
+              return juce::var();
+            return editor->audioSettings->setInputChannels(*args[0].getArray());
+          }))
+      .withNativeFunction(
+          "setAudioOutputPair", guarded(1, juce::var(), [editor](const juce::Array<juce::var>& args) {
+            return editor->audioSettings != nullptr
+                       ? editor->audioSettings->setOutputPair(static_cast<int>(args[0]))
+                       : juce::var();
+          }))
+      .withNativeFunction(
+          "setAudioSampleRate", guarded(1, juce::var(), [editor](const juce::Array<juce::var>& args) {
+            return editor->audioSettings != nullptr
+                       ? editor->audioSettings->setSampleRate(coerceDouble(args[0]))
+                       : juce::var();
+          }))
+      .withNativeFunction(
+          "setAudioBufferSize", guarded(1, juce::var(), [editor](const juce::Array<juce::var>& args) {
+            return editor->audioSettings != nullptr
+                       ? editor->audioSettings->setBufferSize(
+                             static_cast<int>(coerceDouble(args[0])))
+                       : juce::var();
+          }))
+      .withNativeFunction(
+          "setHearYourself", guarded(1, juce::var(), [editor](const juce::Array<juce::var>& args) {
+            return editor->audioSettings != nullptr
+                       ? editor->audioSettings->setHearYourself(coerceBool(args[0]))
+                       : juce::var();
+          }))
+      .withNativeFunction(
+          "playTestTone", guarded(0, juce::var(), [editor](const juce::Array<juce::var>&) {
+            return editor->audioSettings != nullptr ? editor->audioSettings->playTestTone()
+                                                    : juce::var();
+          }))
+      .withNativeFunction(
+          "openAudioControlPanel", guarded(0, juce::var(), [editor](const juce::Array<juce::var>&) {
+            return editor->audioSettings != nullptr ? editor->audioSettings->openControlPanel()
+                                                    : juce::var();
+          }))
+      .withNativeFunction(
+          "restartAudioDevice", guarded(0, juce::var(), [editor](const juce::Array<juce::var>&) {
+            return editor->audioSettings != nullptr ? editor->audioSettings->restartDevice()
+                                                    : juce::var();
+          }))
+      .withNativeFunction(
+          // Jump to the OS microphone privacy page (the fix for a denied mic).
+          "openMicSettings", guarded(0, juce::var(), [editor](const juce::Array<juce::var>&) {
+            return editor->audioSettings != nullptr ? editor->audioSettings->openMicSettings()
+                                                    : juce::var();
+          }))
+      .withNativeFunction(
+          // Channel-picker meters: enabled only while the picker is on screen.
+          "setAudioInputMetering",
+          guarded(1, false, [editor](const juce::Array<juce::var>& args) {
+            if (editor->audioSettings == nullptr)
+              return juce::var(false);
+            editor->audioSettings->setInputMetering(coerceBool(args[0]));
+            return juce::var(true);
+          }))
+      .withNativeFunction(
+          // Polled ~30 Hz while metering. dB per device input channel index.
+          "getAudioInputLevels", guarded(0, juce::var(), [editor](const juce::Array<juce::var>&) {
+            return editor->audioSettings != nullptr ? editor->audioSettings->getInputLevels()
+                                                    : juce::var();
+          }))
+      .withNativeFunction(
+          // The UI reports the combined height of its chrome strips (banner +
+          // hint bar) so the standalone window grows instead of squishing the
+          // plugin UI. No-op in hosts.
+          "setExtraContentHeight", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
+            editor->setExtraContentHeight(static_cast<int>(coerceDouble(args[0])));
             return juce::var(true);
           }))
       // --- Meters / tuner / auto-balance -------------------------------------

@@ -13,6 +13,7 @@
 #include "DarkLookAndFeel.h"
 #include "EditorWebViewSetup.h"
 #include "Processor.h"
+#include "StandaloneAudioSettings.h"
 #include "BinaryData.h"  // Contains embedded Web UI assets (HTML/CSS/JS)
 
 class TONE3000Editor : public juce::AudioProcessorEditor, private juce::Timer {
@@ -24,6 +25,12 @@ public:
   void resized() override;
   void parentHierarchyChanged() override;
 
+  /** Extra height above the fixed plugin UI for chrome strips — the app banner
+      and/or the hint bar (standalone only). The webview reports the combined
+      height whenever a strip appears/disappears so the window grows instead of
+      squishing the core UI. */
+  void setExtraContentHeight(int pixels);
+
   int getControlParameterIndex(juce::Component&) override {
     return controlParameterIndexReceiver.getControlParameterIndex();
   }
@@ -31,9 +38,22 @@ public:
 private:
   TONE3000Processor& processor;
 
+  // Fixed plugin UI size; the standalone window can additionally grow by the
+  // chrome-strip height (see setExtraContentHeight).
+  static constexpr int kWidth = 1024;
+  static constexpr int kBaseHeight = 600;
+  int extraContentHeight = 0;
+  int totalHeight() const { return kBaseHeight + extraContentHeight; }
+
   // One shared dark theme for JUCE-drawn surfaces (standalone settings dialog
   // etc.); installed as the default LookAndFeel in the editor constructor.
   juce::SharedResourcePointer<DarkLookAndFeel> darkLookAndFeel;
+
+  // Bespoke audio settings bridge — only constructed in the standalone app
+  // (nullptr in hosts, where the DAW owns devices and the System Settings tab
+  // never renders). Device-manager changes are pushed to the webview as
+  // `audioDeviceChanged` events.
+  std::unique_ptr<StandaloneAudioSettings> audioSettings;
 
   //==============================================================================
   // WebView UI

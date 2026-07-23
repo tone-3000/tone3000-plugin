@@ -82,8 +82,8 @@ export const ChainView: React.FC<ChainViewProps> = ({ chain, chainRight, sampleR
   // swap keeps the same blockId, so we reopen the detail view for it on return.
   // Cleared when the user backs out, so gallery-initiated swaps land on the
   // gallery, not a stale detail view.
-  const [detailBlockId, setDetailBlockId] = useState<string | null>(
-    () => sessionStorage.getItem(DETAIL_BLOCK_STORAGE_KEY)
+  const [detailBlockId, setDetailBlockId] = useState<string | null>(() =>
+    sessionStorage.getItem(DETAIL_BLOCK_STORAGE_KEY)
   );
   useEffect(() => {
     if (detailBlockId) sessionStorage.setItem(DETAIL_BLOCK_STORAGE_KEY, detailBlockId);
@@ -255,7 +255,7 @@ export const ChainView: React.FC<ChainViewProps> = ({ chain, chainRight, sampleR
           justifyContent: 'flex-start',
           boxSizing: 'border-box',
           // try to get it to match the back btn on the tone browser 24px + 4px
-          paddingTop: '28px'
+          paddingTop: '28px',
         }}
       >
         <ChainBlock

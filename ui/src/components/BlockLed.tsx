@@ -120,8 +120,7 @@ export const BlockEnergyBorder: React.FC<BlockEnergyBorderProps> = React.memo(
   function BlockEnergyBorder({ meterId, borderRadius = 12 }) {
     const { color, presence } = useBlockEnergy(meterId);
 
-    const blur =
-      INSET_BLUR_MIN_PX + presence * (INSET_BLUR_MAX_PX - INSET_BLUR_MIN_PX);
+    const blur = INSET_BLUR_MIN_PX + presence * (INSET_BLUR_MAX_PX - INSET_BLUR_MIN_PX);
     const shadow =
       presence > 0
         ? `inset 0 0 ${blur.toFixed(1)}px 0 rgba(${color[0]}, ${color[1]}, ${color[2]}, ${(INSET_OPACITY * presence).toFixed(2)})`

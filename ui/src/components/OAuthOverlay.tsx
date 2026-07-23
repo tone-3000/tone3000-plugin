@@ -20,12 +20,7 @@ interface OAuthOverlayProps {
  * zIndex sits above every takeover (tone browser / settings are 2000) so a
  * redirect kicked off from inside one still dims it.
  */
-export const OAuthOverlay: React.FC<OAuthOverlayProps> = ({
-  phase,
-  error,
-  onRetry,
-  onDismiss,
-}) => {
+export const OAuthOverlay: React.FC<OAuthOverlayProps> = ({ phase, error, onRetry, onDismiss }) => {
   if (phase === 'idle') return null;
 
   return (

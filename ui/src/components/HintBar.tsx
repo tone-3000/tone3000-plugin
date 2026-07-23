@@ -1,15 +1,17 @@
 import React from 'react';
 import { X } from 'lucide-react';
 import { HELP, helpProps, setHintsEnabled, useHelpText, useHintsEnabled } from './helpText';
-import { BORDER, GRAY, SUBTLE } from './theme';
+import { BORDER, MUTED, SUBTLE } from './theme';
 
-const BAR_HEIGHT = 22;
+/** Chrome height added below the plugin when hints are enabled (see Plugin). */
+export const HINT_HEIGHT = 36;
 
 /**
  * Dedicated hint strip under the faceplate: black (so it reads as chrome, not
  * part of the plate) and always present while hints are enabled, so showing a
- * hint never shifts layout. The × disables hints entirely — the Settings
- * "Hints" toggle brings the bar back.
+ * hint never shifts layout. Like the banner, it grows the window rather than
+ * eating into the plugin — Plugin adds HINT_HEIGHT to the window height. The ×
+ * disables hints entirely — the Settings "Hints" toggle brings the bar back.
  */
 export const HintBar: React.FC = () => {
   const enabled = useHintsEnabled();
@@ -20,7 +22,7 @@ export const HintBar: React.FC = () => {
     <div
       style={{
         width: '100%',
-        height: `${BAR_HEIGHT}px`,
+        height: `${HINT_HEIGHT}px`,
         display: 'flex',
         alignItems: 'center',
         gap: '12px',
@@ -35,11 +37,11 @@ export const HintBar: React.FC = () => {
         style={{
           flex: 1,
           minWidth: 0,
-          fontSize: '10px',
+          fontSize: '13px',
           // Hint sentences are body text: reset the global 600 default.
           fontWeight: 400,
-          lineHeight: 1,
-          color: GRAY,
+          lineHeight: 1.35,
+          color: MUTED,
           whiteSpace: 'nowrap',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
@@ -62,7 +64,7 @@ export const HintBar: React.FC = () => {
           flexShrink: 0,
         }}
       >
-        <X size={11} />
+        <X size={13} />
       </button>
     </div>
   );

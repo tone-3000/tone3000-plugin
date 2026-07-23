@@ -19,8 +19,7 @@
 //   Settings → API Keys (localhost is auto-allowed in dev).
 
 export const T3K_API = (
-  (import.meta.env.VITE_T3K_API_DOMAIN as string | undefined) ??
-  'https://www.tone3000.com'
+  (import.meta.env.VITE_T3K_API_DOMAIN as string | undefined) ?? 'https://www.tone3000.com'
 ).replace(/\/+$/, '');
 
 export const PUBLISHABLE_KEY =

@@ -48,7 +48,7 @@ export function usePresets(onChanged?: () => void) {
 
   /** Run a preset mutation, then resync the list and the chain state. */
   const run = useCallback(
-    async <T,>(label: string, fn: () => Promise<T>): Promise<T | null> => {
+    async <T>(label: string, fn: () => Promise<T>): Promise<T | null> => {
       let result: T | null = null;
       try {
         result = await fn();
@@ -67,9 +67,7 @@ export function usePresets(onChanged?: () => void) {
       /** Save current state under `name` (same-name user preset is
           overwritten). Resolves to the new { id, name } or null. */
       save: (name: string) =>
-        run<{ id: string; name: string } | null>('savePreset', () =>
-          native.savePreset(name)
-        ),
+        run<{ id: string; name: string } | null>('savePreset', () => native.savePreset(name)),
       load: (id: string) => run<boolean>('loadPreset', () => native.loadPreset(id)),
       rename: (id: string, name: string) =>
         run<boolean>('renamePreset', () => native.renamePreset(id, name)),

@@ -156,6 +156,9 @@ public:
   // and defaults to Input 1 (a guitar in the first input).
   enum class InputMode { Input1 = 0, Input2 = 1, Stereo = 2 };
   void setStandaloneInputMode(InputMode mode);
+  InputMode getStandaloneInputMode() const {
+    return static_cast<InputMode>(standaloneInputMode.load());
+  }
   static InputMode inputModeFromString(const juce::String& s) {
     if (s == "input2") return InputMode::Input2;
     if (s == "stereo") return InputMode::Stereo;

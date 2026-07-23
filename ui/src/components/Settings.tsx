@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { X as XIcon, Info, ChevronDown } from 'lucide-react';
+import React, { useCallback, useState } from 'react';
+import { X as XIcon, Plug, MonitorSpeaker } from 'lucide-react';
 import { useParameter } from '../hooks/useParameter';
 import { useNativeFunction } from '../hooks/useFunction';
 import { setHintsEnabled, useHintsEnabled } from './helpText';
@@ -13,57 +13,52 @@ import {
   type NamA2Size,
   type NamA2SizeMode,
 } from './uiPreferences';
-import type { InputMode } from '../types/chain';
 import type { UpdateNoticeData } from '../hooks/useUpdateNotice';
+import type { AudioDevice } from '../hooks/useAudioDevice';
 import { GRAY, MUTED, SUBTLE } from './theme';
+import {
+  FIELD_BORDER,
+  RadioOption,
+  SelectField,
+  ToggleRow,
+  ctaButtonStyle,
+  descriptionStyle,
+  outlinedFieldStyle,
+  sectionLabelStyle,
+} from './controls';
+import { SystemSettings } from './SystemSettings';
 
 // External docs: how to measure your rig's calibration levels.
 const CALIBRATION_DOCS_URL =
   'https://neural-amp-modeler.readthedocs.io/en/latest/tutorials/calibration.html';
 
-// Outlined field styling ported from the web app's basic Input
-// (bg-black, 1px zinc-700 border, rounded-md) — outlines instead of the
-// filled grey used by the in-chain model select.
-const FIELD_BORDER = '1px solid #3f3f46';
-const outlinedFieldStyle: React.CSSProperties = {
-  backgroundColor: 'transparent',
-  border: FIELD_BORDER,
-  borderRadius: '6px',
-  color: '#ffffff',
-  fontSize: '14px',
-  fontWeight: 400,
-  outline: 'none',
-  boxSizing: 'border-box',
-};
-
 /**
- * Settings: full-window takeover with a main screen (section cards that open
- * the JUCE audio settings or the Advanced sub-screen) and an Advanced screen
- * (normalization / calibration / diagnostics). Audio settings — including
- * the input channel picker — only exist in the standalone app; hosts manage
- * routing and buffers themselves.
+ * Settings: full-window takeover, tabbed between Plugin Settings (product
+ * preferences — hints, NAM size, normalization, calibration, diagnostics)
+ * and System Settings (the bespoke audio device panel). The System tab only
+ * exists in the standalone app — hosts own devices, sample rate and buffer
+ * size arrive as facts from the DAW — and with one tab the tab bar drops
+ * away entirely!
  */
+
+export type SettingsTab = 'plugin' | 'system';
 
 interface SettingsProps {
   /** Mounted only while open (see Plugin) — closing unmounts, so screen
       state and parameter subscriptions reset for free. */
   onClose: () => void;
-  /** True in the standalone app — shows standalone-only settings. */
+  /** True in the standalone app — enables the System Settings tab. */
   standalone: boolean;
-  inputMode: InputMode;
-  onSetInputMode: (mode: InputMode) => void;
+  /** Shared audio device state/actions (also drives the app banner). */
+  device: AudioDevice;
+  /** Tab to open on (banner actions land directly on System). */
+  initialTab?: SettingsTab;
   /** Running build version ("" outside the plugin). */
   version: string;
   /** Newer published build, if the startup check found one (even if the
       startup modal was dismissed) — shows an update button in the footer. */
   update: UpdateNoticeData | null;
 }
-
-const INPUT_MODE_OPTIONS: { value: InputMode; label: string }[] = [
-  { value: 'input1', label: 'Input 1 (mono)' },
-  { value: 'input2', label: 'Input 2 (mono)' },
-  { value: 'stereo', label: 'Stereo (inputs 1 + 2)' },
-];
 
 const NAM_A2_SIZE_OPTIONS: { value: NamA2Size; label: string }[] = [
   { value: 'lite', label: 'A2-Lite' },
@@ -116,293 +111,63 @@ const NAM_A2_MODE_OPTIONS: {
   },
 ];
 
-// Only headers carry weight; everything else is regular (the app's global
-// stylesheet defaults heavier, so body copy sets 400 explicitly).
-const sectionLabelStyle: React.CSSProperties = {
-  fontSize: '15px',
-  fontWeight: 600,
-  color: '#ffffff',
-};
-
-const descriptionStyle: React.CSSProperties = {
-  fontSize: '13px',
-  fontWeight: 400,
-  color: MUTED,
-  margin: '6px 0 0',
-  lineHeight: 1.45,
-};
-
-const ctaButtonStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '12px 16px',
-  borderRadius: '10px',
-  border: '1px solid #ffffff',
-  backgroundColor: 'transparent',
-  color: '#ffffff',
-  fontSize: '15px',
-  fontWeight: 400,
-  cursor: 'pointer',
-  textAlign: 'center',
-};
-
-/** Green pill switch mirroring the web ToggleSimple: 40×24 track (zinc-500
-    off, #00D13B on), 16px white knob with a 4px inset, 300ms ease. */
-const PillToggle: React.FC<{ value: boolean; onChange: (value: boolean) => void }> = ({
-  value,
-  onChange,
-}) => (
-  <button
-    role="switch"
-    aria-checked={value}
-    onClick={() => onChange(!value)}
-    style={{
-      position: 'relative',
-      width: '40px',
-      height: '24px',
-      borderRadius: '12px',
-      border: 'none',
-      padding: 0,
-      cursor: 'pointer',
-      backgroundColor: value ? '#00D13B' : '#71717a',
-      boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.15)',
-      flexShrink: 0,
-      transition: 'background-color 0.3s ease-in-out',
-    }}
-  >
-    <span
-      style={{
-        position: 'absolute',
-        top: '4px',
-        left: '4px',
-        width: '16px',
-        height: '16px',
-        borderRadius: '50%',
-        backgroundColor: '#ffffff',
-        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
-        transform: value ? 'translateX(16px)' : 'translateX(0)',
-        transition: 'transform 0.3s ease-in-out',
-        display: 'block',
-      }}
-    />
-  </button>
-);
-
-/** Custom dropdown select styled like the plugin's other pickers (model
-    select dropdown): grey trigger, dark panel, hover-highlight rows. */
-function SelectField<T extends string>({
-  value,
-  options,
-  onChange,
-}: {
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (value: T) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [open]);
-
-  const selected = options.find((option) => option.value === value);
-
+/** Full-width tab bar (mockup style: icon + label, active underline). */
+const TabBar: React.FC<{
+  active: SettingsTab;
+  onChange: (tab: SettingsTab) => void;
+}> = ({ active, onChange }) => {
+  const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
+    { id: 'plugin', label: 'Plugin Settings', icon: <Plug size={16} /> },
+    { id: 'system', label: 'System Settings', icon: <MonitorSpeaker size={16} /> },
+  ];
   return (
-    <div ref={rootRef} style={{ position: 'relative' }}>
-      <button
-        onClick={() => setOpen((prev) => !prev)}
-        style={{
-          ...outlinedFieldStyle,
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '10px',
-          padding: '12px 16px',
-          cursor: 'pointer',
-        }}
-      >
-        {selected?.label}
-        <ChevronDown
-          size={16}
-          style={{
-            color: MUTED,
-            flexShrink: 0,
-            transform: open ? 'rotate(180deg)' : 'none',
-            transition: 'transform 0.15s ease',
-          }}
-        />
-      </button>
-
-      {open && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 4px)',
-            left: 0,
-            right: 0,
-            borderRadius: '6px',
-            background: '#000000',
-            border: FIELD_BORDER,
-            overflow: 'hidden',
-            zIndex: 100,
-          }}
-        >
-          {options.map((option, index) => (
-            <div
-              key={option.value}
-              onClick={() => {
-                onChange(option.value);
-                setOpen(false);
-              }}
-              onMouseEnter={(e) => {
-                if (option.value !== value)
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-              }}
-              onMouseLeave={(e) => {
-                if (option.value !== value) e.currentTarget.style.background = 'transparent';
-              }}
-              style={{
-                padding: '12px 16px',
-                cursor: 'pointer',
-                color: '#ffffff',
-                fontSize: '14px',
-                fontWeight: 400,
-                background: option.value === value ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-                borderBottom: index < options.length - 1 ? FIELD_BORDER : 'none',
-              }}
-            >
-              {option.label}
-            </div>
-          ))}
-        </div>
-      )}
+    <div
+      role="tablist"
+      style={{ display: 'flex', borderBottom: FIELD_BORDER, marginBottom: '28px' }}
+    >
+      {tabs.map((tab) => {
+        const selected = tab.id === active;
+        return (
+          <button
+            key={tab.id}
+            role="tab"
+            aria-selected={selected}
+            onClick={() => onChange(tab.id)}
+            style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              padding: '12px 0',
+              background: 'transparent',
+              border: 'none',
+              borderBottom: `2px solid ${selected ? '#ffffff' : 'transparent'}`,
+              marginBottom: '-1px',
+              color: selected ? '#ffffff' : SUBTLE,
+              fontSize: '14px',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        );
+      })}
     </div>
   );
-}
-
-/** Section label with a pill toggle on the right, description underneath. */
-const ToggleRow: React.FC<{
-  label: string;
-  description: React.ReactNode;
-  value: boolean;
-  onChange: (value: boolean) => void;
-  children?: React.ReactNode;
-}> = ({ label, description, value, onChange, children }) => (
-  <div style={{ marginBottom: '32px' }}>
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '16px',
-      }}
-    >
-      <span style={sectionLabelStyle}>{label}</span>
-      <PillToggle value={value} onChange={onChange} />
-    </div>
-    <p style={descriptionStyle}>{description}</p>
-    {children}
-  </div>
-);
-
-/** Radio row for the Default NAM A2 Size options. */
-const RadioOption: React.FC<{
-  selected: boolean;
-  label: string;
-  description: React.ReactNode;
-  onSelect: () => void;
-  children?: React.ReactNode;
-}> = ({ selected, label, description, onSelect, children }) => (
-  <div style={{ marginBottom: '16px' }}>
-    <button
-      type="button"
-      role="radio"
-      aria-checked={selected}
-      onClick={onSelect}
-      style={{
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: '12px',
-        width: '100%',
-        padding: 0,
-        border: 'none',
-        background: 'transparent',
-        cursor: 'pointer',
-        textAlign: 'left',
-        color: 'inherit',
-      }}
-    >
-      <span
-        aria-hidden
-        style={{
-          width: '18px',
-          height: '18px',
-          borderRadius: '50%',
-          border: '2px solid #ffffff',
-          boxSizing: 'border-box',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-          marginTop: '1px',
-        }}
-      >
-        {selected && (
-          <span
-            style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              backgroundColor: '#ffffff',
-              display: 'block',
-            }}
-          />
-        )}
-      </span>
-      <span style={{ minWidth: 0, flex: 1 }}>
-        <span
-          style={{
-            display: 'block',
-            fontSize: '14px',
-            fontWeight: 400,
-            color: '#ffffff',
-            lineHeight: 1.3,
-          }}
-        >
-          {label}
-        </span>
-        <span
-          style={{
-            display: 'block',
-            fontSize: '13px',
-            fontWeight: 400,
-            color: MUTED,
-            marginTop: '4px',
-            lineHeight: 1.45,
-          }}
-        >
-          {description}
-        </span>
-      </span>
-    </button>
-    {children}
-  </div>
-);
+};
 
 export const Settings: React.FC<SettingsProps> = ({
   onClose,
   standalone,
-  inputMode,
-  onSetInputMode,
+  device,
+  initialTab = 'plugin',
   version,
   update,
 }) => {
+  const [tab, setTab] = useState<SettingsTab>(standalone ? initialTab : 'plugin');
   const [screen, setScreen] = useState<'main' | 'advanced'>('main');
 
   const hintsEnabled = useHintsEnabled();
@@ -436,8 +201,6 @@ export const Settings: React.FC<SettingsProps> = ({
     setDbuDraft(null);
   };
 
-  const showAudioSettings = useNativeFunction<boolean>('showAudioSettings');
-
   // Diagnostics: forward the on-disk log so users can share it for debugging.
   const copyLogs = useNativeFunction<boolean>('copyLogs');
   const revealLogs = useNativeFunction<string>('revealLogs');
@@ -468,7 +231,7 @@ export const Settings: React.FC<SettingsProps> = ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: '28px',
+        marginBottom: '20px',
       }}
     >
       <span style={{ fontSize: '22px', fontWeight: 600, color: '#ffffff' }}>
@@ -491,47 +254,8 @@ export const Settings: React.FC<SettingsProps> = ({
     </div>
   );
 
-  const mainScreen = (
+  const pluginMainScreen = (
     <>
-      {standalone && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: '10px',
-            marginBottom: '32px',
-          }}
-        >
-          <Info size={16} style={{ color: MUTED, flexShrink: 0, marginTop: '1px' }} />
-          <p style={{ ...descriptionStyle, margin: 0 }}>
-            Experiencing latency? Lower your "Audio Buffer Size" to 256 samples or less in Audio
-            Settings.
-          </p>
-        </div>
-      )}
-
-      {standalone && (
-        <div style={{ marginBottom: '36px' }}>
-          <span style={sectionLabelStyle}>Audio Settings</span>
-          <p style={{ ...descriptionStyle, marginBottom: '16px' }}>
-            Configure your interface, sample rate, buffer size and more.
-          </p>
-
-          {/* Input channel picker: interfaces expose stereo pairs even when
-              only one jack is plugged in, so pick what carries signal. */}
-          <div style={{ marginBottom: '16px' }}>
-            <SelectField value={inputMode} options={INPUT_MODE_OPTIONS} onChange={onSetInputMode} />
-            <p style={{ ...descriptionStyle, fontSize: '12px' }}>
-              Use mono for a single instrument cable (e.g. guitar in input 1).
-            </p>
-          </div>
-
-          <button onClick={() => showAudioSettings()} style={ctaButtonStyle}>
-            Audio Settings
-          </button>
-        </div>
-      )}
-
       <ToggleRow
         label="Hints"
         description="Shows a help bar under the faceplate describing the control under your pointer, with its shortcuts."
@@ -735,6 +459,8 @@ export const Settings: React.FC<SettingsProps> = ({
     </>
   );
 
+  const pluginTab = screen === 'advanced' ? advancedScreen : pluginMainScreen;
+
   return (
     <div
       style={{
@@ -758,7 +484,14 @@ export const Settings: React.FC<SettingsProps> = ({
         }}
       >
         {header}
-        {screen === 'advanced' ? advancedScreen : mainScreen}
+        {/* One tab (hosted) = no tab bar. Advanced hides it too — it's a
+            sub-screen of the plugin tab, and the header X steps back. */}
+        {standalone && screen === 'main' && <TabBar active={tab} onChange={setTab} />}
+        {tab === 'system' && standalone && screen === 'main' ? (
+          <SystemSettings device={device} />
+        ) : (
+          pluginTab
+        )}
       </div>
     </div>
   );

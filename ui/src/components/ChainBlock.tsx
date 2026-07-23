@@ -34,14 +34,7 @@ import {
   useNamA2ChoosePerTone,
 } from './uiPreferences';
 import { KNOB_CENTER_OFFSET } from './SpreadControls';
-import {
-  ACTIVE_OUTLINE,
-  BORDER,
-  GRAY,
-  HIGHLIGHT,
-  MUTED,
-  iconButtonStyle,
-} from './theme';
+import { ACTIVE_OUTLINE, BORDER, GRAY, HIGHLIGHT, MUTED, iconButtonStyle } from './theme';
 
 const HEADER_HEIGHT = 40;
 const IMAGE_SIZE = 224;

@@ -151,15 +151,22 @@ if (NOT HEADLESS)
             src/Editor.cpp
             include/EditorWebViewSetup.h
             src/EditorWebViewSetup.cpp
+            include/StandaloneAudioSettings.h
+            src/StandaloneAudioSettings.cpp
     )
+    # OS microphone-permission shim: AVFoundation (ObjC++) on macOS, a
+    # best-effort stub elsewhere (see AudioPermissions.h).
+    target_sources(${PROJECT_NAME} PRIVATE include/AudioPermissions.h)
     # Webview session clearing is platform-specific: WKWebsiteDataStore needs
     # ObjC++ on Apple; elsewhere a best-effort JUCE fallback.
     if (APPLE)
         target_sources(${PROJECT_NAME} PRIVATE src/WebViewCookies.mm)
         # Hover/cursor fix for DAW-hosted windows (see WindowMouseEvents.mm).
         target_sources(${PROJECT_NAME} PRIVATE src/WindowMouseEvents.mm)
+        target_sources(${PROJECT_NAME} PRIVATE src/AudioPermissions.mm)
     else()
         target_sources(${PROJECT_NAME} PRIVATE src/WebViewCookies.cpp)
+        target_sources(${PROJECT_NAME} PRIVATE src/AudioPermissions.cpp)
     endif()
 endif()
 
@@ -268,6 +275,9 @@ if (APPLE AND NOT HEADLESS)
     target_compile_definitions(${PROJECT_NAME}
         PUBLIC JUCE_STANDALONE_FILTER_WINDOW_USE_KIOSK_MODE=0
     )
+    # AVFoundation: query/request the OS microphone permission (AudioPermissions.mm).
+    find_library(AVFOUNDATION_FRAMEWORK AVFoundation)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${AVFOUNDATION_FRAMEWORK})
 endif()
 
 # Enable the WKWebView Web Inspector in release builds (see root CMakeLists patch).

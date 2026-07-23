@@ -148,9 +148,7 @@ class MeterStore {
     const clipped = finite && raw >= CLIP_DB && !this.clips.has(id);
     if (clipped) this.clips.add(id);
 
-    const value = finite
-      ? Math.round(Math.max(FLOOR_DB, raw) * QUANTIZE) / QUANTIZE
-      : FLOOR_DB;
+    const value = finite ? Math.round(Math.max(FLOOR_DB, raw) * QUANTIZE) / QUANTIZE : FLOOR_DB;
     if (this.levels.get(id) === value && !clipped) return;
     this.levels.set(id, value);
     this.listeners.get(id)?.forEach((callback) => callback());

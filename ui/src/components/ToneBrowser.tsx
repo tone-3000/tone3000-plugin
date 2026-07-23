@@ -1,11 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ArrowLeft,
-  ArrowRight,
-  Download,
-  FolderClosed,
-  Search as SearchIcon,
-} from 'lucide-react';
+import { ArrowLeft, ArrowRight, Download, FolderClosed, Search as SearchIcon } from 'lucide-react';
 import type { T3KClient } from '../t3k/tone3000-client';
 import type { Tone } from '../types/tone';
 import { formatLabel, gearLabel } from '../t3k/labels';
@@ -204,7 +198,15 @@ const ToneCard: React.FC<{
         <FormatBadge label={formatLabel(tone.format)} />
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'row', gap: '16px', color: MUTED, fontSize: '13px' }}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          gap: '16px',
+          color: MUTED,
+          fontSize: '13px',
+        }}
+      >
         <CountStat icon={<Download size={14} />} value={tone.downloads_count ?? 0} />
         <CountStat icon={<FolderClosed size={14} />} value={tone.models_count ?? 0} />
       </div>
@@ -277,13 +279,20 @@ const Paginator: React.FC<{
     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         {page > 1 && (
-          <button aria-label="Previous page" onClick={() => onPageChange(page - 1)} style={arrowStyle}>
+          <button
+            aria-label="Previous page"
+            onClick={() => onPageChange(page - 1)}
+            style={arrowStyle}
+          >
             <ArrowLeft size={20} />
           </button>
         )}
         {pages.map((p, idx) =>
           p === '...' ? (
-            <span key={`ellipsis-${idx}`} style={{ padding: '4px 8px', color: MUTED, fontSize: '13px' }}>
+            <span
+              key={`ellipsis-${idx}`}
+              style={{ padding: '4px 8px', color: MUTED, fontSize: '13px' }}
+            >
               …
             </span>
           ) : (
@@ -562,7 +571,10 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
             (it isn't a fixed band above the faceplate). */}
         <div style={{ padding: '20px 0 24px' }}>
           {/* Stream pills */}
-          <div className="hide-scrollbar" style={{ display: 'flex', gap: '10px', overflowX: 'auto' }}>
+          <div
+            className="hide-scrollbar"
+            style={{ display: 'flex', gap: '10px', overflowX: 'auto' }}
+          >
             {STREAMS.map((s) => (
               <StreamPill
                 key={s.id}

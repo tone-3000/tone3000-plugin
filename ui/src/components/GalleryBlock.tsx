@@ -232,11 +232,7 @@ interface GalleryBlockProps {
     reaches tiles whose block snapshot actually changed. Mutations come from
     the ChainActions context, so there are no per-render callback props to
     defeat the memo. */
-export const GalleryBlock: React.FC<GalleryBlockProps> = React.memo(({
-  block,
-  size,
-  onOpen,
-}) => {
+export const GalleryBlock: React.FC<GalleryBlockProps> = React.memo(({ block, size, onOpen }) => {
   const { blockId, params } = block;
   const actions = useChainActions();
 

@@ -59,9 +59,7 @@ function detectInitialCallback(): boolean {
   if (typeof window === 'undefined') return false;
   const params = new URLSearchParams(window.location.search);
   return (
-    params.has('code') ||
-    (params.has('error') && params.has('state')) ||
-    params.has('canceled')
+    params.has('code') || (params.has('error') && params.has('state')) || params.has('canceled')
   );
 }
 
