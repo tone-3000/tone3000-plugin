@@ -42,7 +42,7 @@ private:
   // Fixed plugin UI size; the window can additionally grow by the
   // chrome-strip height (see setExtraContentHeight).
   static constexpr int kWidth = 1024;
-  static constexpr int kBaseHeight = 600;
+  static constexpr int kBaseHeight = 600; // base height of the plugin UI
   int extraContentHeight = 0;
   int totalHeight() const { return kBaseHeight + extraContentHeight; }
 
@@ -79,7 +79,7 @@ private:
   juce::WebSliderRelay outputLevelRelay{"outputLevel"};
   juce::WebSliderRelay outputBalanceRelay{"outputBalance"};
   juce::WebToggleButtonRelay spreadEnabledRelay{"spreadEnabled"};
-  juce::WebSliderRelay spreadAmountRelay{"spreadAmount"};
+  juce::WebSliderRelay spreadOffsetRelay{"spreadOffset"};
   juce::WebSliderRelay spreadJitterRelay{"spreadJitter"};
   juce::WebSliderRelay chainPanLeftRelay{"chainPanLeft"};
   juce::WebSliderRelay chainPanRightRelay{"chainPanRight"};
@@ -102,8 +102,8 @@ private:
       *processor.parameters.getParameter("outputBalance"), outputBalanceRelay, nullptr};
   juce::WebToggleButtonParameterAttachment spreadEnabledWebAttachment{
       *processor.parameters.getParameter("spreadEnabled"), spreadEnabledRelay, nullptr};
-  juce::WebSliderParameterAttachment spreadAmountWebAttachment{
-      *processor.parameters.getParameter("spreadAmount"), spreadAmountRelay, nullptr};
+  juce::WebSliderParameterAttachment spreadOffsetWebAttachment{
+      *processor.parameters.getParameter("spreadOffset"), spreadOffsetRelay, nullptr};
   juce::WebSliderParameterAttachment spreadJitterWebAttachment{
       *processor.parameters.getParameter("spreadJitter"), spreadJitterRelay, nullptr};
   juce::WebSliderParameterAttachment chainPanLeftWebAttachment{

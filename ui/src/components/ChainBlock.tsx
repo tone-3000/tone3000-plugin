@@ -33,14 +33,18 @@ import {
   useDefaultNamA2Size,
   useNamA2ChoosePerTone,
 } from './uiPreferences';
-import { KNOB_CENTER_OFFSET } from './SpreadControls';
 import { ACTIVE_OUTLINE, BORDER, GRAY, HIGHLIGHT, MUTED, iconButtonStyle } from './theme';
 
 const HEADER_HEIGHT = 40;
 const IMAGE_SIZE = 224;
+/** In/Mix/Out use the small secondary knob style. */
 const KNOB_SIZE = 36;
 /** Mini meter height in the side rails (meter sits centered above its knob). */
 const RAIL_METER_HEIGHT = 180;
+/** Centers the 18px normalize (=) button on the Out knob: the knob is
+    bottom-aligned in its row (label on top), so this is just half the size
+    difference. */
+const NORMALIZE_BUTTON_OFFSET = -(KNOB_SIZE - 18) / 2;
 
 const headerButtonStyle = iconButtonStyle(24);
 
@@ -598,7 +602,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                 size={KNOB_SIZE}
                 labelSize={12}
                 labelBottom={false}
-                innerColor="#000000"
+                thumb="secondary"
                 scale={gainDbScale}
                 defaultValue={0.5}
                 help={HELP.blockIn}
@@ -785,7 +789,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                 size={KNOB_SIZE}
                 labelSize={12}
                 labelBottom={false}
-                innerColor="#000000"
+                thumb="secondary"
                 defaultValue={defaultMix}
                 help={HELP.blockMix}
               />
@@ -832,7 +836,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                       boxSizing: 'border-box',
                       color: normalizeOn ? '#ffffff' : GRAY,
                       backgroundColor: normalizeOn ? HIGHLIGHT : 'transparent',
-                      transform: `translateY(${KNOB_CENTER_OFFSET}px)`,
+                      transform: `translateY(${NORMALIZE_BUTTON_OFFSET}px)`,
                     }}
                   >
                     <Equal size={12} />
@@ -849,7 +853,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                   size={KNOB_SIZE}
                   labelSize={12}
                   labelBottom={false}
-                  innerColor="#000000"
+                  thumb="secondary"
                   scale={gainDbScale}
                   defaultValue={0.5}
                   help={isNam || block.irLong ? HELP.blockOut : HELP.blockOutIr}

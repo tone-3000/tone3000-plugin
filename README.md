@@ -204,16 +204,16 @@ flowchart LR
     CL --> RS2(("⇅ 48k"))
     CR --> RS2
     RS2 --> SPREAD["Spread&nbsp;*<br/>(delay one side + jitter)"]
-    SPREAD --> PAN["Pan Left / Pan Right&nbsp;*<br/>(stereo, constant-power)"]
-    PAN --> DCB["DC Blocker<br/>(~20 Hz HPF)"]
+    SPREAD --> PAN["Balance + Pan&nbsp;*<br/>(per-chain trim, then<br/>constant-power blend)"]
+    PAN --> DCB["DC Blocker<br/>(~5 Hz HPF)"]
     DCB --> TS["Tone Stack&nbsp;*"]
-    TS --> OG["Output Level<br/>+ Balance"]
+    TS --> OG["Output Level"]
     OG --> OUT([Out])
 ```
 
 - **Input mode** — when a real stereo source feeds the plugin (stereo host bus, or a stereo standalone input device), a faceplate button picks what enters the chain: both channels (default), or just the left/right one mirrored onto both. Saved with the session, not with presets — it's I/O routing, not tone.
 - **Mono mode** — only the Left chain runs (a stereo bus passes both channels through it together) and the pan stage is skipped. If Spread is on, the chain output is doubled to stereo first, then one side is delayed.
-- **Stereo mode** — channel 0 feeds the Left chain and channel 1 the Right chain independently; the two pan knobs then place each chain in the stereo image with constant-power law.
+- **Stereo mode** — channel 0 feeds the Left chain and channel 1 the Right chain independently; the Balance trim scales each chain (±12 dB opposing) *before* the two pan knobs place them in the stereo image with constant-power law, so a balance dialed in to match the chains stays correct at any pan position.
 - **Tone stack** — one global Bass/Middle/Treble EQ after the DC blocker.
 - **48 kHz boundary** — the chains always run at 48 kHz; a Lanczos resampler wraps them when the host rate differs (bypassed at 48 kHz).
 

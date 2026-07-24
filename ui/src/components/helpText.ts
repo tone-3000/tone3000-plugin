@@ -130,10 +130,10 @@ export const HELP = {
   outputLevel: knobHelp('Output', 'master level after the chain, ±24 dB.'),
   outputBalance: knobHelp(
     'Output Balance',
-    'trims output L/R against each other, ±12 dB. Center: off. Active in stereo mode or when mono spread is on.'
+    'trims the two chains against each other, ±12 dB (applied before Pan, so it holds at any pan position). Center: off. Active in stereo mode or when mono spread is on.'
   ),
   autoBalance:
-    'Auto Balance: matches L/R output level. Click: arm, then play ~2 s · Click again: cancel.',
+    'Auto Balance: matches the two chains’ levels. Click: arm, then play ~2 s · Click again: cancel.',
 
   // Faceplate — gate, tone stack, spread
   gate: knobHelp('Gate', 'noise gate threshold, −100 to 0 dB.'),
@@ -142,12 +142,14 @@ export const HELP = {
   toneMiddle: knobHelp('Middle', 'tone stack mids, 0–10.'),
   toneTreble: knobHelp('Treble', 'tone stack highs, 0–10.'),
   tonePower: 'Tone Stack Power: toggles the Bass/Middle/Treble EQ on/off.',
-  spread: knobHelp(
-    'Spread',
+  spreadOffset: knobHelp(
+    'Offset',
     'delays one side up to 24 ms for width. Center: off · Left/right of center: delays L/R.'
   ),
-  jitter: knobHelp('Jitter', 'adds up to 4 ms of random drift to the spread delay.'),
+  jitter: knobHelp('Jitter', 'adds up to 4 ms of random per-note drift to the offset.'),
   spreadPower: 'Spread Power: toggles the stereo spread on/off.',
+  spreadAdvert: 'Spread: doubles the chain into wide stereo with a short delay. Click: turn on.',
+  spreadClose: 'Spread Off: turns spread off and collapses its controls.',
 
   // Top bar
   tuner: 'Tuner: opens the chromatic tuner. Click again: back to the chain.',

@@ -12,7 +12,7 @@ void Spread::prepare(double newSampleRate, int maxBlockSize) {
   sampleRate = newSampleRate > 0.0 ? newSampleRate : 48000.0;
 
   const int maxDelaySamples = static_cast<int>(std::ceil(
-      (SpreadParams::kMaxSpreadMs + SpreadParams::kMaxJitterMs) * 0.001 * sampleRate)) + 8;
+      (SpreadParams::kMaxOffsetMs + SpreadParams::kMaxJitterMs) * 0.001 * sampleRate)) + 8;
   delayLine.setMaximumDelayInSamples(maxDelaySamples);
   delayLine.prepare({sampleRate, static_cast<juce::uint32>(juce::jmax(1, maxBlockSize)), 1});
 
@@ -54,7 +54,7 @@ void Spread::setTarget(const SpreadParams& params, bool nowEngaged) {
 
   engaged = nowEngaged;
   desiredChannel = params.targetChannel;
-  spreadMs = params.spreadMs;
+  offsetMs = params.offsetMs;
   jitterMs = params.jitterMs;
 
   // Disengaging or switching sides glides the delay to zero first;
@@ -68,7 +68,7 @@ void Spread::setTarget(const SpreadParams& params, bool nowEngaged) {
 
 void Spread::retargetDelay() {
   const float totalMs = juce::jlimit(
-      0.0f, SpreadParams::kMaxSpreadMs + SpreadParams::kMaxJitterMs, spreadMs + jitterOffsetMs);
+      0.0f, SpreadParams::kMaxOffsetMs + SpreadParams::kMaxJitterMs, offsetMs + jitterOffsetMs);
   delaySamples.setTargetValue(static_cast<float>(totalMs * 0.001 * sampleRate));
 }
 

@@ -215,12 +215,14 @@ public:
   void setTunerEnabled(bool enabled) { tuner.setEnabled(enabled); }
   juce::var getTunerReading() { return tuner.getReading(); }
 
-  // ── Auto balance: one-shot L/R output energy match ──
+  // ── Auto balance: one-shot chain energy match ──
   // startAutoBalance() arms a "listening" measurement: the audio thread
-  // accumulates pre-output-gain L/R energy (silence-gated) until ~2 s of real
-  // signal has been heard, then pollAutoBalance() — called from the message
-  // thread by the UI's poll loop — maps the measured dB difference onto the
-  // outputBalance parameter (host-automatable, so undo/presets come free).
+  // accumulates the raw chain outputs' energy (pre-balance, pre-pan, so the
+  // result is the chains' true mismatch at any pan position; silence-gated)
+  // until ~2 s of real signal has been heard, then pollAutoBalance() —
+  // called from the message thread by the UI's poll loop — maps the measured
+  // dB difference onto the outputBalance parameter (host-automatable, so
+  // undo/presets come free).
   // One-shot measurement of real playing is the industry norm here:
   // continuous AGC fights the player's dynamics, and an injected noise burst
   // is both audible and unrepresentative for nonlinear amp chains.
@@ -464,10 +466,10 @@ private:
   // spread power switch must glide this instead of hard-copying (pop).
   juce::SmoothedValue<float> spreadDoubleBlend;
 
-  // Output-stage gains, smoothed per channel: level/balance knob moves and
-  // the balance on/off gating (it only applies in stereo or mono+spread)
-  // glide instead of stepping once per block. Audio thread only.
-  juce::SmoothedValue<float> outputGainSmootherL, outputGainSmootherR;
+  // Output-stage gain (main level only — the balance trim lives in the
+  // post-chain image matrix, pre-pan), smoothed so knob moves glide instead
+  // of stepping once per block. Audio thread only.
+  juce::SmoothedValue<float> outputGainSmoother;
 
   // Monotonic revision of everything getChainState() reports. Bumped on every
   // chain mutation (structure, params, load completion, stereo/side changes)
@@ -542,7 +544,7 @@ private:
     std::atomic<float>* outputLevel = nullptr;
     std::atomic<float>* outputBalance = nullptr;
     std::atomic<float>* spreadEnabled = nullptr;
-    std::atomic<float>* spreadAmount = nullptr;
+    std::atomic<float>* spreadOffset = nullptr;
     std::atomic<float>* spreadJitter = nullptr;
     std::atomic<float>* chainPanLeft = nullptr;
     std::atomic<float>* chainPanRight = nullptr;
@@ -563,8 +565,8 @@ private:
   float cacheOutputLevel = 0.5f;
   float cacheOutputBalance = 0.5f;
   bool cacheSpreadEnabled = false;
-  float cacheSpreadAmount = 0.5f;  // bipolar: 0.5 = center = off
-  float cacheSpreadJitter = 0.0f;
+  float cacheSpreadOffset = 0.75f;  // bipolar, 0.5 = center = off; default 12 ms R
+  float cacheSpreadJitter = 0.5f;   // default 2 ms
   float cacheChainPanLeft = 0.0f;
   float cacheChainPanRight = 1.0f;
   float cacheBassTone = 5.0f;
@@ -642,11 +644,12 @@ private:
   // knob moves never hard-toggle DSP; all transitions glide through zero.
   Spread spread;
 
-  // Stereo chain-pan blend gains (constant-power), smoothed so pan moves
-  // don't zipper. LtoR = how much of the Left chain lands in the Right
-  // output, etc. At the hard-panned default the blend is the identity and
-  // processBlock skips the mix loop entirely.
-  juce::SmoothedValue<float> panGainLtoL, panGainLtoR, panGainRtoL, panGainRtoR;
+  // Post-chain image matrix gains (per-chain balance trim × constant-power
+  // pan; see imageMatrixGains in Processor.cpp), smoothed so balance/pan
+  // moves don't zipper. LtoR = how much of the Left chain lands in the
+  // Right output, etc. At the centered/hard-panned default the matrix is
+  // the identity and processBlock skips the mix loop entirely.
+  juce::SmoothedValue<float> imageGainLtoL, imageGainLtoR, imageGainRtoL, imageGainRtoR;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TONE3000Processor)
 };

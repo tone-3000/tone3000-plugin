@@ -201,8 +201,9 @@ export const StereoPanRail: React.FC = () => {
           variant="panLeft"
           min={0}
           max={0.5}
-          size={30}
+          size={36}
           labelSize={10}
+          thumb="pan"
           scale={PAN_LEFT_SCALE}
           defaultValue={0}
           help={HELP.panLeft}
@@ -252,8 +253,9 @@ export const StereoPanRail: React.FC = () => {
           variant="panRight"
           min={0.5}
           max={1}
-          size={30}
+          size={36}
           labelSize={10}
+          thumb="pan"
           scale={PAN_RIGHT_SCALE}
           defaultValue={1}
           help={HELP.panRight}

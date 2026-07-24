@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { KnobHeadless } from 'react-knob-headless';
 import { KnobInner } from './KnobInner';
-import type { KnobVariant } from './KnobInner';
+import type { KnobThumb, KnobVariant } from './KnobInner';
 import type { KnobScale } from './knobScale';
 import { percentScale } from './knobScale';
 import { helpProps, pinHelp, unpinHelp } from './helpText';
-import { SURFACE_RAISED } from './theme';
+import { GRAY, SURFACE_RAISED } from './theme';
 
 /**
  * Knob interaction conventions (matching typical plugin UX):
@@ -27,7 +27,9 @@ interface KnobControlProps {
   size?: number;
   labelSize?: number;
   labelBottom?: boolean;
-  innerColor?: string;
+  /** Visual style (see KnobInner): primary = large dark knob (the default),
+      secondary = small light companion knob. */
+  thumb?: KnobThumb;
   /** Visual/geometry variant (see KnobInner). Bipolar knobs snap to exact
       center so the zero detent genuinely means zero. */
   variant?: KnobVariant;
@@ -77,7 +79,7 @@ export const KnobControl: React.FC<KnobControlProps> = ({
   size = 64,
   labelSize = 14,
   labelBottom = true,
-  innerColor = '#000000',
+  thumb = 'primary',
   variant = 'full',
   min = 0,
   max = 1,
@@ -283,7 +285,7 @@ export const KnobControl: React.FC<KnobControlProps> = ({
           cursor: 'pointer',
         }}
       >
-        <KnobInner value={value} size={size} innerColor={innerColor} variant={variant} />
+        <KnobInner value={value} size={size} variant={variant} thumb={thumb} />
       </KnobHeadless>
 
       <div
@@ -329,7 +331,9 @@ export const KnobControl: React.FC<KnobControlProps> = ({
               fontSize: labelSize,
               fontWeight: 400,
               textAlign: 'center',
-              color: '#ffffff',
+              // Idle labels are muted; the live value readout stays white so
+              // it pops while dragging.
+              color: showReadout ? '#ffffff' : GRAY,
               letterSpacing: showReadout ? 'normal' : '1px',
               whiteSpace: 'nowrap',
               fontVariantNumeric: 'tabular-nums',

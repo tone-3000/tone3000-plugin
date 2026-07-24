@@ -13,7 +13,7 @@
  *   against the other chain for width.
  *
  * Controls (see SpreadParams for the normalized encoding):
- * - spread: bipolar knob. Center = 0 ms; left of center delays the left
+ * - offset: bipolar knob. Center = 0 ms; left of center delays the left
  *   channel, right of center the right channel.
  * - jitter: ± range of random per-note variation, re-rolled at each detected
  *   note/chord attack so every hit lands like a slightly different take.
@@ -46,25 +46,25 @@
 /** Decoded spread parameters. Normalized knob values map here in exactly one
     place so the DSP and any future UI readouts agree. */
 struct SpreadParams {
-  static constexpr float kMaxSpreadMs = 24.0f;
+  static constexpr float kMaxOffsetMs = 24.0f;
   // ±4 ms: enough to hear a "different take" randomness without ever
   // crossing into chorus/vibrato territory (studios typically land 1–4 ms).
   static constexpr float kMaxJitterMs = 4.0f;
 
   int targetChannel = 1;  // channel that gets delayed (0 = left, 1 = right)
-  float spreadMs = 0.0f;
+  float offsetMs = 0.0f;
   float jitterMs = 0.0f;
 
-  /** amountNorm: bipolar 0..1, 0.5 = center = 0 ms. jitterNorm: 0..1.
+  /** offsetNorm: bipolar 0..1, 0.5 = center = 0 ms. jitterNorm: 0..1.
       Values within a hair of zero decode to exactly zero so knob detents
       genuinely mean zero. */
-  static SpreadParams fromNormalized(float amountNorm, float jitterNorm) {
+  static SpreadParams fromNormalized(float offsetNorm, float jitterNorm) {
     constexpr float kEps = 0.005f;
     SpreadParams p;
-    const float bipolar = juce::jlimit(0.0f, 1.0f, amountNorm) * 2.0f - 1.0f;
+    const float bipolar = juce::jlimit(0.0f, 1.0f, offsetNorm) * 2.0f - 1.0f;
     p.targetChannel = bipolar < 0.0f ? 0 : 1;
     const float amount = std::abs(bipolar);
-    p.spreadMs = amount < kEps ? 0.0f : amount * kMaxSpreadMs;
+    p.offsetMs = amount < kEps ? 0.0f : amount * kMaxOffsetMs;
     const float jitter = juce::jlimit(0.0f, 1.0f, jitterNorm);
     p.jitterMs = jitter < kEps ? 0.0f : jitter * kMaxJitterMs;
     return p;
@@ -105,7 +105,7 @@ private:
   bool engaged{false};
   int currentChannel{1};  // side being delayed right now
   int desiredChannel{1};  // side the knob asks for (adopted via a zero glide)
-  float spreadMs{0.0f};
+  float offsetMs{0.0f};
   float jitterMs{0.0f};
   float jitterOffsetMs{0.0f};
 

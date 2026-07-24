@@ -5,6 +5,7 @@
 #include <cmath>
 #include <random>
 #include <cstring>
+#include <tuple>
 
 // StandalonePluginHolder: used to inspect the audio device's active input
 // channels so we can detect a mono input source (see standaloneMonoInput).
@@ -60,7 +61,7 @@ void TONE3000Processor::resolveParamRefs() {
   paramRefs.outputLevel = get("outputLevel");
   paramRefs.outputBalance = get("outputBalance");
   paramRefs.spreadEnabled = get("spreadEnabled");
-  paramRefs.spreadAmount = get("spreadAmount");
+  paramRefs.spreadOffset = get("spreadOffset");
   paramRefs.spreadJitter = get("spreadJitter");
   paramRefs.chainPanLeft = get("chainPanLeft");
   paramRefs.chainPanRight = get("chainPanRight");
@@ -104,24 +105,30 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
   layout.add(std::make_unique<juce::AudioParameterBool>(
       juce::ParameterID{"toneEqEnabled", 12}, "toneEqEnabled", true));
 
-  // Stereo balance trim for the output gain: 0.5 = centered (no effect),
-  // otherwise an opposing ±12 dB trim between L and R on top of the main
-  // level. Only applies in stereo mode or mono+spread (see processBlock);
-  // the UI hides the knob when inactive.
+  // Balance trim: 0.5 = centered (no effect), otherwise an opposing ±12 dB
+  // trim between the two chains, applied *before* the chain pan blend (see
+  // the post-chain image stage in processBlock). Pre-pan placement is what
+  // makes the knob mean "match chain A to chain B": a setting dialed in
+  // while hard-panned stays correct at any pan position. In mono+spread it
+  // tilts the dry/delayed copies L/R (no pan there, so it's the same idea).
+  // Only applies in stereo mode or mono+spread; the UI hides the knob when
+  // inactive.
   layout.add(std::make_unique<juce::AudioParameterFloat>(
       juce::ParameterID{"outputBalance", 18}, "outputBalance", 0.0f, 1.0f, 0.5f));
 
   // Spread (see Spread.h): one parameter set for both modes (mono double /
-  // stereo chain shift — mode-exclusive). Amount is bipolar: 0.5 = center =
+  // stereo chain shift — mode-exclusive). Offset is bipolar: 0.5 = center =
   // 0 ms (processing skipped); below center delays the left channel, above
   // center the right (0..24 ms). Jitter is ± per-note random variation
   // (0..4 ms, 0 = off). Stored normalized; SpreadParams decodes to ms.
+  // The knobs default to a useful sound (12 ms R, 2 ms jitter) so powering
+  // spread on — it defaults off in both modes — is audible immediately.
   layout.add(std::make_unique<juce::AudioParameterBool>(
       juce::ParameterID{"spreadEnabled", 19}, "spreadEnabled", false));
   layout.add(std::make_unique<juce::AudioParameterFloat>(
-      juce::ParameterID{"spreadAmount", 20}, "spreadAmount", 0.0f, 1.0f, 0.5f));
+      juce::ParameterID{"spreadOffset", 20}, "spreadOffset", 0.0f, 1.0f, 0.75f));
   layout.add(std::make_unique<juce::AudioParameterFloat>(
-      juce::ParameterID{"spreadJitter", 21}, "spreadJitter", 0.0f, 1.0f, 0.0f));
+      juce::ParameterID{"spreadJitter", 21}, "spreadJitter", 0.0f, 1.0f, 0.5f));
 
   // Stereo-mode chain pans: constant-power positions for the Left/Right
   // chain outputs (0 = hard left, 1 = hard right). The UI constrains the
@@ -292,12 +299,29 @@ static float mainStageGain(float level) {
   return juce::Decibels::decibelsToGain((level - 0.5f) * 48.0f);
 }
 
-// Per-channel output-stage gain: main level ±24 dB, plus the balance trim
-// (0.5 = centered) which adds up to ±12 dB opposing between L and R.
-static float outputStageChannelGain(float level, float balance, int channel) {
-  const float levelDb = (level - 0.5f) * 48.0f;
-  const float trimDb = (balance - 0.5f) * 24.0f * (channel == 0 ? -1.0f : 1.0f);
-  return juce::Decibels::decibelsToGain(levelDb + trimDb);
+// Per-chain balance gain: the balance trim (0.5 = centered) applies up to
+// ±12 dB opposing between chain 0 (Left) and chain 1 (Right).
+static float balanceChainGain(float balance, int chain) {
+  const float trimDb = (balance - 0.5f) * 24.0f * (chain == 0 ? -1.0f : 1.0f);
+  return juce::Decibels::decibelsToGain(trimDb);
+}
+
+// The four gains of the post-chain image matrix: per-chain balance trims
+// multiplied into the constant-power pan gains. The balance applies to the
+// *chains* (pre-pan), so it matches chain levels rather than tilting the
+// output bus — an output-channel trim couldn't re-balance the chains once
+// the pan blend has mixed them. When pan is inactive (mono+spread) the pan
+// part is the identity and the matrix reduces to a diagonal L/R tilt.
+struct ImageGains { float lToL, lToR, rToL, rToR; };
+static ImageGains imageMatrixGains(bool panActive, float balance, float panLeft, float panRight) {
+  float pLtoL = 1.0f, pLtoR = 0.0f, pRtoL = 0.0f, pRtoR = 1.0f;
+  if (panActive) {
+    std::tie(pLtoL, pLtoR) = constantPowerPanGains(panLeft);
+    std::tie(pRtoL, pRtoR) = constantPowerPanGains(panRight);
+  }
+  const float balL = balanceChainGain(balance, 0);
+  const float balR = balanceChainGain(balance, 1);
+  return {balL * pLtoL, balL * pLtoR, balR * pRtoL, balR * pRtoR};
 }
 
 // Stereo input = stereo main bus, minus the standalone case where it isn't
@@ -392,30 +416,25 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   spreadDoubleBlend.reset(sampleRate, kWetFadeSeconds);
   spreadDoubleBlend.setCurrentAndTargetValue(0.0f);
 
-  // Output-stage gains, primed from the current parameters so a restored
+  // Output-stage gain, primed from the current parameters so a restored
   // session doesn't glide in from the wrong level.
-  {
-    const bool applyOutputBalance = stereoEnabled.load() || cacheSpreadEnabled;
-    const float outputBalance = applyOutputBalance ? cacheOutputBalance : 0.5f;
-    outputGainSmootherL.reset(sampleRate, 0.02);
-    outputGainSmootherR.reset(sampleRate, 0.02);
-    outputGainSmootherL.setCurrentAndTargetValue(
-        outputStageChannelGain(cacheOutputLevel, outputBalance, 0));
-    outputGainSmootherR.setCurrentAndTargetValue(
-        outputStageChannelGain(cacheOutputLevel, outputBalance, 1));
-  }
+  outputGainSmoother.reset(sampleRate, 0.02);
+  outputGainSmoother.setCurrentAndTargetValue(mainStageGain(cacheOutputLevel));
 
-  // Chain-pan blend gains: 20 ms ramps, primed from the current parameters
-  // so a restored session doesn't fade in from the wrong image.
+  // Post-chain image matrix (balance × pan): 20 ms ramps, primed from the
+  // current parameters so a restored session doesn't fade in from the wrong
+  // image or chain balance.
   {
-    const auto [gLtoL, gLtoR] = constantPowerPanGains(cacheChainPanLeft);
-    const auto [gRtoL, gRtoR] = constantPowerPanGains(cacheChainPanRight);
-    for (auto* smoother : {&panGainLtoL, &panGainLtoR, &panGainRtoL, &panGainRtoR})
+    const bool isStereo = stereoEnabled.load();
+    const bool applyBalance = isStereo || cacheSpreadEnabled;
+    const auto g = imageMatrixGains(isStereo, applyBalance ? cacheOutputBalance : 0.5f,
+                                    cacheChainPanLeft, cacheChainPanRight);
+    for (auto* smoother : {&imageGainLtoL, &imageGainLtoR, &imageGainRtoL, &imageGainRtoR})
       smoother->reset(sampleRate, 0.02);
-    panGainLtoL.setCurrentAndTargetValue(gLtoL);
-    panGainLtoR.setCurrentAndTargetValue(gLtoR);
-    panGainRtoL.setCurrentAndTargetValue(gRtoL);
-    panGainRtoR.setCurrentAndTargetValue(gRtoR);
+    imageGainLtoL.setCurrentAndTargetValue(g.lToL);
+    imageGainLtoR.setCurrentAndTargetValue(g.lToR);
+    imageGainRtoL.setCurrentAndTargetValue(g.rToL);
+    imageGainRtoR.setCurrentAndTargetValue(g.rToR);
   }
 
   // Temporary unity filters for boot
@@ -545,7 +564,7 @@ void TONE3000Processor::updateCachedParameters() {
   updateFloat(cacheInputLevel, paramRefs.inputLevel);
   updateFloat(cacheOutputLevel, paramRefs.outputLevel);
   updateFloat(cacheOutputBalance, paramRefs.outputBalance);
-  updateFloat(cacheSpreadAmount, paramRefs.spreadAmount);
+  updateFloat(cacheSpreadOffset, paramRefs.spreadOffset);
   updateFloat(cacheSpreadJitter, paramRefs.spreadJitter);
   updateFloat(cacheChainPanLeft, paramRefs.chainPanLeft);
   updateFloat(cacheChainPanRight, paramRefs.chainPanRight);
@@ -987,7 +1006,7 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // the raw picked signal (post-gain/gate) — amp/IR processing compresses
   // pick attacks into mush and its noise floor fakes constant onsets. The
   // delay itself runs post-chain (below).
-  spread.setTarget(SpreadParams::fromNormalized(cacheSpreadAmount, cacheSpreadJitter),
+  spread.setTarget(SpreadParams::fromNormalized(cacheSpreadOffset, cacheSpreadJitter),
                    cacheSpreadEnabled && numChannels >= 2);
   if (spread.isRunning())
     spread.analyzeOnsets(buffer.getReadPointer(0), numSamples);
@@ -1048,16 +1067,18 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
 
   // ##########
   // Post-chain stereo image, before the downstream stereo stages (DC / tone
-  // stack / output balance + meters) so they see the real image. Order
+  // stack / output gain + meters) so they see the real image. Order
   // matters: spread runs first so the delay always shifts one full chain,
-  // then the pan blend mixes the (possibly shifted) chains.
+  // then the balance/pan matrix mixes the (possibly shifted) chains.
   //  - Spread (both modes, one engine): delays the chosen side. Mono seeds
   //    ch 1 with the chain output first (the classic double); stereo delays
   //    that side's chain in place. Runs whenever the power switch is on
   //    (0 ms = identity, transitions glide through zero — see Spread.h);
   //    fully skipped once the glide-out after power-off completes.
-  //  - Stereo chain pan: constant-power blend of the two chains across the
-  //    output bus. Hard-panned defaults are the identity and skip the loop.
+  //  - Balance + pan (one 2×2 matrix, see imageMatrixGains): the balance
+  //    trim scales each *chain*, then the constant-power pan blend mixes
+  //    them across the output bus. The centered/hard-panned default is the
+  //    identity and skips the loop.
   // ##########
   {
     const bool isStereo = stereoEnabled.load() && numChannels >= 2;
@@ -1089,25 +1110,43 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     if (spread.isRunning())
       spread.process(buffer);
 
-    if (isStereo) {
-      const auto [gLtoL, gLtoR] = constantPowerPanGains(cacheChainPanLeft);
-      const auto [gRtoL, gRtoR] = constantPowerPanGains(cacheChainPanRight);
-      panGainLtoL.setTargetValue(gLtoL);
-      panGainLtoR.setTargetValue(gLtoR);
-      panGainRtoL.setTargetValue(gRtoL);
-      panGainRtoR.setTargetValue(gRtoR);
+    // Auto balance listening tap: the raw chain outputs, before the balance
+    // and pan gains, so the measurement is the chains' true mismatch. It must
+    // sit pre-pan: post-pan the two channels converge as the pans approach
+    // center even when the chains are badly mismatched, which would starve
+    // the measurement. Zero work unless armed.
+    if (autoBalanceState.load(std::memory_order_acquire) ==
+        static_cast<int>(AutoBalanceState::Listening))
+      runAutoBalanceStage(buffer, numSamples);
 
-      const bool smoothing = panGainLtoL.isSmoothing() || panGainLtoR.isSmoothing() ||
-                             panGainRtoL.isSmoothing() || panGainRtoR.isSmoothing();
-      const bool identity = gLtoL >= 0.9999f && gRtoR >= 0.9999f;
+    // Balance + pan matrix. Balance is forced center whenever the output
+    // image isn't actually stereo (mono mode without spread), so a leftover
+    // Bal setting from a prior session can't skew a mono (identical L/R)
+    // bus — matches the UI hiding the knob. All four gains are smoothed so
+    // knob moves AND the balance on/off gating (spread/stereo toggles)
+    // glide instead of stepping (pop).
+    if (numChannels >= 2) {
+      const bool applyBalance = isStereo || cacheSpreadEnabled;
+      const auto g = imageMatrixGains(isStereo, applyBalance ? cacheOutputBalance : 0.5f,
+                                      cacheChainPanLeft, cacheChainPanRight);
+      imageGainLtoL.setTargetValue(g.lToL);
+      imageGainLtoR.setTargetValue(g.lToR);
+      imageGainRtoL.setTargetValue(g.rToL);
+      imageGainRtoR.setTargetValue(g.rToR);
+
+      const bool smoothing = imageGainLtoL.isSmoothing() || imageGainLtoR.isSmoothing() ||
+                             imageGainRtoL.isSmoothing() || imageGainRtoR.isSmoothing();
+      const bool identity = std::abs(g.lToL - 1.0f) < 1.0e-4f &&
+                            std::abs(g.rToR - 1.0f) < 1.0e-4f &&
+                            g.lToR < 1.0e-4f && g.rToL < 1.0e-4f;
       if (smoothing || !identity) {
         auto* l = buffer.getWritePointer(0);
         auto* r = buffer.getWritePointer(1);
         for (int i = 0; i < numSamples; ++i) {
-          const float ll = panGainLtoL.getNextValue();
-          const float lr = panGainLtoR.getNextValue();
-          const float rl = panGainRtoL.getNextValue();
-          const float rr = panGainRtoR.getNextValue();
+          const float ll = imageGainLtoL.getNextValue();
+          const float lr = imageGainLtoR.getNextValue();
+          const float rl = imageGainRtoL.getNextValue();
+          const float rr = imageGainRtoR.getNextValue();
           const float chainL = l[i];
           const float chainR = r[i];
           l[i] = chainL * ll + chainR * rl;
@@ -1134,40 +1173,24 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // ##########
   processToneStack(buffer);
 
-  // ##########
-  // Auto balance listening pass: accumulate L/R energy right before the
-  // output stage, so the measured difference is exactly what the balance
-  // trim must correct. Zero work unless a measurement is armed.
-  // ##########
-  if (autoBalanceState.load(std::memory_order_acquire) ==
-      static_cast<int>(AutoBalanceState::Listening))
-    runAutoBalanceStage(buffer, numSamples);
-
   // ###########
-  // Output gain per channel (level ±24 dB, balance trim ±12 dB opposing).
-  // Balance only applies when the output image is actually stereo: stereo
-  // mode, or mono mode with spread powered on. Otherwise force center so a
-  // leftover Bal setting from a prior mono+spread session can't skew a
-  // mono (identical L/R) bus — matches the UI hiding the Bal knob.
-  // The gains are smoothed so knob moves AND the balance on/off gating
-  // (spread/stereo toggles) glide instead of stepping (pop). Per-channel
-  // output meters ride the same pass.
+  // Output gain (level ±24 dB, same on both channels — the balance trim
+  // lives in the post-chain image matrix above, pre-pan). Smoothed so knob
+  // moves glide instead of stepping once per block. Per-channel output
+  // meters ride the same pass.
   // ###########
   {
-    const bool applyOutputBalance = stereoEnabled.load() || cacheSpreadEnabled;
-    const float outputBalance = applyOutputBalance ? cacheOutputBalance : 0.5f;
-    outputGainSmootherL.setTargetValue(outputStageChannelGain(cacheOutputLevel, outputBalance, 0));
-    outputGainSmootherR.setTargetValue(outputStageChannelGain(cacheOutputLevel, outputBalance, 1));
+    outputGainSmoother.setTargetValue(mainStageGain(cacheOutputLevel));
 
     float peakL = 0.0f, peakR = 0.0f;
     auto* l = buffer.getWritePointer(0);
     auto* r = numChannels > 1 ? buffer.getWritePointer(1) : nullptr;
     for (int i = 0; i < numSamples; ++i) {
-      l[i] *= outputGainSmootherL.getNextValue();
+      const float g = outputGainSmoother.getNextValue();
+      l[i] *= g;
       peakL = std::max(peakL, std::abs(l[i]));
-      const float gainR = outputGainSmootherR.getNextValue();
       if (r) {
-        r[i] *= gainR;
+        r[i] *= g;
         peakR = std::max(peakR, std::abs(r[i]));
       }
     }
@@ -1201,7 +1224,7 @@ juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() {
 }
 
 // #########################
-// AUTO BALANCE (one-shot L/R energy match)
+// AUTO BALANCE (one-shot chain energy match)
 // #########################
 // The workflow is "click =, play for a couple of seconds, done": we measure
 // the user's real playing rather than injecting a test signal, because NAM
@@ -1209,6 +1232,9 @@ juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() {
 // how the chains compare under a real pick attack) and a burst would be
 // audible at the output. Continuous AGC is deliberately avoided — it would
 // chase the player's dynamics instead of correcting a static chain mismatch.
+// The tap sits on the raw chain outputs, before the balance/pan matrix, so
+// the measured mismatch (and the balance value it produces) is independent
+// of the current pan positions.
 
 namespace {
 // Signal gate: blocks whose loudest channel is below this RMS don't count
@@ -1234,7 +1260,8 @@ void TONE3000Processor::cancelAutoBalance() {
   autoBalanceState.store(static_cast<int>(AutoBalanceState::Idle), std::memory_order_release);
 }
 
-// Audio thread, pre-output-gain, only while Listening.
+// Audio thread, on the raw chain outputs (pre-balance/pan), only while
+// Listening.
 void TONE3000Processor::runAutoBalanceStage(const juce::AudioBuffer<float>& buffer,
                                             int numSamples) {
   autoBalanceElapsed.fetch_add(numSamples, std::memory_order_relaxed);
@@ -1261,8 +1288,8 @@ void TONE3000Processor::runAutoBalanceStage(const juce::AudioBuffer<float>& buff
   if (autoBalanceSamples.load(std::memory_order_relaxed) >= needed) {
     const double energyL = std::max(autoBalanceSumL, 1.0e-12);
     const double energyR = std::max(autoBalanceSumR, 1.0e-12);
-    // Positive = left louder. The balance trim corrects up to ±12 dB per
-    // channel (±24 dB relative), so clamp to what the knob can express.
+    // Positive = left chain louder. The balance trim corrects up to ±12 dB
+    // per chain (±24 dB relative), so clamp to what the knob can express.
     autoBalanceMatchedDb = static_cast<float>(
         juce::jlimit(-24.0, 24.0, 10.0 * std::log10(energyL / energyR)));
     autoBalanceState.store(static_cast<int>(AutoBalanceState::Measured),
@@ -1294,8 +1321,9 @@ juce::var TONE3000Processor::pollAutoBalance() {
       break;
     }
     case AutoBalanceState::Measured: {
-      // diff dB → knob position: the trim applies ∓diff/2 to L and ±diff/2 to
-      // R, and the knob maps (value − 0.5) · 24 to the per-channel trim dB.
+      // diff dB → knob position: the trim applies ∓diff/2 to the Left chain
+      // and ±diff/2 to the Right, and the knob maps (value − 0.5) · 24 to
+      // the per-chain trim dB (see balanceChainGain).
       const float diffDb = autoBalanceMatchedDb;
       const float balance = juce::jlimit(0.0f, 1.0f, 0.5f + diffDb / 48.0f);
       if (auto* param = parameters.getParameter("outputBalance")) {

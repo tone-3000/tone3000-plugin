@@ -60,8 +60,8 @@ export const gateDbScale = linearScale(-100, 0, 'dB', 0);
 /** Faceplate tone stack: parameter range 0.01..10, shown as 0..10. */
 export const toneScale = linearScale(0.01, 10, '', 1);
 
-/** Spread amount (bipolar): center = 0 ms, ends delay L/R by 24 ms. */
-export const spreadMsScale: KnobScale = {
+/** Spread offset (bipolar): center = 0 ms, ends delay L/R by 24 ms. */
+export const offsetMsScale: KnobScale = {
   toDisplay: (n) => (n - 0.5) * 48,
   fromDisplay: (d) => 0.5 + d / 48,
   format: (n) => {

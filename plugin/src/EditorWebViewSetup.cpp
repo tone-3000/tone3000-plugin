@@ -139,7 +139,7 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
       .withOptionsFrom(editor->outputLevelRelay)
       .withOptionsFrom(editor->outputBalanceRelay)
       .withOptionsFrom(editor->spreadEnabledRelay)
-      .withOptionsFrom(editor->spreadAmountRelay)
+      .withOptionsFrom(editor->spreadOffsetRelay)
       .withOptionsFrom(editor->spreadJitterRelay)
       .withOptionsFrom(editor->chainPanLeftRelay)
       .withOptionsFrom(editor->chainPanRightRelay)
@@ -486,7 +486,7 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             return editor->processor.getTunerReading();
           }))
       .withNativeFunction(
-          // Arm a one-shot L/R output energy measurement; the UI polls
+          // Arm a one-shot chain energy measurement; the UI polls
           // pollAutoBalance for progress/result (see Processor.h).
           "startAutoBalance", guarded(0, false, [editor](const juce::Array<juce::var>&) {
             editor->processor.startAutoBalance();

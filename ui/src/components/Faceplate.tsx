@@ -27,13 +27,18 @@ import { ACTIVE_OUTLINE, BORDER, GRAY, HIGHLIGHT } from './theme';
  * bus. All values are host parameters — presets/undo get them for free.
  */
 
-const KNOB_SIZE = 36;
-const BALANCE_KNOB_SIZE = 24;
+const KNOB_SIZE = 48;
+/** Small companion knobs (Bal, Gate) — secondary style. */
+const SECONDARY_KNOB_SIZE = 32;
 const PLATE_HEIGHT = 100;
 
-/** Offset that vertically centers side-controls on the knob itself (the
-    knob column is knob + gap + label; the label pulls its center down). */
-const KNOB_CENTER_OFFSET = -11;
+/** Every action button on the plate (power, input mode, auto-balance) sits
+    at one shared height: centered on the secondary knobs. All knob groups
+    bottom-align on the plate's baseline with a 10px gap + 14px label slot
+    under each knob, so a button of height h starts at the baseline and
+    lifts by 24 + secondary radius − h/2. */
+const buttonLift = (buttonHeight: number) =>
+  -(10 + 14 + SECONDARY_KNOB_SIZE / 2 - buttonHeight / 2);
 
 /** Shared shell for the small square buttons that sit beside knobs
     (power switches, input mode). */
@@ -48,7 +53,7 @@ const SIDE_BUTTON_STYLE: React.CSSProperties = {
   cursor: 'pointer',
   padding: 0,
   flexShrink: 0,
-  transform: `translateY(${KNOB_CENTER_OFFSET}px)`,
+  transform: `translateY(${buttonLift(22)}px)`,
 };
 
 const PowerButton: React.FC<{
@@ -170,7 +175,7 @@ const AutoBalanceButton: React.FC = () => {
         boxSizing: 'border-box',
         color: listening ? '#ffffff' : GRAY,
         backgroundColor: listening ? HIGHLIGHT : 'transparent',
-        transform: `translateY(${KNOB_CENTER_OFFSET}px)`,
+        transform: `translateY(${buttonLift(18)}px)`,
       }}
     >
       {/* Size 12 keeps the glyph's inset even (16px content box − 12 = 2px
@@ -194,39 +199,38 @@ const OutputGainKnob: React.FC<{
   const [level, setLevel] = useParameter('outputLevel', 'slider');
   const [balance, setBalance] = useParameter('outputBalance', 'slider');
 
-  const knob = (
-    <KnobControl
-      label="Output"
-      value={level}
-      onChange={setLevel}
-      size={KNOB_SIZE}
-      labelSize={12}
-      innerColor="#1C1C1E"
-      scale={gainDbScale}
-      defaultValue={0.5}
-      help={HELP.outputLevel}
-    />
-  );
-
-  if (!stereo) return knob;
-
   // The (=) button sits on the outer edge, keeping Bal next to the main
-  // knob: [=][Bal][knob].
+  // knob: [=][Bal][knob]. Inactive companions stay mounted but invisible so
+  // the group's footprint is constant — toggling stereo/spread must not
+  // shift the plate (it's laid out with space-between).
   return (
     <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end', gap: '10px' }}>
-      {autoBalance && <AutoBalanceButton />}
+      <div style={{ visibility: autoBalance ? 'visible' : 'hidden' }}>
+        <AutoBalanceButton />
+      </div>
+      <div style={{ visibility: stereo ? 'visible' : 'hidden' }}>
+        <KnobControl
+          label="Bal"
+          value={balance}
+          onChange={setBalance}
+          size={SECONDARY_KNOB_SIZE}
+          labelSize={12}
+          thumb="secondary"
+          scale={balanceDbScale}
+          defaultValue={0.5}
+          help={HELP.outputBalance}
+        />
+      </div>
       <KnobControl
-        label="Bal"
-        value={balance}
-        onChange={setBalance}
-        size={BALANCE_KNOB_SIZE}
-        labelSize={10}
-        innerColor="#1C1C1E"
-        scale={balanceDbScale}
+        label="Output"
+        value={level}
+        onChange={setLevel}
+        size={KNOB_SIZE}
+        labelSize={12}
+        scale={gainDbScale}
         defaultValue={0.5}
-        help={HELP.outputBalance}
+        help={HELP.outputLevel}
       />
-      {knob}
     </div>
   );
 };
@@ -266,27 +270,33 @@ export const Faceplate: React.FC<FaceplateProps> = ({
         width: '100%',
         height: `${PLATE_HEIGHT}px`,
         display: 'flex',
-        alignItems: 'center',
+        // Bottom-align every group so labels and knob bottoms share one
+        // baseline regardless of knob size (Gate/Bal are shorter columns
+        // than the 48px knobs). The padding re-centers the tallest columns
+        // in the plate: (100 - 72) / 2.
+        alignItems: 'flex-end',
         justifyContent: 'space-between',
         flexShrink: 0,
         borderTop: BORDER,
         background: '#1C1C1E',
-        // Wider than the meter section's 24px gutters so the Input/Output
-        // knobs (36px) sit centered under the main meters' dot columns
-        // (24px gutter + 18px labels + 10px gap puts the dots ~55px in).
-        padding: '0 38px',
+        // Sides: wider than the meter section's 24px gutters so the
+        // Input/Output knobs (48px) sit centered under the main meters' dot
+        // columns (24px gutter + 18px labels + 10px gap puts the dots ~55px
+        // in). Bottom: re-centers the tallest knob columns, (100 - 72) / 2.
+        padding: '0 32px 14px',
         boxSizing: 'border-box',
       }}
     >
-      {/* Input level + channel mode (mode only when the source is stereo) */}
-      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '10px' }}>
+      {/* Input level + channel mode (mode only when the source is stereo).
+          Rows bottom-align so the buttons' baseline lift lands them all at
+          the same plate-wide height. */}
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end', gap: '10px' }}>
         <KnobControl
           label="Input"
           value={inputLevel}
           onChange={setInputLevel}
           size={KNOB_SIZE}
           labelSize={12}
-          innerColor="#1C1C1E"
           scale={gainDbScale}
           defaultValue={0.5}
           help={HELP.inputLevel}
@@ -299,7 +309,7 @@ export const Faceplate: React.FC<FaceplateProps> = ({
         style={{
           display: 'flex',
           flexDirection: 'row',
-          alignItems: 'center',
+          alignItems: 'flex-end',
           gap: '10px',
           opacity: gateEnabled ? 1 : 0.55,
         }}
@@ -308,9 +318,9 @@ export const Faceplate: React.FC<FaceplateProps> = ({
           label="Gate"
           value={noiseGate}
           onChange={setNoiseGate}
-          size={KNOB_SIZE}
+          size={SECONDARY_KNOB_SIZE}
           labelSize={12}
-          innerColor="#1C1C1E"
+          thumb="secondary"
           scale={gateDbScale}
           defaultValue={gateDbScale.fromDisplay(-80)}
           help={HELP.gate}
@@ -327,7 +337,7 @@ export const Faceplate: React.FC<FaceplateProps> = ({
         style={{
           display: 'flex',
           flexDirection: 'row',
-          alignItems: 'center',
+          alignItems: 'flex-end',
           gap: '24px',
           opacity: toneEqEnabled ? 1 : 0.55,
         }}
@@ -338,7 +348,6 @@ export const Faceplate: React.FC<FaceplateProps> = ({
           onChange={setToneBass}
           size={KNOB_SIZE}
           labelSize={12}
-          innerColor="#1C1C1E"
           scale={toneScale}
           defaultValue={toneScale.fromDisplay(5)}
           help={HELP.toneBass}
@@ -349,7 +358,6 @@ export const Faceplate: React.FC<FaceplateProps> = ({
           onChange={setToneMid}
           size={KNOB_SIZE}
           labelSize={12}
-          innerColor="#1C1C1E"
           scale={toneScale}
           defaultValue={toneScale.fromDisplay(5)}
           help={HELP.toneMiddle}
@@ -360,7 +368,6 @@ export const Faceplate: React.FC<FaceplateProps> = ({
           onChange={setToneTreble}
           size={KNOB_SIZE}
           labelSize={12}
-          innerColor="#1C1C1E"
           scale={toneScale}
           defaultValue={toneScale.fromDisplay(5)}
           help={HELP.toneTreble}
@@ -372,9 +379,11 @@ export const Faceplate: React.FC<FaceplateProps> = ({
         />
       </div>
 
-      {/* Spread/jitter (mono doubler & stereo offset) lives on the plate now,
-          just before the output stage it feeds. */}
-      <SpreadGroup innerColor="#1C1C1E" />
+      {/* Spread (offset/jit knobs) lives on the plate, just before the
+          output stage it feeds. Stereo mode shows the knobs with a power
+          switch; mono mode advertises the feature with a button until it's
+          turned on (see SpreadControls). */}
+      <SpreadGroup stereoMode={stereoChains} />
 
       <OutputGainKnob stereo={stereoOutput} autoBalance={stereoChains} />
     </div>

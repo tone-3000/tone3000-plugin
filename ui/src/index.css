@@ -10,7 +10,7 @@ body {
      accidental text selection or I-beam cursors. Text inputs opt back in. */
   overscroll-behavior: none;
   touch-action: manipulation;
-  user-select: none;
+  user-select: none; /* prevent text selection */
   -webkit-user-select: none;
   cursor: default;
 }
