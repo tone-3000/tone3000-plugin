@@ -6,6 +6,7 @@
 #include <array>
 #include <atomic>
 #include <functional>
+#include <optional>
 
 class TONE3000Processor;
 

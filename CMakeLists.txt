@@ -244,9 +244,22 @@ endif()
 # lightgoldenrodyellow with black text inside JUCE's StandaloneFilterWindow and
 # is not themeable via LookAndFeel. Restyle it to the brand palette: black bar,
 # white text, pure-yellow divider. Idempotent configure-time patch.
+#
+# Also: T3K_AUDIO_SAFE_RESTORE — crash-safe restore of the saved audio device.
+# A tiny sibling sentinel next to the settings file is created just before
+# opening the saved device and cleared once a live device confirms the open
+# (StandaloneAudioSettings::markAudioInitClean). If it's still present next
+# launch, last open crashed and we boot on the default device instead.
 set(_juce_standalone_h "${LIB_DIR}/juce/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h")
 if (EXISTS "${_juce_standalone_h}")
     file(READ "${_juce_standalone_h}" _juce_standalone_src)
+    # Preserve whatever line ending JUCE shipped with (CRLF on some checkouts).
+    if (_juce_standalone_src MATCHES "\r\n")
+        set(_juce_nl "\r\n")
+    else()
+        set(_juce_nl "\n")
+    endif()
+
     if (NOT _juce_standalone_src MATCHES "T3K_DARK_MUTE_BANNER")
         string(REPLACE
             "notification.setColour (Label::textColourId, Colours::black);"
@@ -266,8 +279,76 @@ if (EXISTS "${_juce_standalone_h}")
                 "The JUCE source layout likely changed in this version. Update the patch "
                 "anchors in CMakeLists.txt.")
         endif()
-        file(WRITE "${_juce_standalone_h}" "${_juce_standalone_src}")
+        set(_juce_standalone_dirty TRUE)
         message(STATUS "Patched JUCE StandaloneFilterWindow: dark mute-warning banner")
+    endif()
+
+    if (NOT _juce_standalone_src MATCHES "T3K_AUDIO_SAFE_RESTORE")
+        set(_juce_sentinel_method
+"    void valueChanged (Value& value) override            { muteInput = (bool) value.getValue(); }
+
+    // T3K_AUDIO_SAFE_RESTORE: sentinel file dropped just before opening the
+    // saved audio device and cleared once a live device confirms the open
+    // survived. If it's still present next launch, the last open crashed (see
+    // reloadAudioDeviceState) and we boot on the default device instead. Its
+    // own tiny file next to the settings store — never the multi-MB store
+    // itself. Empty File() when settings aren't a PropertiesFile.
+    File getAudioOpenSentinelFile() const
+    {
+        if (auto* pf = dynamic_cast<PropertiesFile*> (settings.get()))
+            return pf->getFile().getSiblingFile (\"TONE3000-audio-open.tmp\");
+
+        return {};
+    }")
+        # Normalize the replacement's newlines to match the file.
+        string(REPLACE "\n" "${_juce_nl}" _juce_sentinel_method "${_juce_sentinel_method}")
+        string(REPLACE
+            "    void valueChanged (Value& value) override            { muteInput = (bool) value.getValue(); }"
+            "${_juce_sentinel_method}"
+            _juce_standalone_src "${_juce_standalone_src}")
+
+        set(_juce_sentinel_reload_old
+"            savedState = settings->getXmlValue (\"audioSetup\");
+
+           #if ! (JUCE_IOS || JUCE_ANDROID)
+            shouldMuteInput.setValue (settings->getBoolValue (\"shouldMuteInput\", true));
+           #endif")
+        set(_juce_sentinel_reload_new
+"            savedState = settings->getXmlValue (\"audioSetup\");
+
+            // T3K_AUDIO_SAFE_RESTORE: if the sentinel from last launch is still
+            // here, opening the saved device crashed (e.g. a mic + Bluetooth
+            // output CoreAudio aggregate whose combiner JUCE can crash tearing
+            // down when the BT device churns at startup). Boot clean on the
+            // default device; a clean run overwrites \"audioSetup\" on exit.
+            const auto sentinel = getAudioOpenSentinelFile();
+            if (sentinel != File() && sentinel.existsAsFile())
+                savedState.reset();
+            if (sentinel != File())
+                sentinel.create();
+
+           #if ! (JUCE_IOS || JUCE_ANDROID)
+            shouldMuteInput.setValue (settings->getBoolValue (\"shouldMuteInput\", true));
+           #endif")
+        string(REPLACE "\n" "${_juce_nl}" _juce_sentinel_reload_old "${_juce_sentinel_reload_old}")
+        string(REPLACE "\n" "${_juce_nl}" _juce_sentinel_reload_new "${_juce_sentinel_reload_new}")
+        string(REPLACE
+            "${_juce_sentinel_reload_old}"
+            "${_juce_sentinel_reload_new}"
+            _juce_standalone_src "${_juce_standalone_src}")
+
+        if (NOT _juce_standalone_src MATCHES "T3K_AUDIO_SAFE_RESTORE")
+            message(FATAL_ERROR
+                "T3K_AUDIO_SAFE_RESTORE: failed to patch ${_juce_standalone_h}. "
+                "The JUCE source layout likely changed in this version. Update the patch "
+                "anchors in CMakeLists.txt.")
+        endif()
+        set(_juce_standalone_dirty TRUE)
+        message(STATUS "Patched JUCE StandaloneFilterWindow: crash-safe audio device restore")
+    endif()
+
+    if (_juce_standalone_dirty)
+        file(WRITE "${_juce_standalone_h}" "${_juce_standalone_src}")
     endif()
 endif()
 
