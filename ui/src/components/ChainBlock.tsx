@@ -33,77 +33,66 @@ import {
   useDefaultNamA2Size,
   useNamA2ChoosePerTone,
 } from './uiPreferences';
-import { ACTIVE_OUTLINE, BORDER, GRAY, HIGHLIGHT, MUTED, iconButtonStyle } from './theme';
+import { ChromeIconButton, ChromeTextButton } from './ChromeIconButton';
+import {
+  BORDER,
+  ICON_BOX_SIZE,
+  ICON_SIZE,
+  MUTED,
+  segmentedCellStyle,
+  segmentedGroupStyle,
+  textBoxStyle,
+} from './theme';
 
+/** Every header control shares ICON_BOX_SIZE; the leftover air below the
+    chrome row keeps HEADER_HEIGHT at 40 so the card still lines up with the
+    main I/O meters and GRAPH_H (see chainLayout / eqShared). */
 const HEADER_HEIGHT = 40;
+const HEADER_CHROME_H = ICON_BOX_SIZE;
 const IMAGE_SIZE = 224;
 /** In/Mix/Out use the small secondary knob style. */
 const KNOB_SIZE = 36;
 /** Mini meter height in the side rails (meter sits centered above its knob). */
 const RAIL_METER_HEIGHT = 180;
-/** Centers the 18px normalize (=) button on the Out knob: the knob is
-    bottom-aligned in its row (label on top), so this is just half the size
-    difference. */
-const NORMALIZE_BUTTON_OFFSET = -(KNOB_SIZE - 18) / 2;
+/** Centers the normalize (=) chrome box on the Out knob. */
+const NORMALIZE_BUTTON_OFFSET = -(KNOB_SIZE - ICON_BOX_SIZE) / 2;
 
-const headerButtonStyle = iconButtonStyle(24);
-
-/** EQ menu glyphs, drawn for legibility at header size (two clean faders /
-    one bell curve with its drag dot) rather than generic icon-set art.
-    `currentColor` + 1.5 stroke + round caps to match Lucide at this size. */
+/** EQ menu glyphs — shared 16×14 box / 1.5 stroke. Sliders sit halfway
+    between the old full-height faders and the curve's y=3..11 band. */
 const EqSlidersIcon: React.FC = () => (
   <svg
-    width={14}
-    height={14}
-    viewBox="0 0 14 14"
+    width={ICON_SIZE}
+    height={ICON_SIZE}
+    viewBox="0 0 16 14"
     stroke="currentColor"
     strokeWidth={1.5}
     strokeLinecap="round"
+    preserveAspectRatio="xMidYMid meet"
+    style={{ display: 'block', flexShrink: 0 }}
   >
-    <line x1={4.5} y1={1.5} x2={4.5} y2={12.5} />
-    <line x1={9.5} y1={1.5} x2={9.5} y2={12.5} />
-    <circle cx={4.5} cy={9} r={2} fill="currentColor" stroke="none" />
-    <circle cx={9.5} cy={4.5} r={2} fill="currentColor" stroke="none" />
+    <line x1={5.5} y1={2.25} x2={5.5} y2={11.75} />
+    <line x1={10.5} y1={2.25} x2={10.5} y2={11.75} />
+    <circle cx={5.5} cy={8.8} r={1.8} fill="currentColor" stroke="none" />
+    <circle cx={10.5} cy={5.2} r={1.8} fill="currentColor" stroke="none" />
   </svg>
 );
 
 const EqCurveIcon: React.FC = () => (
   <svg
-    width={16}
-    height={14}
+    width={ICON_SIZE}
+    height={ICON_SIZE}
     viewBox="0 0 16 14"
     fill="none"
     stroke="currentColor"
     strokeWidth={1.5}
     strokeLinecap="round"
+    preserveAspectRatio="xMidYMid meet"
+    style={{ display: 'block', flexShrink: 0 }}
   >
     <path d="M1 11 C5 11 5.5 3 8 3 C10.5 3 11 11 15 11" />
     <circle cx={8} cy={3} r={1.8} fill="currentColor" stroke="none" />
   </svg>
 );
-
-/** Segmented button group in the card header (matches the LITE/FULL control). */
-const headerGroupStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'row',
-  height: '24px',
-  borderRadius: '6px',
-  border: BORDER,
-  overflow: 'hidden',
-  flexShrink: 0,
-};
-
-const headerGroupButtonStyle: React.CSSProperties = {
-  width: '28px',
-  height: '100%',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  border: 'none',
-  cursor: 'pointer',
-  backgroundColor: 'transparent',
-  padding: 0,
-};
 
 interface ChainBlockProps {
   block: ToneBlock;
@@ -308,38 +297,57 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
         boxSizing: 'border-box',
       }}
     >
-      {/* Header — a plain row separated from the body by a hairline rule. */}
+      {/* Header — one ICON_BOX_SIZE chrome row on a shared centerline, then
+          air to the hairline. Back/power/LITE/EQ/share all use the same 20px
+          height (the old 24px back button was what pulled power off-center). */}
       <div
         style={{
           height: `${HEADER_HEIGHT}px`,
           flexShrink: 0,
           display: 'flex',
-          alignItems: 'center',
-          gap: '24px',
-          padding: '0 0 16px',
+          flexDirection: 'column',
           boxSizing: 'border-box',
           borderBottom: BORDER,
         }}
       >
-        <button
-          onClick={onBack}
-          {...helpProps(HELP.backToChain)}
-          style={{ ...headerButtonStyle, color: '#ffffff' }}
-        >
-          <ArrowLeft size={18} />
-        </button>
-
-        <button
-          onClick={handleToggleEnabled}
-          {...helpProps(HELP.blockPower)}
+        <div
           style={{
-            ...headerButtonStyle,
-            color: enabled ? '#ffffff' : GRAY,
-            backgroundColor: enabled ? 'transparent' : HIGHLIGHT,
+            height: `${HEADER_CHROME_H}px`,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '24px',
+            flexShrink: 0,
           }}
         >
-          <Power size={14} />
+        {/* Back is a bare 16px glyph — no chrome box (matches Select Tone). */}
+        <button
+          type="button"
+          onClick={onBack}
+          {...helpProps(HELP.backToChain)}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            outline: 'none',
+            padding: 0,
+            margin: 0,
+            display: 'grid',
+            placeItems: 'center',
+            cursor: 'pointer',
+            color: '#ffffff',
+            lineHeight: 0,
+          }}
+        >
+          <ArrowLeft size={16} style={{ display: 'block' }} />
         </button>
+
+        <ChromeIconButton
+          tone="power"
+          on={enabled}
+          help={HELP.blockPower}
+          onClick={handleToggleEnabled}
+        >
+          <Power />
+        </ChromeIconButton>
 
         {/* LITE/FULL for NAM blocks (architecture=2 = always A2).
             Interactive only when Advanced is "Choose per tone". Otherwise
@@ -351,33 +359,15 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
         {isNam &&
           (chooseNamSizePerTone ? (
             <div
-              style={{
-                display: 'flex',
-                flexDirection: 'row',
-                alignItems: 'center',
-                height: '24px',
-                borderRadius: '4px',
-                // Same grey as the model select bar so the header controls match.
-                backgroundColor: 'rgba(120, 120, 128, 0.36)',
-                overflow: 'hidden',
-                flexShrink: 0,
-              }}
+              style={segmentedGroupStyle()}
             >
               <button
                 type="button"
                 onClick={() => !namSizeLocked && handleNamSizeMode(true)}
                 {...helpProps(HELP.namLite)}
                 style={{
-                  height: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '0 4px 0 10px',
-                  fontSize: '11px',
-                  fontWeight: 400,
-                  fontFamily: 'monospace',
-                  border: 'none',
+                  ...segmentedCellStyle(false),
                   cursor: namSizeLocked ? 'not-allowed' : 'pointer',
-                  backgroundColor: 'transparent',
                   color: isLite ? '#ffffff' : MUTED,
                   transition: 'color 0.15s ease',
                 }}
@@ -389,16 +379,8 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                 onClick={() => !namSizeLocked && handleNamSizeMode(false)}
                 {...helpProps(HELP.namFull)}
                 style={{
-                  height: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '0 10px 0 4px',
-                  fontSize: '11px',
-                  fontWeight: 400,
-                  fontFamily: 'monospace',
-                  border: 'none',
+                  ...segmentedCellStyle(false),
                   cursor: namSizeLocked ? 'not-allowed' : 'pointer',
-                  backgroundColor: 'transparent',
                   color: !isLite ? '#ffffff' : MUTED,
                   transition: 'color 0.15s ease',
                 }}
@@ -409,17 +391,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
           ) : (isLite ? 'lite' : 'full') !== defaultNamA2Size ? (
             <span
               {...helpProps(isLite ? HELP.namLite : HELP.namFull)}
-              style={{
-                height: '24px',
-                display: 'flex',
-                alignItems: 'center',
-                padding: '0 10px',
-                fontSize: '11px',
-                fontWeight: 400,
-                fontFamily: 'monospace',
-                color: '#ffffff',
-                flexShrink: 0,
-              }}
+              style={{ ...textBoxStyle(), cursor: 'default', color: '#ffffff' }}
             >
               {isLite ? 'LITE' : 'FULL'}
             </span>
@@ -427,121 +399,75 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
 
         <div style={{ flex: 1, minWidth: 0 }} />
 
-        {/* EQ menu — lives here (not floating over the grid) while the EQ
-            editor is open: view switcher, then reset + power. */}
-        {showEq && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div style={headerGroupStyle}>
-              <button
-                onClick={() => setEqView('sliders')}
-                {...helpProps(HELP.eqSlidersView)}
-                style={{
-                  ...headerGroupButtonStyle,
-                  color: eqView === 'sliders' ? '#ffffff' : MUTED,
-                  backgroundColor: eqView === 'sliders' ? HIGHLIGHT : 'transparent',
-                }}
+        {/* EQ toggle + its open menu share one 16px-gap row so the toggle
+            sits as close to the menu as the menu items do to each other
+            (not the header's 24px group gap). */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0 }}>
+          {showEq && (
+            <>
+              <div style={segmentedGroupStyle()}>
+                <button
+                  onClick={() => setEqView('sliders')}
+                  {...helpProps(HELP.eqSlidersView)}
+                  style={{
+                    ...segmentedCellStyle(true),
+                    color: eqView === 'sliders' ? '#ffffff' : MUTED,
+                  }}
+                >
+                  <EqSlidersIcon />
+                </button>
+                <button
+                  onClick={() => setEqView('graph')}
+                  {...helpProps(HELP.eqCurveView)}
+                  style={{
+                    ...segmentedCellStyle(true),
+                    color: eqView === 'graph' ? '#ffffff' : MUTED,
+                  }}
+                >
+                  <EqCurveIcon />
+                </button>
+              </div>
+              {/* PRE moves the EQ before the block's model (after In Gain);
+                  off = the default post-block position. */}
+              <ChromeTextButton armed={eqPre} help={HELP.eqPre} onClick={handleToggleEqPre}>
+                PRE
+              </ChromeTextButton>
+              <ChromeIconButton help={HELP.eqReset} onClick={() => actions.resetBlockEq(blockId)}>
+                <RotateCcw />
+              </ChromeIconButton>
+              <ChromeIconButton
+                tone="power"
+                on={eqOn}
+                help={HELP.eqPower}
+                onClick={handleToggleEqEnabled}
               >
-                <EqSlidersIcon />
-              </button>
-              <button
-                onClick={() => setEqView('graph')}
-                {...helpProps(HELP.eqCurveView)}
-                style={{
-                  ...headerGroupButtonStyle,
-                  borderLeft: BORDER,
-                  color: eqView === 'graph' ? '#ffffff' : MUTED,
-                  backgroundColor: eqView === 'graph' ? HIGHLIGHT : 'transparent',
-                }}
-              >
-                <EqCurveIcon />
-              </button>
-            </div>
-            {/* PRE moves the EQ before the block's model (after In Gain);
-                off = the default post-block position. Same two-state look
-                as the EQ toggle: outline + white text while engaged. */}
-            <button
-              onClick={handleToggleEqPre}
-              {...helpProps(HELP.eqPre)}
-              style={{
-                ...headerButtonStyle,
-                width: 'auto',
-                padding: '0 8px',
-                fontSize: '11px',
-                fontWeight: 400,
-                fontFamily: 'monospace',
-                border: eqPre ? ACTIVE_OUTLINE : BORDER,
-                color: eqPre ? '#ffffff' : MUTED,
-                backgroundColor: eqPre ? HIGHLIGHT : 'transparent',
-              }}
-            >
-              PRE
-            </button>
-            {/* Reset and power stand alone (no bordered group). */}
-            <button
-              onClick={() => actions.resetBlockEq(blockId)}
-              {...helpProps(HELP.eqReset)}
-              style={{ ...headerButtonStyle, border: 'none', color: '#ffffff' }}
-            >
-              <RotateCcw size={14} />
-            </button>
-            <button
-              onClick={handleToggleEqEnabled}
-              {...helpProps(HELP.eqPower)}
-              style={{
-                ...headerButtonStyle,
-                border: 'none',
-                color: eqOn ? '#ffffff' : GRAY,
-                backgroundColor: eqOn ? 'transparent' : HIGHLIGHT,
-              }}
-            >
-              <Power size={14} />
-            </button>
-          </div>
-        )}
+                <Power />
+              </ChromeIconButton>
+            </>
+          )}
 
-        {/* EQ view toggle. Two independent signals (see theme.ts patterns):
-            white text + bright outline = the EQ is shaping audio (on and
-            non-flat), even when the editor is closed; grey fill = the
-            editor panel is currently open (like the tuner toggle). */}
-        <button
-          onClick={() => setShowEq((prev) => !prev)}
-          {...helpProps(HELP.eqToggle)}
-          style={{
-            ...headerButtonStyle,
-            width: 'auto',
-            padding: '0 8px',
-            fontSize: '11px',
-            fontWeight: 400,
-            fontFamily: 'monospace',
-            border: eqActive ? ACTIVE_OUTLINE : BORDER,
-            color: eqActive || showEq ? '#ffffff' : MUTED,
-            backgroundColor: showEq ? HIGHLIGHT : 'transparent',
-          }}
-        >
-          EQ
-        </button>
+          {/* Two independent signals (see theme.ts patterns): white fill =
+              editor open; yellow fill = EQ shaping audio while closed. */}
+          <ChromeTextButton
+            armed={eqActive}
+            open={showEq}
+            help={HELP.eqToggle}
+            onClick={() => setShowEq((prev) => !prev)}
+          >
+            EQ
+          </ChromeTextButton>
+        </div>
 
-        <button
-          onClick={handleShare}
-          {...helpProps(HELP.shareTone)}
-          style={{ ...headerButtonStyle, color: '#ffffff' }}
-        >
-          {copied ? <Check size={14} /> : <Share size={14} />}
-        </button>
-        <button
-          onClick={() => actions.swapBlock(blockId)}
-          {...helpProps(HELP.swapTone)}
-          style={{ ...headerButtonStyle, color: '#ffffff' }}
-        >
-          <ArrowLeftRight size={14} />
-        </button>
-        <button
-          onClick={() => actions.removeBlock(blockId)}
-          {...helpProps(HELP.removeBlock)}
-          style={{ ...headerButtonStyle, color: '#ffffff' }}
-        >
-          <Trash2 size={14} />
-        </button>
+        <ChromeIconButton help={HELP.shareTone} onClick={handleShare}>
+          {copied ? <Check /> : <Share />}
+        </ChromeIconButton>
+        <ChromeIconButton help={HELP.swapTone} onClick={() => actions.swapBlock(blockId)}>
+          <ArrowLeftRight />
+        </ChromeIconButton>
+        <ChromeIconButton help={HELP.removeBlock} onClick={() => actions.removeBlock(blockId)}>
+          <Trash2 />
+        </ChromeIconButton>
+        </div>
       </div>
 
       {/* Body */}
@@ -819,28 +745,15 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                 }}
               >
                 {isNam && showNormalizeControl && (
-                  <button
+                  <ChromeIconButton
+                    tone="armed"
+                    on={normalizeOn}
+                    help={HELP.blockNormalize}
                     onClick={handleToggleNormalize}
-                    {...helpProps(HELP.blockNormalize)}
-                    style={{
-                      width: '18px',
-                      height: '18px',
-                      borderRadius: '5px',
-                      border: normalizeOn ? ACTIVE_OUTLINE : BORDER,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      padding: 0,
-                      flexShrink: 0,
-                      boxSizing: 'border-box',
-                      color: normalizeOn ? '#ffffff' : GRAY,
-                      backgroundColor: normalizeOn ? HIGHLIGHT : 'transparent',
-                      transform: `translateY(${NORMALIZE_BUTTON_OFFSET}px)`,
-                    }}
+                    offsetY={NORMALIZE_BUTTON_OFFSET}
                   >
-                    <Equal size={12} />
-                  </button>
+                    <Equal size={ICON_SIZE} />
+                  </ChromeIconButton>
                 )}
                 <KnobControl
                   label="Out"

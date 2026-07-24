@@ -8,9 +8,9 @@ import { panScale } from './knobScale';
 
 const PAN_LEFT_SCALE = panScale('left');
 const PAN_RIGHT_SCALE = panScale('right');
-import { PillIconButton } from './SpreadControls';
-import { HELP, helpProps } from './helpText';
-import { BORDER } from './theme';
+import { ChromeIconButton } from './ChromeIconButton';
+import { HELP } from './helpText';
+import { BORDER, ICON_SIZE } from './theme';
 import { useParameter } from '../hooks/useParameter';
 import { useChainActions } from '../hooks/useChainActions';
 import type { ChainItem } from '../types/chain';
@@ -98,10 +98,12 @@ const GhostRail: React.FC<{ slots: number; tileSize: number }> = ({ slots, tileS
 export const GalleryLane: React.FC<{
   items: ChainItem[];
   tileSize: number;
+  /** Stereo lanes use the 3×3 grip; mono uses the horizontal grip. */
+  stereo?: boolean;
   onOpen: (blockId: string) => void;
   /** Open the tone browser targeting the clicked insert slot. */
   onAdd: (insertBlockId: string) => void;
-}> = ({ items, tileSize, onOpen, onAdd }) => (
+}> = ({ items, tileSize, stereo = false, onOpen, onAdd }) => (
   <div style={{ position: 'relative', width: 'max-content' }}>
     <GhostRail slots={items.length} tileSize={tileSize} />
     <SortableContext
@@ -124,11 +126,18 @@ export const GalleryLane: React.FC<{
               key={item.blockId}
               id={item.blockId}
               size={tileSize}
+              stereo={stereo}
               routing={addTileRouting(index, items.length)}
               onClick={() => onAdd(item.blockId)}
             />
           ) : (
-            <GalleryBlock key={item.blockId} block={item} size={tileSize} onOpen={onOpen} />
+            <GalleryBlock
+              key={item.blockId}
+              block={item}
+              size={tileSize}
+              stereo={stereo}
+              onOpen={onOpen}
+            />
           )
         )}
       </div>
@@ -221,28 +230,18 @@ export const StereoPanRail: React.FC = () => {
           padding: '3px 5px',
         }}
       >
-        <PillIconButton on={linked} help={HELP.panLink} onClick={handleToggleLink} offsetY={0}>
-          <Link size={12} />
-        </PillIconButton>
-        <button
-          onClick={swapChains}
-          {...helpProps(HELP.swapChains)}
-          style={{
-            width: '22px',
-            height: '22px',
-            borderRadius: '6px',
-            border: 'none',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            padding: 0,
-            color: '#ffffff',
-            background: 'transparent',
-          }}
+        <ChromeIconButton
+          tone="link"
+          on={linked}
+          help={HELP.panLink}
+          onClick={handleToggleLink}
+          offsetY={0}
         >
-          <ArrowUpDown size={12} />
-        </button>
+          <Link size={ICON_SIZE} />
+        </ChromeIconButton>
+        <ChromeIconButton help={HELP.swapChains} onClick={swapChains} offsetY={0}>
+          <ArrowUpDown size={ICON_SIZE} />
+        </ChromeIconButton>
       </div>
       <div style={knobRegion}>
         <div style={connector} />

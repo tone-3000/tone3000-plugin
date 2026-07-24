@@ -9,7 +9,7 @@ import { ToneImage } from './GearIcon';
 import { BusyOverlay, LoadingDots } from './LoadingDots';
 import { HELP, helpProps } from './helpText';
 import { CARD_WIDTH } from './chainLayout';
-import { BORDER, MUTED, SURFACE, SURFACE_RAISED, iconButtonStyle, pillButtonStyle } from './theme';
+import { BORDER, MUTED, SURFACE, SURFACE_RAISED, pillButtonStyle, BRAND_RED } from './theme';
 
 /**
  * In-plugin tone browser: renders inside the main view in place of the signal
@@ -543,9 +543,20 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
           <button
             onClick={onClose}
             {...helpProps(HELP.closeToneBrowser)}
-            style={{ ...iconButtonStyle(24), color: '#ffffff' }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              padding: 0,
+              margin: 0,
+              display: 'grid',
+              placeItems: 'center',
+              cursor: 'pointer',
+              color: '#ffffff',
+              lineHeight: 0,
+            }}
           >
-            <ArrowLeft size={18} />
+            <ArrowLeft size={16} style={{ display: 'block' }} />
           </button>
           <span
             style={{
@@ -587,7 +598,7 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
 
           {pickError && (
             <div style={{ marginTop: '16px' }}>
-              <span style={{ fontSize: '12px', fontWeight: 400, color: '#ff6b5e' }}>
+              <span style={{ fontSize: '12px', fontWeight: 400, color: BRAND_RED }}>
                 {pickError}
               </span>
             </div>

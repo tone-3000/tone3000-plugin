@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ArrowLeftRight, GripVertical, PlusCircle, Power, Trash2 } from 'lucide-react';
+import { ArrowLeftRight, Grip, GripHorizontal, PlusCircle, Power, Trash2 } from 'lucide-react';
 import { BlockEnergyBorder, BlockLed } from './BlockLed';
 import { ToneImage } from './GearIcon';
 import { LoadingDots } from './LoadingDots';
@@ -11,7 +11,8 @@ import { useChainActions } from '../hooks/useChainActions';
 import { HELP, helpProps, toneTileHelp } from './helpText';
 import type { ChainItem, ToneBlock } from '../types/chain';
 import { isInsertSlot } from '../types/chain';
-import { GRAY, HIGHLIGHT, SURFACE, SURFACE_RAISED, iconButtonStyle } from './theme';
+import { ChromeIconButton } from './ChromeIconButton';
+import { ICON_SIZE, SURFACE, SURFACE_RAISED, iconButtonStyle } from './theme';
 
 /**
  * Gallery view of a chain block: a square tone image with quick actions
@@ -27,7 +28,13 @@ import { GRAY, HIGHLIGHT, SURFACE, SURFACE_RAISED, iconButtonStyle } from './the
 /** Opacity of the moving copy while dragging (matches the old chain). */
 const DRAG_GHOST_OPACITY = 0.75;
 
-const actionButtonStyle = iconButtonStyle(22);
+const gripStyle = iconButtonStyle();
+
+/** Mono = horizontal 2×3 dots; stereo = full 3×3 grid (cross-lane drags). */
+const DragGripIcon: React.FC<{ stereo: boolean }> = ({ stereo }) => {
+  const Icon = stereo ? Grip : GripHorizontal;
+  return <Icon size={ICON_SIZE} style={{ display: 'block' }} />;
+};
 
 /** Keep tile buttons from taking focus on press — the webview scrolls the
     focused element into view, which nudges the whole lane by a pixel. */
@@ -54,8 +61,10 @@ const TileSurface: React.FC<{
   block: ToneBlock;
   size: number;
   enabled: boolean;
+  /** Stereo lanes use the 3×3 grip; mono uses the horizontal grip. */
+  stereo?: boolean;
   actions?: TileActions;
-}> = ({ block, size, enabled, actions }) => {
+}> = ({ block, size, enabled, stereo = false, actions }) => {
   const { blockId, tone } = block;
 
   // A model download/prepare is in flight: `modelLoading` covers switches
@@ -171,40 +180,38 @@ const TileSurface: React.FC<{
             {...(actions ? helpProps(HELP.dragGrip) : {})}
             // touch-action: none — otherwise touch devices claim the gesture
             // for lane scrolling and pointercancel kills the drag instantly.
-            style={{ ...actionButtonStyle, cursor: 'grab', color: '#ffffff', touchAction: 'none' }}
+            style={{ ...gripStyle, cursor: 'grab', color: '#ffffff', touchAction: 'none', lineHeight: 0 }}
           >
-            <GripVertical size={14} />
+            <DragGripIcon stereo={stereo} />
           </div>
           <div style={{ flex: 1 }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button
-              onClick={actions?.onTogglePower}
+            <ChromeIconButton
+              tone="power"
+              on={enabled}
+              help={HELP.blockPower}
+              onClick={(e) => actions?.onTogglePower(e)}
               onMouseDown={preventFocus}
-              {...(actions ? helpProps(HELP.blockPower) : {})}
-              style={{
-                ...actionButtonStyle,
-                color: enabled ? '#ffffff' : GRAY,
-                backgroundColor: enabled ? 'transparent' : HIGHLIGHT,
-              }}
+              style={{ pointerEvents: actions ? undefined : 'none' }}
             >
-              <Power size={14} />
-            </button>
-            <button
-              onClick={actions?.onSwap}
+              <Power size={ICON_SIZE} />
+            </ChromeIconButton>
+            <ChromeIconButton
+              help={HELP.swapTone}
+              onClick={(e) => actions?.onSwap(e)}
               onMouseDown={preventFocus}
-              {...(actions ? helpProps(HELP.swapTone) : {})}
-              style={{ ...actionButtonStyle, color: '#ffffff' }}
+              style={{ pointerEvents: actions ? undefined : 'none' }}
             >
-              <ArrowLeftRight size={14} />
-            </button>
-            <button
-              onClick={actions?.onRemove}
+              <ArrowLeftRight size={ICON_SIZE} />
+            </ChromeIconButton>
+            <ChromeIconButton
+              help={HELP.removeBlock}
+              onClick={(e) => actions?.onRemove(e)}
               onMouseDown={preventFocus}
-              {...(actions ? helpProps(HELP.removeBlock) : {})}
-              style={{ ...actionButtonStyle, color: '#ffffff' }}
+              style={{ pointerEvents: actions ? undefined : 'none' }}
             >
-              <Trash2 size={14} />
-            </button>
+              <Trash2 size={ICON_SIZE} />
+            </ChromeIconButton>
           </div>
         </div>
 
@@ -224,6 +231,8 @@ interface GalleryBlockProps {
   block: ToneBlock;
   /** Tile edge, px. */
   size: number;
+  /** Stereo lanes use the 3×3 grip; mono uses the horizontal grip. */
+  stereo?: boolean;
   /** Open the detail takeover for this block. */
   onOpen: (blockId: string) => void;
 }
@@ -232,7 +241,8 @@ interface GalleryBlockProps {
     reaches tiles whose block snapshot actually changed. Mutations come from
     the ChainActions context, so there are no per-render callback props to
     defeat the memo. */
-export const GalleryBlock: React.FC<GalleryBlockProps> = React.memo(({ block, size, onOpen }) => {
+export const GalleryBlock: React.FC<GalleryBlockProps> = React.memo(
+  ({ block, size, stereo = false, onOpen }) => {
   const { blockId, params } = block;
   const actions = useChainActions();
 
@@ -274,6 +284,7 @@ export const GalleryBlock: React.FC<GalleryBlockProps> = React.memo(({ block, si
         block={block}
         size={size}
         enabled={enabled}
+        stereo={stereo}
         actions={{
           onOpen: () => onOpen(blockId),
           onTogglePower: handleTogglePower,
@@ -323,7 +334,10 @@ const addTileFaceStyle = (size: number): React.CSSProperties => ({
     read against, only the tile's flat surface. Revealed on hover via the
     shared `.gallery-tile .tile-chrome` CSS (always visible on touch-only
     devices — see index.css); the drag ghost pins it with tile-chrome-visible. */
-const AddTileHeader: React.FC<{ grip?: React.HTMLAttributes<HTMLDivElement> }> = ({ grip }) => (
+const AddTileHeader: React.FC<{
+  grip?: React.HTMLAttributes<HTMLDivElement>;
+  stereo?: boolean;
+}> = ({ grip, stereo = false }) => (
   <div
     className="tile-chrome"
     style={{
@@ -344,13 +358,14 @@ const AddTileHeader: React.FC<{ grip?: React.HTMLAttributes<HTMLDivElement> }> =
       // touch-action: none — otherwise touch devices claim the gesture
       // for lane scrolling and pointercancel kills the drag instantly.
       style={{
-        ...actionButtonStyle,
+        ...gripStyle,
         cursor: grip ? 'grab' : 'grabbing',
         color: '#ffffff',
         touchAction: 'none',
+        lineHeight: 0,
       }}
     >
-      <GripVertical size={14} />
+      <DragGripIcon stereo={stereo} />
     </div>
   </div>
 );
@@ -360,13 +375,14 @@ interface AddTileProps {
   id: string;
   size: number;
   routing: AddTileRouting;
+  stereo?: boolean;
   onClick: () => void;
 }
 
 /** The insert slot as a dashed add tile — sortable so the insert point can be
     repositioned within its lane, like any other block. Routing lines continue
     the lane's connector line through to the plus circle. */
-export const AddTile: React.FC<AddTileProps> = ({ id, size, routing, onClick }) => {
+export const AddTile: React.FC<AddTileProps> = ({ id, size, routing, stereo = false, onClick }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
   });
@@ -400,7 +416,7 @@ export const AddTile: React.FC<AddTileProps> = ({ id, size, routing, onClick }) 
     >
       {!isDragging && (routing === 'left' || routing === 'both') && routingLine('left')}
       {!isDragging && (routing === 'right' || routing === 'both') && routingLine('right')}
-      <AddTileHeader grip={{ ...attributes, ...listeners }} />
+      <AddTileHeader grip={{ ...attributes, ...listeners }} stereo={stereo} />
       <PlusCircle size={40} strokeWidth={1} />
     </div>
   );
@@ -413,14 +429,15 @@ export const AddTile: React.FC<AddTileProps> = ({ id, size, routing, onClick }) 
 export const GalleryTileGhost: React.FC<{
   item: ChainItem;
   size: number;
-}> = ({ item, size }) => {
+  stereo?: boolean;
+}> = ({ item, size, stereo = false }) => {
   if (isInsertSlot(item)) {
     return (
       <div
         className="gallery-tile tile-chrome-visible"
         style={{ ...addTileFaceStyle(size), opacity: DRAG_GHOST_OPACITY, cursor: 'grabbing' }}
       >
-        <AddTileHeader />
+        <AddTileHeader stereo={stereo} />
         <PlusCircle size={40} strokeWidth={1} />
       </div>
     );
@@ -428,7 +445,7 @@ export const GalleryTileGhost: React.FC<{
 
   return (
     <div style={{ opacity: DRAG_GHOST_OPACITY, cursor: 'grabbing' }}>
-      <TileSurface block={item} size={size} enabled={item.params.enabled} />
+      <TileSurface block={item} size={size} enabled={item.params.enabled} stereo={stereo} />
     </div>
   );
 };

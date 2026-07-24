@@ -521,14 +521,25 @@ export const Plugin: React.FC = () => {
             help={HELP.tuner}
             active={showTuner}
             fillWhenActive
+            size={28}
           >
             <TuningForkIcon size={18} />
           </IconButton>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <IconButton onClick={() => actions.undo()} disabled={!canUndo} help={HELP.undo}>
+            <IconButton
+              onClick={() => actions.undo()}
+              disabled={!canUndo}
+              help={HELP.undo}
+              size={28}
+            >
               <Undo2 size={18} />
             </IconButton>
-            <IconButton onClick={() => actions.redo()} disabled={!canRedo} help={HELP.redo}>
+            <IconButton
+              onClick={() => actions.redo()}
+              disabled={!canRedo}
+              help={HELP.redo}
+              size={28}
+            >
               <Redo2 size={18} />
             </IconButton>
           </div>

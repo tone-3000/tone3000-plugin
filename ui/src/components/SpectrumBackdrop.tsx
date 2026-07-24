@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { useBlockSpectrum, SPECTRUM_MIN_DB } from '../hooks/useBlockSpectrum';
 import { GRAPH_W, GRAPH_H, clamp } from './eqShared';
+import { BRAND_BLUE, BRAND_RED, BRAND_YELLOW } from './theme';
 
 /**
  * Spectrum backdrop for the EQ editor — isolated so its ~30 fps polling
@@ -40,10 +41,10 @@ export const SpectrumBackdrop: React.FC<{ blockId: string }> = ({ blockId }) => 
           y2="0"
         >
           {/* Yellow/red pulled down so hot content reads red well before 0 dBFS */}
-          <stop offset="0%" stopColor="#0000FF" />
-          <stop offset="40%" stopColor="#FFFF00" />
-          <stop offset="70%" stopColor="#FF0000" />
-          <stop offset="100%" stopColor="#FF0000" />
+          <stop offset="0%" stopColor={BRAND_BLUE} />
+          <stop offset="40%" stopColor={BRAND_YELLOW} />
+          <stop offset="70%" stopColor={BRAND_RED} />
+          <stop offset="100%" stopColor={BRAND_RED} />
         </linearGradient>
       </defs>
       <path d={areaPath} fill={`url(#${gradientId})`} fillOpacity={0.3} />

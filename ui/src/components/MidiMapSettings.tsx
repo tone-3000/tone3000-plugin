@@ -11,7 +11,7 @@ import {
   sourceSubtitle,
   targetById,
 } from './midiCatalog';
-import { MUTED, SUBTLE } from './theme';
+import { MUTED, SUBTLE, BRAND_YELLOW } from './theme';
 
 /**
  * MIDI Mapping (Plugin Settings tab): control the plugin from pedals and
@@ -135,7 +135,7 @@ const LearningRow: React.FC<{ targetId: string; onCancel: () => void }> = ({
             width: '7px',
             height: '7px',
             borderRadius: '50%',
-            background: '#ffe600',
+            background: BRAND_YELLOW,
             flexShrink: 0,
           }}
         />

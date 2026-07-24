@@ -147,9 +147,8 @@ export const HELP = {
     'delays one side up to 24 ms for width. Center: off · Left/right of center: delays L/R.'
   ),
   jitter: knobHelp('Jitter', 'adds up to 4 ms of random per-note drift to the offset.'),
-  spreadPower: 'Spread Power: toggles the stereo spread on/off.',
-  spreadAdvert: 'Spread: doubles the chain into wide stereo with a short delay. Click: turn on.',
-  spreadClose: 'Spread Off: turns spread off and collapses its controls.',
+  spreadAdvert: 'Spread: short delay on one side for stereo width. Click: turn on.',
+  spreadPower: 'Spread Power: turns spread off and collapses its controls.',
 
   // Top bar
   tuner: 'Tuner: opens the chromatic tuner. Click again: back to the chain.',

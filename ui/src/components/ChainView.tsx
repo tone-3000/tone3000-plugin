@@ -274,6 +274,7 @@ export const ChainView: React.FC<ChainViewProps> = ({ chain, chainRight, sampleR
     <GalleryLane
       items={lanes[side]}
       tileSize={tileSize}
+      stereo={stereo}
       onOpen={setDetailBlockId}
       onAdd={(insertBlockId) => actions.addModel(side, insertBlockId)}
     />
@@ -341,7 +342,7 @@ export const ChainView: React.FC<ChainViewProps> = ({ chain, chainRight, sampleR
             before the optimistic lane commit paints, so the ghost would fly
             back to the old slot before the tile appears at the new one. */}
         <DragOverlay dropAnimation={null}>
-          {activeDrag && <GalleryTileGhost item={activeDrag} size={tileSize} />}
+          {activeDrag && <GalleryTileGhost item={activeDrag} size={tileSize} stereo={stereo} />}
         </DragOverlay>
       </DndContext>
     </div>

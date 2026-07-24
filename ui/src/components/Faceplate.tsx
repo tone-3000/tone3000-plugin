@@ -6,8 +6,9 @@ import { SpreadGroup } from './SpreadControls';
 import { useParameter } from '../hooks/useParameter';
 import type { InputMode } from '../types/chain';
 import { useNativeFunction } from '../hooks/useFunction';
-import { HELP, helpProps } from './helpText';
-import { ACTIVE_OUTLINE, BORDER, GRAY, HIGHLIGHT } from './theme';
+import { HELP } from './helpText';
+import { ChromeIconButton } from './ChromeIconButton';
+import { BORDER, ICON_SIZE, faceplateChromeLift } from './theme';
 
 /**
  * Bottom faceplate: main input/output gain, gate and the global 3-band tone
@@ -31,62 +32,31 @@ const KNOB_SIZE = 48;
 /** Small companion knobs (Bal, Gate) — secondary style. */
 const SECONDARY_KNOB_SIZE = 32;
 const PLATE_HEIGHT = 100;
-
-/** Every action button on the plate (power, input mode, auto-balance) sits
-    at one shared height: centered on the secondary knobs. All knob groups
-    bottom-align on the plate's baseline with a 10px gap + 14px label slot
-    under each knob, so a button of height h starts at the baseline and
-    lifts by 24 + secondary radius − h/2. */
-const buttonLift = (buttonHeight: number) =>
-  -(10 + 14 + SECONDARY_KNOB_SIZE / 2 - buttonHeight / 2);
-
-/** Shared shell for the small square buttons that sit beside knobs
-    (power switches, input mode). */
-const SIDE_BUTTON_STYLE: React.CSSProperties = {
-  width: '22px',
-  height: '22px',
-  borderRadius: '6px',
-  border: 'none',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  cursor: 'pointer',
-  padding: 0,
-  flexShrink: 0,
-  transform: `translateY(${buttonLift(22)}px)`,
-};
+/** Shared faceplate action-button height: center of the secondary knobs. */
+const CHROME_LIFT = faceplateChromeLift(SECONDARY_KNOB_SIZE);
 
 const PowerButton: React.FC<{
   on: boolean;
   help: string;
   onClick: () => void;
 }> = ({ on, help, onClick }) => (
-  <button
-    onClick={onClick}
-    {...helpProps(help)}
-    style={{
-      ...SIDE_BUTTON_STYLE,
-      color: on ? '#ffffff' : GRAY,
-      backgroundColor: on ? 'transparent' : HIGHLIGHT,
-    }}
-  >
-    <Power size={12} />
-  </button>
+  <ChromeIconButton tone="power" on={on} help={help} onClick={onClick} offsetY={CHROME_LIFT}>
+    <Power size={ICON_SIZE} />
+  </ChromeIconButton>
 );
 
-/** Two overlapping circles — the classic stereo glyph (lucide has none).
-    Sized to sit next to the 12px Power icon without overpowering it. */
-const StereoIcon: React.FC = () => (
+/** Two overlapping circles — the classic stereo glyph (lucide has none). */
+const StereoIcon: React.FC<{ style?: React.CSSProperties }> = ({ style }) => (
   <svg
-    width={15}
-    height={12}
-    viewBox="0 0 15 12"
+    width={17}
+    height={10}
+    viewBox="0 0 17 10"
     fill="none"
-    stroke="currentColor"
-    strokeWidth={1.4}
+    xmlns="http://www.w3.org/2000/svg"
+    style={{ display: 'block', flexShrink: 0, ...style }}
   >
-    <circle cx="5.25" cy="6" r="4.4" />
-    <circle cx="9.75" cy="6" r="4.4" />
+    <circle cx="5" cy="5" r="4.375" stroke="currentColor" strokeWidth="1.25" />
+    <circle cx="11.6665" cy="5" r="4.375" stroke="currentColor" strokeWidth="1.25" />
   </svg>
 );
 
@@ -106,14 +76,11 @@ const InputModeButton: React.FC<{
   mode: InputMode;
   onChange: (mode: InputMode) => void;
 }> = ({ mode, onChange }) => (
-  <button
+  <ChromeIconButton
+    help={HELP.inputMode}
     onClick={() => onChange(INPUT_MODE_CYCLE[mode])}
-    {...helpProps(HELP.inputMode)}
-    style={{
-      ...SIDE_BUTTON_STYLE,
-      color: '#ffffff',
-      backgroundColor: mode === 'stereo' ? 'transparent' : HIGHLIGHT,
-    }}
+    filled={mode !== 'stereo'}
+    offsetY={CHROME_LIFT}
   >
     {mode === 'stereo' ? (
       <StereoIcon />
@@ -122,15 +89,15 @@ const InputModeButton: React.FC<{
         {mode === 'left' ? 'L' : 'R'}
       </span>
     )}
-  </button>
+  </ChromeIconButton>
 );
 
 /**
  * Auto balance: one-shot L/R energy match. Click arms a listening
  * measurement on the native side — play for ~2 s and the measured dB
  * difference is written into the outputBalance parameter (the Bal knob
- * visibly moves). Engaged style (white outline + fill, like PRE) while
- * listening; click again to cancel; times out after 15 s of silence.
+ * visibly moves). Yellow (listening) while armed; click again to cancel;
+ * times out after 15 s of silence.
  */
 const AutoBalanceButton: React.FC = () => {
   const start = useNativeFunction<boolean>('startAutoBalance');
@@ -158,30 +125,15 @@ const AutoBalanceButton: React.FC = () => {
   };
 
   return (
-    <button
+    <ChromeIconButton
+      tone="armed"
+      on={listening}
+      help={HELP.autoBalance}
       onClick={handleClick}
-      {...helpProps(HELP.autoBalance)}
-      style={{
-        width: '18px',
-        height: '18px',
-        borderRadius: '5px',
-        border: listening ? ACTIVE_OUTLINE : BORDER,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        cursor: 'pointer',
-        padding: 0,
-        flexShrink: 0,
-        boxSizing: 'border-box',
-        color: listening ? '#ffffff' : GRAY,
-        backgroundColor: listening ? HIGHLIGHT : 'transparent',
-        transform: `translateY(${buttonLift(18)}px)`,
-      }}
+      offsetY={CHROME_LIFT}
     >
-      {/* Size 12 keeps the glyph's inset even (16px content box − 12 = 2px
-          per side); 11 forced a half-pixel offset that read as off-center. */}
-      <Equal size={12} />
-    </button>
+      <Equal size={ICON_SIZE} />
+    </ChromeIconButton>
   );
 };
 
@@ -338,40 +290,42 @@ export const Faceplate: React.FC<FaceplateProps> = ({
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'flex-end',
-          gap: '24px',
+          gap: '10px',
           opacity: toneEqEnabled ? 1 : 0.55,
         }}
       >
-        <KnobControl
-          label="Bass"
-          value={toneBass}
-          onChange={setToneBass}
-          size={KNOB_SIZE}
-          labelSize={12}
-          scale={toneScale}
-          defaultValue={toneScale.fromDisplay(5)}
-          help={HELP.toneBass}
-        />
-        <KnobControl
-          label="Middle"
-          value={toneMid}
-          onChange={setToneMid}
-          size={KNOB_SIZE}
-          labelSize={12}
-          scale={toneScale}
-          defaultValue={toneScale.fromDisplay(5)}
-          help={HELP.toneMiddle}
-        />
-        <KnobControl
-          label="Treble"
-          value={toneTreble}
-          onChange={setToneTreble}
-          size={KNOB_SIZE}
-          labelSize={12}
-          scale={toneScale}
-          defaultValue={toneScale.fromDisplay(5)}
-          help={HELP.toneTreble}
-        />
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '24px' }}>
+          <KnobControl
+            label="Bass"
+            value={toneBass}
+            onChange={setToneBass}
+            size={KNOB_SIZE}
+            labelSize={12}
+            scale={toneScale}
+            defaultValue={toneScale.fromDisplay(5)}
+            help={HELP.toneBass}
+          />
+          <KnobControl
+            label="Middle"
+            value={toneMid}
+            onChange={setToneMid}
+            size={KNOB_SIZE}
+            labelSize={12}
+            scale={toneScale}
+            defaultValue={toneScale.fromDisplay(5)}
+            help={HELP.toneMiddle}
+          />
+          <KnobControl
+            label="Treble"
+            value={toneTreble}
+            onChange={setToneTreble}
+            size={KNOB_SIZE}
+            labelSize={12}
+            scale={toneScale}
+            defaultValue={toneScale.fromDisplay(5)}
+            help={HELP.toneTreble}
+          />
+        </div>
         <PowerButton
           on={toneEqEnabled}
           help={HELP.tonePower}
@@ -380,10 +334,9 @@ export const Faceplate: React.FC<FaceplateProps> = ({
       </div>
 
       {/* Spread (offset/jit knobs) lives on the plate, just before the
-          output stage it feeds. Stereo mode shows the knobs with a power
-          switch; mono mode advertises the feature with a button until it's
-          turned on (see SpreadControls). */}
-      <SpreadGroup stereoMode={stereoChains} />
+          output stage it feeds. Collapsed to an advert button while off;
+          expands with Offset/Jit + power to collapse (same in mono and stereo). */}
+      <SpreadGroup />
 
       <OutputGainKnob stereo={stereoOutput} autoBalance={stereoChains} />
     </div>

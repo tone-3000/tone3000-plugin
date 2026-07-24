@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { MUTED } from './theme';
+import { MUTED, BRAND_RED, BRAND_YELLOW, WHITE } from './theme';
 
 /**
  * Shared form primitives for settings-style surfaces (Settings takeover,
@@ -409,9 +409,9 @@ export function SegmentedControl<T extends string>({
 export type AlertVariant = 'error' | 'warn' | 'info';
 
 const ALERT_COLORS: Record<AlertVariant, string> = {
-  error: '#ff0000',
-  warn: '#ffe600',
-  info: '#ffe600',
+  error: BRAND_RED,
+  warn: BRAND_YELLOW,
+  info: BRAND_YELLOW,
 };
 
 /** Circled "!" in the variant color — the shared alert glyph. */
@@ -446,8 +446,8 @@ export interface AlertAction {
 
 const alertActionStyle = (secondary: boolean): React.CSSProperties => ({
   background: 'none',
-  border: secondary ? '1px solid #3f3f46' : '1px solid #ffffff',
-  color: secondary ? MUTED : '#ffffff',
+  border: secondary ? '1px solid #3f3f46' : `1px solid ${WHITE}`,
+  color: secondary ? MUTED : WHITE,
   borderRadius: '7px',
   fontSize: '11.5px',
   fontWeight: 600,

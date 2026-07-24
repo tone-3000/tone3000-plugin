@@ -64,9 +64,9 @@ export function PanKnobThumb({ angleDeg, anchorDeg = 0 }: PanKnobThumbProps) {
         {/* Outer white glow only — SourceGraphic stays the sharp RING_W
             stroke so the lit arc matches the grey track exactly (Figma's
             soft box-shadow, not a thickened blur). */}
-        <filter id={glowId} x="-80%" y="-80%" width="260%" height="260%" colorInterpolationFilters="sRGB">
-          <feGaussianBlur in="SourceAlpha" stdDeviation="3.5" result="blur" />
-          <feFlood floodColor="#ffffff" floodOpacity="0.5" result="glowColor" />
+        <filter id={glowId} x="-120%" y="-120%" width="340%" height="340%" colorInterpolationFilters="sRGB">
+          <feGaussianBlur in="SourceAlpha" stdDeviation="5.5" result="blur" />
+          <feFlood floodColor="#ffffff" floodOpacity="0.42" result="glowColor" />
           <feComposite in="glowColor" in2="blur" operator="in" result="glow" />
           <feMerge>
             <feMergeNode in="glow" />
