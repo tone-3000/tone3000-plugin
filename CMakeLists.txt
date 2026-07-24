@@ -240,14 +240,18 @@ if (EXISTS "${_juce_webview_linux}")
     endif()
 endif()
 
-# Standalone: the "Audio input is muted" notification banner is hard-coded to
-# lightgoldenrodyellow with black text inside JUCE's StandaloneFilterWindow and
-# is not themeable via LookAndFeel. Restyle it to the brand palette: black bar,
-# white text, pure-yellow divider. Idempotent configure-time patch.
+# StandaloneFilterWindow patches (idempotent; JUCE lives in gitignored libs/).
 #
-# Also: T3K_AUDIO_SAFE_RESTORE — crash-safe restore of the saved audio device.
-# A tiny sibling sentinel next to the settings file is created just before
-# opening the saved device and cleared once a live device confirms the open
+# T3K_NO_MUTE_BANNER — never show JUCE's native "Audio input is muted" strip.
+# The plugin surfaces mute/feedback state in its own web UI (AppBanner); the
+# native bar would double up and fight over window height.
+#
+# T3K_DARK_MUTE_BANNER — leftover restyle of that strip (kept so a missed hide
+# patch doesn't flash the stock lightgoldenrodyellow bar). Harmless when hidden.
+#
+# T3K_AUDIO_SAFE_RESTORE — crash-safe restore of the saved audio device. A tiny
+# sibling sentinel next to the settings file is created just before opening the
+# saved device and cleared once a live device confirms the open
 # (StandaloneAudioSettings::markAudioInitClean). If it's still present next
 # launch, last open crashed and we boot on the default device instead.
 set(_juce_standalone_h "${LIB_DIR}/juce/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h")
@@ -258,6 +262,39 @@ if (EXISTS "${_juce_standalone_h}")
         set(_juce_nl "\r\n")
     else()
         set(_juce_nl "\n")
+    endif()
+
+    if (NOT _juce_standalone_src MATCHES "T3K_NO_MUTE_BANNER")
+        set(_juce_mute_banner_old
+"        void inputMutedChanged (bool newInputMutedValue)
+        {
+            shouldShowNotification = newInputMutedValue;
+            notification.setVisible (shouldShowNotification);")
+        set(_juce_mute_banner_new
+"        void inputMutedChanged (bool newInputMutedValue)
+        {
+            // T3K_NO_MUTE_BANNER: the muted-input state is surfaced by the
+            // plugin's own web UI banner (see AppBanner \"auto-muted\"), which
+            // grows the window instead of overlaying the editor. Never show
+            // JUCE's native strip so the two can't double up or fight over
+            // the window height.
+            ignoreUnused (newInputMutedValue);
+            shouldShowNotification = false;
+            notification.setVisible (shouldShowNotification);")
+        string(REPLACE "\n" "${_juce_nl}" _juce_mute_banner_old "${_juce_mute_banner_old}")
+        string(REPLACE "\n" "${_juce_nl}" _juce_mute_banner_new "${_juce_mute_banner_new}")
+        string(REPLACE
+            "${_juce_mute_banner_old}"
+            "${_juce_mute_banner_new}"
+            _juce_standalone_src "${_juce_standalone_src}")
+        if (NOT _juce_standalone_src MATCHES "T3K_NO_MUTE_BANNER")
+            message(FATAL_ERROR
+                "T3K_NO_MUTE_BANNER: failed to patch ${_juce_standalone_h}. "
+                "The JUCE source layout likely changed in this version. Update the patch "
+                "anchors in CMakeLists.txt.")
+        endif()
+        set(_juce_standalone_dirty TRUE)
+        message(STATUS "Patched JUCE StandaloneFilterWindow: hide native mute banner")
     endif()
 
     if (NOT _juce_standalone_src MATCHES "T3K_DARK_MUTE_BANNER")
