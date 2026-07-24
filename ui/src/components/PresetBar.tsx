@@ -1,5 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronLeft, ChevronRight, Pencil, Save, Search, Trash2 } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  Save,
+  Search,
+  Trash2,
+} from 'lucide-react';
 import type { ActivePreset, PresetInfo } from '../types/chain';
 import { HELP, helpProps } from './helpText';
 import { BORDER, GRAY } from './theme';
@@ -7,11 +18,13 @@ import { BORDER, GRAY } from './theme';
 /**
  * Top-bar preset controls: ‹ name › pill + save button, with two anchored
  * panels — the save popover (name + save) and the preset browser (search,
- * TONE3000 factory section, user section with inline rename/delete).
+ * TONE3000 factory section, user section with inline rename/delete, and a
+ * reorder mode that swaps the row actions for up/down arrows).
  *
  * Pure view: the list and all mutations come from usePresets, the active
- * preset rides the chain state poll. Prev/next walk the list in its native
- * order (factory first, then user, each sorted by name), wrapping.
+ * preset rides the chain state poll. Prev/next walk the list in its shown
+ * order — which is also what MIDI program-change numbers follow, so a custom
+ * order set here changes what PC 1, PC 2… load.
  */
 
 const MUTED = GRAY;
@@ -70,6 +83,8 @@ interface PresetBarProps {
   onLoad: (id: string) => void;
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
+  /** One step up (-1) / down (+1) within the preset's section. */
+  onMove: (id: string, delta: -1 | 1) => void;
 }
 
 type OpenPanel = 'none' | 'save' | 'browse';
@@ -81,12 +96,16 @@ export const PresetBar: React.FC<PresetBarProps> = ({
   onLoad,
   onRename,
   onDelete,
+  onMove,
 }) => {
   const [open, setOpen] = useState<OpenPanel>('none');
   const [saveName, setSaveName] = useState('');
   const [search, setSearch] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  // Reorder mode: rows swap rename/delete for up/down arrows. Arrows only
+  // make sense on the full list, so they hide while a search filter is on.
+  const [reordering, setReordering] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Close panels on outside click or Escape.
@@ -117,6 +136,7 @@ export const PresetBar: React.FC<PresetBarProps> = ({
   const openBrowse = useCallback(() => {
     setSearch('');
     setRenamingId(null);
+    setReordering(false);
     setOpen((prev) => (prev === 'browse' ? 'none' : 'browse'));
   }, []);
 
@@ -167,7 +187,11 @@ export const PresetBar: React.FC<PresetBarProps> = ({
     padding: '4px',
   };
 
-  const renderRow = (preset: PresetInfo) => {
+  // Arrow rendering needs the row's place in its *section* (moves never
+  // cross the factory/user boundary, so edges disable per section).
+  const showArrows = reordering && search.trim() === '';
+
+  const renderRow = (preset: PresetInfo, sectionIndex: number, sectionLength: number) => {
     const isActive = active?.id === preset.id;
     const isRenaming = renamingId === preset.id;
     return (
@@ -217,26 +241,58 @@ export const PresetBar: React.FC<PresetBarProps> = ({
             {preset.name}
           </button>
         )}
-        {!preset.factory && !isRenaming && (
+        {showArrows ? (
           <>
             <button
-              onClick={() => {
-                setRenamingId(preset.id);
-                setRenameValue(preset.name);
+              onClick={() => onMove(preset.id, -1)}
+              disabled={sectionIndex === 0}
+              {...helpProps(HELP.presetMoveUp)}
+              style={{
+                ...iconButtonStyle,
+                padding: '3px',
+                color: sectionIndex === 0 ? MUTED : '#ffffff',
+                cursor: sectionIndex === 0 ? 'default' : 'pointer',
               }}
-              {...helpProps(HELP.presetRename)}
-              style={{ ...iconButtonStyle, padding: '3px' }}
             >
-              <Pencil size={13} />
+              <ArrowUp size={13} />
             </button>
             <button
-              onClick={() => onDelete(preset.id)}
-              {...helpProps(HELP.presetDelete)}
-              style={{ ...iconButtonStyle, padding: '3px' }}
+              onClick={() => onMove(preset.id, 1)}
+              disabled={sectionIndex === sectionLength - 1}
+              {...helpProps(HELP.presetMoveDown)}
+              style={{
+                ...iconButtonStyle,
+                padding: '3px',
+                color: sectionIndex === sectionLength - 1 ? MUTED : '#ffffff',
+                cursor: sectionIndex === sectionLength - 1 ? 'default' : 'pointer',
+              }}
             >
-              <Trash2 size={13} />
+              <ArrowDown size={13} />
             </button>
           </>
+        ) : (
+          !preset.factory &&
+          !isRenaming && (
+            <>
+              <button
+                onClick={() => {
+                  setRenamingId(preset.id);
+                  setRenameValue(preset.name);
+                }}
+                {...helpProps(HELP.presetRename)}
+                style={{ ...iconButtonStyle, padding: '3px' }}
+              >
+                <Pencil size={13} />
+              </button>
+              <button
+                onClick={() => onDelete(preset.id)}
+                {...helpProps(HELP.presetDelete)}
+                style={{ ...iconButtonStyle, padding: '3px' }}
+              >
+                <Trash2 size={13} />
+              </button>
+            </>
+          )
         )}
       </div>
     );
@@ -335,37 +391,55 @@ export const PresetBar: React.FC<PresetBarProps> = ({
       {/* Preset browser */}
       {open === 'browse' && (
         <div style={{ ...panelStyle, width: '300px', padding: '12px' }}>
-          <div style={{ position: 'relative', marginBottom: '10px' }}>
-            <Search
-              size={14}
-              color={MUTED}
-              style={{
-                position: 'absolute',
-                left: '12px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-              }}
-            />
-            <input
-              autoFocus
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search presets"
-              style={{ ...inputStyle, padding: '8px 12px 8px 32px', borderRadius: '10px' }}
-            />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
+            <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+              <Search
+                size={14}
+                color={MUTED}
+                style={{
+                  position: 'absolute',
+                  left: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                }}
+              />
+              <input
+                autoFocus
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search presets"
+                style={{ ...inputStyle, padding: '8px 12px 8px 32px', borderRadius: '10px' }}
+              />
+            </div>
+            {presets.length > 1 && (
+              <button
+                onClick={() => setReordering((prev) => !prev)}
+                aria-pressed={reordering}
+                {...helpProps(HELP.presetReorder)}
+                style={{
+                  ...iconButtonStyle,
+                  padding: '7px',
+                  flexShrink: 0,
+                  color: reordering ? '#ffffff' : MUTED,
+                  background: reordering ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
+                }}
+              >
+                <ArrowUpDown size={15} />
+              </button>
+            )}
           </div>
 
           <div className="hide-scrollbar" style={{ maxHeight: '340px', overflowY: 'auto' }}>
             {factoryPresets.length > 0 && (
               <>
                 <div style={sectionHeaderStyle}>TONE3000</div>
-                {factoryPresets.map(renderRow)}
+                {factoryPresets.map((preset, i) => renderRow(preset, i, factoryPresets.length))}
               </>
             )}
             {userPresets.length > 0 && (
               <>
                 <div style={sectionHeaderStyle}>Your Presets</div>
-                {userPresets.map(renderRow)}
+                {userPresets.map((preset, i) => renderRow(preset, i, userPresets.length))}
               </>
             )}
             {filtered.length === 0 && (

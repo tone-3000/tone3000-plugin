@@ -4,6 +4,7 @@ import { KnobControl } from './KnobControl';
 import { balanceDbScale, gainDbScale, gateDbScale, toneScale } from './knobScale';
 import { SpreadGroup } from './SpreadControls';
 import { useParameter } from '../hooks/useParameter';
+import type { InputMode } from '../types/chain';
 import { useNativeFunction } from '../hooks/useFunction';
 import { HELP, helpProps } from './helpText';
 import { ACTIVE_OUTLINE, BORDER, GRAY, HIGHLIGHT } from './theme';
@@ -13,12 +14,17 @@ import { ACTIVE_OUTLINE, BORDER, GRAY, HIGHLIGHT } from './theme';
  * stack. Gate + tone stack carry power switches (APVTS bool params, so they
  * automate and persist like everything else on the plate).
  *
- * Stereo gains: one main level knob per stage plus a small balance knob that
- * trims L/R against each other (±12 dB opposing, center = off). The balance
- * knob only appears when the stage actually runs stereo (stereo mode, or
- * mono+spread for output); DSP forces center when inactive so a leftover
- * setting can't skew a mono bus. All values are host parameters —
- * presets/undo get them for free.
+ * Input: a single level knob (per-channel trims live on the chain blocks).
+ * When a real stereo source feeds the plugin, an input-mode button joins it
+ * to pick what feeds the chain: both channels, or just L/R mirrored onto
+ * both. The mode is chain state (session-persisted, not a preset value —
+ * it's I/O routing, not tone).
+ *
+ * Output gain: the main level knob plus a small balance knob that trims L/R
+ * against each other (±12 dB opposing, center = off). The balance knob only
+ * appears when the output actually runs stereo (stereo mode, or mono+spread);
+ * DSP forces center when inactive so a leftover setting can't skew a mono
+ * bus. All values are host parameters — presets/undo get them for free.
  */
 
 const KNOB_SIZE = 36;
@@ -29,6 +35,22 @@ const PLATE_HEIGHT = 100;
     knob column is knob + gap + label; the label pulls its center down). */
 const KNOB_CENTER_OFFSET = -11;
 
+/** Shared shell for the small square buttons that sit beside knobs
+    (power switches, input mode). */
+const SIDE_BUTTON_STYLE: React.CSSProperties = {
+  width: '22px',
+  height: '22px',
+  borderRadius: '6px',
+  border: 'none',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  padding: 0,
+  flexShrink: 0,
+  transform: `translateY(${KNOB_CENTER_OFFSET}px)`,
+};
+
 const PowerButton: React.FC<{
   on: boolean;
   help: string;
@@ -38,22 +60,63 @@ const PowerButton: React.FC<{
     onClick={onClick}
     {...helpProps(help)}
     style={{
-      width: '22px',
-      height: '22px',
-      borderRadius: '6px',
-      border: 'none',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      cursor: 'pointer',
-      padding: 0,
-      flexShrink: 0,
+      ...SIDE_BUTTON_STYLE,
       color: on ? '#ffffff' : GRAY,
       backgroundColor: on ? 'transparent' : HIGHLIGHT,
-      transform: `translateY(${KNOB_CENTER_OFFSET}px)`,
     }}
   >
     <Power size={12} />
+  </button>
+);
+
+/** Two overlapping circles — the classic stereo glyph (lucide has none).
+    Sized to sit next to the 12px Power icon without overpowering it. */
+const StereoIcon: React.FC = () => (
+  <svg
+    width={15}
+    height={12}
+    viewBox="0 0 15 12"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.4}
+  >
+    <circle cx="5.25" cy="6" r="4.4" />
+    <circle cx="9.75" cy="6" r="4.4" />
+  </svg>
+);
+
+const INPUT_MODE_CYCLE: Record<InputMode, InputMode> = {
+  stereo: 'left',
+  left: 'right',
+  right: 'stereo',
+};
+
+/**
+ * Input mode: which channels of a stereo source feed the plugin. Click
+ * cycles stereo → L → R. Stereo (the default) shows the two-circle glyph;
+ * L/R take only that channel (mirrored onto both) and get the filled
+ * "engaged" look so a non-default routing is obvious at a glance.
+ */
+const InputModeButton: React.FC<{
+  mode: InputMode;
+  onChange: (mode: InputMode) => void;
+}> = ({ mode, onChange }) => (
+  <button
+    onClick={() => onChange(INPUT_MODE_CYCLE[mode])}
+    {...helpProps(HELP.inputMode)}
+    style={{
+      ...SIDE_BUTTON_STYLE,
+      color: '#ffffff',
+      backgroundColor: mode === 'stereo' ? 'transparent' : HIGHLIGHT,
+    }}
+  >
+    {mode === 'stereo' ? (
+      <StereoIcon />
+    ) : (
+      <span style={{ fontFamily: 'monospace', fontSize: '11px', fontWeight: 700, lineHeight: 1 }}>
+        {mode === 'left' ? 'L' : 'R'}
+      </span>
+    )}
   </button>
 );
 
@@ -118,25 +181,22 @@ const AutoBalanceButton: React.FC = () => {
 };
 
 /**
- * Main gain knob for a stage (input/output). When the stage runs stereo, a
- * smaller balance knob joins it: center = no effect, off-center trims L/R
- * against each other by up to ±12 dB on top of the main level.
+ * Output gain knob. When the output runs stereo, a smaller balance knob
+ * joins it (center = no effect, off-center trims L/R against each other by
+ * up to ±12 dB on top of the main level), plus the auto-balance (=) button
+ * when two independent chains are running.
  */
-const MainGainKnob: React.FC<{
-  label: string;
-  type: 'input' | 'output';
+const OutputGainKnob: React.FC<{
   stereo: boolean;
-  /** Which side of the main knob the balance knob sits on. */
-  balanceSide: 'left' | 'right';
   /** Show the auto-balance (=) button next to the balance knob. */
-  autoBalance?: boolean;
-}> = ({ label, type, stereo, balanceSide, autoBalance = false }) => {
-  const [level, setLevel] = useParameter(`${type}Level`, 'slider');
-  const [balance, setBalance] = useParameter(`${type}Balance`, 'slider');
+  autoBalance: boolean;
+}> = ({ stereo, autoBalance }) => {
+  const [level, setLevel] = useParameter('outputLevel', 'slider');
+  const [balance, setBalance] = useParameter('outputBalance', 'slider');
 
   const knob = (
     <KnobControl
-      label={label}
+      label="Output"
       value={level}
       onChange={setLevel}
       size={KNOB_SIZE}
@@ -144,35 +204,29 @@ const MainGainKnob: React.FC<{
       innerColor="#1C1C1E"
       scale={gainDbScale}
       defaultValue={0.5}
-      help={type === 'input' ? HELP.inputLevel : HELP.outputLevel}
+      help={HELP.outputLevel}
     />
   );
 
   if (!stereo) return knob;
 
-  const balanceKnob = (
-    <KnobControl
-      label="Bal"
-      value={balance}
-      onChange={setBalance}
-      size={BALANCE_KNOB_SIZE}
-      labelSize={10}
-      innerColor="#1C1C1E"
-      scale={balanceDbScale}
-      defaultValue={0.5}
-      help={type === 'input' ? HELP.inputBalance : HELP.outputBalance}
-    />
-  );
-  // The (=) button always sits on the outer edge, keeping Bal next to its
-  // main knob: [=][Bal][knob] on the left side, [knob][Bal][=] on the right.
-  const autoBtn = autoBalance ? <AutoBalanceButton /> : null;
+  // The (=) button sits on the outer edge, keeping Bal next to the main
+  // knob: [=][Bal][knob].
   return (
     <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end', gap: '10px' }}>
-      {balanceSide === 'left' && autoBtn}
-      {balanceSide === 'left' && balanceKnob}
+      {autoBalance && <AutoBalanceButton />}
+      <KnobControl
+        label="Bal"
+        value={balance}
+        onChange={setBalance}
+        size={BALANCE_KNOB_SIZE}
+        labelSize={10}
+        innerColor="#1C1C1E"
+        scale={balanceDbScale}
+        defaultValue={0.5}
+        help={HELP.outputBalance}
+      />
       {knob}
-      {balanceSide === 'right' && balanceKnob}
-      {balanceSide === 'right' && autoBtn}
     </div>
   );
 };
@@ -181,19 +235,24 @@ interface FaceplateProps {
   /** Output stage runs stereo (stereo mode or mono-mode spread) — shows the
       output balance knob. */
   stereoOutput: boolean;
-  /** Plugin is fed a real stereo source — shows the input balance knob. */
-  stereoInput: boolean;
   /** Two independent chains are running (stereo mode) — shows the auto
       balance button. Mono-mode spread doesn't need it: both channels carry
       the same chain, so their energy already matches. */
   stereoChains: boolean;
+  /** Plugin is fed a real stereo source — shows the input-mode button. */
+  stereoInput: boolean;
+  inputMode: InputMode;
+  onInputModeChange: (mode: InputMode) => void;
 }
 
 export const Faceplate: React.FC<FaceplateProps> = ({
   stereoOutput,
-  stereoInput,
   stereoChains,
+  stereoInput,
+  inputMode,
+  onInputModeChange,
 }) => {
+  const [inputLevel, setInputLevel] = useParameter('inputLevel', 'slider');
   const [toneBass, setToneBass] = useParameter('toneBass', 'slider');
   const [toneMid, setToneMid] = useParameter('toneMid', 'slider');
   const [toneTreble, setToneTreble] = useParameter('toneTreble', 'slider');
@@ -219,7 +278,21 @@ export const Faceplate: React.FC<FaceplateProps> = ({
         boxSizing: 'border-box',
       }}
     >
-      <MainGainKnob label="Input" type="input" stereo={stereoInput} balanceSide="right" />
+      {/* Input level + channel mode (mode only when the source is stereo) */}
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '10px' }}>
+        <KnobControl
+          label="Input"
+          value={inputLevel}
+          onChange={setInputLevel}
+          size={KNOB_SIZE}
+          labelSize={12}
+          innerColor="#1C1C1E"
+          scale={gainDbScale}
+          defaultValue={0.5}
+          help={HELP.inputLevel}
+        />
+        {stereoInput && <InputModeButton mode={inputMode} onChange={onInputModeChange} />}
+      </div>
 
       {/* Gate + power */}
       <div
@@ -303,13 +376,7 @@ export const Faceplate: React.FC<FaceplateProps> = ({
           just before the output stage it feeds. */}
       <SpreadGroup innerColor="#1C1C1E" />
 
-      <MainGainKnob
-        label="Output"
-        type="output"
-        stereo={stereoOutput}
-        balanceSide="left"
-        autoBalance={stereoChains}
-      />
+      <OutputGainKnob stereo={stereoOutput} autoBalance={stereoChains} />
     </div>
   );
 };

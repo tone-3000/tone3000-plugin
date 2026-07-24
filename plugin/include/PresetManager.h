@@ -19,6 +19,13 @@
  *
  * The list is rescanned on every call — it's a handful of stat()s, and it
  * keeps multiple plugin instances sharing the folder coherent for free.
+ *
+ * Ordering: factory presets always come before user presets (the browser's
+ * two sections). Within each section a custom order can be set via move()
+ * and persists in order.json beside the preset files; presets not in the
+ * order file (new saves, first run) fall back to name order after the
+ * ordered ones. List order is user-facing truth: the browser, prev/next
+ * stepping and MIDI program-change numbers all follow it.
  */
 class PresetManager {
 public:
@@ -51,10 +58,19 @@ public:
   /** Delete a user preset. Factory presets are refused. */
   bool remove(const juce::String& id) const;
 
+  /** Move a preset one step up (delta < 0) or down (delta > 0) within its
+      section — factory stays before user, so the browser's sections and the
+      global order can't disagree. Persists the whole current order. */
+  bool move(const juce::String& id, int delta) const;
+
 private:
   juce::File fileForId(const juce::String& id) const;
   static juce::ValueTree readPresetFile(const juce::File& file);
   static bool writePresetFile(const juce::File& file, const juce::ValueTree& preset);
+
+  juce::File orderFile() const;
+  juce::StringArray readOrder() const;
+  bool writeOrder(const juce::StringArray& ids) const;
 
   juce::File userDir;
   juce::File factoryDir;

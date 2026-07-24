@@ -39,7 +39,7 @@ import { isInsertSlot } from '../types/chain';
  * GalleryLane.tsx; this component owns the drag orchestration.)
  *
  * Mono shows one lane; stereo shows both L/R lanes in a single shared
- * scroll area with the pan/link/swap rail on the right. One drag context
+ * scroll area with the pan/link/swap rail on the left. One drag context
  * spans both lanes and the lane lists are mirrored into optimistic local
  * state, so cross-lane drags reflow the target lane live (onDragOver) and
  * drops land without any snap-back while the native roundtrip completes.
@@ -285,12 +285,12 @@ export const ChainView: React.FC<ChainViewProps> = ({ chain, chainRight, sampleR
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'stretch',
-        gap: '8px',
         height: '100%',
         boxSizing: 'border-box',
         padding: '0 24px',
       }}
     >
+      {stereo && <StereoPanRail />}
       <DndContext
         sensors={sensors}
         collisionDetection={galleryCollisionDetection}
@@ -344,7 +344,6 @@ export const ChainView: React.FC<ChainViewProps> = ({ chain, chainRight, sampleR
           {activeDrag && <GalleryTileGhost item={activeDrag} size={tileSize} />}
         </DragOverlay>
       </DndContext>
-      {stereo && <StereoPanRail />}
     </div>
   );
 };

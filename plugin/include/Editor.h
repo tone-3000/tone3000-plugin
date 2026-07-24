@@ -26,9 +26,10 @@ public:
   void parentHierarchyChanged() override;
 
   /** Extra height above the fixed plugin UI for chrome strips — the app banner
-      and/or the hint bar (standalone only). The webview reports the combined
+      (standalone only) and/or the hint bar. The webview reports the combined
       height whenever a strip appears/disappears so the window grows instead of
-      squishing the core UI. */
+      squishing the core UI. Works in hosts too: setSize() becomes a host
+      resize request via the plugin wrapper. */
   void setExtraContentHeight(int pixels);
 
   int getControlParameterIndex(juce::Component&) override {
@@ -38,7 +39,7 @@ public:
 private:
   TONE3000Processor& processor;
 
-  // Fixed plugin UI size; the standalone window can additionally grow by the
+  // Fixed plugin UI size; the window can additionally grow by the
   // chrome-strip height (see setExtraContentHeight).
   static constexpr int kWidth = 1024;
   static constexpr int kBaseHeight = 600;
@@ -76,7 +77,6 @@ private:
 
   juce::WebSliderRelay inputLevelRelay{"inputLevel"};
   juce::WebSliderRelay outputLevelRelay{"outputLevel"};
-  juce::WebSliderRelay inputBalanceRelay{"inputBalance"};
   juce::WebSliderRelay outputBalanceRelay{"outputBalance"};
   juce::WebToggleButtonRelay spreadEnabledRelay{"spreadEnabled"};
   juce::WebSliderRelay spreadAmountRelay{"spreadAmount"};
@@ -98,8 +98,6 @@ private:
       *processor.parameters.getParameter("inputLevel"), inputLevelRelay, nullptr};
   juce::WebSliderParameterAttachment outputLevelWebAttachment{
       *processor.parameters.getParameter("outputLevel"), outputLevelRelay, nullptr};
-  juce::WebSliderParameterAttachment inputBalanceWebAttachment{
-      *processor.parameters.getParameter("inputBalance"), inputBalanceRelay, nullptr};
   juce::WebSliderParameterAttachment outputBalanceWebAttachment{
       *processor.parameters.getParameter("outputBalance"), outputBalanceRelay, nullptr};
   juce::WebToggleButtonParameterAttachment spreadEnabledWebAttachment{

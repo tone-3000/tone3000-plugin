@@ -13,8 +13,8 @@
 
 const std::vector<juce::String>& TONE3000Processor::presetParameterIds() {
   static const std::vector<juce::String> ids = {
-      "inputLevel",    "inputBalance", "outputLevel",   "outputBalance",
-      "toneBass",      "toneMid",      "toneTreble",
+      "inputLevel",    "outputLevel",   "outputBalance",
+      "toneBass",      "toneMid",       "toneTreble",
       "gateThreshold", "gateEnabled",  "toneEqEnabled",
       "spreadEnabled", "spreadAmount",  "spreadJitter",
       "chainPanLeft",  "chainPanRight", "chainPanLinked",
@@ -83,6 +83,13 @@ juce::var TONE3000Processor::savePreset(const juce::String& rawName) {
   return obj.get();
 }
 
+bool TONE3000Processor::loadPresetAtIndex(int index) {
+  const auto presets = presetManager.list();
+  if (index < 0 || index >= static_cast<int>(presets.size()))
+    return false;  // controller sent a program beyond the list: ignore
+  return loadPreset(presets[static_cast<size_t>(index)].id);
+}
+
 bool TONE3000Processor::loadPreset(const juce::String& presetId) {
   const juce::ValueTree preset = presetManager.load(presetId);
   const juce::ValueTree snapshot = preset.getChildWithName("ChainSnapshot");
@@ -143,4 +150,10 @@ bool TONE3000Processor::deletePreset(const juce::String& presetId) {
     bumpChainRevision();
   }
   return true;
+}
+
+bool TONE3000Processor::movePreset(const juce::String& presetId, int delta) {
+  // Pure list-order change: nothing about the loaded chain moves, so no
+  // revision bump — the UI re-pulls the preset list after the call.
+  return presetManager.move(presetId, delta);
 }

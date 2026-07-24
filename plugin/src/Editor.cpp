@@ -50,6 +50,13 @@ TONE3000Editor::TONE3000Editor(TONE3000Processor& p) : AudioProcessorEditor(&p),
         mainWebView->emitEventIfBrowserIsVisible("audioDeviceChanged", juce::var{});
     });
 
+  // MIDI map push (all builds): learn commits, removals and state restores
+  // land as one event so the settings UI re-pulls instead of polling.
+  processor.midiMapper.onChanged = [this] {
+    if (mainWebView != nullptr)
+      mainWebView->emitEventIfBrowserIsVisible("midiMapChanged", juce::var{});
+  };
+
   // Chain-change push (see Editor.h). 20 Hz keeps mutation→UI latency at
   // ~50 ms worst case for the cost of one atomic read per tick.
   lastPushedRevision = processor.getCurrentChainRevision();
@@ -59,16 +66,16 @@ TONE3000Editor::TONE3000Editor(TONE3000Processor& p) : AudioProcessorEditor(&p),
 }
 
 void TONE3000Editor::setExtraContentHeight(int pixels) {
-  // Standalone only: hosts own the editor's surroundings and never show these
-  // strips; resizing under a host would fight its layout.
-  if (processor.wrapperType != juce::AudioProcessor::wrapperType_Standalone)
-    return;
+  // setSize() reaches the host as a resize request through the plugin
+  // wrapper (resizeView in VST3), so this works in DAWs too — a host that
+  // refuses keeps the old size and the webview scrolls, the same fallback
+  // as before. Standalone resizes its own window directly.
   // Generous ceiling: banner (~44) + hint bar (~36) with headroom to spare.
   const int clamped = juce::jlimit(0, 160, pixels);
   if (clamped == extraContentHeight)
     return;
   extraContentHeight = clamped;
-  setSize(kWidth, totalHeight());
+  setSize(kWidth, totalHeight()); 
 }
 
 void TONE3000Editor::timerCallback() {
@@ -82,6 +89,9 @@ void TONE3000Editor::timerCallback() {
 
 TONE3000Editor::~TONE3000Editor() {
   stopTimer();
+  // The mapper outlives the editor (it's the processor's); detach our webview
+  // hook before the webview dies.
+  processor.midiMapper.onChanged = nullptr;
   // Tear down the audio settings bridge first: it holds a device-manager
   // change listener (and possibly the input meter tap) that must not outlive
   // the webview it reports to.

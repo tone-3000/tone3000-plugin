@@ -1,5 +1,6 @@
 #include "PresetManager.h"
 #include <algorithm>
+#include <limits>
 
 namespace {
 
@@ -70,7 +71,70 @@ std::vector<PresetManager::Info> PresetManager::list() const {
   std::vector<Info> user = scan(userDir, kUserPrefix, false);
   presets.insert(presets.end(), std::make_move_iterator(user.begin()),
                  std::make_move_iterator(user.end()));
+
+  // Apply the custom order: within each section, ordered ids first (in file
+  // order), then everything else. The sort is stable over the name-sorted
+  // scan above, so presets missing from the order file (new saves, ids from
+  // another machine) stay alphabetical after the ordered block — and a
+  // missing/empty order file leaves the classic ordering untouched.
+  const juce::StringArray order = readOrder();
+  if (!order.isEmpty()) {
+    auto rank = [&order](const Info& info) {
+      const int index = order.indexOf(info.id);
+      return index < 0 ? std::numeric_limits<int>::max() : index;
+    };
+    std::stable_sort(presets.begin(), presets.end(), [&](const Info& a, const Info& b) {
+      if (a.factory != b.factory)
+        return a.factory;  // factory section always first
+      return rank(a) < rank(b);
+    });
+  }
   return presets;
+}
+
+bool PresetManager::move(const juce::String& id, int delta) const {
+  if (delta == 0)
+    return false;
+
+  const std::vector<Info> presets = list();
+  const auto it = std::find_if(presets.begin(), presets.end(),
+                               [&id](const Info& info) { return info.id == id; });
+  if (it == presets.end())
+    return false;
+
+  const auto index = static_cast<size_t>(std::distance(presets.begin(), it));
+  const auto target = delta < 0 ? index - 1 : index + 1;  // one step per call
+  if (target >= presets.size() || presets[target].factory != it->factory)
+    return false;  // already at its section's edge
+
+  juce::StringArray ids;
+  for (const Info& info : presets)
+    ids.add(info.id);
+  ids.getReference(static_cast<int>(index)).swapWith(ids.getReference(static_cast<int>(target)));
+  return writeOrder(ids);
+}
+
+juce::File PresetManager::orderFile() const {
+  // Beside the preset files (the *.t3kpreset scan never picks it up).
+  return userDir.getChildFile("order.json");
+}
+
+juce::StringArray PresetManager::readOrder() const {
+  juce::StringArray out;
+  const auto parsed = juce::JSON::parse(orderFile().loadFileAsString());
+  if (const auto* ids = parsed.getArray())
+    for (const auto& id : *ids)
+      out.add(id.toString());
+  return out;
+}
+
+bool PresetManager::writeOrder(const juce::StringArray& ids) const {
+  if (!userDir.createDirectory())
+    return false;
+  juce::Array<juce::var> list;
+  for (const auto& id : ids)
+    list.add(id);
+  return orderFile().replaceWithText(juce::JSON::toString(juce::var(list)));
 }
 
 juce::ValueTree PresetManager::load(const juce::String& id) const {

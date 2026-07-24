@@ -125,11 +125,9 @@ export const knobHelp = (name: string, desc: string) => `${name}: ${desc} ${KNOB
 export const HELP = {
   // Faceplate — gains
   inputLevel: knobHelp('Input', 'level into the chain, ±24 dB.'),
+  inputMode:
+    'Input Mode: which channels feed the plugin. Stereo: both · L / R: only that channel. Click: cycle.',
   outputLevel: knobHelp('Output', 'master level after the chain, ±24 dB.'),
-  inputBalance: knobHelp(
-    'Input Balance',
-    'trims input L/R against each other, ±12 dB. Center: off.'
-  ),
   outputBalance: knobHelp(
     'Output Balance',
     'trims output L/R against each other, ±12 dB. Center: off. Active in stereo mode or when mono spread is on.'
@@ -167,6 +165,10 @@ export const HELP = {
   presetSave: 'Save Preset: stores the current chain. Same name: overwrites in place.',
   presetRename: 'Rename: edits this preset\u2019s name. Enter: commit · Esc: cancel.',
   presetDelete: 'Delete: removes this preset.',
+  presetReorder:
+    'Reorder: shows arrows to set a custom preset order. Prev/Next and MIDI program changes follow it.',
+  presetMoveUp: 'Move Up: moves this preset one spot earlier.',
+  presetMoveDown: 'Move Down: moves this preset one spot later.',
 
   // Chain gallery
   addTile:
@@ -177,8 +179,8 @@ export const HELP = {
   retryLoad: 'Retry: downloads this tone\u2019s model again.',
   swapTone: 'Swap: replaces this tone with a new TONE3000 pick, keeping its slot.',
   removeBlock: 'Remove: deletes this block from the chain.',
-  panLeft: knobHelp('Pan L', 'pans the Left chain between hard left and center.'),
-  panRight: knobHelp('Pan R', 'pans the Right chain between center and hard right.'),
+  panLeft: knobHelp('Pan Left', 'pans the Left chain between hard left and center.'),
+  panRight: knobHelp('Pan Right', 'pans the Right chain between center and hard right.'),
   panLink: 'Link Pans: mirrors both pan knobs so width changes stay symmetric.',
   swapChains: 'Swap Chains: exchanges the Left and Right chains, pans included.',
 

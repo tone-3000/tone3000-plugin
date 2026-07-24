@@ -27,18 +27,19 @@ import {
   sectionLabelStyle,
 } from './controls';
 import { SystemSettings } from './SystemSettings';
+import { MidiMapSettings } from './MidiMapSettings';
 
 // External docs: how to measure your rig's calibration levels.
 const CALIBRATION_DOCS_URL =
   'https://neural-amp-modeler.readthedocs.io/en/latest/tutorials/calibration.html';
 
 /**
- * Settings: full-window takeover, tabbed between Plugin Settings (product
- * preferences — hints, NAM size, normalization, calibration, diagnostics)
- * and System Settings (the bespoke audio device panel). The System tab only
- * exists in the standalone app — hosts own devices, sample rate and buffer
- * size arrive as facts from the DAW — and with one tab the tab bar drops
- * away entirely!
+ * Settings: full-window takeover, tabbed between Plugin Settings (hints,
+ * MIDI mapping, NAM size, normalization, calibration, diagnostics) and
+ * System Settings (the bespoke audio device + MIDI hardware panel). The
+ * System tab only exists in the standalone app — hosts own devices, sample
+ * rate and buffer size arrive as facts from the DAW — and with one tab the
+ * tab bar drops away entirely!
  */
 
 export type SettingsTab = 'plugin' | 'system';
@@ -262,6 +263,10 @@ export const Settings: React.FC<SettingsProps> = ({
         value={hintsEnabled}
         onChange={setHintsEnabled}
       />
+
+      {/* MIDI Learn/mapping — plugin-level (reads the processor's MIDI
+          buffer), so it belongs here and works in DAW builds too. */}
+      <MidiMapSettings />
 
       <div style={{ marginBottom: '36px' }}>
         <span style={sectionLabelStyle}>Advanced</span>

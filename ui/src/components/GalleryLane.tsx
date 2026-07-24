@@ -137,10 +137,10 @@ export const GalleryLane: React.FC<{
 );
 
 /**
- * Right rail for stereo: per-lane pan knobs (each centered on its lane), with
+ * Left rail for stereo: per-lane pan knobs (each centered on its lane), with
  * the link toggle and whole-chain swap on the seam between them. Constant-
- * power pan positions (0 = hard left, 1 = hard right): Pan L covers hard
- * left..center on a half track, Pan R center..hard right. Linked (default)
+ * power pan positions (0 = hard left, 1 = hard right): Pan Left covers hard
+ * left..center on a half track, Pan Right center..hard right. Linked (default)
  * mirrors the knobs so width changes stay symmetric.
  */
 export const StereoPanRail: React.FC = () => {
@@ -195,7 +195,7 @@ export const StereoPanRail: React.FC = () => {
       <div style={knobRegion}>
         <div style={spacer} />
         <KnobControl
-          label="Pan L"
+          label="Pan Left"
           value={panLeft}
           onChange={handlePanLeft}
           variant="panLeft"
@@ -216,7 +216,7 @@ export const StereoPanRail: React.FC = () => {
           alignItems: 'center',
           gap: '4px',
           border: BORDER,
-          borderRadius: '8px',
+          borderRadius: '9999px',
           padding: '3px 5px',
         }}
       >
@@ -246,7 +246,7 @@ export const StereoPanRail: React.FC = () => {
       <div style={knobRegion}>
         <div style={connector} />
         <KnobControl
-          label="Pan R"
+          label="Pan Right"
           value={panRight}
           onChange={handlePanRight}
           variant="panRight"

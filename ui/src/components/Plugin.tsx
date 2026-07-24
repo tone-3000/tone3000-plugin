@@ -81,6 +81,7 @@ export const Plugin: React.FC = () => {
     activePreset,
     stereoEnabled,
     stereoInput,
+    inputMode,
     standalone,
     sampleRate,
     refresh,
@@ -509,6 +510,7 @@ export const Plugin: React.FC = () => {
             onLoad={presetStore.actions.load}
             onRename={presetStore.actions.rename}
             onDelete={presetStore.actions.remove}
+            onMove={presetStore.actions.move}
           />
           <StereoModeToggle
             stereoEnabled={stereoEnabled}
@@ -567,8 +569,9 @@ export const Plugin: React.FC = () => {
               backgroundColor: '#000000',
             }}
           >
-            {/* 368px yields 23 dots (6px dot + 10px gap); wrapper centers vertically. */}
-            <DbMeter type="input" stereo={stereoInput} height={368} />
+            {/* 368px yields 23 dots (6px dot + 10px gap); wrapper centers vertically.
+                A mono input mode folds the source down, so the meter collapses too. */}
+            <DbMeter type="input" stereo={stereoInput && inputMode === 'stereo'} height={368} />
           </div>
 
           {/* Chain View - Center (gallery lanes scroll horizontally inside).
@@ -632,8 +635,10 @@ export const Plugin: React.FC = () => {
           hint strip under it (hidden entirely when hints are off). */}
       <Faceplate
         stereoOutput={stereoOutput}
-        stereoInput={stereoInput}
         stereoChains={stereoEnabled}
+        stereoInput={stereoInput}
+        inputMode={inputMode}
+        onInputModeChange={actions.setInputMode}
       />
       <HintBar />
 

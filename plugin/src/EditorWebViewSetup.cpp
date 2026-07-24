@@ -137,7 +137,6 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
       .withOptionsFrom(editor->controlParameterIndexReceiver)
       .withOptionsFrom(editor->inputLevelRelay)
       .withOptionsFrom(editor->outputLevelRelay)
-      .withOptionsFrom(editor->inputBalanceRelay)
       .withOptionsFrom(editor->outputBalanceRelay)
       .withOptionsFrom(editor->spreadEnabledRelay)
       .withOptionsFrom(editor->spreadAmountRelay)
@@ -217,6 +216,14 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
       .withNativeFunction(
           "setStereoMode", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
             editor->processor.setStereoMode(coerceBool(args[0]));
+            return juce::var(true);
+          }))
+      .withNativeFunction(
+          // ("stereo" | "left" | "right") — which channels of a stereo
+          // source feed the plugin (the faceplate input-mode button).
+          "setInputMode", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
+            editor->processor.setInputMode(
+                TONE3000Processor::inputModeFromString(args[0].toString()));
             return juce::var(true);
           }))
       .withNativeFunction(
@@ -315,6 +322,13 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
           "deletePreset", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
             return juce::var(editor->processor.deletePreset(args[0].toString()));
           }))
+      .withNativeFunction(
+          // (id, delta) — one step up (-1) / down (+1) within the preset's
+          // browser section. Prev/next and MIDI program changes follow it.
+          "movePreset", guarded(2, false, [editor](const juce::Array<juce::var>& args) {
+            return juce::var(editor->processor.movePreset(
+                args[0].toString(), static_cast<int>(coerceDouble(args[1]))));
+          }))
       // --- Audio device settings (standalone only) ---------------------------
       // All of these route through the StandaloneAudioSettings controller,
       // which exists only under the standalone holder — in hosts they resolve
@@ -391,6 +405,47 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             return editor->audioSettings != nullptr ? editor->audioSettings->openMicSettings()
                                                     : juce::var();
           }))
+      // --- MIDI: device layer (standalone only) -------------------------------
+      .withNativeFunction(
+          // (identifier, enabled) — which hardware feeds the plugin.
+          "setMidiInputEnabled", guarded(2, juce::var(), [editor](const juce::Array<juce::var>& args) {
+            return editor->audioSettings != nullptr
+                       ? editor->audioSettings->setMidiInputEnabled(args[0].toString(),
+                                                                    coerceBool(args[1]))
+                       : juce::var();
+          }))
+      .withNativeFunction(
+          "openBluetoothMidiPairing", guarded(0, juce::var(), [editor](const juce::Array<juce::var>&) {
+            return editor->audioSettings != nullptr
+                       ? editor->audioSettings->openBluetoothMidiPairing()
+                       : juce::var();
+          }))
+      // --- MIDI: mapping engine (lives in the processor; works in hosts too) --
+      .withNativeFunction(
+          "getMidiMapState", guarded(0, juce::var(), [editor](const juce::Array<juce::var>&) {
+            return editor->processor.midiMapper.getState();
+          }))
+      .withNativeFunction(
+          // (channel) — 0 = omni, 1–16 = that channel only.
+          "setMidiChannelFilter", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
+            editor->processor.midiMapper.setChannelFilter(static_cast<int>(coerceDouble(args[0])));
+            return juce::var(true);
+          }))
+      .withNativeFunction(
+          // (targetId) — arm learn; the next CC / note-on wins.
+          "startMidiLearn", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
+            editor->processor.midiMapper.startLearn(args[0].toString());
+            return juce::var(true);
+          }))
+      .withNativeFunction(
+          "cancelMidiLearn", guarded(0, false, [editor](const juce::Array<juce::var>&) {
+            editor->processor.midiMapper.cancelLearn();
+            return juce::var(true);
+          }))
+      .withNativeFunction(
+          "removeMidiMapping", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
+            return juce::var(editor->processor.midiMapper.removeMapping(args[0].toString()));
+          }))
       .withNativeFunction(
           // Channel-picker meters: enabled only while the picker is on screen.
           "setAudioInputMetering",
@@ -408,8 +463,8 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
           }))
       .withNativeFunction(
           // The UI reports the combined height of its chrome strips (banner +
-          // hint bar) so the standalone window grows instead of squishing the
-          // plugin UI. No-op in hosts.
+          // hint bar) so the window grows instead of squishing the plugin UI.
+          // In hosts this becomes a resize request to the DAW.
           "setExtraContentHeight", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
             editor->setExtraContentHeight(static_cast<int>(coerceDouble(args[0])));
             return juce::var(true);

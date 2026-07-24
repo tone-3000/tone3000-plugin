@@ -84,9 +84,13 @@ void TONE3000Processor::getStateInformation(juce::MemoryBlock& destData) {
   state.appendChild(parameterState, nullptr);
 
   state.setProperty("stereoEnabled", stereoEnabled.load(), nullptr);
-  // Standalone input channel mode (harmless no-op in hosts, but the
-  // standalone app persists its state through here across launches).
-  state.setProperty("standaloneInputMode", standaloneInputMode.load(), nullptr);
+  // Input channel mode: session/plugin state only — presets deliberately
+  // don't carry it (I/O routing, not tone).
+  state.setProperty("inputMode", inputModeToString(getInputMode()), nullptr);
+
+  // MIDI map: session/plugin state like inputMode (it describes the user's
+  // rig, not the tone) — presets never carry it.
+  state.appendChild(midiMapper.toValueTree(), nullptr);
 
   {
     juce::ScopedLock lock(chainMutex);
@@ -136,11 +140,12 @@ void TONE3000Processor::setStateInformation(const void* data, int sizeInBytes) {
     DBG("Parameters restored from state");
   }
 
-  if (state.hasProperty("standaloneInputMode")) {
-    standaloneInputMode.store(
-        juce::jlimit(0, 2, static_cast<int>(state.getProperty("standaloneInputMode"))));
-    updateStereoInputDetection();
-  }
+  inputMode.store(static_cast<int>(
+      inputModeFromString(state.getProperty("inputMode").toString())));
+
+  // A missing child clears the map — a project without mappings must not
+  // inherit the previous session's.
+  midiMapper.restoreFromValueTree(state.getChildWithName("MidiMappings"));
 
   // The state root carries the same shape a chain snapshot does (ChainBlocks /
   // RightChainBlocks children + stereoEnabled property), so a project load is

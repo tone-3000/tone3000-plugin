@@ -851,14 +851,13 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
   state->setProperty("stereoEnabled", stereoEnabled.load());
   state->setProperty("activeSide", pendingAddSide == ChainSide::Right ? "right" : "left");
   // True when a real stereo source feeds the plugin (stereo host bus or a
-  // stereo standalone input device) — drives the dual input meter/gain UI.
+  // stereo standalone input device) — drives the faceplate input-mode button
+  // and the dual input meters.
   state->setProperty("stereoInput", stereoInputDetected.load());
-  // Standalone-only input channel picker (Settings). Hosts route explicitly,
-  // so the UI hides the control unless `standalone` is set.
+  // True in the standalone app — gates standalone-only settings.
   state->setProperty("standalone", isStandalone());
-  state->setProperty(
-      "inputMode",
-      inputModeToString(static_cast<InputMode>(standaloneInputMode.load())));
+  // Input channel mode (stereo / left / right) — the faceplate button.
+  state->setProperty("inputMode", inputModeToString(getInputMode()));
   // The EQ editor mirrors the biquad math client-side; block EQs run in the
   // chain domain, so the drawn curve must use the fixed chain rate — not the
   // host rate (see ChainDomain.h).
@@ -1024,6 +1023,30 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
   else
     bumpChainRevision();
   return true;
+}
+
+bool TONE3000Processor::toggleBlockPower(int position) {
+  // Resolve the position to a block id under the lock, then route through
+  // setBlockParam so a MIDI stomp is exactly a UI power click: undoable,
+  // revision-bumped, same validation.
+  std::string blockId;
+  bool enabled = false;
+  {
+    juce::ScopedLock lock(chainMutex);
+    int seen = 0;
+    for (const auto& block : lane(ChainSide::Left)) {
+      if (block->type == ChainBlockType::INSERT)
+        continue;
+      if (seen++ == position) {
+        blockId = block->id;
+        enabled = block->enabled;
+        break;
+      }
+    }
+  }
+  if (blockId.empty())
+    return false;  // chain shorter than the mapped slot
+  return setBlockParam(blockId, "enabled", enabled ? 0.0 : 1.0);
 }
 
 // ####################

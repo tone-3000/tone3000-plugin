@@ -190,7 +190,8 @@ The full path, in processing order (`TONE3000Processor::processBlock` in `plugin
 
 ```mermaid
 flowchart LR
-    IN([In]) --> IG["Input Level<br/>+ Balance"]
+    IN([In]) --> IM["Input Mode&nbsp;*<br/>(stereo / L / R)"]
+    IM --> IG["Input Level"]
     IG --> GATE["Noise Gate&nbsp;*"]
     GATE --> RS(("⇅ 48k"))
     subgraph CHAINS["Tone chains — run at 48 kHz"]
@@ -203,13 +204,14 @@ flowchart LR
     CL --> RS2(("⇅ 48k"))
     CR --> RS2
     RS2 --> SPREAD["Spread&nbsp;*<br/>(delay one side + jitter)"]
-    SPREAD --> PAN["Pan L / Pan R&nbsp;*<br/>(stereo, constant-power)"]
+    SPREAD --> PAN["Pan Left / Pan Right&nbsp;*<br/>(stereo, constant-power)"]
     PAN --> DCB["DC Blocker<br/>(~20 Hz HPF)"]
     DCB --> TS["Tone Stack&nbsp;*"]
     TS --> OG["Output Level<br/>+ Balance"]
     OG --> OUT([Out])
 ```
 
+- **Input mode** — when a real stereo source feeds the plugin (stereo host bus, or a stereo standalone input device), a faceplate button picks what enters the chain: both channels (default), or just the left/right one mirrored onto both. Saved with the session, not with presets — it's I/O routing, not tone.
 - **Mono mode** — only the Left chain runs (a stereo bus passes both channels through it together) and the pan stage is skipped. If Spread is on, the chain output is doubled to stereo first, then one side is delayed.
 - **Stereo mode** — channel 0 feeds the Left chain and channel 1 the Right chain independently; the two pan knobs then place each chain in the stereo image with constant-power law.
 - **Tone stack** — one global Bass/Middle/Treble EQ after the DC blocker.

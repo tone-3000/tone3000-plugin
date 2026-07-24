@@ -6,6 +6,7 @@ import type {
   ChainState,
   ChainStateResponse,
   EqBand,
+  InputMode,
 } from '../types/chain';
 import { isUnchanged } from '../types/chain';
 import { getDefaultNamA2SlimmableSize } from '../components/uiPreferences';
@@ -26,7 +27,7 @@ const EMPTY_STATE: ChainState = {
   activeSide: 'left',
   stereoInput: false,
   standalone: false,
-  inputMode: 'input1',
+  inputMode: 'stereo',
   sampleRate: 48000,
   chain: [],
 };
@@ -61,6 +62,7 @@ export function useChainState() {
       setBlockEqPre: backend.getPluginFunction('setBlockEqPre'),
       resetBlockEq: backend.getPluginFunction('resetBlockEq'),
       setStereoMode: backend.getPluginFunction('setStereoMode'),
+      setInputMode: backend.getPluginFunction('setInputMode'),
       setActiveEditChain: backend.getPluginFunction('setActiveEditChain'),
       swapChains: backend.getPluginFunction('swapChains'),
       undoChain: backend.getPluginFunction('undoChain'),
@@ -146,6 +148,8 @@ export function useChainState() {
         run<boolean>('moveBlockToChain', () => native.moveBlockToChain(blockId, side, index)),
       setStereoMode: (enabled: boolean) =>
         run('setStereoMode', () => native.setStereoMode(enabled)),
+      /** Which channels of a stereo source feed the plugin (faceplate button). */
+      setInputMode: (mode: InputMode) => run('setInputMode', () => native.setInputMode(mode)),
       setActiveSide: (side: ChainSide) =>
         run('setActiveEditChain', () => native.setActiveEditChain(side)),
       /** Swap the Left and Right chains wholesale (stereo only). Undoable. */
@@ -193,6 +197,7 @@ export function useChainState() {
     activePreset: state.preset ?? null,
     stereoEnabled: state.stereoEnabled,
     stereoInput: state.stereoInput ?? false,
+    inputMode: state.inputMode ?? 'stereo',
     standalone: state.standalone ?? false,
     sampleRate: state.sampleRate || 48000,
     refresh,

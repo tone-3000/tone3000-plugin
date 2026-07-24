@@ -32,6 +32,14 @@ TONE3000Processor::TONE3000Processor()
   }
 
   resolveParamRefs();
+
+  // MIDI performance events (delivered on the message thread — see
+  // MidiMapper): program changes walk the preset list, mapped block-power
+  // and stereo stomps route through the normal undoable chain edit paths.
+  midiMapper.onProgramChange = [this](int program) { loadPresetAtIndex(program); };
+  midiMapper.onBlockPowerToggle = [this](int index) { toggleBlockPower(index); };
+  midiMapper.onStereoToggle = [this] { setStereoMode(!isStereoMode()); };
+
   // Every lane starts at its minimum slot layout (kMinLaneSlots pass-through
   // insert placeholders). The right lane stays invisible until stereo mode is
   // enabled, but seeding it now keeps the invariant unconditional.
@@ -50,7 +58,6 @@ void TONE3000Processor::resolveParamRefs() {
   auto get = [this](const char* id) { return parameters.getRawParameterValue(id); };
   paramRefs.inputLevel = get("inputLevel");
   paramRefs.outputLevel = get("outputLevel");
-  paramRefs.inputBalance = get("inputBalance");
   paramRefs.outputBalance = get("outputBalance");
   paramRefs.spreadEnabled = get("spreadEnabled");
   paramRefs.spreadAmount = get("spreadAmount");
@@ -97,12 +104,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
   layout.add(std::make_unique<juce::AudioParameterBool>(
       juce::ParameterID{"toneEqEnabled", 12}, "toneEqEnabled", true));
 
-  // Stereo balance trims for the main gains: 0.5 = centered (no effect),
+  // Stereo balance trim for the output gain: 0.5 = centered (no effect),
   // otherwise an opposing ±12 dB trim between L and R on top of the main
-  // level. Output balance only applies in stereo mode or mono+spread (see
-  // processBlock); the UI hides the knobs when inactive.
-  layout.add(std::make_unique<juce::AudioParameterFloat>(
-      juce::ParameterID{"inputBalance", 17}, "inputBalance", 0.0f, 1.0f, 0.5f));
+  // level. Only applies in stereo mode or mono+spread (see processBlock);
+  // the UI hides the knob when inactive.
   layout.add(std::make_unique<juce::AudioParameterFloat>(
       juce::ParameterID{"outputBalance", 18}, "outputBalance", 0.0f, 1.0f, 0.5f));
 
@@ -159,7 +164,9 @@ const juce::String TONE3000Processor::getName() const {
 }
 
 bool TONE3000Processor::acceptsMidi() const {
-  return false;
+  // MIDI in feeds the mapping engine only (CC/note → parameter, see
+  // MidiMapper); the plugin is still an audio effect, not a synth.
+  return true;
 }
 bool TONE3000Processor::producesMidi() const {
   return false;
@@ -280,33 +287,34 @@ static float bufferPeak(const juce::AudioBuffer<float>& buffer, int numChannels,
   return peak;
 }
 
-// Per-channel gain for a main stage: main level ±24 dB, plus the balance
-// trim (0.5 = centered) which adds up to ±12 dB opposing between L and R.
-// Mono buffers pass ch == 0 only, so balance is inert there by construction.
-static float mainStageChannelGain(float level, float balance, int channel) {
+// Main-stage level as a linear gain: 0.5 = unity, full range ±24 dB.
+static float mainStageGain(float level) {
+  return juce::Decibels::decibelsToGain((level - 0.5f) * 48.0f);
+}
+
+// Per-channel output-stage gain: main level ±24 dB, plus the balance trim
+// (0.5 = centered) which adds up to ±12 dB opposing between L and R.
+static float outputStageChannelGain(float level, float balance, int channel) {
   const float levelDb = (level - 0.5f) * 48.0f;
   const float trimDb = (balance - 0.5f) * 24.0f * (channel == 0 ? -1.0f : 1.0f);
   return juce::Decibels::decibelsToGain(levelDb + trimDb);
 }
 
-// Stereo input = stereo main bus, minus the standalone cases where it isn't
-// really: a mono input device, or the input mode set to a single channel.
-// The UI shows dual input meters + balance when set; reported through
-// getChainState, so bump the revision on change.
+// Stereo input = stereo main bus, minus the standalone case where it isn't
+// really: a mono input device. Pure capability — the input-mode selection
+// doesn't affect it (the UI needs the button to stay visible so the user can
+// cycle back to stereo). Reported through getChainState, so bump the
+// revision on change.
 void TONE3000Processor::updateStereoInputDetection() {
-  bool stereoIn = getMainBusNumInputChannels() >= 2 && !standaloneMonoInput.load();
-  if (isStandalone() &&
-      standaloneInputMode.load() != static_cast<int>(InputMode::Stereo))
-    stereoIn = false;
+  const bool stereoIn = getMainBusNumInputChannels() >= 2 && !standaloneMonoInput.load();
   if (stereoInputDetected.exchange(stereoIn) != stereoIn)
     bumpChainRevision();
 }
 
-void TONE3000Processor::setStandaloneInputMode(InputMode mode) {
-  standaloneInputMode.store(static_cast<int>(mode));
-  updateStereoInputDetection();
+void TONE3000Processor::setInputMode(InputMode mode) {
+  inputMode.store(static_cast<int>(mode));
   bumpChainRevision();
-  DBG("Standalone input mode: " << inputModeToString(mode));
+  DBG("Input mode: " << inputModeToString(mode));
 }
 
 // #############################
@@ -392,9 +400,9 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     outputGainSmootherL.reset(sampleRate, 0.02);
     outputGainSmootherR.reset(sampleRate, 0.02);
     outputGainSmootherL.setCurrentAndTargetValue(
-        mainStageChannelGain(cacheOutputLevel, outputBalance, 0));
+        outputStageChannelGain(cacheOutputLevel, outputBalance, 0));
     outputGainSmootherR.setCurrentAndTargetValue(
-        mainStageChannelGain(cacheOutputLevel, outputBalance, 1));
+        outputStageChannelGain(cacheOutputLevel, outputBalance, 1));
   }
 
   // Chain-pan blend gains: 20 ms ramps, primed from the current parameters
@@ -536,7 +544,6 @@ void TONE3000Processor::updateCachedParameters() {
 
   updateFloat(cacheInputLevel, paramRefs.inputLevel);
   updateFloat(cacheOutputLevel, paramRefs.outputLevel);
-  updateFloat(cacheInputBalance, paramRefs.inputBalance);
   updateFloat(cacheOutputBalance, paramRefs.outputBalance);
   updateFloat(cacheSpreadAmount, paramRefs.spreadAmount);
   updateFloat(cacheSpreadJitter, paramRefs.spreadJitter);
@@ -882,7 +889,10 @@ void TONE3000Processor::processChainStage(float** inputs, float** outputs, int n
 // ################
 void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
   juce::ScopedNoDenormals noDenormals;
-  juce::ignoreUnused(midi);
+
+  // Mapped MIDI first, so parameter moves (bypass stomps, expression sweeps)
+  // land before this block's cached-parameter refresh below.
+  midiMapper.processMidi(midi);
 
   const int numSamples = buffer.getNumSamples();
   const int numChannels = buffer.getNumChannels();
@@ -901,21 +911,21 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // when no callbacks are running (nothing is audible then).
   lastAudioCallbackMs.store(juce::Time::currentTimeMillis());
 
-  // Standalone input fold-down, up front so everything downstream (meters,
-  // tuner, chains, spread detection) sees the real source:
-  // - Mono input device: signal only arrives on channel 0 — mirror it.
-  // - Stereo device with a mono input mode selected (guitar in one jack of a
-  //   line 1+2 pair): duplicate the chosen channel onto both, exactly like a
-  //   host feeding a mono source to a stereo bus.
+  // Input fold-down, up front so everything downstream (meters, tuner,
+  // chains, spread detection) sees the effective source:
+  // - Mono input device (standalone): signal only arrives on channel 0 —
+  //   mirror it.
+  // - Input mode L/R on a stereo source: duplicate the chosen channel onto
+  //   both, exactly like a host feeding a mono source to a stereo bus.
   if (numChannels > 1) {
     if (standaloneMonoInput.load()) {
       buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
-    } else if (isStandalone()) {
-      const auto mode = static_cast<InputMode>(standaloneInputMode.load());
-      if (mode == InputMode::Input1)
-        buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
-      else if (mode == InputMode::Input2)
-        buffer.copyFrom(0, 0, buffer, 1, 0, numSamples);
+    } else {
+      switch (static_cast<InputMode>(inputMode.load())) {
+        case InputMode::Left: buffer.copyFrom(1, 0, buffer, 0, 0, numSamples); break;
+        case InputMode::Right: buffer.copyFrom(0, 0, buffer, 1, 0, numSamples); break;
+        case InputMode::Stereo: break;
+      }
     }
   }
 
@@ -923,14 +933,13 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // Input gain + noise gate
   // #########################
 
-  // Per-channel input gains (level ±24 dB, balance trim ±12 dB opposing),
-  // constant across the block. Computed up front so the meters can show the
-  // post-gain level without a second pass over the samples.
-  const float inputGainL = mainStageChannelGain(cacheInputLevel, cacheInputBalance, 0);
-  const float inputGainR = mainStageChannelGain(cacheInputLevel, cacheInputBalance, 1);
+  // Input gain (level ±24 dB), constant across the block. Computed up front
+  // so the meters can show the post-gain level without a second pass over
+  // the samples.
+  const float inputGain = mainStageGain(cacheInputLevel);
 
-  // Per-channel input meters: raw peaks scaled by the input gain/balance, so
-  // the meter tracks those knobs. Pre-gate on purpose — a closed gate would
+  // Per-channel input meters: raw peaks scaled by the input gain, so the
+  // meter tracks the knob. Pre-gate on purpose — a closed gate would
   // otherwise read as a dead input. Mono sources report the same level on
   // both channels.
   auto peakToDb = [](float peak) {
@@ -948,8 +957,8 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     } else {
       peakR = peakL;
     }
-    inputMeterLevelL.store(peakToDb(peakL * inputGainL));
-    inputMeterLevelR.store(peakToDb(peakR * (numChannels > 1 ? inputGainR : inputGainL)));
+    inputMeterLevelL.store(peakToDb(peakL * inputGain));
+    inputMeterLevelR.store(peakToDb(peakR * inputGain));
   }
 
   // Feed the tuner from the raw input (pre-gain, pre-gate) while the tuner
@@ -958,9 +967,9 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   if (tuner.isEnabled())
     tuner.pushSamples(buffer.getReadPointer(0), numSamples);
 
-  // Apply the input gain per channel (vectorized).
+  // Apply the input gain (vectorized).
   for (int ch = 0; ch < numChannels; ++ch)
-    buffer.applyGain(ch, 0, numSamples, ch == 0 ? inputGainL : inputGainR);
+    buffer.applyGain(ch, 0, numSamples, inputGain);
 
   // Noise gate, post input gain so the threshold knob's dB meaning matches
   // the level heading into the chain. Envelope/hysteresis gate (NoiseGate.h);
@@ -1147,8 +1156,8 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   {
     const bool applyOutputBalance = stereoEnabled.load() || cacheSpreadEnabled;
     const float outputBalance = applyOutputBalance ? cacheOutputBalance : 0.5f;
-    outputGainSmootherL.setTargetValue(mainStageChannelGain(cacheOutputLevel, outputBalance, 0));
-    outputGainSmootherR.setTargetValue(mainStageChannelGain(cacheOutputLevel, outputBalance, 1));
+    outputGainSmootherL.setTargetValue(outputStageChannelGain(cacheOutputLevel, outputBalance, 0));
+    outputGainSmootherR.setTargetValue(outputStageChannelGain(cacheOutputLevel, outputBalance, 1));
 
     float peakL = 0.0f, peakR = 0.0f;
     auto* l = buffer.getWritePointer(0);
@@ -1162,7 +1171,7 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
         peakR = std::max(peakR, std::abs(r[i]));
       }
     }
-    if (numChannels < 2)
+    if (numChannels < 2) 
       peakR = peakL;
     outputMeterLevelL.store(peakToDb(peakL));
     outputMeterLevelR.store(peakToDb(peakR));

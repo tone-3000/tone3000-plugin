@@ -19,6 +19,7 @@
 #include "ChainBlock.h"
 #include "ChainDomain.h"
 #include "ChainHistory.h"
+#include "MidiMapper.h"
 #include "NoiseGate.h"
 #include "Spread.h"
 #include "PresetManager.h"
@@ -60,6 +61,11 @@ public:
   juce::AudioProcessorValueTreeState parameters;
 
   juce::AudioProcessorValueTreeState& getParameters() { return parameters; }
+
+  // MIDI CC/note → parameter mapping with Learn (see MidiMapper). Fed every
+  // processBlock; serializes with plugin state so maps travel with DAW
+  // sessions and the standalone's saved session alike.
+  MidiMapper midiMapper{parameters};
 
   // Chain management methods
   // Load a tone into an insert slot. `targetInsertId` is the insert block the
@@ -151,26 +157,26 @@ public:
   // Standalone input channel mode. Interfaces usually expose stereo pairs
   // (line 1+2) even when only one jack is plugged in, so the standalone app
   // lets the user pick which channel actually carries signal — the industry
-  // pattern for amp-sim standalones. Mono modes fold the chosen channel onto
-  // both up front; hosts always route explicitly, so this is standalone-only
-  // and defaults to Input 1 (a guitar in the first input).
-  enum class InputMode { Input1 = 0, Input2 = 1, Stereo = 2 };
-  void setStandaloneInputMode(InputMode mode);
-  InputMode getStandaloneInputMode() const {
-    return static_cast<InputMode>(standaloneInputMode.load());
-  }
+  // Which channels of a stereo source feed the plugin: both (default), or
+  // one folded onto both — a mono take of a stereo bus/interface pair. Set
+  // from the faceplate input-mode button (visible only when the source is
+  // actually stereo; see stereoInputDetected). Saved with the plugin/session
+  // state but deliberately not with presets: it's I/O routing, not tone.
+  enum class InputMode { Stereo = 0, Left = 1, Right = 2 };
+  void setInputMode(InputMode mode);
+  InputMode getInputMode() const { return static_cast<InputMode>(inputMode.load()); }
   static InputMode inputModeFromString(const juce::String& s) {
-    if (s == "input2") return InputMode::Input2;
-    if (s == "stereo") return InputMode::Stereo;
-    return InputMode::Input1;
+    if (s == "left") return InputMode::Left;
+    if (s == "right") return InputMode::Right;
+    return InputMode::Stereo;
   }
   static juce::String inputModeToString(InputMode mode) {
     switch (mode) {
-      case InputMode::Input2: return "input2";
-      case InputMode::Stereo: return "stereo";
-      case InputMode::Input1: break;
+      case InputMode::Left: return "left";
+      case InputMode::Right: return "right";
+      case InputMode::Stereo: break;
     }
-    return "input1";
+    return "stereo";
   }
   // Which lane loadTone falls back to ("left"/"right") when no valid target
   // insert id is supplied. The UI sets this before launching the Select flow
@@ -199,6 +205,10 @@ public:
   bool loadPreset(const juce::String& presetId);   // undoable (chain part)
   bool renamePreset(const juce::String& presetId, const juce::String& newName);
   bool deletePreset(const juce::String& presetId);
+  // Move a preset one step up/down within its browser section. The custom
+  // order is user-facing truth: prev/next stepping and MIDI program-change
+  // numbers follow it (see loadPresetAtIndex).
+  bool movePreset(const juce::String& presetId, int delta);
 
   // Tuner: enabled by the UI while the tuner screen is visible. Reads the raw
   // (pre-gain, pre-gate) input so gating never starves the pitch detector.
@@ -392,6 +402,17 @@ private:
 
   ChainHistory chainHistory;
 
+  // ── MIDI performance handlers (wired to midiMapper in the constructor,
+  //    both invoked on the message thread) ──
+  // Program change n loads the nth preset in list order (factory first, then
+  // user, both alphabetical — the same order the preset browser shows).
+  // Out-of-range programs are ignored.
+  bool loadPresetAtIndex(int index);
+  // Toggle the enabled flag of the chain's Nth tone block (0-based, insert
+  // slots skipped; Left lane in stereo). Positional so mappings survive tone
+  // swaps and preset loads. No-op when the chain is shorter than N.
+  bool toggleBlockPower(int position);
+
   // ── Preset internals (ProcessorPresets.cpp) ──
   // The faceplate parameters a preset carries. Explicitly scoped: rig
   // calibration (calibrateInput, inputCalibrationLevel) and the global
@@ -519,7 +540,6 @@ private:
   struct ParamRefs {
     std::atomic<float>* inputLevel = nullptr;
     std::atomic<float>* outputLevel = nullptr;
-    std::atomic<float>* inputBalance = nullptr;
     std::atomic<float>* outputBalance = nullptr;
     std::atomic<float>* spreadEnabled = nullptr;
     std::atomic<float>* spreadAmount = nullptr;
@@ -541,7 +561,6 @@ private:
   // Per-block cached values (refreshed once per processBlock from paramRefs).
   float cacheInputLevel = 0.5f;
   float cacheOutputLevel = 0.5f;
-  float cacheInputBalance = 0.5f;
   float cacheOutputBalance = 0.5f;
   bool cacheSpreadEnabled = false;
   float cacheSpreadAmount = 0.5f;  // bipolar: 0.5 = center = off
@@ -584,14 +603,15 @@ private:
   mutable std::atomic<float> outputMeterLevelR{-60.0f};
 
   // True when the plugin is being fed a real stereo source (stereo bus in a
-  // host, or a stereo input device in the standalone app with the input mode
-  // set to stereo). Drives the UI's dual input meter + balance controls.
-  // Reported via getChainState; see updateStereoInputDetection().
+  // host, or a stereo input device in the standalone app). A capability flag:
+  // the input-mode selection doesn't affect it. Drives the UI's input-mode
+  // button and dual input meters. Reported via getChainState; see
+  // updateStereoInputDetection().
   std::atomic<bool> stereoInputDetected{false};
 
-  // Standalone input channel mode (see InputMode). Atomic: written by the
-  // message thread (settings UI / state restore), read by the audio thread.
-  std::atomic<int> standaloneInputMode{static_cast<int>(InputMode::Input1)};
+  // Input channel mode (see InputMode). Atomic: written by the message
+  // thread (faceplate button / state restore), read by the audio thread.
+  std::atomic<int> inputMode{static_cast<int>(InputMode::Stereo)};
   bool isStandalone() const { return wrapperType == wrapperType_Standalone; }
   void updateStereoInputDetection();
 

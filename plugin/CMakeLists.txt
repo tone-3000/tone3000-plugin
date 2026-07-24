@@ -100,7 +100,9 @@ juce_add_plugin(${PROJECT_NAME}
     COMPANY_NAME TONE3000
     PLUGIN_NAME ${PLUGIN_NAME}
     IS_SYNTH FALSE
-    NEEDS_MIDI_INPUT FALSE
+    # MIDI in feeds the MidiMapper (CC/note → parameter mapping with Learn);
+    # hosts route their MIDI to us, standalone merges enabled MIDI inputs.
+    NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
     PLUGIN_MANUFACTURER_CODE TFTF
     PLUGIN_CODE ${PLUGIN_CODE}
@@ -114,6 +116,10 @@ juce_add_plugin(${PROJECT_NAME}
     NEEDS_WEBVIEW2 ${NEEDS_WEBVIEW2_VALUE}
     MICROPHONE_PERMISSION_ENABLED TRUE
     MICROPHONE_PERMISSION_TEXT "TONE3000 needs microphone access for audio input processing."
+    # Without this Info.plist key, macOS TCC kills the app the moment the
+    # Bluetooth MIDI pairing dialog touches CoreBluetooth.
+    BLUETOOTH_PERMISSION_ENABLED TRUE
+    BLUETOOTH_PERMISSION_TEXT "TONE3000 uses Bluetooth to find and pair Bluetooth MIDI controllers."
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/icon/icon.png"
     ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/icon/icon.png"
 )
@@ -132,6 +138,8 @@ target_sources(${PROJECT_NAME}
         src/PresetManager.cpp
         include/Processor.h
         src/Processor.cpp
+        include/MidiMapper.h
+        src/MidiMapper.cpp
         src/ProcessorChain.cpp
         src/ProcessorHistory.cpp
         src/ProcessorPresets.cpp
