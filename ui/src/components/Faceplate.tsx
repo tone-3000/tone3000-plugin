@@ -167,7 +167,8 @@ const OutputGainKnob: React.FC<{
           onChange={setBalance}
           size={SECONDARY_KNOB_SIZE}
           labelSize={12}
-          thumb="secondary"
+          variant="bipolar"
+          thumb="bipolar"
           scale={balanceDbScale}
           defaultValue={0.5}
           help={HELP.outputBalance}

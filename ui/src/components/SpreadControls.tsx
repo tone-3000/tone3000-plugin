@@ -90,10 +90,11 @@ export const SpreadGroup: React.FC = () => {
           value={offset}
           onChange={setOffset}
           variant="bipolar"
+          thumb="bipolar"
           size={KNOB_SIZE}
           labelSize={12}
           scale={offsetMsScale}
-          defaultValue={0.75}
+          defaultValue={0.5}
           help={HELP.spreadOffset}
         />
         <KnobControl

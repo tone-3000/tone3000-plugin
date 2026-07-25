@@ -1,7 +1,7 @@
 import React from 'react';
 import { PrimaryKnobThumb } from './PrimaryKnobThumb';
 import { SecondaryKnobThumb } from './SecondaryKnobThumb';
-import { PanKnobThumb } from './PanKnobThumb';
+import { BipolarKnobThumb } from './BipolarKnobThumb';
 
 /**
  * Knob geometry variants. The visual is the same hardware-style knob; the
@@ -15,8 +15,10 @@ import { PanKnobThumb } from './PanKnobThumb';
 export type KnobVariant = 'full' | 'bipolar' | 'panLeft' | 'panRight';
 
 /** Visual style: primary = large dark knob, secondary = small light knob,
-    pan = black body in a ring track that fills from noon toward the handle. */
-export type KnobThumb = 'primary' | 'secondary' | 'pan';
+    bipolar = hardware-style knob with a yellow value arc out from noon.
+    Bipolar serves every centered knob: bipolar knobs sweep both sides of
+    noon, pan halves stay on one side (the arc anchors at noon either way). */
+export type KnobThumb = 'primary' | 'secondary' | 'bipolar';
 
 interface KnobInnerProps {
   value: number; // 0 to 1 (panLeft uses 0..0.5, panRight 0.5..1)
@@ -39,10 +41,6 @@ const angleFor = (variant: KnobVariant, value: number): number => {
       return clamp(value, 0, 1) * 270 - 135;
   }
 };
-
-/** Where the pan thumb's fill arc anchors: centered variants fill outward
-    from noon, a full sweep fills up from hard-left. */
-const fillAnchorFor = (variant: KnobVariant): number => (variant === 'full' ? -135 : 0);
 
 // Memoized: pure function of scalar props — cheap to skip when a parent
 // re-renders idle knobs.
@@ -67,7 +65,7 @@ export const KnobInner: React.FC<KnobInnerProps> = React.memo(function KnobInner
       ) : thumb === 'secondary' ? (
         <SecondaryKnobThumb angleDeg={angleDeg} />
       ) : (
-        <PanKnobThumb angleDeg={angleDeg} anchorDeg={fillAnchorFor(variant)} />
+        <BipolarKnobThumb angleDeg={angleDeg} />
       )}
     </div>
   );
