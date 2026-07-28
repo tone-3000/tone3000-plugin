@@ -22,6 +22,7 @@
 //               ctest --test-dir build -R Dsp --output-on-failure
 #include "ChainOversampler.h"
 #include "NamEngine.h"
+#include "test_helpers.h"
 
 #include <gtest/gtest.h>
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -31,48 +32,10 @@
 #include "json.hpp"
 
 #include <cmath>
-#include <complex>
 #include <memory>
-#include <random>
 #include <vector>
 
 namespace {
-
-constexpr double kPi = 3.14159265358979323846;
-constexpr double kFs = 48000.0;  // == kChainBaseSampleRate
-
-// ── Shared helpers ──
-
-juce::File testFile(const char* name) {
-  const auto f = juce::File(T3K_TEST_FILES_DIR).getChildFile(name);
-  EXPECT_TRUE(f.existsAsFile()) << "missing test asset: " << f.getFullPathName().toStdString();
-  return f;
-}
-
-// Hann-windowed DFT magnitude² at one frequency (relative to kFs). A
-// full-scale sine reads 1.0 → 0 dB.
-double goertzelPower(const float* x, size_t n, double freq) {
-  std::complex<double> acc{0.0, 0.0};
-  for (size_t i = 0; i < n; ++i) {
-    const double w = 0.5 - 0.5 * std::cos(2.0 * kPi * i / (n - 1));
-    const double ph = -2.0 * kPi * freq / kFs * static_cast<double>(i);
-    acc += w * static_cast<double>(x[i]) * std::complex<double>(std::cos(ph), std::sin(ph));
-  }
-  const double mag = std::abs(acc) / (0.25 * static_cast<double>(n));
-  return mag * mag;
-}
-
-double goertzelPower(const std::vector<float>& x, double freq) {
-  return goertzelPower(x.data(), x.size(), freq);
-}
-
-double db(double power) { return 10.0 * std::log10(std::max(power, 1e-30)); }
-
-// Frequencies every harmonic h·f0 above the base Nyquist folds back to.
-double foldFrequency(double f) {
-  f = std::fmod(f, kFs);
-  return f > kFs / 2 ? kFs - f : f;
-}
 
 // Streams `in` through a chain-role ChainOversampler in `blockSize` chunks;
 // `chainFn(channels, frames)` processes the oversampled stereo block in
@@ -96,23 +59,6 @@ std::vector<float> runOversampledChain(const std::vector<float>& in, int factor,
     });
   }
   return out;
-}
-
-std::vector<float> makeSine(int frames, double freq, float amplitude = 1.0f) {
-  std::vector<float> x(static_cast<size_t>(frames));
-  for (int i = 0; i < frames; ++i)
-    x[static_cast<size_t>(i)] =
-        amplitude * static_cast<float>(std::sin(2.0 * kPi * freq * i / kFs));
-  return x;
-}
-
-std::vector<float> makeNoise(int frames, unsigned seed, float amplitude = 1.0f) {
-  std::vector<float> x(static_cast<size_t>(frames));
-  std::mt19937 rng(seed);
-  std::uniform_real_distribution<float> dist(-amplitude, amplitude);
-  for (auto& s : x)
-    s = dist(rng);
-  return x;
 }
 
 // ═════════════════════════ ChainOversampler ═════════════════════════

@@ -17,9 +17,23 @@ juce_add_console_app(DspTests PRODUCT_NAME "DspTests")
 
 target_sources(DspTests PRIVATE
     src/dsp_tests.cpp
+    src/processor_tests.cpp
     # Compiled straight from the plugin tree — the tests exercise the real
-    # engine, not a copy.
+    # processor, not a copy. GUI sources are excluded; HEADLESS=1 below
+    # compiles the processor exactly like the headless plugin build.
+    ../plugin/src/BlockEq.cpp
+    ../plugin/src/BlockSpectrum.cpp
+    ../plugin/src/MidiMapper.cpp
     ../plugin/src/NamEngine.cpp
+    ../plugin/src/PresetManager.cpp
+    ../plugin/src/Processor.cpp
+    ../plugin/src/ProcessorChain.cpp
+    ../plugin/src/ProcessorHistory.cpp
+    ../plugin/src/ProcessorModelLoader.cpp
+    ../plugin/src/ProcessorPresets.cpp
+    ../plugin/src/ProcessorState.cpp
+    ../plugin/src/Spread.cpp
+    ../plugin/src/TunerDetector.cpp
 )
 
 target_include_directories(DspTests PRIVATE
@@ -38,6 +52,9 @@ target_include_directories(DspTests PRIVATE
 target_compile_definitions(DspTests PRIVATE
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
+    # The processor compiles in its headless configuration (no Editor /
+    # webview / standalone-window code) — the DSP under test is identical.
+    HEADLESS=1
     # Absolute path to the test assets, so the binary runs from anywhere.
     T3K_TEST_FILES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/files"
 )

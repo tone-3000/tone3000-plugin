@@ -240,7 +240,7 @@ Meters tap the signal after input gain (input meters, pre-gate), after each bloc
 
 ### DSP tests
 
-A GTest suite (`test/src/dsp_tests.cpp`) verifies the chain's DSP invariants — oversampler null/transparency/aliasing behavior, NAM phase-interleaving exactness, IR island equivalence — against the real model and IR assets in `test/files`. Run it locally:
+A GTest suite verifies the chain's DSP invariants. `test/src/dsp_tests.cpp` covers the units — oversampler null/transparency/aliasing behavior, NAM phase-interleaving exactness, IR island equivalence — against the real model and IR assets in `test/files`. `test/src/processor_tests.cpp` drives the full `TONE3000Processor` (compiled headless, straight from `plugin/src`) the way a host would and pins the host-facing contracts: 48 kHz transparency with zero latency, reported PDC matching the measured boundary delay at 44.1/96 kHz, latency stability across oversampling toggles, and parameter state round trips. Run it locally:
 
 ```sh
 ./script/test-dsp.sh                     # build + run everything (~1 s)

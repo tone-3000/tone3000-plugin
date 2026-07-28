@@ -448,6 +448,43 @@ void TONE3000Processor::setInputMode(InputMode mode) {
   DBG("Input mode: " << inputModeToString(mode));
 }
 
+// Physical group delay of a ChainBoundaryResampler at this host rate, in
+// host samples. GetLatency() only counts the warm-up prefill and misses the
+// residual group delay of the two Lanczos kernels (2-5 samples, growing with
+// the rate ratio), so an impulse is run through a scratch boundary and the
+// peak located — exact by construction, and cheap enough for prepareToPlay.
+static int measureChainBoundaryLatency(double hostRate, int blockSize) {
+  ChainBoundaryResampler probe(kChainBaseSampleRate);
+  probe.Reset(hostRate, blockSize);
+
+  const int total = ((probe.GetLatency() + 2 * blockSize) / blockSize + 1) * blockSize;
+  juce::AudioBuffer<float> in(2, total), out(2, total);
+  in.clear();
+  out.clear();
+  in.setSample(0, 0, 1.0f);
+  in.setSample(1, 0, 1.0f);
+
+  auto identity = [](float** inputs, float** outputs, int frames) {
+    juce::FloatVectorOperations::copy(outputs[0], inputs[0], frames);
+    juce::FloatVectorOperations::copy(outputs[1], inputs[1], frames);
+  };
+  for (int offset = 0; offset < total; offset += blockSize) {
+    float* ins[2] = {in.getWritePointer(0, offset), in.getWritePointer(1, offset)};
+    float* outs[2] = {out.getWritePointer(0, offset), out.getWritePointer(1, offset)};
+    probe.ProcessBlock(ins, outs, blockSize, identity);
+  }
+
+  int peak = 0;
+  float best = 0.0f;
+  const float* y = out.getReadPointer(0);
+  for (int i = 0; i < total; ++i)
+    if (std::abs(y[i]) > best) {
+      best = std::abs(y[i]);
+      peak = i;
+    }
+  return peak;
+}
+
 // #############################
 // PREPARATIONS BEFORE RT THREAD
 // #############################
@@ -489,7 +526,9 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     if (chainBoundary == nullptr)
       chainBoundary = std::make_unique<ChainBoundaryResampler>(kChainBaseSampleRate);
     chainBoundary->Reset(sampleRate, juce::jmax(1, samplesPerBlock));
-    chainBoundaryLatency = chainBoundary->GetLatency();
+    // Not GetLatency() — that under-reports by the Lanczos kernels' group
+    // delay, and hosts align dry paths against this number.
+    chainBoundaryLatency = measureChainBoundaryLatency(sampleRate, juce::jmax(1, samplesPerBlock));
   } else {
     chainBoundary.reset();
     chainBoundaryLatency = 0;

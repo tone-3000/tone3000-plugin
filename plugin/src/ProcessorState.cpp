@@ -88,6 +88,10 @@ void TONE3000Processor::getStateInformation(juce::MemoryBlock& destData) {
   // don't carry it (I/O routing, not tone).
   state.setProperty("inputMode", inputModeToString(getInputMode()), nullptr);
 
+  // Editor window scale: session/plugin state like inputMode (a workstation
+  // preference, not tone) — presets never carry it.
+  state.setProperty("editorScale", editorScale.load(), nullptr);
+
   // MIDI map: session/plugin state like inputMode (it describes the user's
   // rig, not the tone) — presets never carry it.
   state.appendChild(midiMapper.toValueTree(), nullptr);
@@ -142,6 +146,10 @@ void TONE3000Processor::setStateInformation(const void* data, int sizeInBytes) {
 
   inputMode.store(static_cast<int>(
       inputModeFromString(state.getProperty("inputMode").toString())));
+
+  // Older projects have no editorScale; keep the 1x default. The editor
+  // clamps to its supported range when it reads this.
+  editorScale.store(static_cast<double>(state.getProperty("editorScale", 1.0)));
 
   // A missing child clears the map — a project without mappings must not
   // inherit the previous session's.

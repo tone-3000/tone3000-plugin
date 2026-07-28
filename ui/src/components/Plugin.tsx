@@ -30,6 +30,7 @@ import { OfflineModal } from './OfflineModal';
 import { ToneBrowser } from './ToneBrowser';
 import { UpdateNotice } from './UpdateNotice';
 import { useUpdateNotice } from '../hooks/useUpdateNotice';
+import { useUiScale, DESIGN_WIDTH } from '../hooks/useUiScale';
 
 // Swap targets must survive the Select flow's full-page OAuth redirect (the
 // webview navigates to tone3000.com and back, remounting React), so the
@@ -118,6 +119,9 @@ export const Plugin: React.FC = () => {
   // chrome strips that grow the window rather than squish the 600px core — we
   // report their combined height to native whenever either toggles.
   const { banner, dismiss: dismissBanner } = useAppBanner(standalone ? audioDevice.state : null);
+  // Whole-UI proportional scaling: the root div below is a fixed 1024-wide
+  // design-space box and this ref's CSS zoom stretches it to the window.
+  const uiScaleRef = useUiScale<HTMLDivElement>();
   const bannerVisible = banner !== null;
   const hintsVisible = useHintsEnabled();
   const extraHeight = (bannerVisible ? BANNER_HEIGHT : 0) + (hintsVisible ? HINT_HEIGHT : 0);
@@ -446,10 +450,12 @@ export const Plugin: React.FC = () => {
 
   return (
     <div
+      ref={uiScaleRef}
       style={{
         position: 'relative',
-        width: '100%',
-        maxWidth: '100%',
+        // Explicit design-space box: the useUiScale zoom stretches it to the
+        // real window size, so every hard-coded px inside scales with it.
+        width: `${DESIGN_WIDTH}px`,
         // The window grows by the chrome-strip height (see setExtraContentHeight
         // above), so the 600px core UI between them keeps its full space.
         height: `${600 + extraHeight}px`,

@@ -4,8 +4,12 @@
 void TONE3000Editor::parentHierarchyChanged() {
   if (auto* window = dynamic_cast<juce::DocumentWindow*>(getTopLevelComponent())) {
     window->setUsingNativeTitleBar(true);
-    window->centreWithSize(kWidth, totalHeight() + 28);  // Extra height for title bar
-    setSize(kWidth, totalHeight());
+    // Keep whatever scale the constructor restored (or the user last dragged
+    // to) rather than snapping back to the 1x design size.
+    const int w = getWidth();
+    const int h = getHeight();
+    window->centreWithSize(w, h + 28);  // Extra height for title bar
+    setSize(w, h);
   }
 
 #if JUCE_MAC
@@ -62,7 +66,28 @@ TONE3000Editor::TONE3000Editor(TONE3000Processor& p) : AudioProcessorEditor(&p),
   lastPushedRevision = processor.getCurrentChainRevision();
   startTimerHz(20);
 
-  setSize(kWidth, totalHeight());
+  // Grow-only resizing: corner/edge drags scale the whole window between the
+  // 1024x600 design size and kMaxScale times it, aspect-locked. Restore the
+  // session's scale (persisted via the processor — see ProcessorState.cpp).
+  setResizable(true, true);
+  // Read the persisted scale before touching the constraints: installing the
+  // resize limits already snaps the editor to the 1x minimum, and resized()
+  // writes that back through processor.editorScale.
+  const double savedScale = juce::jlimit(1.0, kMaxScale, processor.editorScale.load());
+  updateResizeConstraints();
+  applyScaledSize(savedScale);
+}
+
+void TONE3000Editor::applyScaledSize(double scale) {
+  setSize(juce::roundToInt(kWidth * scale), juce::roundToInt(totalHeight() * scale));
+}
+
+void TONE3000Editor::updateResizeConstraints() {
+  setResizeLimits(kWidth, totalHeight(), juce::roundToInt(kWidth * kMaxScale),
+                  juce::roundToInt(totalHeight() * kMaxScale));
+  // The ratio tracks the chrome strips, so corner drags at any extra-height
+  // state preserve the current layout exactly.
+  getConstrainer()->setFixedAspectRatio(static_cast<double>(kWidth) / totalHeight());
 }
 
 void TONE3000Editor::setExtraContentHeight(int pixels) {
@@ -70,12 +95,15 @@ void TONE3000Editor::setExtraContentHeight(int pixels) {
   // wrapper (resizeView in VST3), so this works in DAWs too — a host that
   // refuses keeps the old size and the webview scrolls, the same fallback
   // as before. Standalone resizes its own window directly.
+  // The UI reports design-space pixels; the window change is scaled.
   // Generous ceiling: banner (~44) + hint bar (~36) with headroom to spare.
   const int clamped = juce::jlimit(0, 160, pixels);
   if (clamped == extraContentHeight)
     return;
+  const double scale = currentScale();
   extraContentHeight = clamped;
-  setSize(kWidth, totalHeight()); 
+  updateResizeConstraints();
+  applyScaledSize(scale);
 }
 
 void TONE3000Editor::timerCallback() {
@@ -139,7 +167,11 @@ void TONE3000Editor::loadMainUrlIfNeeded() {
 }
 
 void TONE3000Editor::resized() {
-  mainWebView->setBounds(getLocalBounds());
+  // Real pixels only — no transform. The webview handles devicePixelRatio
+  // itself, and the page applies its own CSS zoom from the viewport width.
+  if (mainWebView != nullptr)
+    mainWebView->setBounds(getLocalBounds());
+  processor.editorScale.store(currentScale());
 }
 
 // Get the WebView UI resources from BinaryData

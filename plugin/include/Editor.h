@@ -39,12 +39,23 @@ public:
 private:
   TONE3000Processor& processor;
 
-  // Fixed plugin UI size; the window can additionally grow by the
-  // chrome-strip height (see setExtraContentHeight).
+  // Design-space size of the plugin UI. The window is this times the user's
+  // scale factor: resizable (aspect-locked) from 1x up to kMaxScale. The web
+  // UI observes its actual viewport width and applies a matching CSS zoom
+  // (see useUiScale in the web UI), so native only manages the window box.
+  // The window can additionally grow by the chrome-strip height (see
+  // setExtraContentHeight).
   static constexpr int kWidth = 1024;
   static constexpr int kBaseHeight = 600; // base height of the plugin UI
+  static constexpr double kMaxScale = 2.0;
   int extraContentHeight = 0;
   int totalHeight() const { return kBaseHeight + extraContentHeight; }
+
+  // Scale is never stored — the window width is the source of truth, so a
+  // host-driven resize and our own setSize agree by construction.
+  double currentScale() const { return getWidth() / static_cast<double>(kWidth); }
+  void applyScaledSize(double scale);
+  void updateResizeConstraints();
 
   // One shared dark theme for JUCE-drawn surfaces (standalone settings dialog
   // etc.); installed as the default LookAndFeel in the editor constructor.
