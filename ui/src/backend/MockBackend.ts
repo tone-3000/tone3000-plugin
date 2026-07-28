@@ -4,6 +4,7 @@ import type {
   ParameterMap,
   SliderParameter,
   ToggleParameter,
+  ComboBoxParameter,
 } from '../types/IAudioBackend';
 
 export class MockBackend implements IAudioBackend {
@@ -39,6 +40,22 @@ export class MockBackend implements IAudioBackend {
         },
       },
     } as ToggleParameter,
+
+    comboBox: {
+      getValue: () => 0,
+      setValue: (index: number) => {
+        console.log(`Set comboBox to ${index}`);
+      },
+      valueChangedEvent: {
+        addListener: () => {
+          console.log('Added comboBox listener');
+          return 3;
+        },
+        removeListener: (id: number) => {
+          console.log('Removed comboBox listener', id);
+        },
+      },
+    } as ComboBoxParameter,
   };
 
   getParameterState<T extends ParameterType>(name: string, type: T): ParameterMap[T] {

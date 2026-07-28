@@ -49,7 +49,7 @@ void TONE3000Processor::applyBlockSettings(ChainBlock& block, const juce::ValueT
     // EQ bands (defaults to flat when the child is missing — older projects).
     // Block EQs always run in the chain domain (fixed rate).
     block.eq.restoreFromValueTree(blockState.getChildWithName("Eq"));
-    block.eq.prepare(kChainSampleRate);
+    block.eq.prepare(chainSampleRate());
   }
 }
 

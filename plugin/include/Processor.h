@@ -19,6 +19,7 @@
 #include "ChainBlock.h"
 #include "ChainDomain.h"
 #include "ChainHistory.h"
+#include "ChainOversampler.h"
 #include "MidiMapper.h"
 #include "NoiseGate.h"
 #include "Spread.h"
@@ -27,7 +28,9 @@
 
 class TONE3000Processor;
 
-class TONE3000Processor : public juce::AudioProcessor {
+class TONE3000Processor : public juce::AudioProcessor,
+                          private juce::AudioProcessorValueTreeState::Listener,
+                          private juce::AsyncUpdater {
 public:
   TONE3000Processor();
   ~TONE3000Processor() override;
@@ -249,10 +252,22 @@ private:
   // Tone loading helpers
   std::vector<uint8_t> fetchModelFromUrl(const juce::String& modelUrl);
 
-  /** Largest frame count the chain domain can see per callback: the host max
-      block size converted to 48 kHz frames (and never below the host size, so
-      the direct 48k path is covered too). Floors at 1 to avoid prepare(0). */
+  /** Largest frame count the chain stage can see per boundary callback at the
+      base rate: the host max block size converted to 48 kHz frames (and never
+      below the host size, so the direct 48k path is covered too). Floors at 1
+      to avoid prepare(0). */
+  int chainBaseBlockSize() const noexcept;
+
+  /** Largest frame count the chain domain can see per callback — the base
+      block size times the current oversampling factor. */
   int chainDomainBlockSize() const noexcept;
+
+  /** The effective chain rate: kChainBaseSampleRate × oversampling factor.
+      Safe from any thread (the factor is atomic; it only changes inside the
+      full re-prepare paths, never under the audio thread's feet). */
+  double chainSampleRate() const noexcept {
+    return kChainBaseSampleRate * chainOversampleFactor.load(std::memory_order_relaxed);
+  }
 
   struct PreparedBlockModel {
     bool success = false;
@@ -260,6 +275,9 @@ private:
     // The chain-domain block size the engines were prepared for. Prepares can
     // race prepareToPlay at startup (restore-time loads run first), so the
     // apply step re-prepares when this is smaller than the live domain size.
+    // (An oversampling *factor* change in flight is handled separately: NAM
+    // engines carry their phase count and get re-queued by the apply step;
+    // IR convolvers are rate-independent — always built at the base rate.)
     int preparedBlockSize = 0;
 
     std::unique_ptr<NamEngine> namEngine;
@@ -268,8 +286,8 @@ private:
     std::unique_ptr<juce::dsp::Convolution> convolverMono;
     std::unique_ptr<juce::dsp::Convolution> convolverStereo;
     int irNumChannels = 1;
-    int irLengthChainSamples = 0;  // chain-rate kernel length (tail reporting)
-    bool irIsLong = false;         // short/long classification (see ChainBlock.h)
+    int irLengthBaseSamples = 0;  // base-rate kernel length (tail reporting)
+    bool irIsLong = false;        // short/long classification (see ChainBlock.h)
     juce::File irTempFile;
     float irNormalizationGainLinear = 1.0f;
   };
@@ -336,16 +354,17 @@ private:
   // input→output copy (skipped when they alias). Caller holds `chainMutex`.
   void processChainStage(float** inputs, float** outputs, int numFrames);
 
-  // Prepare every engine in a chain for the fixed chain rate (kChainSampleRate)
-  // and the current chain-domain block size. Holds no lock.
+  // Prepare every engine in a chain for the current chain rate (see
+  // chainSampleRate) and chain-domain block size. Holds no lock.
   void prepareChain(std::vector<std::unique_ptr<ChainBlock>>& blocks);
 
-  // Recompute the longest loaded IR across both lanes into irTailChainSamples
-  // (chain-rate samples). Called wherever the set of live IR engines can
-  // change: model apply, block removal, snapshot restore. Caller must hold
-  // chainMutex; getTailLengthSeconds reads the atomic lock-free.
+  // Recompute the longest loaded IR across both lanes into irTailBaseSamples
+  // (base-rate samples — IRs always convolve at the base rate, see
+  // ChainBlock::irBaseRateIsland). Called wherever the set of live IR engines
+  // can change: model apply, block removal, snapshot restore. Caller must
+  // hold chainMutex; getTailLengthSeconds reads the atomic lock-free.
   void refreshIrTailLength();
-  std::atomic<int> irTailChainSamples{0};
+  std::atomic<int> irTailBaseSamples{0};
 
   // The chain the UI edits/adds to right now (Left in mono mode, or the active side in stereo).
   std::vector<std::unique_ptr<ChainBlock>>& activeChain();
@@ -499,9 +518,21 @@ private:
   void markBlockLoadFailed(const std::string& blockId);
 
   // ── Chain-domain resampling boundary (see ChainDomain.h) ──
-  // Engaged (non-null) only when the host rate differs from kChainSampleRate;
-  // created/reset in prepareToPlay, so the audio thread never sees it change.
+  // Engaged (non-null) only when the host rate differs from the chain base
+  // rate; created/reset in prepareToPlay, so the audio thread never sees it
+  // change.
   std::unique_ptr<ChainBoundaryResampler> chainBoundary;
+  // ── Chain oversampler (see ChainOversampler.h) ──
+  // Raises the chain rate to kChainBaseSampleRate × factor inside the
+  // boundary. Factor 1 = transparent passthrough. The factor atomic is the
+  // single source of truth for the live chain rate; it's only written inside
+  // the re-prepare paths (prepareToPlay / applyOversamplingSettings) while
+  // the chain is quiesced.
+  ChainOversampler chainOversampler;
+  std::atomic<int> chainOversampleFactor{1};
+  // The chain stage behind the oversampler — the callable both invocation
+  // paths (direct and boundary) share.
+  void processOversampledChainStage(float** inputs, float** outputs, int numFrames);
   // The encapsulated callback, built once in the constructor (capturing only
   // `this`) so ProcessBlock never allocates a std::function per audio block.
   ChainBoundaryResampler::BlockProcessFunc chainStageFunc;
@@ -557,8 +588,23 @@ private:
     std::atomic<float>* targetLoudness = nullptr;
     std::atomic<float>* calibrateInput = nullptr;
     std::atomic<float>* inputCalibrationLevel = nullptr;
+    std::atomic<float>* osEnabled = nullptr;
+    std::atomic<float>* osFactor = nullptr;
   } paramRefs;
   void resolveParamRefs();
+
+  /** The oversampling factor the osEnabled/osFactor parameters currently
+      request: 1 when disabled, else 2/4/8. */
+  int resolvedOversampleFactor() const;
+
+  // ── Oversampling live switching ──
+  // The osEnabled/osFactor listeners bounce to the message thread (relays
+  // fire from UI/host threads), where applyOversamplingSettings re-rates the
+  // whole chain domain under the chain-edit fade: linear engines re-prepare
+  // in place, NAM engines rebuild off-thread from the model cache.
+  void parameterChanged(const juce::String& parameterID, float newValue) override;
+  void handleAsyncUpdate() override;
+  void applyOversamplingSettings();
 
   // Per-block cached values (refreshed once per processBlock from paramRefs).
   float cacheInputLevel = 0.5f;

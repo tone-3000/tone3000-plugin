@@ -404,3 +404,4 @@ CPMAddPackage(
 enable_testing() # Allow running build tests
 
 add_subdirectory(plugin) # Add plugin project
+add_subdirectory(test)   # DSP test suite (DspTests — see script/test-dsp.sh)

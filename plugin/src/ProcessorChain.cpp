@@ -859,9 +859,9 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
   // Input channel mode (stereo / left / right) — the faceplate button.
   state->setProperty("inputMode", inputModeToString(getInputMode()));
   // The EQ editor mirrors the biquad math client-side; block EQs run in the
-  // chain domain, so the drawn curve must use the fixed chain rate — not the
-  // host rate (see ChainDomain.h).
-  state->setProperty("sampleRate", kChainSampleRate);
+  // chain domain, so the drawn curve must use the live chain rate (48 kHz ×
+  // oversampling factor) — not the host rate (see ChainDomain.h).
+  state->setProperty("sampleRate", chainSampleRate());
   return state.get();
 }
 

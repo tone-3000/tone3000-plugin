@@ -194,15 +194,17 @@ flowchart LR
     IM --> IG["Input Level"]
     IG --> GATE["Noise Gate&nbsp;*"]
     GATE --> RS(("⇅ 48k"))
-    subgraph CHAINS["Tone chains — run at 48 kHz"]
+    RS --> OS(("×N ↑&nbsp;*"))
+    subgraph CHAINS["Tone chains — 48 kHz × oversampling factor"]
         direction LR
         CL["Left chain<br/>(NAM / IR blocks)"]
         CR["Right chain<br/>(stereo mode only)"]
     end
-    RS --> CL
-    RS --> CR
-    CL --> RS2(("⇅ 48k"))
-    CR --> RS2
+    OS --> CL
+    OS --> CR
+    CL --> OS2(("×N ↓&nbsp;*"))
+    CR --> OS2
+    OS2 --> RS2(("⇅ 48k"))
     RS2 --> SPREAD["Spread&nbsp;*<br/>(delay one side + jitter)"]
     SPREAD --> PAN["Balance + Pan&nbsp;*<br/>(per-chain trim, then<br/>constant-power blend)"]
     PAN --> DCB["DC Blocker<br/>(~5 Hz HPF)"]
@@ -215,7 +217,8 @@ flowchart LR
 - **Mono mode** — only the Left chain runs (a stereo bus passes both channels through it together) and the pan stage is skipped. If Spread is on, the chain output is doubled to stereo first, then one side is delayed.
 - **Stereo mode** — channel 0 feeds the Left chain and channel 1 the Right chain independently; the Balance trim scales each chain (±12 dB opposing) *before* the two pan knobs place them in the stereo image with constant-power law, so a balance dialed in to match the chains stays correct at any pan position.
 - **Tone stack** — one global Bass/Middle/Treble EQ after the DC blocker.
-- **48 kHz boundary** — the chains always run at 48 kHz; a Lanczos resampler wraps them when the host rate differs (bypassed at 48 kHz).
+- **48 kHz boundary** — the chains are anchored at 48 kHz; a Lanczos resampler wraps them when the host rate differs (bypassed at 48 kHz).
+- **Oversampling** — an Advanced setting runs the whole chain at 2×/4×/8× the 48 kHz base rate (see `plugin/include/ChainOversampler.h`): minimum-phase half-band filters (zero added latency), with NAM models phase-interleaved across N native-rate instances (see `NamEngine.h`) so harmonics land in the widened band instead of folding back as aliasing. IR blocks are the exception: convolution is linear, so each IR convolves at the 48 kHz base rate inside a per-block decimate/interpolate island — IR CPU and sound are identical at every factor.
 
 Inside every tone block:
 
@@ -234,6 +237,17 @@ flowchart LR
 Each block's 6-band EQ runs in exactly one position: after the dry/wet mix (**POST**, the default) or between In Gain and the model (**PRE**, the EQ menu's PRE toggle) — never both. A flat or bypassed EQ costs nothing on the audio thread.
 
 Meters tap the signal after input gain (input meters, pre-gate), after each block's In Gain (plus its EQ in the PRE position) and after its final stage (block LEDs), and after output gain (output meters).
+
+### DSP tests
+
+A GTest suite (`test/src/dsp_tests.cpp`) verifies the chain's DSP invariants — oversampler null/transparency/aliasing behavior, NAM phase-interleaving exactness, IR island equivalence — against the real model and IR assets in `test/files`. Run it locally:
+
+```sh
+./script/test-dsp.sh                     # build + run everything (~1 s)
+./script/test-dsp.sh 'IrConvolutionTest.*'   # gtest filter
+```
+
+`test/src/os_bench.cpp` is a standalone CPU benchmark for the oversampled NAM path (build instructions in its header).
 
 ---
 

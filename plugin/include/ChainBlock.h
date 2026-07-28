@@ -8,6 +8,7 @@
 #include <vector>
 #include "BlockEq.h"
 #include "BlockSpectrum.h"
+#include "ChainOversampler.h"
 #include "NamEngine.h"
 
 // Chain block types
@@ -115,7 +116,7 @@ struct ChainBlock {
   // writes the log line there — string building/logging is not RT-safe.
   std::atomic<bool> rtProcessingFailed{false};
 
-  // NAM-specific processing (runs at the fixed chain rate — see ChainDomain.h)
+  // NAM-specific processing (runs at the chain rate — see ChainDomain.h)
   std::unique_ptr<NamEngine> namEngine;
   juce::LinearSmoothedValue<float> namNormalizationSmoother;
 
@@ -129,11 +130,17 @@ struct ChainBlock {
   // non-uniform engine (also zero latency) — see prepareBlockModelOffThread.
   std::unique_ptr<juce::dsp::Convolution> convolverMono;
   std::unique_ptr<juce::dsp::Convolution> convolverStereo;
+  // Convolution always runs at kChainBaseSampleRate: when the chain is
+  // oversampled this island decimates the block's wet path to the base rate
+  // around the convolver and interpolates back (linear processing gains
+  // nothing from oversampling; its CPU scales ~quadratically with the rate).
+  // Bypass (zero-cost) at factor 1. See ChainOversampler.h.
+  ChainOversampler irBaseRateIsland;
   int irNumChannels{1};  // channels in the loaded IR file (1 or 2)
-  // Loaded IR length in chain-rate samples (post trim + resample, read off
+  // Loaded IR length in base-rate samples (post trim + resample, read off
   // the built engine). Feeds refreshIrTailLength / getTailLengthSeconds so
   // hosts render real reverb tails.
-  int irLengthChainSamples{0};
+  int irLengthBaseSamples{0};
   // The single short/long classification (kernel length vs the cutoff in
   // ProcessorModelLoader.cpp). Short = cab-like: −18 dB output pad
   // (spectrally concentrated kernels play back hot at unit energy), 100%

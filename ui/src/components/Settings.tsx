@@ -66,6 +66,14 @@ const NAM_A2_SIZE_OPTIONS: { value: NamA2Size; label: string }[] = [
   { value: 'full', label: 'A2-Full' },
 ];
 
+// Oversampling rate choices. Values are the osFactor parameter's choice
+// indices (as strings for SelectField); the DSP maps index i to 2^(i+1).
+const OS_FACTOR_OPTIONS: { value: '0' | '1' | '2'; label: string }[] = [
+  { value: '0', label: '2X - Default' },
+  { value: '1', label: '4X' },
+  { value: '2', label: '8X' },
+];
+
 const NAM_A2_MODE_OPTIONS: {
   value: NamA2SizeMode;
   label: string;
@@ -181,6 +189,9 @@ export const Settings: React.FC<SettingsProps> = ({
     'inputCalibrationLevel',
     'slider'
   );
+
+  const [osEnabled, setOsEnabled] = useParameter('osEnabled', 'toggle');
+  const [osFactorIndex, setOsFactorIndex] = useParameter('osFactor', 'comboBox');
 
   // Convert between normalized (0-1) and actual dBu values (-60 to +60 dBu):
   // JUCE WebView normalizes all slider parameters to 0-1 regardless of range.
@@ -434,6 +445,42 @@ export const Settings: React.FC<SettingsProps> = ({
             </p>
           </div>
         )}
+      </ToggleRow>
+
+      <ToggleRow
+        label="Oversampling"
+        description="Reduces aliasing. Higher rates improve quality but use more CPU."
+        value={osEnabled}
+        onChange={setOsEnabled}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            marginTop: '4px',
+          }}
+        >
+          <span
+            style={{
+              fontSize: '13px',
+              fontWeight: 400,
+              color: osEnabled ? '#ffffff' : SUBTLE,
+              flexShrink: 0,
+            }}
+          >
+            Rate
+          </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <SelectField
+              value={String(osFactorIndex) as '0' | '1' | '2'}
+              options={OS_FACTOR_OPTIONS}
+              onChange={(v) => setOsFactorIndex(Number(v))}
+              disabled={!osEnabled}
+              ariaLabel="Oversampling rate"
+            />
+          </div>
+        </div>
       </ToggleRow>
 
       <div>

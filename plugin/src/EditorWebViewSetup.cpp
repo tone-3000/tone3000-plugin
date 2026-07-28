@@ -152,6 +152,8 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
       .withOptionsFrom(editor->toneEqEnabledRelay)
       .withOptionsFrom(editor->calibrateInputRelay)
       .withOptionsFrom(editor->inputCalibrationLevelRelay)
+      .withOptionsFrom(editor->osEnabledRelay)
+      .withOptionsFrom(editor->osFactorRelay)
       // --- Chain mutations -------------------------------------------------
       .withNativeFunction(
           // (toneJson, targetInsertId?, defaultSlimmableSize?) — the tone

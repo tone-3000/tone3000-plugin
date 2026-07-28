@@ -92,6 +92,8 @@ private:
   juce::WebToggleButtonRelay toneEqEnabledRelay{"toneEqEnabled"};
   juce::WebToggleButtonRelay calibrateInputRelay{"calibrateInput"};
   juce::WebSliderRelay inputCalibrationLevelRelay{"inputCalibrationLevel"};
+  juce::WebToggleButtonRelay osEnabledRelay{"osEnabled"};
+  juce::WebComboBoxRelay osFactorRelay{"osFactor"};
 
   // Attachments
   juce::WebSliderParameterAttachment inputLevelWebAttachment{
@@ -128,6 +130,10 @@ private:
       *processor.parameters.getParameter("calibrateInput"), calibrateInputRelay, nullptr};
   juce::WebSliderParameterAttachment inputCalibrationLevelWebAttachment{
       *processor.parameters.getParameter("inputCalibrationLevel"), inputCalibrationLevelRelay, nullptr};
+  juce::WebToggleButtonParameterAttachment osEnabledWebAttachment{
+      *processor.parameters.getParameter("osEnabled"), osEnabledRelay, nullptr};
+  juce::WebComboBoxParameterAttachment osFactorWebAttachment{
+      *processor.parameters.getParameter("osFactor"), osFactorRelay, nullptr};
 
   std::optional<juce::WebBrowserComponent::Resource> getResource(const juce::String& url);
   juce::String getMimeForExtension(const juce::String& extension);

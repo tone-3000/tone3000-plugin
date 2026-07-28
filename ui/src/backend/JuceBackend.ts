@@ -5,6 +5,7 @@ import type {
   ParameterMap,
   SliderParameter,
   ToggleParameter,
+  ComboBoxParameter,
 } from '../types/IAudioBackend';
 
 /** The raw event bus JUCE injects at `window.__JUCE__.backend`. */
@@ -54,6 +55,10 @@ const juceMap: JuceGetterMap = {
     get: Juce.getToggleState,
     adapt: adaptToggle,
   },
+  comboBox: {
+    get: Juce.getComboBoxState,
+    adapt: adaptComboBox,
+  },
 };
 
 // Ask the backend relay to (re-)send propertiesChanged + valueChanged for a
@@ -65,7 +70,7 @@ function requestInitialUpdate(state: { identifier: string }): void {
   rawJuceBackend()?.emitEvent(state.identifier, { eventType: 'requestInitialUpdate' });
 }
 
-type JuceControlState = Juce.SliderState | Juce.ToggleState;
+type JuceControlState = Juce.SliderState | Juce.ToggleState | Juce.ComboBoxState;
 
 // Subscribe to both valueChanged and propertiesChanged: for sliders the
 // normalised value is derived from the range properties, and the two events
@@ -113,5 +118,18 @@ function adaptToggle(toggle: Juce.ToggleState): ToggleParameter {
       removeListener: (id: number) => removeControlListener(toggle, id),
     },
     requestInitialUpdate: () => requestInitialUpdate(toggle),
+  };
+}
+
+function adaptComboBox(comboBox: Juce.ComboBoxState): ComboBoxParameter {
+  return {
+    getValue: () => comboBox.getChoiceIndex(),
+    setValue: (index: number) => comboBox.setChoiceIndex(index),
+    valueChangedEvent: {
+      addListener: (fn: (val: number) => void) =>
+        addControlListener(comboBox, () => fn(comboBox.getChoiceIndex())),
+      removeListener: (id: number) => removeControlListener(comboBox, id),
+    },
+    requestInitialUpdate: () => requestInitialUpdate(comboBox),
   };
 }

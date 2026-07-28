@@ -34,6 +34,11 @@ TONE3000Processor::TONE3000Processor()
 
   resolveParamRefs();
 
+  // Oversampling settings apply through a message-thread bounce (see
+  // applyOversamplingSettings) — the relays can fire from any thread.
+  parameters.addParameterListener("osEnabled", this);
+  parameters.addParameterListener("osFactor", this);
+
   // MIDI performance events (delivered on the message thread — see
   // MidiMapper): program changes walk the preset list, mapped block-power
   // and stereo stomps route through the normal undoable chain edit paths.
@@ -49,7 +54,7 @@ TONE3000Processor::TONE3000Processor()
   // Built once (capturing only `this`) so invoking the boundary on the audio
   // thread never constructs a std::function per block.
   chainStageFunc = [this](float** inputs, float** outputs, int numFrames) {
-    processChainStage(inputs, outputs, numFrames);
+    processOversampledChainStage(inputs, outputs, numFrames);
   };
   DBG("TONE3000Processor constructed");
 }
@@ -74,6 +79,8 @@ void TONE3000Processor::resolveParamRefs() {
   paramRefs.targetLoudness = get("targetLoudness");
   paramRefs.calibrateInput = get("calibrateInput");
   paramRefs.inputCalibrationLevel = get("inputCalibrationLevel");
+  paramRefs.osEnabled = get("osEnabled");
+  paramRefs.osFactor = get("osFactor");
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createParameterLayout() {
@@ -144,10 +151,96 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
   layout.add(std::make_unique<juce::AudioParameterBool>(
       juce::ParameterID{"chainPanLinked", 24}, "chainPanLinked", true));
 
+  // ── Oversampling (Advanced settings; see ChainOversampler.h) ──
+  // Deliberately not automatable: a factor change rebuilds every NAM engine
+  // and re-prepares the whole chain — a settings action, not a performance
+  // control. Choice index i maps to factor 2^(i+1) (2x/4x/8x).
+  layout.add(std::make_unique<juce::AudioParameterBool>(
+      juce::ParameterID{"osEnabled", 25}, "osEnabled", false,
+      juce::AudioParameterBoolAttributes().withAutomatable(false)));
+  layout.add(std::make_unique<juce::AudioParameterChoice>(
+      juce::ParameterID{"osFactor", 26}, "osFactor", juce::StringArray{"2x", "4x", "8x"}, 0,
+      juce::AudioParameterChoiceAttributes().withAutomatable(false)));
+
   return layout;
 }
 
+int TONE3000Processor::resolvedOversampleFactor() const {
+  if (paramRefs.osEnabled == nullptr || paramRefs.osFactor == nullptr)
+    return 1;
+  if (paramRefs.osEnabled->load() < 0.5f)
+    return 1;
+  const int choiceIndex = static_cast<int>(std::lround(paramRefs.osFactor->load()));
+  return 1 << (juce::jlimit(0, 2, choiceIndex) + 1);
+}
+
+void TONE3000Processor::parameterChanged(const juce::String& parameterID, float newValue) {
+  // Only the oversampling params are subscribed. Defer to the message thread:
+  // this can fire from the UI relays or host restore, and the apply is heavy.
+  juce::ignoreUnused(parameterID, newValue);
+  triggerAsyncUpdate();
+}
+
+void TONE3000Processor::handleAsyncUpdate() {
+  applyOversamplingSettings();
+}
+
+// Message thread. Re-rates the whole chain domain after an osEnabled/osFactor
+// change: the oversampler and every linear engine (EQ/spectrum/smoothers,
+// plus each IR block's base-rate island — the convolvers themselves stay at
+// the base rate untouched) re-prepare in place under the chain-edit fade;
+// NAM engines need a different phase count, so they drop to dry passthrough
+// and rebuild off-thread from the block's in-memory model cache, fading back
+// in as each lands.
+void TONE3000Processor::applyOversamplingSettings() {
+  const int newFactor = resolvedOversampleFactor();
+  if (newFactor == chainOversampleFactor.load())
+    return;
+
+  juce::Logger::writeToLog("[Processor] Oversampling ×" +
+                           juce::String(chainOversampleFactor.load()) + " -> ×" +
+                           juce::String(newFactor) + " (chain rate " +
+                           juce::String(kChainBaseSampleRate * newFactor) + " Hz)");
+
+  // Glide the chain output to silence, splice the rate change in between
+  // callbacks, glide back — the same fade structural chain edits use.
+  ChainEditFade fade(*this);
+  juce::ScopedLock lock(chainMutex);
+
+  chainOversampleFactor.store(newFactor);
+  chainOversampler.prepare(newFactor, juce::jmax(1, chainBaseBlockSize()));
+
+  // The chain-domain scratch grows with the factor; the RT path never
+  // resizes it.
+  tempDryBuffer.setSize(2, juce::jmax(1, chainDomainBlockSize()), false, false, true);
+  tempDryBuffer.clear();
+
+  for (auto& l : lanes)
+    prepareChain(l);
+
+  // IR blocks need nothing here: their convolvers run at the base rate
+  // behind per-block islands (re-prepared by prepareChain above), so neither
+  // the kernel nor the tail report moves with the factor.
+  for (auto& l : lanes) {
+    for (auto& block : l) {
+      if (block->type == ChainBlockType::NAM && block->loaded && !block->modelLoading) {
+        // In-flight loads are left alone: the apply path's factor-drift guard
+        // re-queues them itself.
+        block->loaded = false;
+        block->modelLoading = true;
+        queueActiveModelLoad(*block);
+      }
+    }
+  }
+
+  bumpChainRevision();
+}
+
 TONE3000Processor::~TONE3000Processor() {
+  parameters.removeParameterListener("osEnabled", this);
+  parameters.removeParameterListener("osFactor", this);
+  cancelPendingUpdate();
+
   releaseResources();
 
   // Clean up both lanes only when the processor is actually being destroyed
@@ -184,13 +277,14 @@ bool TONE3000Processor::isMidiEffect() const {
 double TONE3000Processor::getTailLengthSeconds() const {
   // Two tail sources, report the longer one:
   //  - The longest loaded IR (reverb IRs run whole seconds; cab IRs sit far
-  //    below the DC-blocker floor). Tracked lock-free in irTailChainSamples —
+  //    below the DC-blocker floor). Tracked lock-free in irTailBaseSamples —
   //    this (potentially RT-adjacent) query must not take the chain lock —
   //    and refreshed wherever the set of live IR engines changes (see
-  //    refreshIrTailLength).
+  //    refreshIrTailLength). IRs always convolve at the base rate, so the
+  //    count is over kChainBaseSampleRate regardless of oversampling.
   //  - The 5 Hz first-order DC blocker decays over ~10 cycles (2 s); the
   //    reference NAM plugin reports the same allowance for VST3 tail checks.
-  const double irTailSeconds = irTailChainSamples.load() / kChainSampleRate;
+  const double irTailSeconds = irTailBaseSamples.load() / kChainBaseSampleRate;
   const double dcBlockerTailSeconds = 10.0 / 5.0;
   return std::max(irTailSeconds, dcBlockerTailSeconds);
 }
@@ -215,11 +309,13 @@ void TONE3000Processor::changeProgramName(int index, const juce::String& newName
 // #############################
 // PREPARE A SINGLE CHAIN
 // #############################
-// Everything in a chain lives in the chain domain: fixed kChainSampleRate,
-// block sizes up to chainDomainBlockSize(). Host-rate changes only ever
-// re-prepare because the domain block size depends on the host block size.
+// Everything in a chain lives in the chain domain: chainSampleRate(), block
+// sizes up to chainDomainBlockSize(). Host-rate changes only ever re-prepare
+// because the domain block size depends on the host block size; oversampling
+// changes re-prepare because the rate itself moves.
 void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& blocks) {
   const int domainBlockSize = chainDomainBlockSize();
+  const double chainRate = chainSampleRate();
 
   for (auto& block : blocks) {
     if (block->type == ChainBlockType::NAM) {
@@ -230,37 +326,48 @@ void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& b
         DBG("Warning: NAM block " << block->id << " has no engine to prepare");
       }
     } else if (block->type == ChainBlockType::IR && block->convolverMono != nullptr) {
-      juce::dsp::ProcessSpec spec{kChainSampleRate, static_cast<juce::uint32>(domainBlockSize), 2};
+      // Convolvers always run at the base rate behind the block's island
+      // (see ChainBlock::irBaseRateIsland), so their spec only tracks the
+      // base block size — never the oversampling factor.
+      juce::dsp::ProcessSpec spec{kChainBaseSampleRate,
+                                  static_cast<juce::uint32>(chainBaseBlockSize()), 2};
       block->convolverMono->prepare(spec);
       if (block->convolverStereo != nullptr)
         block->convolverStereo->prepare(spec);
 
       // Reset normalization smoother to current gain to prevent jumps on re-prepare
       if (block->loaded) {
-        block->irNormalizationSmoother.reset(kChainSampleRate, 0.05f);
+        block->irNormalizationSmoother.reset(chainRate, 0.05f);
         block->irNormalizationSmoother.setCurrentAndTargetValue(block->irNormalizationGainLinear);
       }
 
       DBG("IR convolvers re-prepared for block: " << block->id);
     }
 
+    // Every IR block keeps its base-rate island in step with the live factor
+    // (bypass at ×1). Prepared even while unloaded — a later engine apply
+    // re-prepares anyway, this just keeps the invariant simple.
+    if (block->type == ChainBlockType::IR)
+      block->irBaseRateIsland.prepare(chainOversampleFactor.load(),
+                                      juce::jmax(1, chainBaseBlockSize()));
+
     // Initialize per-block smoothers (input gain, output gain, mix, NAM
     // normalization). The RT path only ever calls setTargetValue on these —
     // reset() belongs here and in the model-apply path, never per block.
-    block->inputGainSmoother.reset(kChainSampleRate, 0.05f);
-    block->outputGainSmoother.reset(kChainSampleRate, 0.05f);
-    block->mixSmoother.reset(kChainSampleRate, 0.05f);
-    block->namNormalizationSmoother.reset(kChainSampleRate, 0.05f);
+    block->inputGainSmoother.reset(chainRate, 0.05f);
+    block->outputGainSmoother.reset(chainRate, 0.05f);
+    block->mixSmoother.reset(chainRate, 0.05f);
+    block->namNormalizationSmoother.reset(chainRate, 0.05f);
     block->inputGainSmoother.setCurrentAndTargetValue(1.0f);   // updated on first process
     block->outputGainSmoother.setCurrentAndTargetValue(1.0f);  // updated on first process
     block->mixSmoother.setCurrentAndTargetValue(block->mixNormalized);
     block->namNormalizationSmoother.setCurrentAndTargetValue(1.0f);
-    block->wetFadeGain.reset(kChainSampleRate, kWetFadeSeconds);
+    block->wetFadeGain.reset(chainRate, kWetFadeSeconds);
     block->wetFadeGain.setCurrentAndTargetValue(block->enabled ? 1.0f : 0.0f);
 
     // Per-block EQ + spectrum analyzer need the sample rate for their math.
-    block->eq.prepare(kChainSampleRate);
-    block->spectrum.prepare(kChainSampleRate);
+    block->eq.prepare(chainRate);
+    block->spectrum.prepare(chainRate);
   }
 }
 
@@ -272,8 +379,8 @@ void TONE3000Processor::refreshIrTailLength() {
   for (const auto& l : lanes)
     for (const auto& b : l)
       if (b->type == ChainBlockType::IR && b->convolverMono != nullptr)
-        maxSamples = std::max(maxSamples, b->irLengthChainSamples);
-  irTailChainSamples.store(maxSamples);
+        maxSamples = std::max(maxSamples, b->irLengthBaseSamples);
+  irTailBaseSamples.store(maxSamples);
 }
 
 // Constant-power pan gains for a chain at position `pan` (0 = hard left,
@@ -373,23 +480,34 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   updateStereoInputDetection();
 
   // ── Chain-domain resampling boundary ──
-  // Engaged whenever the host rate differs from the fixed chain rate — even
+  // Engaged whenever the host rate differs from the chain base rate — even
   // for an empty chain, so reported latency is a constant per host rate and
   // chain edits never trigger a PDC change. At a 48k host the boundary is
   // dropped entirely and the chain stage runs directly on the host buffer.
-  const bool boundaryNeeded = std::abs(sampleRate - kChainSampleRate) > 0.1;
+  const bool boundaryNeeded = std::abs(sampleRate - kChainBaseSampleRate) > 0.1;
   if (boundaryNeeded) {
     if (chainBoundary == nullptr)
-      chainBoundary = std::make_unique<ChainBoundaryResampler>(kChainSampleRate);
+      chainBoundary = std::make_unique<ChainBoundaryResampler>(kChainBaseSampleRate);
     chainBoundary->Reset(sampleRate, juce::jmax(1, samplesPerBlock));
     chainBoundaryLatency = chainBoundary->GetLatency();
   } else {
     chainBoundary.reset();
     chainBoundaryLatency = 0;
   }
+  // The oversampler is minimum-phase (zero reported latency), so the boundary
+  // remains the only latency source at any factor.
   setLatencySamples(chainBoundaryLatency);
   DBG("Chain boundary " << (boundaryNeeded ? "engaged" : "bypassed")
       << " (latency: " << chainBoundaryLatency << " samples)");
+
+  // ── Chain oversampler ──
+  // Resolve the requested factor before anything chain-domain is sized: the
+  // domain block size and rate both depend on it. Hosts re-run prepareToPlay
+  // freely, so this also picks up a factor restored from session state.
+  chainOversampleFactor.store(resolvedOversampleFactor());
+  chainOversampler.prepare(chainOversampleFactor.load(), juce::jmax(1, chainBaseBlockSize()));
+  DBG("Chain oversampling ×" << chainOversampleFactor.load() << " (chain rate: "
+      << chainSampleRate() << " Hz)");
 
   // Prepare every engine in both lanes for the chain domain (fixed rate; the
   // domain block size depends on the host rate/block size).
@@ -784,10 +902,21 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
         const bool noNamAfter = (idx > lastNamIndex);
         const bool useStereoIr = block->irNumChannels > 1 && numChannels > 1 && noNamAfter &&
                                  block->convolverStereo != nullptr;
-
-        juce::dsp::AudioBlock<float> irBlock(buffer);
         auto& convolver = useStereoIr ? *block->convolverStereo : *block->convolverMono;
-        convolver.process(juce::dsp::ProcessContextReplacing<float>(irBlock));
+
+        // Convolution runs at the base rate inside the block's island: when
+        // the chain is oversampled the island decimates the wet path, hands
+        // the convolver base-rate frames, and interpolates back (a direct
+        // pass at ×1). Linear processing gains nothing above the base rate —
+        // this keeps IR CPU flat across oversampling factors and the IR
+        // sound bit-identical to the non-oversampled chain.
+        block->irBaseRateIsland.processBaseRateIsland(
+            buffer.getArrayOfWritePointers(), numChannels, numSamples,
+            [&convolver, numChannels](float* const* baseChannels, int baseFrames) {
+              juce::dsp::AudioBlock<float> irBlock(baseChannels, static_cast<size_t>(numChannels),
+                                                   static_cast<size_t>(baseFrames));
+              convolver.process(juce::dsp::ProcessContextReplacing<float>(irBlock));
+            });
 
         // Unit-energy normalization, always on: an IR file's absolute level
         // is an accident of capture/export (unlike a NAM capture's, which is
@@ -872,13 +1001,25 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
   }
 }
 
-// #########################
-// RT CHAIN STAGE (48 kHz)
-// #########################
+// ##############################
+// RT CHAIN STAGE (chain rate)
+// ##############################
+// The oversampled entry to the chain stage — the callable both invocation
+// paths share (the boundary callback and the direct 48k-host path). Raises
+// the rate by the current factor around processChainStage; transparent
+// passthrough when oversampling is off. Called with chainMutex held.
+void TONE3000Processor::processOversampledChainStage(float** inputs, float** outputs,
+                                                     int numFrames) {
+  chainOversampler.process(inputs, outputs, numFrames,
+                           [this](float** chainIns, float** chainOuts, int chainFrames) {
+                             processChainStage(chainIns, chainOuts, chainFrames);
+                           });
+}
+
 // The encapsulated side of the chain-domain boundary: lane L (and lane R in
-// stereo mode) over the given channel pointers. Invoked by the boundary
-// resampler at 48 kHz, or directly on the host buffer when the host already
-// runs at 48 kHz. Called with chainMutex held (processBlock takes it).
+// stereo mode) over the given channel pointers. Invoked at the chain rate
+// (48 kHz × oversampling factor) via processOversampledChainStage. Called
+// with chainMutex held (processBlock takes it).
 void TONE3000Processor::processChainStage(float** inputs, float** outputs, int numFrames) {
   // The boundary hands us distinct input/output buffers; the chain processes
   // in place, so move the audio to the output side first. On the direct path
@@ -1012,7 +1153,7 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     spread.analyzeOnsets(buffer.getReadPointer(0), numSamples);
 
   // ####################
-  // MODULAR CHAIN PROCESSING (chain domain — fixed 48 kHz, see ChainDomain.h)
+  // MODULAR CHAIN PROCESSING (chain domain — 48 kHz × OS factor, see ChainDomain.h)
   // ####################
   {
     juce::ScopedLock lock(chainMutex);
@@ -1039,7 +1180,7 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
       if (chainBoundary != nullptr)
         chainBoundary->ProcessBlock(channels, channels, sliceLen, chainStageFunc);
       else
-        processChainStage(channels, channels, sliceLen);
+        processOversampledChainStage(channels, channels, sliceLen);
     }
   }
 
