@@ -182,11 +182,6 @@ struct ChainBlock {
   // while the UI has this block's EQ view open (atomic enabled flag).
   BlockSpectrum spectrum;
 
-  // NAM slimmable / container (A2): 1.0 = full, 0.0 = lite (the tier boundary at
-  // 0.5 belongs to full — see NamEngine::setSlimmableSize); only used when namIsSlimmable
-  bool namIsSlimmable{false};
-  double namSlimmableSize{1.0};
-
   ChainBlock(const std::string& blockId, ChainBlockType blockType)
       : id(blockId), type(blockType), toneId(0), activeModelId(0), loaded(false),
         enabled(true) {}

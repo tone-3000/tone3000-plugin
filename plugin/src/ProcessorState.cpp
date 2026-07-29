@@ -4,6 +4,59 @@
 // STATE PERSISTENCE
 // #############################
 
+// ── Machine-wide user settings ──
+// Shared PropertiesFile for preferences that belong to the machine, not the
+// session/preset (currently just the NAM A2 size). Same app-data root as
+// PresetManager: ~/Library/Application Support/TONE3000 on macOS,
+// %APPDATA%/TONE3000 on Windows.
+namespace {
+
+constexpr auto kNamFullSizeKey = "namFullSize";
+
+juce::PropertiesFile::Options userSettingsOptions() {
+  juce::PropertiesFile::Options options;
+  options.applicationName = "TONE3000";
+  options.filenameSuffix = ".settings";
+  options.folderName = "TONE3000";
+  options.osxLibrarySubFolder = "Application Support";
+  return options;
+}
+
+}  // namespace
+
+bool TONE3000Processor::readPersistedNamFullSize() {
+  return juce::PropertiesFile(userSettingsOptions()).getBoolValue(kNamFullSizeKey, false);
+}
+
+void TONE3000Processor::setNamFullSize(bool full) {
+  if (namFullSize.load() == full)
+    return;
+
+  namFullSize.store(full);
+  {
+    juce::PropertiesFile settings(userSettingsOptions());
+    settings.setValue(kNamFullSizeKey, full);
+    settings.saveIfNeeded();
+  }
+
+  // Retier every loaded NAM engine in place. Swapping weights inside playing
+  // engines is discontinuous, and the change spans blocks in both lanes — so
+  // mute-splice the whole chain like a structural edit. setSlimmableSize is
+  // a no-op for non-slimmable models, and in-flight loads re-apply the
+  // preference when they land (see applyPreparedModelToChainBlock).
+  ChainEditFade editFade(*this);
+  juce::ScopedLock lock(chainMutex);
+  const double size = namSlimmableSizeValue();
+  for (auto& l : lanes)
+    for (auto& block : l)
+      if (block->type == ChainBlockType::NAM && block->namEngine != nullptr)
+        block->namEngine->setSlimmableSize(size);
+
+  juce::Logger::writeToLog(juce::String("[Processor] NAM A2 size set to ") +
+                           (full ? "full" : "lite"));
+  bumpChainRevision();
+}
+
 juce::ValueTree TONE3000Processor::serializeBlockSettings(const ChainBlock& block) {
   juce::ValueTree blockState("ChainBlock");
 
@@ -14,9 +67,6 @@ juce::ValueTree TONE3000Processor::serializeBlockSettings(const ChainBlock& bloc
   blockState.setProperty("inputGain", block.inputGainNormalized, nullptr);
   blockState.setProperty("outputGain", block.outputGainNormalized, nullptr);
   blockState.setProperty("mix", block.mixNormalized, nullptr);
-
-  if (block.type == ChainBlockType::NAM)
-    blockState.setProperty("namSlimmableSize", block.namSlimmableSize, nullptr);
 
   if (block.type != ChainBlockType::INSERT) {
     blockState.setProperty("toneId", block.toneId, nullptr);
@@ -37,13 +87,6 @@ void TONE3000Processor::applyBlockSettings(ChainBlock& block, const juce::ValueT
                                   : 0.5f;
   block.outputGainNormalized = static_cast<float>(blockState.getProperty("outputGain", 0.5f));
   block.mixNormalized = static_cast<float>(blockState.getProperty("mix", 1.0f));
-
-  if (block.type == ChainBlockType::NAM && blockState.hasProperty("namSlimmableSize")) {
-    block.namSlimmableSize =
-        juce::jlimit(0.0, 1.0, static_cast<double>(blockState.getProperty("namSlimmableSize")));
-    if (block.namIsSlimmable && block.namEngine != nullptr)
-      block.namEngine->setSlimmableSize(block.namSlimmableSize);
-  }
 
   if (block.type != ChainBlockType::INSERT) {
     // EQ bands (defaults to flat when the child is missing — older projects).

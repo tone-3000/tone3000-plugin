@@ -83,6 +83,7 @@ export const Plugin: React.FC = () => {
     stereoEnabled,
     stereoInput,
     inputMode,
+    namFullSize,
     standalone,
     sampleRate,
     refresh,
@@ -657,7 +658,7 @@ export const Plugin: React.FC = () => {
         inputMode={inputMode}
         onInputModeChange={actions.setInputMode}
       />
-      <HintBar />
+      <HintBar namFullSize={namFullSize} onNamFullSizeChange={actions.setNamFullSize} />
 
       {/* Settings takeover — mounted only while open so its parameter
           subscriptions and screen state don't run behind the main UI. */}
@@ -669,6 +670,8 @@ export const Plugin: React.FC = () => {
           initialTab={settingsTabRef.current}
           version={localVersion}
           update={update}
+          namFullSize={namFullSize}
+          onNamFullSizeChange={actions.setNamFullSize}
         />
       )}
 

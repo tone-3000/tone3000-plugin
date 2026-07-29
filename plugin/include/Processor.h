@@ -75,18 +75,12 @@ public:
   // user clicked (it survives the OAuth redirect in the UI's sessionStorage);
   // the new tone block takes that slot's position. When the id is absent or
   // stale (undone away mid-flow), the active lane's first insert is used.
-  // `defaultSlimmableSize` seeds the block's NAM A2 tier (0.0 = lite,
-  // 1.0 = full) — the UI passes its "Default NAM A2 Size" preference; it only
-  // applies to this load and never touches persisted chains/presets.
   std::string loadTone(const juce::String& toneJsonString,
-                       const std::string& targetInsertId = {},
-                       double defaultSlimmableSize = 0.0);
+                       const std::string& targetInsertId = {});
   // Replace the tone of an existing block in place. Keeps the block's chain
   // position and user params (enabled/gains/mix); the new tone's first model
-  // is queued for background loading. `defaultSlimmableSize` as in loadTone —
-  // the incoming tone starts at the user's preferred A2 tier.
-  bool swapTone(const std::string& blockId, const juce::String& toneJsonString,
-                double defaultSlimmableSize = 0.0);
+  // is queued for background loading.
+  bool swapTone(const std::string& blockId, const juce::String& toneJsonString);
   // Switch the block's active model. Native only stores the active model, so
   // `modelData` (JSON object with id/name/model_url, paged in from the API by
   // the UI) is required and becomes the tone's new sole stored model.
@@ -126,14 +120,24 @@ public:
   juce::uint32 getCurrentChainRevision() const;
   // Single entry point for all per-block user params. Supported params:
   // "enabled" (0/1), "normalize" (0/1), "inputGain", "outputGain", "mix"
-  // (normalized 0..1), "namSlimmableSize" (0.0 lite .. 1.0 full). Returns
-  // false for unknown blocks/params. Continuous params defer their revision bump to the end of
-  // the gesture (see deferredRevisionBump) so drag-rate calls never force
-  // full chain resyncs.
+  // (normalized 0..1). Returns false for unknown blocks/params. Continuous
+  // params defer their revision bump to the end of the gesture (see
+  // deferredRevisionBump) so drag-rate calls never force full chain resyncs.
   bool setBlockParam(const std::string& blockId, const juce::String& param, double value);
 
-  // All meter levels in one call: { input, output, blocks: { id: { in, out } } }.
-  // Values in dB with a -60 floor. Designed to be polled once per UI frame.
+  // ── Global NAM A2 size (machine-wide user setting) ──
+  // One tier for every A2 NAM block: false = lite, true = full. Deliberately
+  // NOT part of chains/presets/undo — it describes the user's machine (CPU
+  // budget), not the tone — so it persists in the shared TONE3000 settings
+  // file and applies across every instance's loads. Setting it retiers all
+  // loaded NAM engines in place (under the chain-edit fade) and bumps the
+  // chain revision so the UI resyncs.
+  bool getNamFullSize() const { return namFullSize.load(); }
+  void setNamFullSize(bool full);
+
+  // All meter levels in one call: { input, output, blocks: { id: { in, out } },
+  // cpu (0..1 audio-callback load) }. Values in dB with a -60 floor. Designed
+  // to be polled once per UI frame.
   juce::var getMeterLevels() const;
 
   // Per-block EQ (post-block by default, pre-model when its pre flag is on).
@@ -290,7 +294,6 @@ private:
     int preparedBlockSize = 0;
 
     std::unique_ptr<NamEngine> namEngine;
-    bool namIsSlimmable = false;
 
     std::unique_ptr<juce::dsp::Convolution> convolverMono;
     std::unique_ptr<juce::dsp::Convolution> convolverStereo;
@@ -301,10 +304,10 @@ private:
     float irNormalizationGainLinear = 1.0f;
   };
 
-  /** CPU/file heavy; call without holding `chainMutex`. */
+  /** CPU/file heavy; call without holding `chainMutex`. NAM engines come out
+      at the current global A2 tier (see setNamFullSize). */
   PreparedBlockModel prepareBlockModelOffThread(ChainBlockType type, const std::vector<uint8_t>& modelData,
-                                                const juce::String& filename,
-                                                double namPersistedSlimmableSize);
+                                                const juce::String& filename);
   /** Short path under `chainMutex` only: swaps the new engines onto `block`
       and stamps `newType` (a tone swap may change the block's type — the old
       engine kept processing under the old type until this moment). The
@@ -652,6 +655,21 @@ private:
 
   juce::AudioBuffer<float> tempDryBuffer;  // chain-domain scratch (sized to chainDomainBlockSize)
   double hostSampleRate = 48000.0;  // Default, updated dynamically in prepareToPlay
+
+  // ── Global NAM A2 size (see setNamFullSize) ──
+  // Seeded from the shared settings file at construction so DSP restores at
+  // the right tier even before any editor opens; other instances pick up a
+  // change on their next launch. Atomic: written on the message thread, read
+  // by loader threads when a model prepares.
+  static bool readPersistedNamFullSize();
+  /** The preference as the size NamEngine::setSlimmableSize expects
+      (0.0 = lite, 1.0 = full — the tier boundary at 0.5 belongs to full). */
+  double namSlimmableSizeValue() const { return namFullSize.load() ? 1.0 : 0.0; }
+  std::atomic<bool> namFullSize{readPersistedNamFullSize()};
+
+  // Audio-callback load (timed around processBlock); ships to the UI as the
+  // `cpu` field of getMeterLevels for the hint-bar readout.
+  juce::AudioProcessLoadMeasurer loadMeasurer;
 
   // Meter level tracking, per channel (mono sources report L == R).
   mutable std::atomic<float> inputMeterLevelL{-60.0f};

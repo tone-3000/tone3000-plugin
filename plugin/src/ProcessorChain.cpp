@@ -222,8 +222,7 @@ void TONE3000Processor::queueToneLoad(const std::string& blockId, int modelId,
 }
 
 std::string TONE3000Processor::loadTone(const juce::String& toneJsonString,
-                                        const std::string& targetInsertId,
-                                        double defaultSlimmableSize) {
+                                        const std::string& targetInsertId) {
   juce::ScopedLock lock(chainMutex);
 
   const ParsedTone parsed = parseToneForLoading(toneJsonString);
@@ -245,9 +244,6 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString,
   // which is only known after download — the first successful apply sets it
   // (see applyPreparedModelToChainBlock).
   block->applyDefaultMixOnLoad = true;
-  // Seed the A2 tier from the caller's preference (Select-flow loads only —
-  // persisted chains/presets restore their own saved size elsewhere).
-  block->namSlimmableSize = juce::jlimit(0.0, 1.0, defaultSlimmableSize);
 
   DBG("Created tone block: " << parsed.toneId << " (block: " << blockId << ")");
   DBG("Queueing first model for background loading: " << parsed.modelName);
@@ -291,8 +287,7 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString,
   return blockId;
 }
 
-bool TONE3000Processor::swapTone(const std::string& blockId, const juce::String& toneJsonString,
-                                 double defaultSlimmableSize) {
+bool TONE3000Processor::swapTone(const std::string& blockId, const juce::String& toneJsonString) {
   juce::ScopedLock lock(chainMutex);
 
   ChainBlock* block = findBlockById(blockId);
@@ -317,9 +312,6 @@ bool TONE3000Processor::swapTone(const std::string& blockId, const juce::String&
   block->modelLoading = true;
   block->loadFailed = false;
   block->modelCache.clear();
-  // The incoming tone starts at the caller's preferred A2 tier (the outgoing
-  // tone's size belongs to the old tone, not this one).
-  block->namSlimmableSize = juce::jlimit(0.0, 1.0, defaultSlimmableSize);
 
   DBG("Swapped tone on block " << blockId << " -> tone " << parsed.toneId);
 
@@ -592,7 +584,6 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, int fir
   const juce::String filename =
       modelName + (type == ChainBlockType::NAM ? ".nam" : ".wav");
 
-  double namPersistedSlimmable = 1.0;
   {
     juce::ScopedLock lock(chainMutex);
     ChainBlock* block = findBlockById(blockId);
@@ -602,12 +593,10 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, int fir
       return;
     }
 
-    namPersistedSlimmable = block->namSlimmableSize;
     block->modelCache[firstModelId] = modelData;
   }
 
-  PreparedBlockModel prepared =
-      prepareBlockModelOffThread(type, modelData, filename, namPersistedSlimmable);
+  PreparedBlockModel prepared = prepareBlockModelOffThread(type, modelData, filename);
   const bool applied = prepared.success;
 
   // A swapped tone's previous engine may still be audibly processing — let
@@ -650,7 +639,6 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
   std::vector<uint8_t> modelData;
   bool needsFetch = false;
   ChainBlockType blockTypeForPrepare = ChainBlockType::NAM;
-  double namPersistedSlimmable = 1.0;
 
   {
     juce::ScopedLock lock(chainMutex);
@@ -671,7 +659,6 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
     // in-flight tone swap the block keeps its previous type (that engine is
     // still processing) while this job builds the new tone's engine.
     blockTypeForPrepare = toneEngineType(block->toneVar, block->type);
-    namPersistedSlimmable = block->namSlimmableSize;
     auto cacheIt = block->modelCache.find(modelId);
 
     if (cacheIt != block->modelCache.end()) {
@@ -696,8 +683,8 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
   const juce::String filename =
       modelName + (blockTypeForPrepare == ChainBlockType::NAM ? ".nam" : ".wav");
 
-  PreparedBlockModel prepared = prepareBlockModelOffThread(blockTypeForPrepare, modelData, filename,
-                                                           namPersistedSlimmable);
+  PreparedBlockModel prepared =
+      prepareBlockModelOffThread(blockTypeForPrepare, modelData, filename);
   const bool applied = prepared.success;
 
   // The outgoing model keeps processing until this moment — fade it to
@@ -810,8 +797,6 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
       item->setProperty("loaded", block->loaded);
       item->setProperty("loadFailed", block->loadFailed);
       item->setProperty("modelLoading", block->modelLoading);
-      item->setProperty("namSlimmable", block->type == ChainBlockType::NAM &&
-                                            block->namIsSlimmable && block->loaded);
       // Long (reverb-like) IR — drives the UI's Mix knob default/Alt-click
       // reset and the Out knob help (long IRs carry no −18 dB pad).
       item->setProperty("irLong", block->type == ChainBlockType::IR && block->irIsLong);
@@ -824,7 +809,6 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
       params->setProperty("inputGain", block->inputGainNormalized);
       params->setProperty("outputGain", block->outputGainNormalized);
       params->setProperty("mix", block->mixNormalized);
-      params->setProperty("namSlimmableSize", block->namSlimmableSize);
       params->setProperty("eq", block->eq.toVar());
       item->setProperty("params", juce::var(params.get()));
 
@@ -858,6 +842,10 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
   state->setProperty("standalone", isStandalone());
   // Input channel mode (stereo / left / right) — the faceplate button.
   state->setProperty("inputMode", inputModeToString(getInputMode()));
+  // Global NAM A2 size (machine-wide setting, not chain data — it just rides
+  // this payload because it changes with a revision bump like everything
+  // else the Settings/hint-bar controls display).
+  state->setProperty("namFullSize", namFullSize.load());
   // The EQ editor mirrors the biquad math client-side; block EQs run in the
   // chain domain, so the drawn curve must use the live chain rate (48 kHz ×
   // oversampling factor) — not the host rate (see ChainDomain.h).
@@ -877,6 +865,8 @@ juce::var TONE3000Processor::getMeterLevels() const {
   };
   root->setProperty("input", channelPair(inputMeterLevelL.load(), inputMeterLevelR.load()));
   root->setProperty("output", channelPair(outputMeterLevelL.load(), outputMeterLevelR.load()));
+  // Audio-callback load as a 0..1 proportion (the hint bar shows it as a %).
+  root->setProperty("cpu", loadMeasurer.getLoadAsProportion());
 
   juce::DynamicObject::Ptr blocks = new juce::DynamicObject();
   {
@@ -967,14 +957,6 @@ bool TONE3000Processor::swapChains() {
 
 bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::String& param,
                                       double value) {
-  // LITE/FULL swaps the NAM weights inside a playing engine — glide the
-  // block's wet mix to bypass first (same handshake as a model swap) so the
-  // tier change can't splice the waveform. Requested before the lock: the
-  // audio thread needs chainMutex to run the fade down. Every path below
-  // clears swapFadePending so the block can't be left bypassed.
-  if (param == "namSlimmableSize")
-    requestSwapFadeAndWait(blockId);
-
   juce::ScopedLock lock(chainMutex);
   ChainBlock* block = findBlockById(blockId);
   if (block == nullptr || block->type == ChainBlockType::INSERT)
@@ -982,16 +964,9 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
 
   // Validate before recording history, so failed calls never leave an entry.
   const bool isContinuous = param == "inputGain" || param == "outputGain" || param == "mix";
-  const bool isKnown =
-      isContinuous || param == "enabled" || param == "normalize" || param == "namSlimmableSize";
+  const bool isKnown = isContinuous || param == "enabled" || param == "normalize";
   if (!isKnown) {
     DBG("setBlockParam: unknown param: " << param);
-    return false;
-  }
-  if (param == "namSlimmableSize" &&
-      (block->type != ChainBlockType::NAM || !block->namIsSlimmable ||
-       block->namEngine == nullptr)) {
-    block->swapFadePending.store(false);  // fade may be armed — release it
     return false;
   }
 
@@ -1009,11 +984,6 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
     block->outputGainNormalized = juce::jlimit(0.0f, 1.0f, static_cast<float>(value));
   } else if (param == "mix") {
     block->mixNormalized = juce::jlimit(0.0f, 1.0f, static_cast<float>(value));
-  } else if (param == "namSlimmableSize") {
-    const double clamped = juce::jlimit(0.0, 1.0, value);
-    block->namSlimmableSize = clamped;
-    block->namEngine->setSlimmableSize(clamped);
-    block->swapFadePending.store(false);  // fade back in on the new tier
   }
 
   // Continuous drags settle into one bump after the gesture ends; discrete

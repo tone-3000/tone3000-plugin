@@ -8,7 +8,13 @@ import type { InputMode } from '../types/chain';
 import { useNativeFunction } from '../hooks/useFunction';
 import { HELP } from './helpText';
 import { ChromeIconButton } from './ChromeIconButton';
-import { BORDER, ICON_SIZE, faceplateChromeLift } from './theme';
+import {
+  BORDER,
+  ICON_SIZE,
+  KNOB_SIZE_PRIMARY,
+  KNOB_SIZE_SECONDARY,
+  faceplateChromeLift,
+} from './theme';
 
 /**
  * Bottom faceplate: main input/output gain, gate and the global 3-band tone
@@ -28,12 +34,9 @@ import { BORDER, ICON_SIZE, faceplateChromeLift } from './theme';
  * bus. All values are host parameters — presets/undo get them for free.
  */
 
-const KNOB_SIZE = 48;
-/** Small companion knobs (Bal, Gate) — secondary style. */
-const SECONDARY_KNOB_SIZE = 32;
 const PLATE_HEIGHT = 100;
 /** Shared faceplate action-button height: center of the secondary knobs. */
-const CHROME_LIFT = faceplateChromeLift(SECONDARY_KNOB_SIZE);
+const CHROME_LIFT = faceplateChromeLift(KNOB_SIZE_SECONDARY);
 
 const PowerButton: React.FC<{
   on: boolean;
@@ -165,10 +168,10 @@ const OutputGainKnob: React.FC<{
           label="Bal"
           value={balance}
           onChange={setBalance}
-          size={SECONDARY_KNOB_SIZE}
+          size={KNOB_SIZE_SECONDARY}
           labelSize={12}
           variant="bipolar"
-          thumb="bipolar"
+          thumb="secondary"
           scale={balanceDbScale}
           defaultValue={0.5}
           help={HELP.outputBalance}
@@ -178,7 +181,7 @@ const OutputGainKnob: React.FC<{
         label="Output"
         value={level}
         onChange={setLevel}
-        size={KNOB_SIZE}
+        size={KNOB_SIZE_PRIMARY}
         labelSize={12}
         scale={gainDbScale}
         defaultValue={0.5}
@@ -248,7 +251,7 @@ export const Faceplate: React.FC<FaceplateProps> = ({
           label="Input"
           value={inputLevel}
           onChange={setInputLevel}
-          size={KNOB_SIZE}
+          size={KNOB_SIZE_PRIMARY}
           labelSize={12}
           scale={gainDbScale}
           defaultValue={0.5}
@@ -271,7 +274,7 @@ export const Faceplate: React.FC<FaceplateProps> = ({
           label="Gate"
           value={noiseGate}
           onChange={setNoiseGate}
-          size={SECONDARY_KNOB_SIZE}
+          size={KNOB_SIZE_SECONDARY}
           labelSize={12}
           thumb="secondary"
           scale={gateDbScale}
@@ -300,7 +303,7 @@ export const Faceplate: React.FC<FaceplateProps> = ({
             label="Bass"
             value={toneBass}
             onChange={setToneBass}
-            size={KNOB_SIZE}
+            size={KNOB_SIZE_PRIMARY}
             labelSize={12}
             scale={toneScale}
             defaultValue={toneScale.fromDisplay(5)}
@@ -310,7 +313,7 @@ export const Faceplate: React.FC<FaceplateProps> = ({
             label="Middle"
             value={toneMid}
             onChange={setToneMid}
-            size={KNOB_SIZE}
+            size={KNOB_SIZE_PRIMARY}
             labelSize={12}
             scale={toneScale}
             defaultValue={toneScale.fromDisplay(5)}
@@ -320,7 +323,7 @@ export const Faceplate: React.FC<FaceplateProps> = ({
             label="Treble"
             value={toneTreble}
             onChange={setToneTreble}
-            size={KNOB_SIZE}
+            size={KNOB_SIZE_PRIMARY}
             labelSize={12}
             scale={toneScale}
             defaultValue={toneScale.fromDisplay(5)}

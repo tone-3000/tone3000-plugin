@@ -10,7 +10,7 @@ const PAN_LEFT_SCALE = panScale('left');
 const PAN_RIGHT_SCALE = panScale('right');
 import { ChromeIconButton } from './ChromeIconButton';
 import { HELP } from './helpText';
-import { BORDER, ICON_SIZE } from './theme';
+import { BORDER, ICON_SIZE, KNOB_SIZE_SECONDARY } from './theme';
 import { useParameter } from '../hooks/useParameter';
 import { useChainActions } from '../hooks/useChainActions';
 import type { ChainItem } from '../types/chain';
@@ -210,9 +210,9 @@ export const StereoPanRail: React.FC = () => {
           variant="panLeft"
           min={0}
           max={0.5}
-          size={36}
+          size={KNOB_SIZE_SECONDARY}
           labelSize={10}
-          thumb="bipolar"
+          thumb="secondary"
           scale={PAN_LEFT_SCALE}
           defaultValue={0}
           help={HELP.panLeft}
@@ -252,9 +252,9 @@ export const StereoPanRail: React.FC = () => {
           variant="panRight"
           min={0.5}
           max={1}
-          size={36}
+          size={KNOB_SIZE_SECONDARY}
           labelSize={10}
-          thumb="bipolar"
+          thumb="secondary"
           scale={PAN_RIGHT_SCALE}
           defaultValue={1}
           help={HELP.panRight}

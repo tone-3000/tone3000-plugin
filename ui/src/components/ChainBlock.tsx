@@ -28,20 +28,16 @@ import { formatLabel, gearLabel } from '../t3k/labels';
 import { AvatarImage } from './AvatarFallback';
 import { FormatBadge } from './FormatBadge';
 import { HELP, helpProps } from './helpText';
-import {
-  useBlockNormalizeControlEnabled,
-  useDefaultNamA2Size,
-  useNamA2ChoosePerTone,
-} from './uiPreferences';
+import { useBlockNormalizeControlEnabled } from './uiPreferences';
 import { ChromeIconButton, ChromeTextButton } from './ChromeIconButton';
 import {
   BORDER,
   ICON_BOX_SIZE,
   ICON_SIZE,
+  KNOB_SIZE_SECONDARY,
   MUTED,
   segmentedCellStyle,
   segmentedGroupStyle,
-  textBoxStyle,
 } from './theme';
 
 /** Every header control shares ICON_BOX_SIZE; the leftover air below the
@@ -50,12 +46,10 @@ import {
 const HEADER_HEIGHT = 40;
 const HEADER_CHROME_H = ICON_BOX_SIZE;
 const IMAGE_SIZE = 224;
-/** In/Mix/Out use the small secondary knob style. */
-const KNOB_SIZE = 36;
 /** Mini meter height in the side rails (meter sits centered above its knob). */
 const RAIL_METER_HEIGHT = 180;
 /** Centers the normalize (=) chrome box on the Out knob. */
-const NORMALIZE_BUTTON_OFFSET = -(KNOB_SIZE - ICON_BOX_SIZE) / 2;
+const NORMALIZE_BUTTON_OFFSET = -(KNOB_SIZE_SECONDARY - ICON_BOX_SIZE) / 2;
 
 /** EQ menu glyphs — shared 16×14 box / 1.5 stroke. Sliders sit halfway
     between the old full-height faders and the curve's y=3..11 band. */
@@ -111,10 +105,6 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
 
   // Optional (=) normalization toggle, revealed by the Advanced setting.
   const showNormalizeControl = useBlockNormalizeControlEnabled();
-  // LITE/FULL toggle only when Advanced is "Choose per tone"; otherwise a
-  // static label appears if this block's size differs from the Select default.
-  const chooseNamSizePerTone = useNamA2ChoosePerTone();
-  const defaultNamA2Size = useDefaultNamA2Size();
 
   // Optimistic local values for the controls; native converges via polling.
   const [enabled, setEnabled] = useState(params.enabled);
@@ -122,7 +112,6 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
   const [inputGain, setInputGain] = useState(params.inputGain ?? 0.5);
   const [outputGain, setOutputGain] = useState(params.outputGain ?? 0.5);
   const [mix, setMix] = useState(params.mix ?? 1.0);
-  const [slimmableSize, setSlimmableSize] = useState(params.namSlimmableSize ?? 1);
   const [isSwitchingModel, setIsSwitchingModel] = useState(false);
   const [showEq, setShowEq] = useState(false);
   const [eqView, setEqView] = useState<EqViewMode>('sliders');
@@ -155,10 +144,6 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
   }, [params.mix]);
   useEffect(() => setEqOn(params.eq?.enabled ?? true), [params.eq?.enabled]);
   useEffect(() => setEqPre(params.eq?.pre ?? false), [params.eq?.pre]);
-  useEffect(
-    () => setSlimmableSize(params.namSlimmableSize ?? 1),
-    [blockId, params.namSlimmableSize]
-  );
   useEffect(() => () => window.clearTimeout(copiedTimeoutRef.current), []);
 
   const setParam = useCallback(
@@ -202,18 +187,6 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
       copiedTimeoutRef.current = window.setTimeout(() => setCopied(false), 1500);
     }
   }, [actions, block]);
-
-  // NAM tier mappers select the bottom tier for values in [0, 0.5) — the
-  // boundary itself belongs to the tier above — so LITE must send 0.0, not 0.5.
-  const isLite = slimmableSize < 0.5;
-  const handleNamSizeMode = useCallback(
-    (useLite: boolean) => {
-      const size = useLite ? 0.0 : 1.0;
-      setSlimmableSize(size);
-      setParam('namSlimmableSize', size);
-    },
-    [setParam]
-  );
 
   // Native persists only the block's *active* model; the full catalog (tones
   // max out at 300 models) is fetched client-side in one call per tone.
@@ -265,9 +238,6 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
   // previous model keeps playing during a switch (`loaded` stays true), so
   // loading affordances key off `modelLoading`, not `loaded`.
   const modelBusy = block.modelLoading || (!block.loaded && !block.loadFailed);
-  // LITE/FULL is inert while a model is in flight or nothing is loaded
-  // (failed load): stable look, not-allowed cursor, clicks no-op.
-  const namSizeLocked = modelBusy || !block.loaded;
 
   const isNam = tone.format?.toLowerCase() === 'nam';
   // Long (reverb-like) IRs load half wet by default (native classifies by
@@ -348,54 +318,6 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
         >
           <Power />
         </ChromeIconButton>
-
-        {/* LITE/FULL for NAM blocks (architecture=2 = always A2).
-            Interactive only when Advanced is "Choose per tone". Otherwise
-            hide when the block matches the Select default, or show the
-            current size as a static label when a preset/saved chain
-            differs. While a model loads the control keeps its normal look
-            (no opacity flicker) — clicks just no-op behind a not-allowed
-            cursor until the new engine is in. */}
-        {isNam &&
-          (chooseNamSizePerTone ? (
-            <div
-              style={segmentedGroupStyle()}
-            >
-              <button
-                type="button"
-                onClick={() => !namSizeLocked && handleNamSizeMode(true)}
-                {...helpProps(HELP.namLite)}
-                style={{
-                  ...segmentedCellStyle(false),
-                  cursor: namSizeLocked ? 'not-allowed' : 'pointer',
-                  color: isLite ? '#ffffff' : MUTED,
-                  transition: 'color 0.15s ease',
-                }}
-              >
-                LITE
-              </button>
-              <button
-                type="button"
-                onClick={() => !namSizeLocked && handleNamSizeMode(false)}
-                {...helpProps(HELP.namFull)}
-                style={{
-                  ...segmentedCellStyle(false),
-                  cursor: namSizeLocked ? 'not-allowed' : 'pointer',
-                  color: !isLite ? '#ffffff' : MUTED,
-                  transition: 'color 0.15s ease',
-                }}
-              >
-                FULL
-              </button>
-            </div>
-          ) : (isLite ? 'lite' : 'full') !== defaultNamA2Size ? (
-            <span
-              {...helpProps(isLite ? HELP.namLite : HELP.namFull)}
-              style={{ ...textBoxStyle(), cursor: 'default', color: '#ffffff' }}
-            >
-              {isLite ? 'LITE' : 'FULL'}
-            </span>
-          ) : null)}
 
         <div style={{ flex: 1, minWidth: 0 }} />
 
@@ -525,7 +447,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                   setParam('inputGain', val);
                 }}
                 onDragStateChange={handleKnobDragState}
-                size={KNOB_SIZE}
+                size={KNOB_SIZE_SECONDARY}
                 labelSize={12}
                 labelBottom={false}
                 thumb="secondary"
@@ -712,7 +634,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                   setParam('mix', val);
                 }}
                 onDragStateChange={handleKnobDragState}
-                size={KNOB_SIZE}
+                size={KNOB_SIZE_SECONDARY}
                 labelSize={12}
                 labelBottom={false}
                 thumb="secondary"
@@ -763,7 +685,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                     setParam('outputGain', val);
                   }}
                   onDragStateChange={handleKnobDragState}
-                  size={KNOB_SIZE}
+                  size={KNOB_SIZE_SECONDARY}
                   labelSize={12}
                   labelBottom={false}
                   thumb="secondary"

@@ -494,6 +494,9 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
 
   tuner.prepare(sampleRate);
 
+  // CPU readout: proportion of the callback budget spent in processBlock.
+  loadMeasurer.reset(sampleRate, samplesPerBlock);
+
   juce::Logger::writeToLog("[Processor] prepareToPlay: sampleRate=" + juce::String(sampleRate) +
                            ", samplesPerBlock=" + juce::String(samplesPerBlock));
 
@@ -1088,6 +1091,8 @@ void TONE3000Processor::processChainStage(float** inputs, float** outputs, int n
 // ################
 void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
   juce::ScopedNoDenormals noDenormals;
+  // Times this whole callback against its real-time budget (the CPU readout).
+  juce::AudioProcessLoadMeasurer::ScopedTimer loadTimer(loadMeasurer, buffer.getNumSamples());
 
   // Mapped MIDI first, so parameter moves (bypass stomps, expression sweeps)
   // land before this block's cached-parameter refresh below.

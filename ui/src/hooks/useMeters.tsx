@@ -23,6 +23,9 @@ export type MeterId =
   | `block:${string}:in`
   | `block:${string}:out`;
 
+/** Store key for the CPU readout (a %, not a dB level — see useCpuPercent). */
+const CPU_ID = 'cpu';
+
 export const meterId = {
   /** Per-channel main meter ('input'/'output' alone = max of both channels). */
   main: (type: 'input' | 'output', channel: 'l' | 'r'): MeterId => `${type}:${channel}`,
@@ -43,6 +46,15 @@ const QUANTIZE = 2;
 const MIN_FETCH_INTERVAL_MS = 33;
 
 /**
+ * CPU readout: average samples into the existing ~30 Hz meter poll (no extra
+ * bridge traffic), then publish a whole percent at most this often. Instantaneous
+ * load jumps every callback; without this the digit flickers unreadable.
+ */
+const CPU_UI_INTERVAL_MS = 400;
+/** EMA weight toward each new sample (~0.5 s time-constant at 30 Hz). */
+const CPU_EMA_ALPHA = 0.15;
+
+/**
  * Ids whose clip latches clear together. The main meters' mono and L/R ids
  * are three views of one physical signal (mono = max(L, R)), and which view
  * is on screen changes with stereo mode (e.g. toggling Spread) — so clearing
@@ -58,6 +70,11 @@ const clipGroup = (id: string): string[] => {
 
 class MeterStore {
   private levels = new Map<string, number>();
+  /** Displayed CPU % (one decimal), published at CPU_UI_INTERVAL_MS after EMA smoothing. */
+  private cpuPercent = 0;
+  private cpuEma = 0;
+  private cpuSeeded = false;
+  private lastCpuPublishMs = 0;
   /** Meter ids that have hit CLIP_DB; latched until clearClip(). */
   private clips = new Set<string>();
   private listeners = new Map<string, Set<() => void>>();
@@ -88,6 +105,8 @@ class MeterStore {
   };
 
   get = (id: string): number => this.levels.get(id) ?? FLOOR_DB;
+
+  getCpu = (): number => this.cpuPercent;
 
   getClip = (id: string): boolean => this.clips.has(id);
 
@@ -129,6 +148,31 @@ class MeterStore {
       this.update(meterId.blockIn(blockId), levels.in);
       this.update(meterId.blockOut(blockId), levels.out);
     }
+    this.applyCpu(res.cpu);
+  }
+
+  /**
+   * Smooth into an EMA every poll, publish a rounded % on a slow cadence.
+   * No extra native calls — `cpu` already rides getMeterLevels.
+   */
+  private applyCpu(raw: number | undefined) {
+    const sample =
+      typeof raw === 'number' && Number.isFinite(raw) ? Math.max(0, raw) : 0;
+    if (!this.cpuSeeded) {
+      this.cpuEma = sample;
+      this.cpuSeeded = true;
+    } else {
+      this.cpuEma += (sample - this.cpuEma) * CPU_EMA_ALPHA;
+    }
+
+    const now = performance.now();
+    if (now - this.lastCpuPublishMs < CPU_UI_INTERVAL_MS) return;
+    this.lastCpuPublishMs = now;
+
+    const percent = Math.round(this.cpuEma * 1000) / 10;
+    if (this.cpuPercent === percent) return;
+    this.cpuPercent = percent;
+    this.listeners.get(CPU_ID)?.forEach((callback) => callback());
   }
 
   /** Fan an [L, R] pair out to :l / :r ids plus the combined mono id. */
@@ -179,6 +223,18 @@ export function useMeter(id: MeterId | string): number {
   const getSnapshot = useCallback(() => store.get(id), [store, id]);
 
   return useSyncExternalStore(subscribe, getSnapshot);
+}
+
+/** Audio-callback load as a percent (0–100+, one decimal), for the hint-bar readout. */
+export function useCpuPercent(): number {
+  const store = useContext(MeterStoreContext);
+  if (!store) throw new Error('useCpuPercent must be used within a MetersProvider');
+
+  const subscribe = useCallback(
+    (callback: () => void) => store.subscribe(CPU_ID, callback),
+    [store]
+  );
+  return useSyncExternalStore(subscribe, store.getCpu);
 }
 
 /**

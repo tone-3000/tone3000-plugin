@@ -75,11 +75,9 @@ public:
   bool hasLoudness() const { return primary().HasLoudness(); }
   double getLoudness() const { return primary().GetLoudness(); }
 
-  /** True if the wrapped NAM model supports SlimmableModel (container / A2 slimmable). */
-  bool isSlimmableModel() const;
-
   /**
    * Requested slimmable size (0.0 = lite, 1.0 = full). Clamped to [0.0, 1.0].
+   * A no-op for models that aren't SlimmableModel (non-container A2 files).
    * NAM tier mappers assign the boundary value to the tier above (a two-tier
    * container selects lite for [0, 0.5) and full for [0.5, 1.0]), so the lite
    * request must be 0.0 — 0.5 would select full.

@@ -7,8 +7,11 @@ import { useSyncExternalStore } from 'react';
  * tooltips. All copy lives in this file so wording stays consistent.
  *
  * Copy conventions:
- * - `Name: what it does.` then shortcut legend, `Key: effect` pairs joined
- *   with middots.
+ * - `Name: what it does.` then a shortcut legend of `key: effect` pairs
+ *   joined with middots. Keep it terse — the bar shares its row with the
+ *   A2-size toggle and CPU readout, and long lines get ellipsized.
+ * - Modifier keys are OS-correct: glyphs on macOS (⇧ ⌥, hyphen-joined per
+ *   Apple convention), spelled out with `+` elsewhere (Shift+drag).
  * - Toggles describe the control, not the current state (the control's own
  *   visual state already says which way it's set).
  */
@@ -117,112 +120,114 @@ export const useHintsEnabled = () => useSyncExternalStore(subscribe, () => hints
 
 // --- copy ------------------------------------------------------------------
 
+/** OS-correct modifier chords: glyphs + hyphen on macOS (Apple convention),
+    spelled out + plus elsewhere. */
+const IS_MAC = /Mac|iP(hone|ad|od)/i.test(
+  (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform ??
+    navigator.platform
+);
+const chord = (macGlyph: string, name: string) => (gesture: string) =>
+  IS_MAC ? `${macGlyph}-${gesture}` : `${name}+${gesture}`;
+const shift = chord('\u21e7', 'Shift');
+const alt = chord('\u2325', 'Alt');
+
 /** Shared legend for every KnobControl (they all support these gestures). */
-const KNOB_KEYS = 'Drag: adjust · Shift: fine · Double-click: type value · Alt-click: reset';
+const KNOB_KEYS = `${shift('drag')}: fine · double-click: type · ${alt('click')}: reset`;
 
 export const knobHelp = (name: string, desc: string) => `${name}: ${desc} ${KNOB_KEYS}`;
 
 export const HELP = {
   // Faceplate — gains
-  inputLevel: knobHelp('Input', 'level into the chain, ±24 dB.'),
-  inputMode:
-    'Input Mode: which channels feed the plugin. Stereo: both · L / R: only that channel. Click: cycle.',
-  outputLevel: knobHelp('Output', 'master level after the chain, ±24 dB.'),
-  outputBalance: knobHelp(
-    'Output Balance',
-    'trims the two chains against each other, ±12 dB (applied before Pan, so it holds at any pan position). Center: off. Active in stereo mode or when mono spread is on.'
-  ),
-  autoBalance:
-    'Auto Balance: matches the two chains’ levels. Click: arm, then play ~2 s · Click again: cancel.',
+  inputLevel: knobHelp('Input', 'chain input level, ±24 dB.'),
+  inputMode: 'Input Mode: source channels. Stereo: both · L/R: one. Click: cycle.',
+  outputLevel: knobHelp('Output', 'master output level, ±24 dB.'),
+  outputBalance: knobHelp('Balance', 'level trim between chains, ±12 dB (pre-pan). Center: off.'),
+  autoBalance: 'Auto Balance: click, play ~2 s to match chain levels. Click again: cancel.',
 
   // Faceplate — gate, tone stack, spread
-  gate: knobHelp('Gate', 'noise gate threshold, −100 to 0 dB.'),
-  gatePower: 'Gate Power: toggles the noise gate on/off.',
+  gate: knobHelp('Gate', 'noise gate threshold, −100–0 dB.'),
+  gatePower: 'Gate Power: noise gate on/off.',
   toneBass: knobHelp('Bass', 'tone stack lows, 0–10.'),
   toneMiddle: knobHelp('Middle', 'tone stack mids, 0–10.'),
   toneTreble: knobHelp('Treble', 'tone stack highs, 0–10.'),
-  tonePower: 'Tone Stack Power: toggles the Bass/Middle/Treble EQ on/off.',
-  spreadOffset: knobHelp(
-    'Offset',
-    'delays one side up to 24 ms for width. Center: off · Left/right of center: delays L/R.'
-  ),
-  jitter: knobHelp('Jitter', 'adds up to 4 ms of random per-note drift to the offset.'),
-  spreadAdvert: 'Spread: short delay on one side for stereo width. Click: turn on.',
-  spreadPower: 'Spread Power: turns spread off and collapses its controls.',
+  tonePower: 'Tone Stack Power: Bass/Middle/Treble on/off.',
+  spreadOffset: knobHelp('Offset', 'one-sided delay for width, ≤24 ms. Center: off.'),
+  jitter: knobHelp('Jitter', 'random per-note offset drift, ≤4 ms.'),
+  spreadAdvert: 'Spread: stereo width via a short one-sided delay. Click: enable.',
+  spreadPower: 'Spread Power: spread off; collapses its controls.',
 
   // Top bar
-  tuner: 'Tuner: opens the chromatic tuner. Click again: back to the chain.',
-  undo: 'Undo: reverts the last chain edit.',
-  redo: 'Redo: re-applies the last undone edit.',
-  settings: 'Settings: audio input mode and advanced options.',
+  tuner: 'Tuner: chromatic tuner. Click again: back.',
+  undo: 'Undo: revert last chain edit.',
+  redo: 'Redo: re-apply undone edit.',
+  settings: 'Settings: plugin and audio options.',
   account: 'Account: settings and TONE3000 sign-out.',
-  monoMode: 'Mono: one chain feeds both outputs.',
-  stereoMode: 'Stereo: independent Left and Right chains.',
+  monoMode: 'Mono: one chain, both outputs.',
+  stereoMode: 'Stereo: independent Left/Right chains.',
 
   // Presets
-  presetPrev: 'Previous Preset: steps backward through the preset list.',
-  presetNext: 'Next Preset: steps forward through the preset list.',
-  presetBrowse: 'Presets: opens the browser with factory and user presets, plus search.',
-  presetSave: 'Save Preset: stores the current chain. Same name: overwrites in place.',
-  presetRename: 'Rename: edits this preset\u2019s name. Enter: commit · Esc: cancel.',
-  presetDelete: 'Delete: removes this preset.',
-  presetReorder:
-    'Reorder: shows arrows to set a custom preset order. Prev/Next and MIDI program changes follow it.',
-  presetMoveUp: 'Move Up: moves this preset one spot earlier.',
-  presetMoveDown: 'Move Down: moves this preset one spot later.',
+  presetPrev: 'Previous Preset: step back through the list.',
+  presetNext: 'Next Preset: step forward through the list.',
+  presetBrowse: 'Presets: browse factory and user presets.',
+  presetSave: 'Save Preset: store the current chain. Same name: overwrite.',
+  presetRename: 'Rename: edit name. Enter: commit · Esc: cancel.',
+  presetDelete: 'Delete: remove this preset.',
+  presetReorder: 'Reorder: custom preset order. Prev/Next and MIDI follow it.',
+  presetMoveUp: 'Move Up: one spot earlier.',
+  presetMoveDown: 'Move Down: one spot later.',
 
   // Chain gallery
-  addTile:
-    'Add Tone: opens the TONE3000 tone browser for this slot. Drag grip: move the insert point.',
-  closeToneBrowser: 'Close: back to the chain without picking a tone.',
-  dragGrip: 'Grip: drag to reorder. In stereo, drop on the other lane to move chains.',
-  blockPower: 'Power: bypasses this block.',
-  retryLoad: 'Retry: downloads this tone\u2019s model again.',
-  swapTone: 'Swap: replaces this tone with a new TONE3000 pick, keeping its slot.',
-  removeBlock: 'Remove: deletes this block from the chain.',
-  panLeft: knobHelp('Pan Left', 'pans the Left chain between hard left and center.'),
-  panRight: knobHelp('Pan Right', 'pans the Right chain between center and hard right.'),
-  panLink: 'Link Pans: mirrors both pan knobs so width changes stay symmetric.',
-  swapChains: 'Swap Chains: exchanges the Left and Right chains, pans included.',
+  addTile: 'Add Tone: browse TONE3000 for this slot. Drag grip: move the slot.',
+  closeToneBrowser: 'Close: back to the chain.',
+  dragGrip: 'Grip: drag to reorder. Stereo: drop on the other lane to move.',
+  blockPower: 'Power: bypass this block.',
+  retryLoad: 'Retry: re-download this model.',
+  swapTone: 'Swap: replace this tone, keeping its slot.',
+  removeBlock: 'Remove: delete this block.',
+  panLeft: knobHelp('Pan Left', 'Left chain, hard left ↔ center.'),
+  panRight: knobHelp('Pan Right', 'Right chain, center ↔ hard right.'),
+  panLink: 'Link Pans: mirror both pan knobs.',
+  swapChains: 'Swap Chains: exchange Left/Right chains, pans included.',
 
   // Block card
-  blockIn: knobHelp('In', 'gain into this block, ±24 dB.'),
-  blockOut: knobHelp('Out', 'gain out of this block, ±24 dB.'),
-  blockOutIr: knobHelp('Out', 'gain out of this block, ±24 dB (IR level is pre-trimmed 18 dB).'),
-  blockMix: knobHelp('Mix', 'dry/wet blend. 100%: fully processed.'),
-  blockNormalize:
-    'Normalize: levels this block\u2019s output loudness. Off: the capture\u2019s raw level.',
-  namLite: 'LITE: half-size NAM model. Lighter on CPU, slightly less detail.',
-  namFull: 'FULL: full-size NAM model. Best quality.',
-  eqToggle: 'EQ: opens the 6-band EQ editor. Outline: EQ is shaping the sound.',
-  eqSlidersView: 'Sliders View: graphic-EQ faders, gain only.',
-  eqCurveView: 'Curve View: parametric editor for frequency, gain, Q and band type.',
-  eqReset: 'Reset EQ: returns all six bands to flat and the position to post.',
-  eqPre: 'PRE: runs this EQ before the model, right after In Gain. Off: after the block.',
-  eqPower: 'EQ Power: bypasses the block EQ without losing its settings.',
-  shareTone: 'Share: copies this tone\u2019s TONE3000 link to the clipboard.',
-  modelSelectSignedOut: 'Models: sign in to TONE3000 (account menu) to switch models.',
-  backToChain: 'Back: returns to the chain overview.',
+  blockIn: knobHelp('In', 'block input gain, ±24 dB.'),
+  blockOut: knobHelp('Out', 'block output gain, ±24 dB.'),
+  blockOutIr: knobHelp('Out', 'block output gain, ±24 dB (IR pre-trimmed −18 dB).'),
+  blockMix: knobHelp('Mix', 'dry/wet blend.'),
+  blockNormalize: 'Normalize: level this block\u2019s loudness. Off: raw capture level.',
+  eqToggle: 'EQ: 6-band EQ editor. Outline: EQ shaping the sound.',
+  eqSlidersView: 'Sliders: gain-only fader view.',
+  eqCurveView: 'Curve: parametric freq/gain/Q editor.',
+  eqReset: 'Reset EQ: all bands flat, position post.',
+  eqPre: 'PRE: EQ before the model. Off: after the block.',
+  eqPower: 'EQ Power: bypass EQ, keep settings.',
+  shareTone: 'Share: copy TONE3000 link.',
+  modelSelectSignedOut: 'Models: sign in to TONE3000 to switch models.',
+  backToChain: 'Back: chain overview.',
 
   // EQ editor
-  eqFader: 'Band Fader: gain, ±15 dB. Shift: fine · Double-click / Alt-click: reset flat.',
-  eqFaderPass: 'Pass Band: no gain to set. Shape it in the Curve view.',
-  eqDot:
-    'Band Dot: drag for freq + gain (cuts: vertical sets Q). Scroll: Q · Shift: fine · Alt-click: reset.',
-  eqFreqChip:
-    'Freq: click to type, accepts \u201c800\u201d or \u201c1.2k\u201d. Enter: commit · Esc: cancel.',
+  eqFader: `Band Fader: gain, ±15 dB. ${shift('drag')}: fine · double-click / ${alt(
+    'click'
+  )}: reset.`,
+  eqFaderPass: 'Pass Band: no gain. Shape it in Curve view.',
+  eqDot: `Band Dot: drag: freq + gain · scroll: Q · ${shift('drag')}: fine · ${alt(
+    'click'
+  )}: reset.`,
+  eqFreqChip: 'Freq: click to type (\u201c800\u201d, \u201c1.2k\u201d). Enter: commit · Esc: cancel.',
   eqGainChip: 'Gain: click to type, ±15 dB. Enter: commit · Esc: cancel.',
-  eqQChip: 'Q: scroll over the graph (Shift: fine) or click to type.',
+  eqQChip: `Q: scroll the graph (${shift('scroll')}: fine) or click to type.`,
 
   // Meters
-  clipDot: 'Clip: latches when the signal clips. Click: clear.',
+  clipDot: 'Clip: latches on clipping. Click: clear.',
 
   // The hint bar itself
-  hideHints: 'Hide Hints: turns this hint bar off. Re-enable it in Settings.',
+  namSize: 'NAM Size: LITE saves CPU · FULL is highest quality. Applies to all NAM tones.',
+  cpuLoad: 'CPU: audio engine load.',
+  hideHints: 'Hide Hints: hide this bar. Re-enable in Settings.',
 } as const;
 
 /** Gallery tile: leads with the tone's own name. */
-export const toneTileHelp = (title: string) => `${title}. Click: open editor.`;
+export const toneTileHelp = (title: string) => `${title}. Click: open.`;
 
 /** Curve-type selector buttons in the EQ editor. */
-export const bandTypeHelp = (label: string) => `${label}: sets this band\u2019s curve shape.`;
+export const bandTypeHelp = (label: string) => `${label}: band curve shape.`;

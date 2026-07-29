@@ -1,24 +1,26 @@
 import React from 'react';
-import { PrimaryKnobThumb } from './PrimaryKnobThumb';
-import { SecondaryKnobThumb } from './SecondaryKnobThumb';
-import { BipolarKnobThumb } from './BipolarKnobThumb';
+import { KnobFace } from './KnobFace';
+import type { KnobTone } from './KnobFace';
 
 /**
- * Knob geometry variants. The visual is the same hardware-style knob; the
- * variant only changes how a value maps to the indicator angle:
- * - full: classic 270° sweep, value 0..1 = hard-left..hard-right.
+ * Knob geometry variants. The artwork is the same hardware-style knob in
+ * every case; the variant only changes how a value maps to the indicator
+ * angle, and where the value arc grows from:
+ * - full: classic 270° sweep, value 0..1 = hard-left..hard-right. Zero is the
+ *   start of travel, so the arc grows from bottom left.
  * - bipolar: same sweep, but value 0.5 = noon means "zero/off" (the center
- *   snap lives in KnobControl).
+ *   snap lives in KnobControl), so the arc grows out of noon either way.
  * - panLeft: half track, value 0..0.5 = hard left..center (noon).
  * - panRight: mirrored half track, value 0.5..1 = center..hard right.
+ * Both pan halves read zero at noon like bipolar does, they just stay on
+ * their own side of it.
  */
 export type KnobVariant = 'full' | 'bipolar' | 'panLeft' | 'panRight';
 
-/** Visual style: primary = large dark knob, secondary = small light knob,
-    bipolar = hardware-style knob with a yellow value arc out from noon.
-    Bipolar serves every centered knob: bipolar knobs sweep both sides of
-    noon, pan halves stay on one side (the arc anchors at noon either way). */
-export type KnobThumb = 'primary' | 'secondary' | 'bipolar';
+/** Visual tone: primary = a section's headline knob, secondary = its darker,
+    smaller companion trims. Purely cosmetic — either tone can be bipolar or
+    plain, that's the variant's job. */
+export type KnobThumb = KnobTone;
 
 interface KnobInnerProps {
   value: number; // 0 to 1 (panLeft uses 0..0.5, panRight 0.5..1)
@@ -42,6 +44,10 @@ const angleFor = (variant: KnobVariant, value: number): number => {
   }
 };
 
+/** Angle the value arc grows from: every centered variant reads zero at noon,
+    a plain knob reads it at the bottom-left start of travel. */
+const arcFromFor = (variant: KnobVariant): number => (variant === 'full' ? -135 : 0);
+
 // Memoized: pure function of scalar props — cheap to skip when a parent
 // re-renders idle knobs.
 export const KnobInner: React.FC<KnobInnerProps> = React.memo(function KnobInner({
@@ -50,7 +56,6 @@ export const KnobInner: React.FC<KnobInnerProps> = React.memo(function KnobInner
   variant = 'full',
   thumb = 'primary',
 }) {
-  const angleDeg = angleFor(variant, value);
   return (
     <div
       style={{
@@ -60,13 +65,7 @@ export const KnobInner: React.FC<KnobInnerProps> = React.memo(function KnobInner
         pointerEvents: 'none',
       }}
     >
-      {thumb === 'primary' ? (
-        <PrimaryKnobThumb angleDeg={angleDeg} />
-      ) : thumb === 'secondary' ? (
-        <SecondaryKnobThumb angleDeg={angleDeg} />
-      ) : (
-        <BipolarKnobThumb angleDeg={angleDeg} />
-      )}
+      <KnobFace angleDeg={angleFor(variant, value)} arcFromDeg={arcFromFor(variant)} tone={thumb} />
     </div>
   );
 });

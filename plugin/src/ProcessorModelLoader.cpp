@@ -217,8 +217,7 @@ int TONE3000Processor::chainDomainBlockSize() const noexcept {
 TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThread(
     ChainBlockType type,
     const std::vector<uint8_t>& modelData,
-    const juce::String& filename,
-    double namPersistedSlimmableSize) {
+    const juce::String& filename) {
   PreparedBlockModel out;
 
   if (modelData.empty()) {
@@ -276,7 +275,6 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
       }
 
       auto engine = std::make_unique<NamEngine>(std::move(instances), oversampleFactor);
-      out.namIsSlimmable = engine->isSlimmableModel();
 
       // The chain domain runs everything at the chain rate. A2 models are
       // all trained at 48k; anything else is rare enough that we just run it
@@ -288,9 +286,8 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
             " Hz; the chain runs at " + juce::String(chainSampleRate()) + " Hz regardless");
       }
 
-      const double clampedSlim =
-          out.namIsSlimmable ? juce::jlimit(0.0, 1.0, namPersistedSlimmableSize) : 1.0;
-      engine->setSlimmableSize(clampedSlim);
+      // Global A2 tier (no-op for non-slimmable models); prepare() applies it.
+      engine->setSlimmableSize(namSlimmableSizeValue());
       engine->prepare(domainBlockSize);
 
       out.namEngine = std::move(engine);
@@ -545,12 +542,9 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
     block.irIsLong = false;
     block.irTempFile = juce::File();
 
-    // The block's size only means anything while a slimmable model is active,
-    // so it survives non-slimmable loads untouched — toggling through a tone's
-    // models keeps the block's lite/full tier for the next A2 model.
-    block.namIsSlimmable = prepared.namIsSlimmable;
-    block.namEngine->setSlimmableSize(
-        block.namIsSlimmable ? block.namSlimmableSize : 1.0);
+    // Re-apply the global A2 tier in case the preference changed while this
+    // engine was downloading/preparing (no-op for non-slimmable models).
+    block.namEngine->setSlimmableSize(namSlimmableSizeValue());
 
     block.namNormalizationSmoother.reset(chainSampleRate(), 0.05f);
     block.namNormalizationSmoother.setCurrentAndTargetValue(1.0f);

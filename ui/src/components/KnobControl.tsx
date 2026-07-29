@@ -27,11 +27,11 @@ interface KnobControlProps {
   size?: number;
   labelSize?: number;
   labelBottom?: boolean;
-  /** Visual style (see KnobInner): primary = large dark knob (the default),
-      secondary = small light companion knob. */
+  /** Visual tone (see KnobInner): primary = a section's headline knob (the
+      default), secondary = its darker companion trim. */
   thumb?: KnobThumb;
-  /** Visual/geometry variant (see KnobInner). Bipolar knobs snap to exact
-      center so the zero detent genuinely means zero. */
+  /** Geometry variant (see KnobInner). Bipolar knobs snap to exact center so
+      the zero detent genuinely means zero. */
   variant?: KnobVariant;
   /** Drag range (defaults 0..1). Pan halves pass 0..0.5 / 0.5..1 so the
       param keeps absolute positions while the knob covers its half track. */

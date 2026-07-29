@@ -6,7 +6,7 @@
  *   runtime fields can't collide with API fields and the tone object stays a
  *   verbatim copy of what TONE3000 returned.
  * - User-editable settings live under `params`, separate from runtime status
- *   (`loaded`, `namSlimmable`). A future shareable chain preset is just
+ *   (`loaded`, `modelLoading`). A future shareable chain preset is just
  *   `{ tone, activeModelId, params }` per block.
  * - `revision` is a monotonic counter bumped by native on every mutation;
  *   pollers pass it back to `getChainState` and get a tiny
@@ -82,9 +82,6 @@ export interface BlockParams {
   outputGain: number;
   /** Dry/wet: 0 = dry, 1 = wet. */
   mix: number;
-  /** NAM slimmable size: 0.0 = lite, 1.0 = full (tier boundaries live in
-      the native mapper — see ChainBlock's LITE/FULL toggle). */
-  namSlimmableSize: number;
   /** Per-block 6-band EQ. Flat = skipped entirely on the audio thread. */
   eq: BlockEqParams;
 }
@@ -142,9 +139,6 @@ export interface ToneBlock {
       the loading overlays (not `loaded`, which stays true mid-switch so the
       old model keeps playing). */
   modelLoading: boolean;
-  /** Capability flag from native (model is a SlimmableContainer). UI no longer
-      gates on this — architecture=2 NAM tones always support LITE/FULL. */
-  namSlimmable: boolean;
   /** True for long (reverb-like) IRs — classified natively by kernel length
       once the model loads. Drives the Mix knob's default (long = 50% wet)
       and the Out knob help (long IRs carry no −18 dB pad). */
@@ -191,6 +185,9 @@ export interface ChainState {
   /** Which channels of a stereo source feed the plugin (faceplate button):
       both, or one mirrored onto both. */
   inputMode: InputMode;
+  /** Global NAM A2 size (machine-wide user setting; false = lite, true =
+      full). Applies to every NAM block — set via `setNamFullSize`. */
+  namFullSize: boolean;
   /** The chain-domain processing rate (fixed 48000 — the whole chain runs at
       48 kHz behind one resampling boundary). The EQ curve math needs it to
       mirror the audio exactly. */
@@ -217,13 +214,7 @@ export function isUnchanged(res: ChainStateResponse): res is ChainStateUnchanged
 }
 
 /** Param names accepted by the native `setBlockParam` function. */
-export type BlockParamName =
-  | 'enabled'
-  | 'normalize'
-  | 'inputGain'
-  | 'outputGain'
-  | 'mix'
-  | 'namSlimmableSize';
+export type BlockParamName = 'enabled' | 'normalize' | 'inputGain' | 'outputGain' | 'mix';
 
 /** Payload of the native `getMeterLevels` function (all values dB, -60 floor).
     Main meters ship as [L, R] pairs; mono sources report L == R. */
@@ -231,4 +222,6 @@ export interface MeterLevels {
   input: [number, number];
   output: [number, number];
   blocks: Record<string, { in: number; out: number }>;
+  /** Audio-callback load, 0..1 proportion of the real-time budget. */
+  cpu: number;
 }

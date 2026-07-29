@@ -52,6 +52,9 @@ target_include_directories(DspTests PRIVATE
 target_compile_definitions(DspTests PRIVATE
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
+    # Prevent windows.h min/max macros from breaking std::min/std::max in
+    # AudioDSPTools and plugin code — same as plugin/CMakeLists.txt.
+    $<$<PLATFORM_ID:Windows>:NOMINMAX>
     # The processor compiles in its headless configuration (no Editor /
     # webview / standalone-window code) — the DSP under test is identical.
     HEADLESS=1

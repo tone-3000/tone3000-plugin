@@ -156,26 +156,20 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
       .withOptionsFrom(editor->osFactorRelay)
       // --- Chain mutations -------------------------------------------------
       .withNativeFunction(
-          // (toneJson, targetInsertId?, defaultSlimmableSize?) — the tone
-          // lands in the insert slot the user clicked; absent/stale ids fall
-          // back to the active lane's first insert. The size (0 = lite,
-          // 1 = full) is the UI's "Default NAM A2 Size" preference; absent
-          // means lite.
+          // (toneJson, targetInsertId?) — the tone lands in the insert slot
+          // the user clicked; absent/stale ids fall back to the active
+          // lane's first insert.
           "loadTone", guarded(1, juce::var(""), [editor](const juce::Array<juce::var>& args) {
             const std::string targetInsertId =
                 args.size() >= 2 ? args[1].toString().toStdString() : std::string();
-            const double defaultSlimmableSize = args.size() >= 3 ? coerceDouble(args[2]) : 0.0;
-            return juce::var(editor->processor.loadTone(args[0].toString(), targetInsertId,
-                                                        defaultSlimmableSize));
+            return juce::var(editor->processor.loadTone(args[0].toString(), targetInsertId));
           }))
       .withNativeFunction(
           // Replace the tone of an existing block (Swap action). Keeps the
-          // block's chain position and user params; the incoming tone starts
-          // at the passed A2 size (0 = lite, 1 = full; absent means lite).
+          // block's chain position and user params.
           "swapTone", guarded(2, false, [editor](const juce::Array<juce::var>& args) {
-            const double defaultSlimmableSize = args.size() >= 3 ? coerceDouble(args[2]) : 0.0;
-            return juce::var(editor->processor.swapTone(
-                args[0].toString().toStdString(), args[1].toString(), defaultSlimmableSize));
+            return juce::var(editor->processor.swapTone(args[0].toString().toStdString(),
+                                                        args[1].toString()));
           }))
       .withNativeFunction(
           // (blockId, modelId, modelJson) — native only stores the active
@@ -233,11 +227,20 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             editor->processor.setActiveEditChain(args[0].toString());
             return juce::var(true);
           }))
+      .withNativeFunction(
+          // Machine-wide NAM A2 size (false = lite, true = full). Retiers
+          // every loaded NAM block immediately and persists in the shared
+          // settings file; the current value rides getChainState as
+          // `namFullSize`.
+          "setNamFullSize", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
+            editor->processor.setNamFullSize(coerceBool(args[0]));
+            return juce::var(true);
+          }))
       // --- Per-block params / EQ / spectrum ---------------------------------
       .withNativeFunction(
           // Single entry point for per-block user params:
           // (blockId, "enabled" | "normalize" | "inputGain" | "outputGain" |
-          //  "mix" | "namSlimmableSize", numeric value — booleans as 0/1).
+          //  "mix", numeric value — booleans as 0/1).
           "setBlockParam", guarded(3, false, [editor](const juce::Array<juce::var>& args) {
             return juce::var(editor->processor.setBlockParam(
                 args[0].toString().toStdString(), args[1].toString(), coerceDouble(args[2])));

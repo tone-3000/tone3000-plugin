@@ -6,16 +6,10 @@ import { setHintsEnabled, useHintsEnabled } from './helpText';
 import {
   setBlockNormalizeControlEnabled,
   useBlockNormalizeControlEnabled,
-  setDefaultNamA2Size,
-  useDefaultNamA2Size,
-  setNamA2SizeMode,
-  useNamA2SizeMode,
-  type NamA2Size,
-  type NamA2SizeMode,
 } from './uiPreferences';
 import type { UpdateNoticeData } from '../hooks/useUpdateNotice';
 import type { AudioDevice } from '../hooks/useAudioDevice';
-import { GRAY, MUTED, SUBTLE } from './theme';
+import { GRAY, SUBTLE } from './theme';
 import {
   FIELD_BORDER,
   RadioOption,
@@ -59,12 +53,10 @@ interface SettingsProps {
   /** Newer published build, if the startup check found one (even if the
       startup modal was dismissed) — shows an update button in the footer. */
   update: UpdateNoticeData | null;
+  /** Global NAM A2 size (machine-wide; false = lite, true = full). */
+  namFullSize: boolean;
+  onNamFullSizeChange: (full: boolean) => void;
 }
-
-const NAM_A2_SIZE_OPTIONS: { value: NamA2Size; label: string }[] = [
-  { value: 'lite', label: 'A2-Lite' },
-  { value: 'full', label: 'A2-Full' },
-];
 
 // Oversampling rate choices. Values are the osFactor parameter's choice
 // indices (as strings for SelectField); the DSP maps index i to 2^(i+1).
@@ -74,50 +66,11 @@ const OS_FACTOR_OPTIONS: { value: '0' | '1' | '2'; label: string }[] = [
   { value: '2', label: '8X' },
 ];
 
-const NAM_A2_MODE_OPTIONS: {
-  value: NamA2SizeMode;
-  label: string;
-  description: React.ReactNode;
-}[] = [
-  {
-    value: 'lite',
-    label: 'A2-Lite',
-    description: 'Sounds great and uses less CPU',
-  },
-  {
-    value: 'full',
-    label: 'A2-Full',
-    description: 'Maximum accuracy model',
-  },
-  {
-    value: 'perTone',
-    label: 'Choose per tone',
-    description: (
-      <>
-        A{' '}
-        <span
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            height: '18px',
-            borderRadius: '4px',
-            backgroundColor: 'rgba(120, 120, 128, 0.36)',
-            padding: '0 6px',
-            gap: '4px',
-            verticalAlign: 'middle',
-            fontFamily: 'monospace',
-            fontSize: '10px',
-            fontWeight: 400,
-            color: MUTED,
-          }}
-        >
-          <span>LITE</span>
-          <span>FULL</span>
-        </span>{' '}
-        switch appears on each tone
-      </>
-    ),
-  },
+// The machine-wide NAM A2 size: one tier for every NAM block. The hint bar
+// carries a secondary LITE/FULL toggle for the same setting.
+const NAM_A2_SIZE_OPTIONS: { full: boolean; label: string; description: string }[] = [
+  { full: false, label: 'A2-Lite', description: 'Sounds great and uses less CPU' },
+  { full: true, label: 'A2-Full', description: 'Maximum accuracy model' },
 ];
 
 /** Full-width tab bar (mockup style: icon + label, active underline). */
@@ -175,14 +128,14 @@ export const Settings: React.FC<SettingsProps> = ({
   initialTab = 'plugin',
   version,
   update,
+  namFullSize,
+  onNamFullSizeChange,
 }) => {
   const [tab, setTab] = useState<SettingsTab>(standalone ? initialTab : 'plugin');
   const [screen, setScreen] = useState<'main' | 'advanced'>('main');
 
   const hintsEnabled = useHintsEnabled();
   const blockNormalizeControlEnabled = useBlockNormalizeControlEnabled();
-  const namA2SizeMode = useNamA2SizeMode();
-  const defaultNamA2Size = useDefaultNamA2Size();
 
   const [calibrationEnabled, setCalibrationEnabled] = useParameter('calibrateInput', 'toggle');
   const [dbuValueNormalized, setDbuValueNormalized] = useParameter(
@@ -282,7 +235,7 @@ export const Settings: React.FC<SettingsProps> = ({
       <div style={{ marginBottom: '36px' }}>
         <span style={sectionLabelStyle}>Advanced</span>
         <p style={{ ...descriptionStyle, marginBottom: '16px' }}>
-          Normalization, calibration and diagnostics.
+          NAM A2 size, normalization, calibration and diagnostics.
         </p>
         <button onClick={() => setScreen('advanced')} style={ctaButtonStyle}>
           Advanced
@@ -321,49 +274,20 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const advancedScreen = (
     <>
-      <div style={{ marginBottom: '32px' }} role="radiogroup" aria-label="Default NAM A2 Size">
-        <span style={sectionLabelStyle}>Default NAM A2 Size</span>
+      <div style={{ marginBottom: '32px' }} role="radiogroup" aria-label="NAM A2 Size">
+        <span style={sectionLabelStyle}>NAM A2 Size</span>
         <p style={{ ...descriptionStyle, marginBottom: '18px' }}>
-          This setting is for the default size when selecting a tone.
+          One size for every NAM tone on this machine. Also switchable from the LITE/FULL
+          toggle in the hint bar.
         </p>
-        {NAM_A2_MODE_OPTIONS.map((option) => (
+        {NAM_A2_SIZE_OPTIONS.map((option) => (
           <RadioOption
-            key={option.value}
-            selected={namA2SizeMode === option.value}
+            key={option.label}
+            selected={namFullSize === option.full}
             label={option.label}
             description={option.description}
-            onSelect={() => setNamA2SizeMode(option.value)}
-          >
-            {option.value === 'perTone' && namA2SizeMode === 'perTone' && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  marginTop: '12px',
-                  marginLeft: '30px',
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: '13px',
-                    fontWeight: 400,
-                    color: '#ffffff',
-                    flexShrink: 0,
-                  }}
-                >
-                  Set Default
-                </span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <SelectField
-                    value={defaultNamA2Size}
-                    options={NAM_A2_SIZE_OPTIONS}
-                    onChange={setDefaultNamA2Size}
-                  />
-                </div>
-              </div>
-            )}
-          </RadioOption>
+            onSelect={() => onNamFullSizeChange(option.full)}
+          />
         ))}
       </div>
 

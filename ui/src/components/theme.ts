@@ -29,6 +29,12 @@ export const ICON_BOX_RADIUS = 2;
 /** Height for text chrome (EQ, PRE, LITE/FULL segments). */
 export const TEXT_BOX_HEIGHT = 20;
 
+/** The two knob footprints (see KnobInner). Every knob in the UI is one of
+    these two sizes — primary for a section's headline control, secondary for
+    its companion trims. */
+export const KNOB_SIZE_PRIMARY = 48;
+export const KNOB_SIZE_SECONDARY = 36;
+
 /** Brand accents — the only chromatic UI colors outside gray/white/black. */
 export const BRAND_BLUE = '#0000FF';
 export const BRAND_YELLOW = '#FFFF00';

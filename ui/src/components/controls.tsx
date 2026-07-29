@@ -292,7 +292,7 @@ export const ChoiceIndicator: React.FC<{ selected: boolean; square?: boolean }> 
   </span>
 );
 
-/** Radio row with label + description (Default NAM A2 Size options etc). */
+/** Radio row with label + description (NAM A2 Size options etc). */
 export const RadioOption: React.FC<{
   selected: boolean;
   label: string;

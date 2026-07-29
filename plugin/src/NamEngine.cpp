@@ -49,10 +49,6 @@ void NamEngine::prepare(int newMaxBlockSize) {
   isPrepared = true;
 }
 
-bool NamEngine::isSlimmableModel() const {
-  return dynamic_cast<nam::SlimmableModel*>(&primary()) != nullptr;
-}
-
 void NamEngine::setSlimmableSize(double val) {
   requestedSlimmableSize = juce::jlimit(0.0, 1.0, val);
   if (!isPrepared)

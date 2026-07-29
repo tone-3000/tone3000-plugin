@@ -8,6 +8,8 @@ import { ChromeIconButton } from './ChromeIconButton';
 import {
   ICON_BOX_SIZE,
   ICON_SIZE,
+  KNOB_SIZE_PRIMARY,
+  KNOB_SIZE_SECONDARY,
   faceplateChromeLift,
   pillButtonStyle,
 } from './theme';
@@ -26,20 +28,18 @@ import {
  * center the right.
  */
 
-/** Matches the main faceplate knobs (Input/Gate/tone stack/Output). */
-const KNOB_SIZE = 48;
-/** Companion trim next to Offset — same size language as Bal next to Output. */
-const JITTER_KNOB_SIZE = 32;
 /** Shared faceplate action-button height (secondary knob center). */
-export const KNOB_CENTER_OFFSET = faceplateChromeLift(JITTER_KNOB_SIZE);
+export const KNOB_CENTER_OFFSET = faceplateChromeLift(KNOB_SIZE_SECONDARY);
 /** Footprint of the expanded group — Offset + Jit + chrome box with 10px
     gaps — so the advert can reserve the same width and toggling spread
-    never shifts the plate. */
-const SPREAD_GROUP_WIDTH = KNOB_SIZE + 10 + JITTER_KNOB_SIZE + 10 + ICON_BOX_SIZE;
+    never shifts the plate. Both knobs are secondary here: Offset is bipolar,
+    and bipolar controls take the secondary tone. */
+const SPREAD_GROUP_WIDTH = 2 * KNOB_SIZE_SECONDARY + 20 + ICON_BOX_SIZE;
 /** Shared secondary-knob centerline height above the plate baseline
     (label slot + gap + radius). Used to vertically center the advert. */
-const SECONDARY_CENTER_Y = 10 + 14 + JITTER_KNOB_SIZE / 2;
-const SPREAD_ADVERT_HEIGHT = 48;
+const SECONDARY_CENTER_Y = 10 + 14 + KNOB_SIZE_SECONDARY / 2;
+/** Advert stands as tall as the plate's primary knobs. */
+const SPREAD_ADVERT_HEIGHT = KNOB_SIZE_PRIMARY;
 
 /** What sits on the plate while spread is off. */
 const SpreadAdvertButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
@@ -90,8 +90,8 @@ export const SpreadGroup: React.FC = () => {
           value={offset}
           onChange={setOffset}
           variant="bipolar"
-          thumb="bipolar"
-          size={KNOB_SIZE}
+          thumb="secondary"
+          size={KNOB_SIZE_SECONDARY}
           labelSize={12}
           scale={offsetMsScale}
           defaultValue={0.5}
@@ -101,7 +101,7 @@ export const SpreadGroup: React.FC = () => {
           label="Jit"
           value={jitter}
           onChange={setJitter}
-          size={JITTER_KNOB_SIZE}
+          size={KNOB_SIZE_SECONDARY}
           labelSize={12}
           thumb="secondary"
           scale={jitterMsScale}
