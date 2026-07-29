@@ -17,8 +17,8 @@ import { ICON_SIZE, SURFACE, SURFACE_RAISED, iconButtonStyle } from './theme';
 /**
  * Gallery view of a chain block: a square tone image with quick actions
  * (drag / power / swap / trash) overlaid along the top edge and a simplified
- * horizontal output level + clip strip along the bottom. Clicking the tile
- * opens the detailed card view.
+ * horizontal output level + clip strip along the bottom. Tap/click opens
+ * the detail card; dragging the tile (or the grip) reorders it.
  *
  * The full visual surface (TileSurface) is shared between the sortable tile
  * and the DragOverlay ghost, so the copy that follows the pointer during a
@@ -48,8 +48,8 @@ interface TileActions {
   onRemove: (e: React.MouseEvent) => void;
   /** Retry a failed model download (shown when block.loadFailed). */
   onRetryLoad: () => void;
-  /** useSortable attributes + listeners for the grip. */
-  grip: React.HTMLAttributes<HTMLDivElement>;
+  /** useSortable attributes + listeners for the whole tile (press+move to drag). */
+  sortable: React.HTMLAttributes<HTMLElement>;
 }
 
 /**
@@ -89,6 +89,10 @@ const TileSurface: React.FC<{
         // dies across drag re-renders. The inert drag ghost pins it visible.
         className={actions ? 'gallery-tile' : 'gallery-tile tile-chrome-visible'}
         onClick={actions?.onOpen}
+        // Sortable listeners live on the tile face (press+move to drag). The
+        // grip keeps data-drag-handle + touch-action:none as the explicit
+        // drag affordance (same distance activation as the rest of the tile).
+        {...(actions?.sortable ?? {})}
         // The inert drag ghost skips help — it rides under the pointer, so its
         // hover events would pin the hint for the whole drag.
         {...(actions ? helpProps(toneTileHelp(tone.title)) : {})}
@@ -175,7 +179,7 @@ const TileSurface: React.FC<{
           }}
         >
           <div
-            {...(actions?.grip ?? {})}
+            data-drag-handle={actions ? true : undefined}
             onClick={(e) => e.stopPropagation()}
             {...(actions ? helpProps(HELP.dragGrip) : {})}
             // touch-action: none — otherwise touch devices claim the gesture
@@ -297,7 +301,7 @@ export const GalleryBlock: React.FC<GalleryBlockProps> = React.memo(
             actions.removeBlock(blockId);
           },
           onRetryLoad: () => actions.retryLoad(blockId),
-          grip: { ...attributes, ...listeners },
+          sortable: { ...attributes, ...listeners },
         }}
       />
     </div>
@@ -333,11 +337,14 @@ const addTileFaceStyle = (size: number): React.CSSProperties => ({
     drag grip at the top-left. No translucent strip — there's no artwork to
     read against, only the tile's flat surface. Revealed on hover via the
     shared `.gallery-tile .tile-chrome` CSS (always visible on touch-only
-    devices — see index.css); the drag ghost pins it with tile-chrome-visible. */
+    devices — see index.css); the drag ghost pins it with tile-chrome-visible.
+    Sortable listeners live on the tile face; the grip is the explicit
+    drag affordance (`data-drag-handle` + touch-action:none). */
 const AddTileHeader: React.FC<{
-  grip?: React.HTMLAttributes<HTMLDivElement>;
+  /** When set, this is a live tile (not the ghost) — mark the grip handle. */
+  interactive?: boolean;
   stereo?: boolean;
-}> = ({ grip, stereo = false }) => (
+}> = ({ interactive = false, stereo = false }) => (
   <div
     className="tile-chrome"
     style={{
@@ -352,14 +359,14 @@ const AddTileHeader: React.FC<{
     }}
   >
     <div
-      {...(grip ?? {})}
+      data-drag-handle={interactive ? true : undefined}
       onClick={(e) => e.stopPropagation()}
-      {...(grip ? helpProps(HELP.dragGrip) : {})}
+      {...(interactive ? helpProps(HELP.dragGrip) : {})}
       // touch-action: none — otherwise touch devices claim the gesture
       // for lane scrolling and pointercancel kills the drag instantly.
       style={{
         ...gripStyle,
-        cursor: grip ? 'grab' : 'grabbing',
+        cursor: interactive ? 'grab' : 'grabbing',
         color: '#ffffff',
         touchAction: 'none',
         lineHeight: 0,
@@ -405,6 +412,8 @@ export const AddTile: React.FC<AddTileProps> = ({ id, size, routing, stereo = fa
       ref={setNodeRef}
       onClick={onClick}
       className="gallery-tile"
+      {...attributes}
+      {...listeners}
       {...helpProps(HELP.addTile)}
       style={{
         ...addTileFaceStyle(size),
@@ -416,7 +425,7 @@ export const AddTile: React.FC<AddTileProps> = ({ id, size, routing, stereo = fa
     >
       {!isDragging && (routing === 'left' || routing === 'both') && routingLine('left')}
       {!isDragging && (routing === 'right' || routing === 'both') && routingLine('right')}
-      <AddTileHeader grip={{ ...attributes, ...listeners }} stereo={stereo} />
+      <AddTileHeader interactive stereo={stereo} />
       <PlusCircle size={40} strokeWidth={1} />
     </div>
   );

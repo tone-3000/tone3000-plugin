@@ -5,7 +5,6 @@ import {
   closestCenter,
   pointerWithin,
   KeyboardSensor,
-  PointerSensor,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
@@ -18,6 +17,7 @@ import type {
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { ChainBlock } from './ChainBlock';
 import { GalleryTileGhost } from './GalleryBlock';
+import { GalleryPointerSensor, GALLERY_DRAG_DISTANCE_PX } from './galleryPointerSensor';
 import {
   EdgeFade,
   GalleryLane,
@@ -43,8 +43,7 @@ import { isInsertSlot } from '../types/chain';
  * spans both lanes and the lane lists are mirrored into optimistic local
  * state, so cross-lane drags reflow the target lane live (onDragOver) and
  * drops land without any snap-back while the native roundtrip completes.
- * Clicking a tile opens the detail takeover (the full card view) with a
- * Back button.
+ * Tap/click opens the detail takeover; drag the tile (or grip) to reorder.
  */
 
 /**
@@ -121,8 +120,11 @@ export const ChainView: React.FC<ChainViewProps> = ({ chain, chainRight, sampleR
 
   const sensors = useSensors(
     // A few px of travel before a drag engages: plain clicks (open detail,
-    // tile buttons) stay clicks, and there's no transform jitter on press.
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    // tile buttons) stay clicks. GalleryPointerSensor also ignores presses
+    // on interactive chrome so power/swap/trash stay clicks.
+    useSensor(GalleryPointerSensor, {
+      activationConstraint: { distance: GALLERY_DRAG_DISTANCE_PX },
+    }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 

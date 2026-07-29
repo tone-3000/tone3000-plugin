@@ -177,7 +177,7 @@ export const HELP = {
   presetMoveDown: 'Move Down: one spot later.',
 
   // Chain gallery
-  addTile: 'Add Tone: browse TONE3000 for this slot. Drag grip: move the slot.',
+  addTile: 'Add Tone: browse TONE3000 for this slot. Drag tile or grip: move.',
   closeToneBrowser: 'Close: back to the chain.',
   dragGrip: 'Grip: drag to reorder. Stereo: drop on the other lane to move.',
   blockPower: 'Power: bypass this block.',
@@ -227,7 +227,8 @@ export const HELP = {
 } as const;
 
 /** Gallery tile: leads with the tone's own name. */
-export const toneTileHelp = (title: string) => `${title}. Click: open.`;
+export const toneTileHelp = (title: string) =>
+  `${title}. Click: open. Drag: reorder.`;
 
 /** Curve-type selector buttons in the EQ editor. */
 export const bandTypeHelp = (label: string) => `${label}: band curve shape.`;
