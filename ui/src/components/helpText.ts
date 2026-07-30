@@ -139,22 +139,30 @@ export const knobHelp = (name: string, desc: string) => `${name}: ${desc} ${KNOB
 export const HELP = {
   // Faceplate — gains
   inputLevel: knobHelp('Input', 'chain input level, ±24 dB.'),
-  inputMode: 'Input Mode: source channels. Stereo: both · L/R: one. Click: cycle.',
+  inputMode: 'Input Mode: source channels. Stereo: both · L/R: one. Click: choose.',
   outputLevel: knobHelp('Output', 'master output level, ±24 dB.'),
   outputBalance: knobHelp('Balance', 'level trim between chains, ±12 dB (pre-pan). Center: off.'),
   autoBalance: 'Auto Balance: click, play ~2 s to match chain levels. Click again: cancel.',
 
-  // Faceplate — gate, tone stack, spread
+  // Faceplate — gate, tone stack, stereo image (spread / offset)
   gate: knobHelp('Gate', 'noise gate threshold, −100–0 dB.'),
   gatePower: 'Gate Power: noise gate on/off.',
   toneBass: knobHelp('Bass', 'tone stack lows, 0–10.'),
   toneMiddle: knobHelp('Middle', 'tone stack mids, 0–10.'),
   toneTreble: knobHelp('Treble', 'tone stack highs, 0–10.'),
   tonePower: 'Tone Stack Power: Bass/Middle/Treble on/off.',
-  spreadOffset: knobHelp('Offset', 'one-sided delay for width, ≤24 ms. Center: off.'),
-  jitter: knobHelp('Jitter', 'random per-note offset drift, ≤4 ms.'),
-  spreadAdvert: 'Spread: stereo width via a short one-sided delay. Click: enable.',
-  spreadPower: 'Spread Power: spread off; collapses its controls.',
+  spreadOffset: knobHelp(
+    'Offset',
+    'double-track lag, ≤24 ms toward L or R. Center: off. Right-click: advanced.'
+  ),
+  spreadWobble: knobHelp('Wobble', 'humanizing delay drift, up to ±1.2 ms.'),
+  spreadAdvert: 'Spread: mono-to-stereo double via a wobbling short lag. Click: enable.',
+  spreadPower: 'Spread Power: spread off; collapses its controls. Right-click: advanced.',
+  spreadCorrelation:
+    'Mono safety: dim: safe · yellow: caution · red: cancellation on mono sum.',
+  offsetTime: knobHelp('Offset', 'corrective chain alignment, ≤24 ms toward L or R. Center: off.'),
+  offsetPower: 'Offset Power: corrective chain alignment on/off.',
+  autoOffset: 'Auto Offset: click, play ~2 s to time-align chains. Click again: cancel.',
 
   // Top bar
   tuner: 'Tuner: chromatic tuner. Click again: back.',

@@ -19,10 +19,12 @@
 #include "ChainBlock.h"
 #include "ChainDomain.h"
 #include "ChainHistory.h"
+#include "AutoOffset.h"
 #include "ChainOversampler.h"
 #include "MidiMapper.h"
 #include "NoiseGate.h"
 #include "Spread.h"
+#include "StereoOffset.h"
 #include "PresetManager.h"
 #include "TunerDetector.h"
 
@@ -136,8 +138,9 @@ public:
   void setNamFullSize(bool full);
 
   // All meter levels in one call: { input, output, blocks: { id: { in, out } },
-  // cpu (0..1 audio-callback load) }. Values in dB with a -60 floor. Designed
-  // to be polled once per UI frame.
+  // cpu (0..1 audio-callback load), correlation (-1..1 spread output
+  // correlation) }. Levels in dB with a -60 floor. Designed to be polled once
+  // per UI frame.
   juce::var getMeterLevels() const;
 
   // Per-block EQ (post-block by default, pre-model when its pre flag is on).
@@ -245,6 +248,17 @@ public:
   void startAutoBalance();
   void cancelAutoBalance();
   juce::var pollAutoBalance();  // { state: "idle"|"listening"|"done"|"timeout", matchedDb? }
+
+  // ── Auto offset: one-shot chain time alignment (stereo chain mode) ──
+  // Same listening UX as auto balance, but the measurement is a cross-
+  // correlation of the two raw chain outputs (captured pre-offset, so it's
+  // the chains' absolute misalignment) instead of an energy ratio — see
+  // AutoOffset.h for the full rationale and threading model. pollAutoOffset()
+  // applies the measured lag to the stereoOffsetTime parameter (and powers
+  // the offset on) when the measurement is trustworthy.
+  void startAutoOffset();
+  void cancelAutoOffset();
+  juce::var pollAutoOffset();  // { state: "idle"|"listening"|"done"|"timeout", matchedMs?, progress? }
 
   // Location of the on-disk diagnostic log. Single source of truth shared by the
   // FileLogger setup and the UI's "copy/reveal logs" actions so they never drift.
@@ -491,12 +505,6 @@ private:
   // Milliseconds timestamp of the last processBlock, for isAudioActive().
   std::atomic<juce::int64> lastAudioCallbackMs{0};
 
-  // Crossfade for the mono-double seed (spread in mono mode): 0 = channel 1
-  // keeps its own chain output, 1 = channel 1 mirrors channel 0 (the
-  // double). On true stereo sources the two chain outputs differ, so the
-  // spread power switch must glide this instead of hard-copying (pop).
-  juce::SmoothedValue<float> spreadDoubleBlend;
-
   // Output-stage gain (main level only — the balance trim lives in the
   // post-chain image matrix, pre-pan), smoothed so knob moves glide instead
   // of stepping once per block. Audio thread only.
@@ -588,7 +596,9 @@ private:
     std::atomic<float>* outputBalance = nullptr;
     std::atomic<float>* spreadEnabled = nullptr;
     std::atomic<float>* spreadOffset = nullptr;
-    std::atomic<float>* spreadJitter = nullptr;
+    std::atomic<float>* spreadWobble = nullptr;
+    std::atomic<float>* stereoOffsetEnabled = nullptr;
+    std::atomic<float>* stereoOffsetTime = nullptr;
     std::atomic<float>* chainPanLeft = nullptr;
     std::atomic<float>* chainPanRight = nullptr;
     std::atomic<float>* toneBass = nullptr;
@@ -623,8 +633,10 @@ private:
   float cacheOutputLevel = 0.5f;
   float cacheOutputBalance = 0.5f;
   bool cacheSpreadEnabled = false;
-  float cacheSpreadOffset = 0.75f;  // bipolar, 0.5 = center = off; default 12 ms R
-  float cacheSpreadJitter = 0.5f;   // default 2 ms
+  float cacheSpreadOffset = 0.8125f;  // bipolar, 0.5 = center = 0 ms; default +15 ms R
+  float cacheSpreadWobble = 0.25f;   // 0..1 of the ±1.2 ms wobble range
+  bool cacheStereoOffsetEnabled = false;
+  float cacheStereoOffsetTime = 0.5f;  // bipolar, 0.5 = center = 0 ms
   float cacheChainPanLeft = 0.0f;
   float cacheChainPanRight = 1.0f;
   float cacheBassTone = 5.0f;
@@ -711,11 +723,21 @@ private:
   float autoBalanceMatchedDb = 0.0f;               // result, valid in Measured
   void runAutoBalanceStage(const juce::AudioBuffer<float>& buffer, int numSamples);
 
-  // Post-chain spread engine (one instance + one parameter set serves both
-  // the mono double and the stereo chain shift — the modes are exclusive).
-  // While the power switch is on it always runs (0 ms delay = identity), so
-  // knob moves never hard-toggle DSP; all transitions glide through zero.
+  // Post-chain stereo image engines, one per chain mode (the modes are
+  // exclusive; the inactive one is force-idled — mode switches happen under
+  // the chain-edit fade, so the hard stop is inaudible):
+  //  - Mono mode: the Spread builds a stereo image from the single chain
+  //    (an ADT-style double — see Spread.h). Its output correlation ships to
+  //    the UI via getMeterLevels.
+  //  - Stereo mode: the StereoOffset time-aligns the two chains (see
+  //    StereoOffset.h).
   Spread spread;
+  StereoOffset stereoOffset;
+
+  // Auto-offset measurement engine (state machine + capture + analysis all
+  // live in the class; the processor just taps the audio and applies the
+  // result — see the public startAutoOffset/pollAutoOffset above).
+  AutoOffset autoOffset;
 
   // Post-chain image matrix gains (per-chain balance trim × constant-power
   // pan; see imageMatrixGains in Processor.cpp), smoothed so balance/pan

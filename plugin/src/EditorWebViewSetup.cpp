@@ -140,7 +140,9 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
       .withOptionsFrom(editor->outputBalanceRelay)
       .withOptionsFrom(editor->spreadEnabledRelay)
       .withOptionsFrom(editor->spreadOffsetRelay)
-      .withOptionsFrom(editor->spreadJitterRelay)
+      .withOptionsFrom(editor->spreadWobbleRelay)
+      .withOptionsFrom(editor->stereoOffsetEnabledRelay)
+      .withOptionsFrom(editor->stereoOffsetTimeRelay)
       .withOptionsFrom(editor->chainPanLeftRelay)
       .withOptionsFrom(editor->chainPanRightRelay)
       .withOptionsFrom(editor->chainPanLinkedRelay)
@@ -505,6 +507,23 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
       .withNativeFunction(
           "pollAutoBalance", guarded(0, juce::var(), [editor](const juce::Array<juce::var>&) {
             return editor->processor.pollAutoBalance();
+          }))
+      .withNativeFunction(
+          // Arm a one-shot chain time-alignment measurement (stereo chain
+          // mode); the UI polls pollAutoOffset for progress/result (see
+          // Processor.h / AutoOffset.h).
+          "startAutoOffset", guarded(0, false, [editor](const juce::Array<juce::var>&) {
+            editor->processor.startAutoOffset();
+            return juce::var(true);
+          }))
+      .withNativeFunction(
+          "cancelAutoOffset", guarded(0, false, [editor](const juce::Array<juce::var>&) {
+            editor->processor.cancelAutoOffset();
+            return juce::var(true);
+          }))
+      .withNativeFunction(
+          "pollAutoOffset", guarded(0, juce::var(), [editor](const juce::Array<juce::var>&) {
+            return editor->processor.pollAutoOffset();
           }))
       // --- Misc ---------------------------------------------------------------
       .withNativeFunction(

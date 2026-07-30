@@ -1,18 +1,25 @@
-import React, { useEffect, useState } from 'react';
-import { Equal, Power } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ChevronDown, Equal, Power } from 'lucide-react';
 import { KnobControl } from './KnobControl';
 import { balanceDbScale, gainDbScale, gateDbScale, toneScale } from './knobScale';
 import { SpreadGroup } from './SpreadControls';
+import { OffsetGroup } from './OffsetControls';
 import { useParameter } from '../hooks/useParameter';
 import type { InputMode } from '../types/chain';
 import { useNativeFunction } from '../hooks/useFunction';
-import { HELP } from './helpText';
+import { HELP, helpProps } from './helpText';
 import { ChromeIconButton } from './ChromeIconButton';
 import {
   BORDER,
+  HIGHLIGHT,
+  ICON_BOX_SIZE,
+  ICON_BOX_RADIUS,
   ICON_SIZE,
   KNOB_SIZE_PRIMARY,
   KNOB_SIZE_SECONDARY,
+  MUTED,
+  SUBTLE,
+  WHITE,
   faceplateChromeLift,
 } from './theme';
 
@@ -29,9 +36,9 @@ import {
  *
  * Output gain: the main level knob plus a small balance knob that trims L/R
  * against each other (±12 dB opposing, center = off). The balance knob only
- * appears when the output actually runs stereo (stereo mode, or mono+spread);
- * DSP forces center when inactive so a leftover setting can't skew a mono
- * bus. All values are host parameters — presets/undo get them for free.
+ * appears when the output actually runs stereo (stereo mode, or mono +
+ * spread); DSP forces center when inactive so a leftover setting can't skew
+ * a mono bus. All values are host parameters — presets/undo get them for free.
  */
 
 const PLATE_HEIGHT = 100;
@@ -63,37 +70,165 @@ const StereoIcon: React.FC<{ style?: React.CSSProperties }> = ({ style }) => (
   </svg>
 );
 
-const INPUT_MODE_CYCLE: Record<InputMode, InputMode> = {
-  stereo: 'left',
-  left: 'right',
-  right: 'stereo',
-};
+const INPUT_MODE_OPTIONS: { mode: InputMode; label: string }[] = [
+  { mode: 'stereo', label: 'Stereo (L+R)' },
+  { mode: 'left', label: 'Left' },
+  { mode: 'right', label: 'Right' },
+];
+
+/** The mode's glyph, shared by the trigger and the menu rows. */
+const InputModeGlyph: React.FC<{ mode: InputMode }> = ({ mode }) =>
+  mode === 'stereo' ? (
+    <StereoIcon />
+  ) : (
+    <span style={{ fontFamily: 'monospace', fontSize: '11px', fontWeight: 700, lineHeight: 1 }}>
+      {mode === 'left' ? 'L' : 'R'}
+    </span>
+  );
 
 /**
- * Input mode: which channels of a stereo source feed the plugin. Click
- * cycles stereo → L → R. Stereo (the default) shows the two-circle glyph;
- * L/R take only that channel (mirrored onto both) and get the filled
+ * Input mode: which channels of a stereo source feed the plugin. The
+ * trigger (current glyph + down caret) opens a flat floating menu above the
+ * plate — same chrome as the Spread advanced panel — listing the three
+ * routings. Stereo (the default) shows the two-circle glyph; L/R take only
+ * that channel (mirrored onto both) and the trigger keeps the filled
  * "engaged" look so a non-default routing is obvious at a glance.
  */
 const InputModeButton: React.FC<{
   mode: InputMode;
   onChange: (mode: InputMode) => void;
-}> = ({ mode, onChange }) => (
-  <ChromeIconButton
-    help={HELP.inputMode}
-    onClick={() => onChange(INPUT_MODE_CYCLE[mode])}
-    filled={mode !== 'stereo'}
-    offsetY={CHROME_LIFT}
-  >
-    {mode === 'stereo' ? (
-      <StereoIcon />
-    ) : (
-      <span style={{ fontFamily: 'monospace', fontSize: '11px', fontWeight: 700, lineHeight: 1 }}>
-        {mode === 'left' ? 'L' : 'R'}
-      </span>
-    )}
-  </ChromeIconButton>
-);
+}> = ({ mode, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  // Outside click / Escape dismissal (presets-menu / advanced-panel pattern).
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    // The chrome lift lives on the wrapper (not the button) so the floating
+    // menu anchors to the lifted trigger. The transform makes the wrapper a
+    // stacking context, which would trap the menu's z-index under the chain
+    // view's edge-fade gradients (zIndex 3 in the root context) — so the
+    // wrapper itself is elevated while the menu is open.
+    <div
+      ref={rootRef}
+      style={{
+        position: 'relative',
+        transform: `translateY(${CHROME_LIFT}px)`,
+        zIndex: open ? 300 : undefined,
+      }}
+    >
+      <style>{`.input-mode-item:hover { background-color: ${HIGHLIGHT}; }`}</style>
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        {...helpProps(HELP.inputMode)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '3px',
+          height: `${ICON_BOX_SIZE}px`,
+          padding: '0 2px',
+          boxSizing: 'border-box',
+          background: mode !== 'stereo' ? HIGHLIGHT : 'transparent',
+          border: '1px solid transparent',
+          borderRadius: `${ICON_BOX_RADIUS}px`,
+          color: WHITE,
+          cursor: 'pointer',
+          flexShrink: 0,
+        }}
+      >
+        <span style={{ display: 'grid', placeItems: 'center', width: `${ICON_SIZE + 3}px` }}>
+          <InputModeGlyph mode={mode} />
+        </span>
+        <ChevronDown size={10} style={{ display: 'block', flexShrink: 0, color: MUTED }} />
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 'calc(100% + 14px)',
+            left: 0,
+            minWidth: '172px',
+            backgroundColor: '#141416',
+            border: BORDER,
+            borderRadius: '14px',
+            padding: '12px 8px 8px',
+            zIndex: 200,
+            boxSizing: 'border-box',
+          }}
+        >
+          <div
+            style={{
+              padding: '0 12px 8px',
+              fontSize: '11px',
+              fontWeight: 600,
+              letterSpacing: '0.05em',
+              color: SUBTLE,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Input Mode
+          </div>
+          {INPUT_MODE_OPTIONS.map((option) => (
+            <button
+              key={option.mode}
+              type="button"
+              className="input-mode-item"
+              onClick={() => {
+                onChange(option.mode);
+                setOpen(false);
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                width: '100%',
+                padding: '9px 12px',
+                background: 'transparent',
+                border: 'none',
+                borderRadius: '8px',
+                color: option.mode === mode ? WHITE : MUTED,
+                fontSize: '13px',
+                fontWeight: 400,
+                textAlign: 'left',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <span
+                style={{
+                  display: 'grid',
+                  placeItems: 'center',
+                  width: `${ICON_BOX_SIZE}px`,
+                  flexShrink: 0,
+                }}
+              >
+                <InputModeGlyph mode={option.mode} />
+              </span>
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 /**
  * Auto balance: one-shot L/R energy match. Click arms a listening
@@ -196,8 +331,9 @@ interface FaceplateProps {
       output balance knob. */
   stereoOutput: boolean;
   /** Two independent chains are running (stereo mode) — shows the auto
-      balance button. Mono-mode spread doesn't need it: both channels carry
-      the same chain, so their energy already matches. */
+      balance button and swaps the Spread group for the Offset group.
+      Mono-mode spread doesn't need auto balance: both channels carry the
+      same chain, so their energy already matches. */
   stereoChains: boolean;
   /** Plugin is fed a real stereo source — shows the input-mode button. */
   stereoInput: boolean;
@@ -337,10 +473,11 @@ export const Faceplate: React.FC<FaceplateProps> = ({
         />
       </div>
 
-      {/* Spread (offset/jit knobs) lives on the plate, just before the
-          output stage it feeds. Collapsed to an advert button while off;
-          expands with Offset/Jit + power to collapse (same in mono and stereo). */}
-      <SpreadGroup />
+      {/* Stereo-image slot, just before the output stage it feeds: the
+          Spread in mono mode, the corrective Offset (with its auto-align
+          button) in stereo mode. Both share one fixed footprint
+          (IMAGE_GROUP_WIDTH) so mode switches never shift the plate. */}
+      {stereoChains ? <OffsetGroup /> : <SpreadGroup />}
 
       <OutputGainKnob stereo={stereoOutput} autoBalance={stereoChains} />
     </div>

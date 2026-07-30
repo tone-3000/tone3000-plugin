@@ -134,6 +134,10 @@ target_sources(${PROJECT_NAME}
         include/ChainHistory.h
         include/Spread.h
         src/Spread.cpp
+        include/StereoOffset.h
+        src/StereoOffset.cpp
+        include/AutoOffset.h
+        src/AutoOffset.cpp
         include/PresetManager.h
         src/PresetManager.cpp
         include/Processor.h

@@ -13,11 +13,12 @@
 
 const std::vector<juce::String>& TONE3000Processor::presetParameterIds() {
   static const std::vector<juce::String> ids = {
-      "inputLevel",    "outputLevel",   "outputBalance",
-      "toneBass",      "toneMid",       "toneTreble",
-      "gateThreshold", "gateEnabled",  "toneEqEnabled",
-      "spreadEnabled", "spreadOffset",  "spreadJitter",
-      "chainPanLeft",  "chainPanRight", "chainPanLinked",
+      "inputLevel",     "outputLevel",         "outputBalance",
+      "toneBass",       "toneMid",             "toneTreble",
+      "gateThreshold",  "gateEnabled",         "toneEqEnabled",
+      "spreadEnabled",  "spreadOffset",        "spreadWobble",
+      "stereoOffsetEnabled", "stereoOffsetTime",
+      "chainPanLeft",   "chainPanRight",       "chainPanLinked",
   };
   return ids;
 }

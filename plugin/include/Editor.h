@@ -91,7 +91,9 @@ private:
   juce::WebSliderRelay outputBalanceRelay{"outputBalance"};
   juce::WebToggleButtonRelay spreadEnabledRelay{"spreadEnabled"};
   juce::WebSliderRelay spreadOffsetRelay{"spreadOffset"};
-  juce::WebSliderRelay spreadJitterRelay{"spreadJitter"};
+  juce::WebSliderRelay spreadWobbleRelay{"spreadWobble"};
+  juce::WebToggleButtonRelay stereoOffsetEnabledRelay{"stereoOffsetEnabled"};
+  juce::WebSliderRelay stereoOffsetTimeRelay{"stereoOffsetTime"};
   juce::WebSliderRelay chainPanLeftRelay{"chainPanLeft"};
   juce::WebSliderRelay chainPanRightRelay{"chainPanRight"};
   juce::WebToggleButtonRelay chainPanLinkedRelay{"chainPanLinked"};
@@ -117,8 +119,12 @@ private:
       *processor.parameters.getParameter("spreadEnabled"), spreadEnabledRelay, nullptr};
   juce::WebSliderParameterAttachment spreadOffsetWebAttachment{
       *processor.parameters.getParameter("spreadOffset"), spreadOffsetRelay, nullptr};
-  juce::WebSliderParameterAttachment spreadJitterWebAttachment{
-      *processor.parameters.getParameter("spreadJitter"), spreadJitterRelay, nullptr};
+  juce::WebSliderParameterAttachment spreadWobbleWebAttachment{
+      *processor.parameters.getParameter("spreadWobble"), spreadWobbleRelay, nullptr};
+  juce::WebToggleButtonParameterAttachment stereoOffsetEnabledWebAttachment{
+      *processor.parameters.getParameter("stereoOffsetEnabled"), stereoOffsetEnabledRelay, nullptr};
+  juce::WebSliderParameterAttachment stereoOffsetTimeWebAttachment{
+      *processor.parameters.getParameter("stereoOffsetTime"), stereoOffsetTimeRelay, nullptr};
   juce::WebSliderParameterAttachment chainPanLeftWebAttachment{
       *processor.parameters.getParameter("chainPanLeft"), chainPanLeftRelay, nullptr};
   juce::WebSliderParameterAttachment chainPanRightWebAttachment{

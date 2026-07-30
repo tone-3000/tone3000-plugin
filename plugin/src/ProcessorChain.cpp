@@ -867,6 +867,9 @@ juce::var TONE3000Processor::getMeterLevels() const {
   root->setProperty("output", channelPair(outputMeterLevelL.load(), outputMeterLevelR.load()));
   // Audio-callback load as a 0..1 proportion (the hint bar shows it as a %).
   root->setProperty("cpu", loadMeasurer.getLoadAsProportion());
+  // Spread output correlation (-1..1, 1 when spread is idle) for the
+  // mono-compatibility meter. Riding this poll costs no extra bridge traffic.
+  root->setProperty("correlation", spread.correlation());
 
   juce::DynamicObject::Ptr blocks = new juce::DynamicObject();
   {

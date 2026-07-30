@@ -39,7 +39,6 @@ const panelStyle: React.CSSProperties = {
   borderRadius: '14px',
   padding: '16px',
   zIndex: 200,
-  boxShadow: '0 12px 32px rgba(0, 0, 0, 0.55)',
   boxSizing: 'border-box',
 };
 

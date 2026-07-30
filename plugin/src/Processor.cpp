@@ -67,7 +67,9 @@ void TONE3000Processor::resolveParamRefs() {
   paramRefs.outputBalance = get("outputBalance");
   paramRefs.spreadEnabled = get("spreadEnabled");
   paramRefs.spreadOffset = get("spreadOffset");
-  paramRefs.spreadJitter = get("spreadJitter");
+  paramRefs.spreadWobble = get("spreadWobble");
+  paramRefs.stereoOffsetEnabled = get("stereoOffsetEnabled");
+  paramRefs.stereoOffsetTime = get("stereoOffsetTime");
   paramRefs.chainPanLeft = get("chainPanLeft");
   paramRefs.chainPanRight = get("chainPanRight");
   paramRefs.toneBass = get("toneBass");
@@ -117,25 +119,38 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
   // the post-chain image stage in processBlock). Pre-pan placement is what
   // makes the knob mean "match chain A to chain B": a setting dialed in
   // while hard-panned stays correct at any pan position. In mono+spread it
-  // tilts the dry/delayed copies L/R (no pan there, so it's the same idea).
+  // tilts the dry/lag sides L/R (no pan there, so it's the same idea).
   // Only applies in stereo mode or mono+spread; the UI hides the knob when
   // inactive.
   layout.add(std::make_unique<juce::AudioParameterFloat>(
       juce::ParameterID{"outputBalance", 18}, "outputBalance", 0.0f, 1.0f, 0.5f));
 
-  // Spread (see Spread.h): one parameter set for both modes (mono double /
-  // stereo chain shift — mode-exclusive). Offset is bipolar: 0.5 = center =
-  // 0 ms (processing skipped); below center delays the left channel, above
-  // center the right (0..24 ms). Jitter is ± per-note random variation
-  // (0..4 ms, 0 = off). Stored normalized; SpreadParams decodes to ms.
-  // The knobs default to a useful sound (12 ms R, 2 ms jitter) so powering
-  // spread on — it defaults off in both modes — is audible immediately.
+  // Version hints 19–21 belonged to the removed spread params; hints are
+  // never reused (AU keys parameter identity on them).
+
+  // Spread (mono chain mode; see Spread.h / doubler-spec.md). Offset is
+  // bipolar: 0.5 = center = 0 ms (identity); below center lags the left
+  // channel, above center the right (0..24 ms). Wobble is the random-walk
+  // delay modulation depth (0..±1.2 ms absolute, not relative to the
+  // offset). Stored normalized; SpreadParams decodes. Defaults land a tight
+  // classic ADT (+15 ms R, 25% wobble) so powering spread on — it defaults
+  // off — is audible immediately. The retired pre-release spread params used
+  // hints 19-21 with different semantics; these are fresh ids.
   layout.add(std::make_unique<juce::AudioParameterBool>(
-      juce::ParameterID{"spreadEnabled", 19}, "spreadEnabled", false));
+      juce::ParameterID{"spreadEnabled", 27}, "spreadEnabled", false));
   layout.add(std::make_unique<juce::AudioParameterFloat>(
-      juce::ParameterID{"spreadOffset", 20}, "spreadOffset", 0.0f, 1.0f, 0.75f));
+      juce::ParameterID{"spreadOffset", 28}, "spreadOffset", 0.0f, 1.0f, 0.8125f));
   layout.add(std::make_unique<juce::AudioParameterFloat>(
-      juce::ParameterID{"spreadJitter", 21}, "spreadJitter", 0.0f, 1.0f, 0.5f));
+      juce::ParameterID{"spreadWobble", 29}, "spreadWobble", 0.0f, 1.0f, 0.25f));
+
+  // Stereo offset (stereo chain mode; see StereoOffset.h): corrective
+  // alignment delay between the two chains. Bipolar: 0.5 = center = 0 ms;
+  // below center delays the left chain, above center the right (0..24 ms).
+  // Defaults to center — a corrective tool has no useful nonzero default.
+  layout.add(std::make_unique<juce::AudioParameterBool>(
+      juce::ParameterID{"stereoOffsetEnabled", 30}, "stereoOffsetEnabled", false));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"stereoOffsetTime", 31}, "stereoOffsetTime", 0.0f, 1.0f, 0.5f));
 
   // Stereo-mode chain pans: constant-power positions for the Left/Right
   // chain outputs (0 = hard left, 1 = hard right). The UI constrains the
@@ -565,16 +580,13 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   trebleFilter.prepare(spec);
   dcBlocker.prepare(spec);
   spread.prepare(sampleRate, samplesPerBlock);
+  stereoOffset.prepare(sampleRate, samplesPerBlock);
+  autoOffset.prepare(sampleRate);
   inputGate.prepare(sampleRate);
 
   // Chain-edit fade (reorder / cross-lane move): host-rate, primed audible.
   chainEditFadeGain.reset(sampleRate, kWetFadeSeconds);
   chainEditFadeGain.setCurrentAndTargetValue(1.0f);
-
-  // Spread mono-double blend: primed at "no double"; the first running
-  // spread block ramps it in (see the post-chain stereo image stage).
-  spreadDoubleBlend.reset(sampleRate, kWetFadeSeconds);
-  spreadDoubleBlend.setCurrentAndTargetValue(0.0f);
 
   // Output-stage gain, primed from the current parameters so a restored
   // session doesn't glide in from the wrong level.
@@ -725,7 +737,8 @@ void TONE3000Processor::updateCachedParameters() {
   updateFloat(cacheOutputLevel, paramRefs.outputLevel);
   updateFloat(cacheOutputBalance, paramRefs.outputBalance);
   updateFloat(cacheSpreadOffset, paramRefs.spreadOffset);
-  updateFloat(cacheSpreadJitter, paramRefs.spreadJitter);
+  updateFloat(cacheSpreadWobble, paramRefs.spreadWobble);
+  updateFloat(cacheStereoOffsetTime, paramRefs.stereoOffsetTime);
   updateFloat(cacheChainPanLeft, paramRefs.chainPanLeft);
   updateFloat(cacheChainPanRight, paramRefs.chainPanRight);
   updateFloat(cacheBassTone, paramRefs.toneBass, true);
@@ -740,6 +753,7 @@ void TONE3000Processor::updateCachedParameters() {
   cacheGateEnabled = loadBool(paramRefs.gateEnabled);
   cacheToneEqEnabled = loadBool(paramRefs.toneEqEnabled);
   cacheSpreadEnabled = loadBool(paramRefs.spreadEnabled);
+  cacheStereoOffsetEnabled = loadBool(paramRefs.stereoOffsetEnabled);
 }
 
 // ##########################
@@ -1116,7 +1130,7 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   lastAudioCallbackMs.store(juce::Time::currentTimeMillis());
 
   // Input fold-down, up front so everything downstream (meters, tuner,
-  // chains, spread detection) sees the effective source:
+  // chains) sees the effective source:
   // - Mono input device (standalone): signal only arrives on channel 0 —
   //   mirror it.
   // - Input mode L/R on a stereo source: duplicate the chosen channel onto
@@ -1187,15 +1201,6 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   }
   gateWasEnabled = cacheGateEnabled;
 
-  // Spread parameter sync + onset analysis, pre-chain: the detector must see
-  // the raw picked signal (post-gain/gate) — amp/IR processing compresses
-  // pick attacks into mush and its noise floor fakes constant onsets. The
-  // delay itself runs post-chain (below).
-  spread.setTarget(SpreadParams::fromNormalized(cacheSpreadOffset, cacheSpreadJitter),
-                   cacheSpreadEnabled && numChannels >= 2);
-  if (spread.isRunning())
-    spread.analyzeOnsets(buffer.getReadPointer(0), numSamples);
-
   // ####################
   // MODULAR CHAIN PROCESSING (chain domain — 48 kHz × OS factor, see ChainDomain.h)
   // ####################
@@ -1253,13 +1258,18 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // ##########
   // Post-chain stereo image, before the downstream stereo stages (DC / tone
   // stack / output gain + meters) so they see the real image. Order
-  // matters: spread runs first so the delay always shifts one full chain,
-  // then the balance/pan matrix mixes the (possibly shifted) chains.
-  //  - Spread (both modes, one engine): delays the chosen side. Mono seeds
-  //    ch 1 with the chain output first (the classic double); stereo delays
-  //    that side's chain in place. Runs whenever the power switch is on
-  //    (0 ms = identity, transitions glide through zero — see Spread.h);
-  //    fully skipped once the glide-out after power-off completes.
+  // matters: the mode's image engine runs first so it always shapes full
+  // chain output, then the balance/pan matrix mixes the result.
+  //  - Mono mode: the Spread builds the stereo image from the channel-0
+  //    chain output (an ADT-style double — see Spread.h). Engage/bypass is
+  //    its internal ~25 ms crossfade against the untouched buffer; fully
+  //    skipped once idle.
+  //  - Stereo mode: the StereoOffset delays one chain in place, purely
+  //    corrective alignment (see StereoOffset.h): 0 ms = identity, all
+  //    transitions glide through zero; fully skipped once idle.
+  //  - The opposite mode's engine is force-idled (no fade needed): mode
+  //    switches always ride the chain-edit fade above, so the hard stop
+  //    lands on silence.
   //  - Balance + pan (one 2×2 matrix, see imageMatrixGains): the balance
   //    trim scales each *chain*, then the constant-power pan blend mixes
   //    them across the output bus. The centered/hard-panned default is the
@@ -1268,32 +1278,27 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   {
     const bool isStereo = stereoEnabled.load() && numChannels >= 2;
 
-    // Mono-double seed, crossfaded: with a true stereo source the two
-    // channels carry different chain output, so the spread power toggle
-    // glides channel 1 between its own signal and the channel-0 double
-    // instead of hard-copying it (pop). Settled at 1 it's the plain copy;
-    // settled at 0 it costs nothing. (For mono sources ch0 == ch1 and the
-    // blend is inert either way.)
-    if (!isStereo && numChannels >= 2) {
-      spreadDoubleBlend.setTargetValue(cacheSpreadEnabled ? 1.0f : 0.0f);
-      if (spreadDoubleBlend.isSmoothing()) {
-        const auto* l = buffer.getReadPointer(0);
-        auto* r = buffer.getWritePointer(1);
-        for (int i = 0; i < numSamples; ++i) {
-          const float b = spreadDoubleBlend.getNextValue();
-          r[i] += (l[i] - r[i]) * b;
-        }
-      } else if (spreadDoubleBlend.getCurrentValue() >= 0.999f) {
-        buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
-      }
-    } else {
-      // Stereo mode owns both channels; park the blend so the next mono use
-      // starts from the right resting point.
-      spreadDoubleBlend.setCurrentAndTargetValue(cacheSpreadEnabled ? 1.0f : 0.0f);
-    }
+    if (isStereo) {
+      spread.forceIdle();
 
-    if (spread.isRunning())
-      spread.process(buffer);
+      // Auto offset listening tap: the raw chain outputs BEFORE the offset
+      // delay, so the measurement is the chains' absolute misalignment —
+      // independent of whatever the knob currently says. Zero work unless
+      // armed.
+      if (autoOffset.state() == AutoOffset::State::Listening)
+        autoOffset.capture(buffer, numSamples);
+
+      stereoOffset.setTarget(StereoOffsetParams::fromNormalized(cacheStereoOffsetTime),
+                             cacheStereoOffsetEnabled);
+      if (stereoOffset.isRunning())
+        stereoOffset.process(buffer);
+    } else {
+      stereoOffset.forceIdle();
+      spread.setTarget(SpreadParams::fromNormalized(cacheSpreadOffset, cacheSpreadWobble),
+                       cacheSpreadEnabled && numChannels >= 2);
+      if (spread.isRunning())
+        spread.process(buffer);
+    }
 
     // Auto balance listening tap: the raw chain outputs, before the balance
     // and pan gains, so the measurement is the chains' true mismatch. It must
@@ -1530,6 +1535,87 @@ juce::var TONE3000Processor::pollAutoBalance() {
       obj->setProperty("state", "timeout");
       break;
     case AutoBalanceState::Idle:
+      obj->setProperty("state", "idle");
+      break;
+  }
+  return juce::var(obj.get());
+}
+
+// #########################
+// AUTO OFFSET (one-shot chain time alignment, stereo chain mode)
+// #########################
+// Same "click, play for a couple of seconds, done" flow as auto balance and
+// for the same reasons (see the auto-balance section above); the measurement
+// itself — capture, silence gating, timeout, FFT cross-correlation — lives in
+// AutoOffset (AutoOffset.h). The processor's share is the audio tap in
+// processBlock (pre-offset, stereo branch) and applying the result to the
+// host parameters here on the message thread.
+
+namespace {
+// Below this normalized peak correlation the measurement is noise — e.g. the
+// true misalignment is beyond the ±24 ms the knob can express, or the chains
+// were fed unrelated audio. Reject instead of setting a junk offset. Related
+// chain outputs correlate far above this; unrelated ones peak near 0.
+constexpr float kAutoOffsetMinConfidence = 0.15f;
+// Lags under this are already aligned for any practical purpose (well under
+// a sample's worth of imaging); don't power the offset on over nothing.
+constexpr float kAutoOffsetSilentMs = 0.05f;
+}  // namespace
+
+void TONE3000Processor::startAutoOffset() { autoOffset.start(); }
+
+void TONE3000Processor::cancelAutoOffset() { autoOffset.cancel(); }
+
+// Message thread (UI poll). The analysis (a one-shot FFT over the 2 s
+// capture) also runs here, never on the audio thread.
+juce::var TONE3000Processor::pollAutoOffset() {
+  juce::DynamicObject::Ptr obj = new juce::DynamicObject();
+
+  switch (autoOffset.state()) {
+    case AutoOffset::State::Listening:
+      obj->setProperty("state", "listening");
+      obj->setProperty("progress", static_cast<double>(autoOffset.progress()));
+      break;
+    case AutoOffset::State::Captured: {
+      const auto result = autoOffset.analyze();
+      if (result.confidence < kAutoOffsetMinConfidence) {
+        obj->setProperty("state", "timeout");
+        juce::Logger::writeToLog("[AutoOffset] Rejected: peak correlation " +
+                                 juce::String(result.confidence, 3) +
+                                 " (misalignment out of range or unrelated chains)");
+        break;
+      }
+      // ms → knob position, the StereoOffsetParams::fromNormalized inverse:
+      // (value − 0.5) · 2 · 24 ms, positive = right chain delayed.
+      const float norm = juce::jlimit(
+          0.0f, 1.0f, 0.5f + result.offsetMs / (2.0f * StereoOffsetParams::kMaxOffsetMs));
+      if (auto* param = parameters.getParameter("stereoOffsetTime")) {
+        param->beginChangeGesture();
+        param->setValueNotifyingHost(norm);
+        param->endChangeGesture();
+      }
+      // Power the offset on when there's a real correction to hear. An
+      // effectively-zero result still rewrites the time (clearing a stale
+      // knob value) but leaves the power switch alone.
+      if (std::abs(result.offsetMs) >= kAutoOffsetSilentMs) {
+        if (auto* param = parameters.getParameter("stereoOffsetEnabled")) {
+          param->beginChangeGesture();
+          param->setValueNotifyingHost(1.0f);
+          param->endChangeGesture();
+        }
+      }
+      obj->setProperty("state", "done");
+      obj->setProperty("matchedMs", result.offsetMs);
+      juce::Logger::writeToLog("[AutoOffset] Aligned chains (offset " +
+                               juce::String(result.offsetMs, 2) + " ms, confidence " +
+                               juce::String(result.confidence, 3) + ")");
+      break;
+    }
+    case AutoOffset::State::TimedOut:
+      autoOffset.cancel();
+      obj->setProperty("state", "timeout");
+      break;
+    case AutoOffset::State::Idle:
       obj->setProperty("state", "idle");
       break;
   }

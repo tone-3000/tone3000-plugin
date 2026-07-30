@@ -16,11 +16,14 @@ enable_language(C)
 juce_add_console_app(DspTests PRODUCT_NAME "DspTests")
 
 target_sources(DspTests PRIVATE
+    src/auto_offset_tests.cpp
     src/dsp_tests.cpp
     src/processor_tests.cpp
+    src/spread_tests.cpp
     # Compiled straight from the plugin tree — the tests exercise the real
     # processor, not a copy. GUI sources are excluded; HEADLESS=1 below
     # compiles the processor exactly like the headless plugin build.
+    ../plugin/src/AutoOffset.cpp
     ../plugin/src/BlockEq.cpp
     ../plugin/src/BlockSpectrum.cpp
     ../plugin/src/MidiMapper.cpp
@@ -33,6 +36,7 @@ target_sources(DspTests PRIVATE
     ../plugin/src/ProcessorPresets.cpp
     ../plugin/src/ProcessorState.cpp
     ../plugin/src/Spread.cpp
+    ../plugin/src/StereoOffset.cpp
     ../plugin/src/TunerDetector.cpp
 )
 

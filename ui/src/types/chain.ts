@@ -224,4 +224,6 @@ export interface MeterLevels {
   blocks: Record<string, { in: number; out: number }>;
   /** Audio-callback load, 0..1 proportion of the real-time budget. */
   cpu: number;
+  /** Spread output correlation, -1..1 (1 when spread is idle). */
+  correlation: number;
 }

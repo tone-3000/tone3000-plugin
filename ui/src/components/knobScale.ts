@@ -60,20 +60,25 @@ export const gateDbScale = linearScale(-100, 0, 'dB', 0);
 /** Faceplate tone stack: parameter range 0.01..10, shown as 0..10. */
 export const toneScale = linearScale(0.01, 10, '', 1);
 
-/** Spread offset (bipolar): center = 0 ms, ends delay L/R by 24 ms. */
-export const offsetMsScale: KnobScale = {
-  toDisplay: (n) => (n - 0.5) * 48,
-  fromDisplay: (d) => 0.5 + d / 48,
-  format: (n) => {
-    const ms = (n - 0.5) * 48;
-    if (Math.abs(ms) < 0.05) return '0 ms';
-    return `${Math.abs(ms).toFixed(1)} ms ${ms < 0 ? 'L' : 'R'}`;
-  },
-  editText: (n) => ((n - 0.5) * 48).toFixed(1),
+/** Bipolar one-sided delay: center = 0 ms, ends reach ±maxMs. Display shows
+    the magnitude plus the delayed side ("15.0 ms R"). */
+const sidedMsScale = (maxMs: number): KnobScale => {
+  const span = 2 * maxMs;
+  return {
+    toDisplay: (n) => (n - 0.5) * span,
+    fromDisplay: (d) => 0.5 + d / span,
+    format: (n) => {
+      const ms = (n - 0.5) * span;
+      if (Math.abs(ms) < 0.05) return '0 ms';
+      return `${Math.abs(ms).toFixed(1)} ms ${ms < 0 ? 'L' : 'R'}`;
+    },
+    editText: (n) => ((n - 0.5) * span).toFixed(1),
+  };
 };
 
-/** Spread jitter: 0..4 ms. */
-export const jitterMsScale = linearScale(0, 4, 'ms', 1);
+/** Offset (bipolar), shared by the mono-mode Spread lag and the stereo-mode
+    corrective delay: center = 0 ms, ends reach 24 ms toward L or R. */
+export const offsetMsScale = sidedMsScale(24);
 
 /**
  * Chain pan halves. The left knob covers normalized 0..0.5 (hard left ..

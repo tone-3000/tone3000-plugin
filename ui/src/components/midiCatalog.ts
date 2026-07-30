@@ -37,10 +37,12 @@ export const MAPPABLE_TARGETS: MappableTarget[] = [
   { id: 'toneTreble', name: 'Treble', group: 'Tone Stack', kind: 'continuous' },
   { id: 'spreadEnabled', name: 'Spread Power', group: 'Spread', kind: 'toggle' },
   { id: 'spreadOffset', name: 'Spread Offset', group: 'Spread', kind: 'continuous' },
-  { id: 'spreadJitter', name: 'Spread Jitter', group: 'Spread', kind: 'continuous' },
+  { id: 'spreadWobble', name: 'Spread Wobble', group: 'Spread', kind: 'continuous' },
   // Virtual target like block powers: stereo on/off is chain state, not an
   // APVTS parameter (the native mapper resolves the id itself).
   { id: 'stereoEnabled', name: 'Stereo Mode', group: 'Stereo', kind: 'toggle' },
+  { id: 'stereoOffsetEnabled', name: 'Offset Power', group: 'Stereo', kind: 'toggle' },
+  { id: 'stereoOffsetTime', name: 'Offset', group: 'Stereo', kind: 'continuous' },
   { id: 'chainPanLeft', name: 'Pan L', group: 'Stereo', kind: 'continuous' },
   { id: 'chainPanRight', name: 'Pan R', group: 'Stereo', kind: 'continuous' },
   ...Array.from({ length: BLOCK_POWER_TARGETS }, (_, i): MappableTarget => ({

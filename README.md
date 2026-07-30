@@ -205,8 +205,8 @@ flowchart LR
     CL --> OS2(("×N ↓&nbsp;*"))
     CR --> OS2
     OS2 --> RS2(("⇅ 48k"))
-    RS2 --> SPREAD["Spread&nbsp;*<br/>(delay one side + jitter)"]
-    SPREAD --> PAN["Balance + Pan&nbsp;*<br/>(per-chain trim, then<br/>constant-power blend)"]
+    RS2 --> IMAGE["Spread&nbsp;* (mono) /<br/>Offset&nbsp;* (stereo)"]
+    IMAGE --> PAN["Balance + Pan&nbsp;*<br/>(per-chain trim, then<br/>constant-power blend)"]
     PAN --> DCB["DC Blocker<br/>(~5 Hz HPF)"]
     DCB --> TS["Tone Stack&nbsp;*"]
     TS --> OG["Output Level"]
@@ -214,8 +214,8 @@ flowchart LR
 ```
 
 - **Input mode** — when a real stereo source feeds the plugin (stereo host bus, or a stereo standalone input device), a faceplate button picks what enters the chain: both channels (default), or just the left/right one mirrored onto both. Saved with the session, not with presets — it's I/O routing, not tone.
-- **Mono mode** — only the Left chain runs (a stereo bus passes both channels through it together) and the pan stage is skipped. If Spread is on, the chain output is doubled to stereo first, then one side is delayed.
-- **Stereo mode** — channel 0 feeds the Left chain and channel 1 the Right chain independently; the Balance trim scales each chain (±12 dB opposing) *before* the two pan knobs place them in the stereo image with constant-power law, so a balance dialed in to match the chains stays correct at any pan position.
+- **Mono mode** — only the Left chain runs (a stereo bus passes both channels through it together) and the pan stage is skipped. If Spread is on, the chain output becomes an ADT-style stereo double: the signal is split at 130 Hz, the low band feeds both channels untouched (mono-safe by construction), and the high band goes dry to one side and through a wobbling short lag plus an allpass decorrelation cascade to the other (see `plugin/include/Spread.h` and `doubler-spec.md`; on allpass cascades as decorrelators, cf. O. Das, [*An Open-Source Stereo Widening Plugin*](https://www.dafx.de/paper-archive/2024/papers/DAFx24_paper_92.pdf), DAFx24).
+- **Stereo mode** — channel 0 feeds the Left chain and channel 1 the Right chain independently; the Balance trim scales each chain (±12 dB opposing) *before* the two pan knobs place them in the stereo image with constant-power law, so a balance dialed in to match the chains stays correct at any pan position. The Offset knob applies a corrective alignment delay (≤24 ms) to one chain — useful when NAM models or IRs carry different baked-in latency. The auto-offset button measures it for you: click, play a couple of seconds, and the cross-correlation of the two chain outputs sets the knob (see `plugin/include/AutoOffset.h`).
 - **Tone stack** — one global Bass/Middle/Treble EQ after the DC blocker.
 - **48 kHz boundary** — the chains are anchored at 48 kHz; a Lanczos resampler wraps them when the host rate differs (bypassed at 48 kHz).
 - **Oversampling** — an Advanced setting runs the whole chain at 2×/4×/8× the 48 kHz base rate (see `plugin/include/ChainOversampler.h`): minimum-phase half-band filters (zero added latency), with NAM models phase-interleaved across N native-rate instances (see `NamEngine.h`) so harmonics land in the widened band instead of folding back as aliasing. IR blocks are the exception: convolution is linear, so each IR convolves at the 48 kHz base rate inside a per-block decimate/interpolate island — IR CPU and sound are identical at every factor.
