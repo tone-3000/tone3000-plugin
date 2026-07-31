@@ -3,6 +3,7 @@ import type { EqBand } from '../types/chain';
 import { EQ_MAX_ABS_GAIN_DB, EQ_NUM_BANDS } from '../types/chain';
 import { formatFreq } from './eqMath';
 import { clamp, hasGain, TYPE_GLYPHS } from './eqShared';
+import { BODY_PADDING } from './chainLayout';
 import { HELP, helpProps, pinHelp, unpinHelp } from './helpText';
 
 /**
@@ -134,9 +135,9 @@ export const EqSliders: React.FC<EqSlidersProps> = ({
         inset: 0,
         display: 'flex',
         flexDirection: 'column',
-        // Vertical gutters only: the dB grid bleeds to the card edges like the
-        // parametric grid, while faders and labels keep a 16px side inset.
-        padding: `16px 0 ${AXIS_LABEL_INSET}px`,
+        // Spectrum/dB rules bleed edge-to-edge behind; faders + labels keep
+        // the card body's BODY_PADDING gutters.
+        padding: `${BODY_PADDING}px 0 ${AXIS_LABEL_INSET}px`,
         boxSizing: 'border-box',
       }}
     >
@@ -173,7 +174,7 @@ export const EqSliders: React.FC<EqSlidersProps> = ({
               key={`label-${db}`}
               style={{
                 position: 'absolute',
-                left: `${AXIS_LABEL_INSET}px`,
+                left: `${BODY_PADDING}px`,
                 top: dbTop(db),
                 transform: 'translateY(2px)',
                 fontSize: '9px',
@@ -187,7 +188,14 @@ export const EqSliders: React.FC<EqSlidersProps> = ({
           ))}
         </div>
 
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', padding: '0 16px' }}>
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            padding: `0 ${BODY_PADDING}px`,
+          }}
+        >
           {bands.map((band, i) => {
             const editable = hasGain(band.type);
             const gain = editable ? band.gainDb : 0;
@@ -270,7 +278,7 @@ export const EqSliders: React.FC<EqSlidersProps> = ({
           height: `${SLIDER_FREQ_ROW_H}px`,
           display: 'flex',
           flexShrink: 0,
-          padding: '0 16px',
+          padding: `0 ${BODY_PADDING}px`,
           boxSizing: 'border-box',
         }}
       >

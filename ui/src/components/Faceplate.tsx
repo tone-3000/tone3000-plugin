@@ -41,7 +41,7 @@ import {
  * a mono bus. All values are host parameters — presets/undo get them for free.
  */
 
-const PLATE_HEIGHT = 100;
+const PLATE_HEIGHT = 108;
 /** Shared faceplate action-button height: center of the secondary knobs. */
 const CHROME_LIFT = faceplateChromeLift(KNOB_SIZE_SECONDARY);
 
@@ -372,26 +372,18 @@ export const Faceplate: React.FC<FaceplateProps> = ({
         width: '100%',
         height: `${PLATE_HEIGHT}px`,
         display: 'flex',
-        // Bottom-align every group so labels and knob bottoms share one
-        // baseline regardless of knob size (Gate/Bal are shorter columns
-        // than the 48px knobs). The padding re-centers the tallest columns
-        // in the plate: (100 - 72) / 2.
-        alignItems: 'flex-end',
+        // Center the knob columns in the plate (Figma: 16px pad top/bottom
+        // around the 48px primary + label stack).
+        alignItems: 'center',
         justifyContent: 'space-between',
         flexShrink: 0,
         borderTop: BORDER,
         background: '#1C1C1E',
-        // Sides: wider than the meter section's 24px gutters so the
-        // Input/Output knobs (48px) sit centered under the main meters' dot
-        // columns (24px gutter + 18px labels + 10px gap puts the dots ~55px
-        // in). Bottom: re-centers the tallest knob columns, (100 - 72) / 2.
-        padding: '0 32px 14px',
+        padding: '16px 24px',
         boxSizing: 'border-box',
       }}
     >
-      {/* Input level + channel mode (mode only when the source is stereo).
-          Rows bottom-align so the buttons' baseline lift lands them all at
-          the same plate-wide height. */}
+      {/* Input level + channel mode (mode only when the source is stereo). */}
       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end', gap: '10px' }}>
         <KnobControl
           label="Input"

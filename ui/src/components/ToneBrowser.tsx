@@ -9,6 +9,7 @@ import { GearIcon, ToneImage } from './GearIcon';
 import { BusyOverlay, LoadingDots } from './LoadingDots';
 import { HELP, helpProps } from './helpText';
 import { EdgeFade, EDGE_FADE_WIDTH } from './GalleryLane';
+import { CARD_WIDTH } from './chainLayout';
 import { T3kMark } from './T3kMark';
 import {
   BORDER,
@@ -69,14 +70,11 @@ const PAGE_SIZE = 12;
 /** Remembers the last-viewed stream so the next browse lands on it. */
 const STREAM_STORAGE_KEY = 't3k_browser_stream';
 
-/** Content column — wider than the single-tone detail card (CARD_WIDTH):
-    a browsing grid benefits from more breathing room. This is the width the
-    whole section (sticky header + scrolling content) is measured against. */
-const COLUMN_MAX_WIDTH = 880;
-/** Horizontal inset for everything in the column except the gear-filter
-    pills, which bleed edge-to-edge instead (see GearFilterRow) — set equal
-    to EDGE_FADE_WIDTH so a pill only starts fading once it's actually
-    scrolled under the gradient, not merely by sitting near the edge at rest. */
+/** Content column — same width as the expanded-block card so the browser
+    frame lines up with BLOCK visually. Header / tabs / grid are flush to
+    this edge (like ← BLOCK); only the gear-filter row uses EDGE_FADE_WIDTH
+    as scroll padding so pills sit outside the fade at rest. */
+const COLUMN_MAX_WIDTH = CARD_WIDTH;
 const GUTTER = EDGE_FADE_WIDTH;
 const CARD_IMAGE_SIZE = 112;
 
@@ -198,11 +196,10 @@ const GearFilterPill: React.FC<{
 /** Row of radio-select gear filters for the current stream — default is no
     filter (every gear type). Edges fade to black under the same gradient
     scrim as the chain gallery's horizontal scroll (`EdgeFade`), hinting more
-    pills sit off-screen instead of hard-clipping them. Bleeds to the full
-    column width (its parent cancels the shared GUTTER with a negative
-    margin) and re-applies that same inset as internal scroll padding, so at
-    rest the first/last pill sits just outside the fade zone — exactly like
-    the chain gallery's own lanes — and only slides under the gradient once
+    pills sit off-screen instead of hard-clipping them. Spans the full
+    column width with EDGE_FADE_WIDTH as internal scroll padding, so at rest
+    the first/last pill sits just outside the fade zone — exactly like the
+    chain gallery's own lanes — and only slides under the gradient once
     actually scrolled. */
 const GearFilterRow: React.FC<{ active: string | null; onChange: (id: string | null) => void }> = ({
   active,
@@ -754,57 +751,58 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
           <div
             style={{
               display: 'flex',
-              alignItems: 'center',
-              gap: '24px',
-              padding: `24px ${GUTTER}px 16px`,
+              // Top-align with the band (Browse is taller); arrow + label stay
+              // centered on each other inside the back button.
+              alignItems: 'flex-start',
+              gap: '16px',
+              // Top inset comes from Plugin's shared 24px middle-band pad.
+              // No side inset — flush with the 800px column like ← BLOCK.
+              padding: '0 0 16px',
             }}
           >
             <button
+              type="button"
               onClick={onClose}
               {...helpProps(HELP.closeToneBrowser)}
               style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '16px',
                 background: 'transparent',
                 border: 'none',
                 outline: 'none',
                 padding: 0,
                 margin: 0,
-                display: 'grid',
-                placeItems: 'center',
                 cursor: 'pointer',
                 color: '#ffffff',
-                lineHeight: 0,
               }}
             >
-              <ArrowLeft size={16} style={{ display: 'block' }} />
+              <ArrowLeft size={16} style={{ display: 'block', flexShrink: 0 }} />
+              <span
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: '16px',
+                  fontWeight: 400,
+                  textTransform: 'uppercase',
+                  lineHeight: 1.4,
+                }}
+              >
+                Select Tone
+              </span>
             </button>
-            <span
-              style={{
-                fontFamily: 'monospace',
-                fontSize: '16px',
-                fontWeight: 500,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                color: '#ffffff',
-              }}
-            >
-              Select Tone
-            </span>
             <div style={{ flex: 1 }} />
             <BrowseButton onClick={onBrowseTone3000} />
           </div>
-          <div style={{ padding: `0 ${GUTTER}px` }}>
-            <StreamTabs active={stream} onChange={switchStream} />
-          </div>
+          <StreamTabs active={stream} onChange={switchStream} />
         </div>
 
-        {/* Scrolling content. The bottom padding lives inside the scroll area
-            so the paginator / last row clears the faceplate at max scroll
-            (it isn't a fixed band above the faceplate). */}
-        <div style={{ padding: `20px ${GUTTER}px 24px` }}>
+        {/* Scrolling content — 24px bottom pad so the paginator / last row
+            has air above the faceplate (Select fills the center column to
+            the faceplate; this pad lives in the scroll content, not the
+            shared meter band). */}
+        <div style={{ padding: '20px 0 24px' }}>
           {!showSignInPrompt && (
-            <div style={{ marginLeft: `-${GUTTER}px`, marginRight: `-${GUTTER}px` }}>
-              <GearFilterRow active={gearFilter} onChange={handleGearFilterChange} />
-            </div>
+            <GearFilterRow active={gearFilter} onChange={handleGearFilterChange} />
           )}
 
           {pickError && (

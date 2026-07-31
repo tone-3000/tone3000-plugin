@@ -46,7 +46,9 @@ private:
   // The window can additionally grow by the chrome-strip height (see
   // setExtraContentHeight).
   static constexpr int kWidth = 1024;
-  static constexpr int kBaseHeight = 600; // base height of the plugin UI
+  // Figma artboard is 600 including a 22px mock OS title bar; JUCE's editor
+  // size is content-only (native title bar is outside setSize), so 578.
+  static constexpr int kBaseHeight = 578;
   static constexpr double kMaxScale = 2.0;
   int extraContentHeight = 0;
   int totalHeight() const { return kBaseHeight + extraContentHeight; }

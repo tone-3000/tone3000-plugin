@@ -100,7 +100,7 @@ export interface InsertSlot {
 /**
  * Slim tone projection shipped by native (see makeToneSummary in
  * ProcessorChain.cpp). Only what the UI renders — the full API payload
- * (model URLs, tags, counts, …) stays native-side.
+ * (model URLs, tags, …) stays native-side.
  */
 export interface ToneSummary {
   id: number;
@@ -116,6 +116,8 @@ export interface ToneSummary {
       only loads v2 architectures. */
   models_count: number;
   a2_models_count: number;
+  /** Public download tally for the tone-info stats row. */
+  downloads_count: number;
 }
 
 /** A real tone block in the chain. */

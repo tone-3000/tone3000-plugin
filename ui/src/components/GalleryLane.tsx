@@ -23,7 +23,7 @@ import { isInsertSlot } from '../types/chain';
 
 export const TILE_SIZE = 224;
 /** Stereo shows two lanes, so its tiles shrink to fit the fixed height. */
-export const STEREO_TILE_SIZE = 176;
+export const STEREO_TILE_SIZE = 160;
 /** Gap between tiles — the visible run of each connector line. */
 export const TILE_GAP = 24;
 /** Vertical gap between the two stereo lanes. */

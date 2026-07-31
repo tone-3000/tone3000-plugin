@@ -84,7 +84,7 @@ TONE3000Editor::TONE3000Editor(TONE3000Processor& p) : AudioProcessorEditor(&p),
   startTimerHz(20);
 
   // Grow-only resizing: corner/edge drags scale the whole window between the
-  // 1024x600 design size and kMaxScale times it, aspect-locked. Restore the
+  // 1024x578 design size and kMaxScale times it, aspect-locked. Restore the
   // session's scale (persisted via the processor — see ProcessorState.cpp).
   setResizable(true, true);
   // Read the persisted scale before touching the constraints: installing the

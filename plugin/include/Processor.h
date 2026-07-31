@@ -211,7 +211,7 @@ public:
     return "stereo";
   }
 
-  // Editor window scale, 1.0 = the 1024x600 design size. Written by the
+  // Editor window scale, 1.0 = the 1024x578 design size. Written by the
   // editor whenever it is resized and read back when a new editor opens, so
   // the chosen size survives editor teardown. Saved with the plugin/session
   // state but deliberately not with presets: window size is a workstation

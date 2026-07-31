@@ -32,6 +32,7 @@ import {
 } from './GalleryLane';
 import { useChainActions } from '../hooks/useChainActions';
 import { useCopiedBlockId } from '../hooks/useBlockClipboard';
+import { WHITE } from './theme';
 import type { ChainBranch, ChainItem, ChainSide, ToneBlock } from '../types/chain';
 import { isInsertSlot } from '../types/chain';
 
@@ -334,10 +335,11 @@ export const ChainView: React.FC<ChainViewProps> = ({
           flexDirection: 'column',
           alignItems: 'center',
           height: '100%',
+          // Top-align under the shared 24px middle-band pad (Plugin); the
+          // card bottom then sits 24px above the faceplate when the column
+          // matches the meter height (Figma).
           justifyContent: 'flex-start',
           boxSizing: 'border-box',
-          // try to get it to match the back btn on the tone browser 24px + 4px
-          paddingTop: '28px',
         }}
       >
         <ChainBlock
@@ -431,6 +433,30 @@ export const ChainView: React.FC<ChainViewProps> = ({
         {/* One shared scroll area — both lanes pan together, fading out under
             the edge gradients as they scroll. */}
         <div style={{ position: 'relative', flex: 1, minWidth: 0, display: 'flex' }}>
+          {/* Mono-only section title. Absolutely positioned so it sits in the
+              top-left dead space without shifting the vertically/horizontally
+              centered lane. left matches the lane's EDGE_FADE_WIDTH inset so
+              the label lines up with the first tile; top is 0 because Plugin
+              already applies the shared 24px middle-band pad. */}
+          {!stereo && (
+            <span
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: EDGE_FADE_WIDTH,
+                zIndex: 1,
+                pointerEvents: 'none',
+                fontFamily: 'monospace',
+                fontSize: '16px',
+                fontWeight: 400,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: WHITE,
+              }}
+            >
+              Signal Chain
+            </span>
+          )}
           <div
             className="hide-scrollbar"
             style={{

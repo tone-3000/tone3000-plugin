@@ -155,6 +155,8 @@ juce::var TONE3000Processor::makeToneSummary(const juce::var& toneVar) {
   // v2-architecture total — the plugin only loads A2 weights.
   out->setProperty("models_count", tone->getProperty("models_count"));
   out->setProperty("a2_models_count", tone->getProperty("a2_models_count"));
+  // Tone-info stats row (downloads next to the models folder count).
+  out->setProperty("downloads_count", tone->getProperty("downloads_count"));
 
   // Only the first image is ever rendered (block artwork).
   juce::Array<juce::var> images;

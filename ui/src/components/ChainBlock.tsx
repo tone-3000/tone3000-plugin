@@ -3,9 +3,10 @@ import {
   ArrowLeft,
   ArrowLeftRight,
   Check,
+  Download,
   Equal,
+  FolderClosed,
   Power,
-  RotateCcw,
   Share,
   Trash2,
 } from 'lucide-react';
@@ -23,7 +24,7 @@ import { useChainActions } from '../hooks/useChainActions';
 import type { BlockParamName, ToneBlock } from '../types/chain';
 import type { Model } from '../types/tone';
 import { isEqFlat } from '../types/chain';
-import { CARD_WIDTH, CARD_HEIGHT } from './chainLayout';
+import { CARD_WIDTH, CARD_HEIGHT, CARD_RADIUS, HEADER_HEIGHT, BODY_PADDING } from './chainLayout';
 import { formatLabel, gearLabel } from '../t3k/labels';
 import { AvatarImage } from './AvatarFallback';
 import { FormatBadge } from './FormatBadge';
@@ -32,59 +33,66 @@ import { useBlockNormalizeControlEnabled } from './uiPreferences';
 import { ChromeIconButton, ChromeTextButton } from './ChromeIconButton';
 import {
   BORDER,
+  GRAY,
   ICON_BOX_SIZE,
   ICON_SIZE,
   KNOB_SIZE_SECONDARY,
   MUTED,
+  SEGMENTED_TRACK,
+  WHITE,
   segmentedCellStyle,
   segmentedGroupStyle,
 } from './theme';
 
-/** Every header control shares ICON_BOX_SIZE; the leftover air below the
-    chrome row keeps HEADER_HEIGHT at 40 so the card still lines up with the
-    main I/O meters and GRAPH_H (see chainLayout / eqShared). */
-const HEADER_HEIGHT = 40;
-const HEADER_CHROME_H = ICON_BOX_SIZE;
-const IMAGE_SIZE = 224;
+/** Tone image; matches the Figma detail mock (fits body with model select). */
+const IMAGE_SIZE = 192;
 /** Mini meter height in the side rails (meter sits centered above its knob). */
-const RAIL_METER_HEIGHT = 180;
+const RAIL_METER_HEIGHT = 160;
 /** Centers the normalize (=) chrome box on the Out knob. */
 const NORMALIZE_BUTTON_OFFSET = -(KNOB_SIZE_SECONDARY - ICON_BOX_SIZE) / 2;
 
-/** EQ menu glyphs — shared 16×14 box / 1.5 stroke. Sliders sit halfway
-    between the old full-height faders and the curve's y=3..11 band. */
+/** Downloads / models count with a leading icon (same pattern as ToneBrowser). */
+const CountStat: React.FC<{ icon: React.ReactNode; value: number }> = ({ icon, value }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+    <span style={{ display: 'grid', placeItems: 'center', color: GRAY }}>{icon}</span>
+    <span style={{ fontSize: '14px', fontWeight: 400, color: MUTED }}>
+      {value.toLocaleString()}
+    </span>
+  </div>
+);
+
+/** EQ view glyphs — 16×16, stroke inherits selected/muted color. */
 const EqSlidersIcon: React.FC = () => (
   <svg
-    width={ICON_SIZE}
-    height={ICON_SIZE}
-    viewBox="0 0 16 14"
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
     stroke="currentColor"
-    strokeWidth={1.5}
+    strokeWidth={1.33333}
     strokeLinecap="round"
-    preserveAspectRatio="xMidYMid meet"
+    strokeLinejoin="round"
     style={{ display: 'block', flexShrink: 0 }}
   >
-    <line x1={5.5} y1={2.25} x2={5.5} y2={11.75} />
-    <line x1={10.5} y1={2.25} x2={10.5} y2={11.75} />
-    <circle cx={5.5} cy={8.8} r={1.8} fill="currentColor" stroke="none" />
-    <circle cx={10.5} cy={5.2} r={1.8} fill="currentColor" stroke="none" />
+    <path d="M11.3333 6.66669V12.6667" />
+    <path d="M4.66675 3.33331V9.33331" />
+    <path d="M13.3333 4.66669C13.3333 3.56212 12.4378 2.66669 11.3333 2.66669C10.2287 2.66669 9.33325 3.56212 9.33325 4.66669C9.33325 5.77126 10.2287 6.66669 11.3333 6.66669C12.4378 6.66669 13.3333 5.77126 13.3333 4.66669Z" />
+    <path d="M6.66675 11.3333C6.66675 10.2287 5.77132 9.33331 4.66675 9.33331C3.56218 9.33331 2.66675 10.2287 2.66675 11.3333C2.66675 12.4379 3.56218 13.3333 4.66675 13.3333C5.77132 13.3333 6.66675 12.4379 6.66675 11.3333Z" />
   </svg>
 );
 
 const EqCurveIcon: React.FC = () => (
   <svg
-    width={ICON_SIZE}
-    height={ICON_SIZE}
-    viewBox="0 0 16 14"
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
     fill="none"
     stroke="currentColor"
     strokeWidth={1.5}
     strokeLinecap="round"
-    preserveAspectRatio="xMidYMid meet"
     style={{ display: 'block', flexShrink: 0 }}
   >
-    <path d="M1 11 C5 11 5.5 3 8 3 C10.5 3 11 11 15 11" />
-    <circle cx={8} cy={3} r={1.8} fill="currentColor" stroke="none" />
+    <path d="M1 13.5C5 13.5 5.5 2.5 8 2.5C10.5 2.5 11 13.5 15 13.5" />
   </svg>
 );
 
@@ -92,7 +100,7 @@ interface ChainBlockProps {
   block: ToneBlock;
   /** Host sample rate, for the EQ curve math. */
   sampleRate: number;
-  /** Return to the chain gallery (back arrow lives in this card's header). */
+  /** Return to the chain gallery (← BLOCK sits above the bordered card). */
   onBack: () => void;
 }
 
@@ -261,160 +269,183 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
       style={{
         display: 'flex',
         flexDirection: 'column',
-        position: 'relative',
         width: `${CARD_WIDTH}px`,
-        height: `${CARD_HEIGHT}px`,
         boxSizing: 'border-box',
       }}
     >
-      {/* Header — one ICON_BOX_SIZE chrome row on a shared centerline, then
-          air to the hairline. Back/power/LITE/EQ/share all use the same 20px
-          height (the old 24px back button was what pulled power off-center). */}
+      {/* ← BLOCK sits above the bordered card (Figma: 16px mono, gap 16). */}
+      <button
+        type="button"
+        onClick={onBack}
+        {...helpProps(HELP.backToChain)}
+        style={{
+          alignSelf: 'flex-start',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '16px',
+          marginBottom: '16px',
+          background: 'transparent',
+          border: 'none',
+          outline: 'none',
+          padding: 0,
+          cursor: 'pointer',
+          color: WHITE,
+        }}
+      >
+        <ArrowLeft size={16} style={{ display: 'block', flexShrink: 0 }} />
+        <span
+          style={{
+            fontFamily: 'monospace',
+            fontSize: '16px',
+            fontWeight: 400,
+            textTransform: 'uppercase',
+            lineHeight: 1.4,
+          }}
+        >
+          Block
+        </span>
+      </button>
+
       <div
         style={{
-          height: `${HEADER_HEIGHT}px`,
-          flexShrink: 0,
           display: 'flex',
           flexDirection: 'column',
+          position: 'relative',
+          width: '100%',
+          height: `${CARD_HEIGHT}px`,
           boxSizing: 'border-box',
-          borderBottom: BORDER,
+          border: BORDER,
+          borderRadius: `${CARD_RADIUS}px`,
+          overflow: 'hidden',
         }}
       >
+        {/* Header — 16px inset, chrome centered in HEADER_HEIGHT. */}
         <div
           style={{
-            height: `${HEADER_CHROME_H}px`,
+            height: `${HEADER_HEIGHT}px`,
+            flexShrink: 0,
             display: 'flex',
             alignItems: 'center',
-            gap: '24px',
-            flexShrink: 0,
+            justifyContent: 'space-between',
+            padding: `0 ${BODY_PADDING}px`,
+            boxSizing: 'border-box',
+            borderBottom: BORDER,
           }}
         >
-        {/* Back is a bare 16px glyph — no chrome box (matches Select Tone). */}
-        <button
-          type="button"
-          onClick={onBack}
-          {...helpProps(HELP.backToChain)}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            outline: 'none',
-            padding: 0,
-            margin: 0,
-            display: 'grid',
-            placeItems: 'center',
-            cursor: 'pointer',
-            color: '#ffffff',
-            lineHeight: 0,
-          }}
-        >
-          <ArrowLeft size={16} style={{ display: 'block' }} />
-        </button>
-
-        <ChromeIconButton
-          tone="power"
-          on={enabled}
-          help={HELP.blockPower}
-          onClick={handleToggleEnabled}
-        >
-          <Power />
-        </ChromeIconButton>
-
-        <div style={{ flex: 1, minWidth: 0 }} />
-
-        {/* EQ toggle + its open menu share one 16px-gap row so the toggle
-            sits as close to the menu as the menu items do to each other
-            (not the header's 24px group gap). */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0 }}>
-          {showEq && (
-            <>
-              <div style={segmentedGroupStyle()}>
-                <button
-                  onClick={() => setEqView('sliders')}
-                  {...helpProps(HELP.eqSlidersView)}
-                  style={{
-                    ...segmentedCellStyle(true),
-                    color: eqView === 'sliders' ? '#ffffff' : MUTED,
-                  }}
-                >
-                  <EqSlidersIcon />
-                </button>
-                <button
-                  onClick={() => setEqView('graph')}
-                  {...helpProps(HELP.eqCurveView)}
-                  style={{
-                    ...segmentedCellStyle(true),
-                    color: eqView === 'graph' ? '#ffffff' : MUTED,
-                  }}
-                >
-                  <EqCurveIcon />
-                </button>
-              </div>
-              {/* PRE moves the EQ before the block's model (after In Gain);
-                  off = the default post-block position. */}
-              <ChromeTextButton armed={eqPre} help={HELP.eqPre} onClick={handleToggleEqPre}>
-                PRE
-              </ChromeTextButton>
-              <ChromeIconButton help={HELP.eqReset} onClick={() => actions.resetBlockEq(blockId)}>
-                <RotateCcw />
-              </ChromeIconButton>
-              <ChromeIconButton
-                tone="power"
-                on={eqOn}
-                help={HELP.eqPower}
-                onClick={handleToggleEqEnabled}
-              >
-                <Power />
-              </ChromeIconButton>
-            </>
-          )}
-
-          {/* Two independent signals (see theme.ts patterns): white fill =
-              editor open; yellow fill = EQ shaping audio while closed. */}
-          <ChromeTextButton
-            armed={eqActive}
-            open={showEq}
-            help={HELP.eqToggle}
-            onClick={() => setShowEq((prev) => !prev)}
+          <ChromeIconButton
+            tone="power"
+            on={enabled}
+            help={HELP.blockPower}
+            onClick={handleToggleEnabled}
           >
-            EQ
-          </ChromeTextButton>
+            <Power />
+          </ChromeIconButton>
+
+          {/* Right cluster: EQ submenu (pill when open) then share/swap/trash.
+              EQ stays rightmost in the submenu so opening grows left only.
+              marginRight cancels the pill's right pad so EQ doesn't shift
+              relative to share. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flexShrink: 0 }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: showEq ? '16px' : 0,
+                padding: showEq ? '4px 12px' : 0,
+                // Pull back by the pill's right pad so EQ stays put vs share.
+                marginRight: showEq ? -12 : 0,
+                borderRadius: showEq ? 100 : 0,
+                backgroundColor: showEq ? SEGMENTED_TRACK : 'transparent',
+                flexShrink: 0,
+                boxSizing: 'border-box',
+              }}
+            >
+              {showEq && (
+                <>
+                  <ChromeIconButton
+                    tone="power"
+                    on={eqOn}
+                    help={HELP.eqPower}
+                    onClick={handleToggleEqEnabled}
+                  >
+                    <Power />
+                  </ChromeIconButton>
+                  <ChromeTextButton armed={eqPre} help={HELP.eqPre} onClick={handleToggleEqPre}>
+                    PRE
+                  </ChromeTextButton>
+                  <div
+                    style={{
+                      ...segmentedGroupStyle(),
+                      // Nested track — slightly quieter than the outer pill.
+                      backgroundColor: 'rgba(118, 118, 128, 0.24)',
+                    }}
+                  >
+                    <button
+                      onClick={() => setEqView('sliders')}
+                      {...helpProps(HELP.eqSlidersView)}
+                      style={{
+                        ...segmentedCellStyle(true),
+                        color: eqView === 'sliders' ? WHITE : GRAY,
+                      }}
+                    >
+                      <EqSlidersIcon />
+                    </button>
+                    <button
+                      onClick={() => setEqView('graph')}
+                      {...helpProps(HELP.eqCurveView)}
+                      style={{
+                        ...segmentedCellStyle(true),
+                        color: eqView === 'graph' ? WHITE : GRAY,
+                      }}
+                    >
+                      <EqCurveIcon />
+                    </button>
+                  </div>
+                </>
+              )}
+              <ChromeTextButton
+                armed={eqActive}
+                open={showEq}
+                help={HELP.eqToggle}
+                onClick={() => setShowEq((prev) => !prev)}
+              >
+                EQ
+              </ChromeTextButton>
+            </div>
+
+            <ChromeIconButton help={HELP.shareTone} onClick={handleShare}>
+              {copied ? <Check /> : <Share />}
+            </ChromeIconButton>
+            <ChromeIconButton help={HELP.swapTone} onClick={() => actions.swapBlock(blockId)}>
+              <ArrowLeftRight />
+            </ChromeIconButton>
+            <ChromeIconButton help={HELP.removeBlock} onClick={() => actions.removeBlock(blockId)}>
+              <Trash2 />
+            </ChromeIconButton>
+          </div>
         </div>
 
-        <ChromeIconButton help={HELP.shareTone} onClick={handleShare}>
-          {copied ? <Check /> : <Share />}
-        </ChromeIconButton>
-        <ChromeIconButton help={HELP.swapTone} onClick={() => actions.swapBlock(blockId)}>
-          <ArrowLeftRight />
-        </ChromeIconButton>
-        <ChromeIconButton help={HELP.removeBlock} onClick={() => actions.removeBlock(blockId)}>
-          <Trash2 />
-        </ChromeIconButton>
-        </div>
-      </div>
-
-      {/* Body */}
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'stretch',
-          // The EQ grid bleeds edge-to-edge; the normal view only breathes
-          // below the header rule (no side/bottom gutters — the card has no
-          // border or background to inset from).
-          gap: showEq ? 0 : '24px',
-          padding: showEq ? 0 : '16px 0 0',
-          boxSizing: 'border-box',
-          opacity: enabled ? 1 : 0.45,
-          transition: 'opacity 0.2s ease',
-          // Keep the body on its own pixel-snapped compositor layer so the
-          // opacity fade (power toggle) can't promote/demote a temporary layer
-          // that nudges inner content — notably the scaled EQ SVG — by a pixel.
-          transform: 'translateZ(0)',
-          willChange: 'opacity',
-        }}
-      >
+        {/* Body — tone view uses BODY_PADDING; EQ spectrum/grid bleeds
+            edge-to-edge (interactive chrome insets itself). */}
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'stretch',
+            gap: showEq ? 0 : '24px',
+            padding: showEq ? 0 : `${BODY_PADDING}px`,
+            boxSizing: 'border-box',
+            opacity: enabled ? 1 : 0.45,
+            transition: 'opacity 0.2s ease',
+            // Keep the body on its own pixel-snapped compositor layer so the
+            // opacity fade (power toggle) can't promote/demote a temporary layer
+            // that nudges inner content — notably the scaled EQ SVG — by a pixel.
+            transform: 'translateZ(0)',
+            willChange: 'opacity',
+          }}
+        >
         {showEq ? (
           <BlockEqView
             blockId={blockId}
@@ -426,14 +457,14 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
           />
         ) : (
           <>
-            {/* Input rail: knob pinned at the bottom, meter centered in the
-                space between it and the card header */}
+            {/* Input rail: meter above In knob (Figma: gap 12). */}
             <div
               style={{
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 flexShrink: 0,
+                gap: '12px',
               }}
             >
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', minHeight: 0 }}>
@@ -457,24 +488,21 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
               />
             </div>
 
-            {/* Center: image + tone info on top, model picker spanning the full
-            width below (it extends under the image, not bound to the info
-            column). */}
+            {/* Center: image + tone info on top, model picker spanning full width. */}
             <div
               style={{
                 flex: 1,
                 minWidth: 0,
+                alignSelf: 'stretch',
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'space-between',
-                gap: '22px',
               }}
             >
               <div
                 style={{
                   display: 'flex',
                   flexDirection: 'row',
-                  // Copy centers on the image's vertical middle, web-style.
                   alignItems: 'center',
                   gap: '24px',
                   minWidth: 0,
@@ -506,11 +534,6 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                       boxSize={IMAGE_SIZE}
                     />
                   </div>
-                  {/* Loading dots while a model downloads/prepares (mirrors
-                      the gallery tile); if it failed (e.g. a model switch
-                      while offline), the retry affordance instead — the
-                      switch is driven from this card, so the failure must
-                      be visible in place. */}
                   {(modelBusy || block.loadFailed) && (
                     <div
                       style={{
@@ -530,53 +553,80 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                   )}
                 </div>
 
-                {/* Tone info */}
+                {/* Tone info — title / gear+badge / counts / creator (Figma gaps). */}
                 <div
                   style={{
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: '6px',
+                    gap: '16px',
                     minWidth: 0,
                     flex: 1,
                   }}
                 >
-                  <span
+                  <div
                     style={{
-                      fontSize: '18px',
-                      color: '#ffffff',
-                      fontWeight: '600',
-                      // Two-line clamp with trailing ellipsis.
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      minWidth: 0,
                     }}
                   >
-                    {tone.title}
-                  </span>
+                    <span
+                      style={{
+                        fontSize: '18px',
+                        color: WHITE,
+                        fontWeight: 700,
+                        lineHeight: 1.4,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {tone.title}
+                    </span>
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: '16px',
+                      }}
+                    >
+                      {tone.gear && (
+                        <span style={{ fontSize: '14px', color: MUTED, fontWeight: 400 }}>
+                          {gearLabel(tone.gear)}
+                        </span>
+                      )}
+                      {formatBadge && <FormatBadge label={formatBadge} />}
+                    </div>
+                  </div>
 
                   <div
                     style={{
                       display: 'flex',
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: '12px',
+                      gap: '24px',
                     }}
                   >
-                    {tone.gear && (
-                      <span style={{ fontSize: '14px', color: MUTED, fontWeight: '400' }}>
-                        {gearLabel(tone.gear)}
-                      </span>
-                    )}
-                    {formatBadge && <FormatBadge label={formatBadge} />}
+                    <CountStat
+                      icon={<Download size={16} />}
+                      value={tone.downloads_count ?? 0}
+                    />
+                    <CountStat
+                      icon={<FolderClosed size={16} />}
+                      value={tone.models_count ?? 0}
+                    />
                   </div>
 
                   {tone.user && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <div
                         style={{
-                          width: '23px',
-                          height: '23px',
+                          width: '32px',
+                          height: '32px',
                           borderRadius: '50%',
                           overflow: 'hidden',
                           flexShrink: 0,
@@ -585,10 +635,10 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                         <AvatarImage
                           src={tone.user.avatar_url}
                           alt={tone.user.username}
-                          size={23}
+                          size={32}
                         />
                       </div>
-                      <span style={{ fontSize: '14px', color: '#ffffff', fontWeight: '400' }}>
+                      <span style={{ fontSize: '14px', color: GRAY, fontWeight: 400 }}>
                         {tone.user.username}
                       </span>
                     </div>
@@ -643,16 +693,14 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
               />
             </div>
 
-            {/* Output rail: knob pinned at the bottom, meter centered in the
-                space between it and the card header. Per-block normalization
-                (=) sits left of Out — same placement language as the faceplate
-                auto-balance (=) beside Bal. NAM only, revealed by Advanced. */}
+            {/* Output rail: meter above Out (+ optional normalize). */}
             <div
               style={{
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 flexShrink: 0,
+                gap: '12px',
               }}
             >
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', minHeight: 0 }}>
@@ -697,6 +745,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
             </div>
           </>
         )}
+      </div>
       </div>
     </div>
   );

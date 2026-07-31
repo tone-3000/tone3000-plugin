@@ -30,7 +30,7 @@ import { OfflineModal } from './OfflineModal';
 import { ToneBrowser } from './ToneBrowser';
 import { UpdateNotice } from './UpdateNotice';
 import { useUpdateNotice } from '../hooks/useUpdateNotice';
-import { useUiScale, DESIGN_WIDTH } from '../hooks/useUiScale';
+import { useUiScale, DESIGN_WIDTH, DESIGN_HEIGHT } from '../hooks/useUiScale';
 
 // Swap targets must survive the Select flow's full-page OAuth redirect (the
 // webview navigates to tone3000.com and back, remounting React), so the
@@ -118,7 +118,7 @@ export const Plugin: React.FC = () => {
 
   // App banner: one priority-picked banner over the audio device state
   // (standalone only). Both the banner (top) and the hint bar (bottom) are
-  // chrome strips that grow the window rather than squish the 600px core — we
+  // chrome strips that grow the window rather than squish the 578px core — we
   // report their combined height to native whenever either toggles.
   const { banner, dismiss: dismissBanner } = useAppBanner(standalone ? audioDevice.state : null);
   // Whole-UI proportional scaling: the root div below is a fixed 1024-wide
@@ -462,8 +462,9 @@ export const Plugin: React.FC = () => {
         // real window size, so every hard-coded px inside scales with it.
         width: `${DESIGN_WIDTH}px`,
         // The window grows by the chrome-strip height (see setExtraContentHeight
-        // above), so the 600px core UI between them keeps its full space.
-        height: `${600 + extraHeight}px`,
+        // above), so the 578px core UI between them keeps its full space.
+        // (Figma's 600 includes a 22px mock OS title bar outside JUCE setSize.)
+        height: `${DESIGN_HEIGHT + extraHeight}px`,
         display: 'flex',
         flexDirection: 'column',
         backgroundColor: '#000000',
@@ -564,7 +565,11 @@ export const Plugin: React.FC = () => {
         </div>
       </div>
 
-      {/* Middle Section: Tuner (when toggled on) or Meters + Chain View */}
+      {/* Middle Section: Tuner (when toggled on) or Meters + Chain View.
+          Horizontal inset is on this band; vertical inset lives only on the
+          center column so meters always center in the full header→faceplate
+          height (never shift when Select opens). Select drops the center's
+          bottom pad and uses its own scroll padding instead. */}
       {showTuner ? (
         <TunerView onClose={() => handleToggleTuner(false)} />
       ) : (
@@ -578,6 +583,7 @@ export const Plugin: React.FC = () => {
             overflow: 'hidden',
             minHeight: 0,
             padding: '0 24px',
+            boxSizing: 'border-box',
           }}
         >
           {/* Left Meter - Input */}
@@ -591,15 +597,11 @@ export const Plugin: React.FC = () => {
               backgroundColor: '#000000',
             }}
           >
-            {/* 368px yields 23 dots (6px dot + 10px gap); wrapper centers vertically.
-                A mono input mode folds the source down, so the meter collapses too. */}
-            <DbMeter type="input" stereo={stereoInput && inputMode === 'stereo'} height={368} />
+            {/* 358 matches Figma's BLOCK column (title + gap + card). */}
+            <DbMeter type="input" stereo={stereoInput && inputMode === 'stereo'} height={358} />
           </div>
 
-          {/* Chain View - Center (gallery lanes scroll horizontally inside).
-              Vertical padding is a minimum gap only (lanes center themselves);
-              it must stay small enough that the 376px stereo stack fits in the
-              middle section even with the hint bar showing. */}
+          {/* Chain View - Center (gallery lanes scroll horizontally inside). */}
           <div
             style={{
               flex: 1,
@@ -608,6 +610,10 @@ export const Plugin: React.FC = () => {
               minHeight: 0,
               minWidth: 0,
               boxSizing: 'border-box',
+              // Shared 24px under the header; 24px above the faceplate only
+              // for chain/BLOCK — Select fills to the faceplate edge.
+              paddingTop: 24,
+              paddingBottom: showToneBrowser ? 0 : 24,
             }}
           >
             {showToneBrowser ? (
@@ -654,7 +660,7 @@ export const Plugin: React.FC = () => {
               backgroundColor: '#000000',
             }}
           >
-            <DbMeter type="output" stereo={stereoOutput} height={368} labelsPosition="right" />
+            <DbMeter type="output" stereo={stereoOutput} height={358} labelsPosition="right" />
           </div>
         </div>
       )}

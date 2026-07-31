@@ -212,7 +212,9 @@ const TileSurface: React.FC<{
           }}
         />
 
-        {/* Top quick-action bar: drag / power / swap / trash (hover-revealed) */}
+        {/* Top quick-action bar: drag / power / swap / trash (hover-revealed).
+            Stereo spreads them evenly across the narrower tile; mono keeps
+            grip left + actions clustered right. */}
         <div
           className="tile-chrome"
           style={{
@@ -223,6 +225,7 @@ const TileSurface: React.FC<{
             display: 'flex',
             flexDirection: 'row',
             alignItems: 'center',
+            justifyContent: stereo ? 'space-between' : undefined,
             padding: '4px',
           }}
         >
@@ -236,35 +239,39 @@ const TileSurface: React.FC<{
           >
             <DragGripIcon stereo={stereo} />
           </div>
-          <div style={{ flex: 1 }} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <ChromeIconButton
-              tone="power"
-              on={enabled}
-              help={HELP.blockPower}
-              onClick={(e) => actions?.onTogglePower(e)}
-              onMouseDown={preventFocus}
-              style={{ pointerEvents: actions ? undefined : 'none' }}
-            >
-              <Power size={ICON_SIZE} />
-            </ChromeIconButton>
-            <ChromeIconButton
-              help={HELP.swapTone}
-              onClick={(e) => actions?.onSwap(e)}
-              onMouseDown={preventFocus}
-              style={{ pointerEvents: actions ? undefined : 'none' }}
-            >
-              <ArrowLeftRight size={ICON_SIZE} />
-            </ChromeIconButton>
-            <ChromeIconButton
-              help={HELP.removeBlock}
-              onClick={(e) => actions?.onRemove(e)}
-              onMouseDown={preventFocus}
-              style={{ pointerEvents: actions ? undefined : 'none' }}
-            >
-              <Trash2 size={ICON_SIZE} />
-            </ChromeIconButton>
-          </div>
+          {!stereo && <div style={{ flex: 1 }} />}
+          <ChromeIconButton
+            tone="power"
+            on={enabled}
+            help={HELP.blockPower}
+            onClick={(e) => actions?.onTogglePower(e)}
+            onMouseDown={preventFocus}
+            style={{
+              pointerEvents: actions ? undefined : 'none',
+              ...(stereo ? {} : { marginRight: 16 }),
+            }}
+          >
+            <Power size={ICON_SIZE} />
+          </ChromeIconButton>
+          <ChromeIconButton
+            help={HELP.swapTone}
+            onClick={(e) => actions?.onSwap(e)}
+            onMouseDown={preventFocus}
+            style={{
+              pointerEvents: actions ? undefined : 'none',
+              ...(stereo ? {} : { marginRight: 16 }),
+            }}
+          >
+            <ArrowLeftRight size={ICON_SIZE} />
+          </ChromeIconButton>
+          <ChromeIconButton
+            help={HELP.removeBlock}
+            onClick={(e) => actions?.onRemove(e)}
+            onMouseDown={preventFocus}
+            style={{ pointerEvents: actions ? undefined : 'none' }}
+          >
+            <Trash2 size={ICON_SIZE} />
+          </ChromeIconButton>
         </div>
 
         {/* Clip latch lives outside the overflow:hidden face so it stacks

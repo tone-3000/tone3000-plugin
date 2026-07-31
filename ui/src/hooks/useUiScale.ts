@@ -3,6 +3,9 @@ import { useLayoutEffect, useRef } from 'react';
 /** Design-space width of the plugin UI. Native sizes the window to this
  * times the user's scale factor (see TONE3000Editor in plugin/include). */
 export const DESIGN_WIDTH = 1024;
+/** Design-space height of the plugin UI (content only). Figma's 600px
+ * artboard includes a 22px mock OS title bar outside JUCE setSize. */
+export const DESIGN_HEIGHT = 578;
 
 /**
  * Proportional UI scaling: applies a CSS `zoom` of viewportWidth / 1024 to

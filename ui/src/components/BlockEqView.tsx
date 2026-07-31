@@ -19,6 +19,7 @@ import {
   hasGain,
   yToGain,
 } from './eqShared';
+import { BODY_PADDING } from './chainLayout';
 import { EqSliders } from './EqSliders';
 import { SpectrumBackdrop } from './SpectrumBackdrop';
 import { HELP, bandTypeHelp, helpProps, pinHelp, unpinHelp } from './helpText';
@@ -417,10 +418,10 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
         backgroundColor: '#000000',
       }}
     >
-      {/* Grid: bleeds to the card body edges, everything else floats on top */}
+      {/* Spectrum/grid bleed edge-to-edge; floating chrome + sliders inset. */}
       {view === 'sliders' ? (
         <>
-          {/* Spectrum bleeds edge-to-edge behind the sliders too */}
+          {/* Spectrum bleeds behind the inset faders. */}
           <svg
             width="100%"
             height="100%"
@@ -461,7 +462,12 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
                   strokeWidth={1}
                 />
                 {GRID_LABELS[f] && (
-                  <text x={x + 4} y={GRAPH_H - 5} fill="rgba(235, 235, 245, 0.35)" fontSize={9}>
+                  <text
+                    x={x + 4}
+                    y={GRAPH_H - BODY_PADDING}
+                    fill="rgba(235, 235, 245, 0.35)"
+                    fontSize={9}
+                  >
                     {GRID_LABELS[f]}
                   </text>
                 )}
@@ -535,14 +541,14 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
         </svg>
       )}
 
-      {/* Floating: band readout (top-left, graph view only). The grid bleeds
-          edge-to-edge; floating controls keep the card's 16px bounds. */}
+      {/* Floating: band readout (top-left, graph view only). Spectrum/grid
+          bleed edge-to-edge; chrome keeps the card's BODY_PADDING gutters. */}
       {view === 'graph' && (
         <div
           style={{
             position: 'absolute',
-            top: '16px',
-            left: '16px',
+            top: `${BODY_PADDING}px`,
+            left: `${BODY_PADDING}px`,
             fontSize: '11px',
             color: MUTED,
             pointerEvents: 'none',
@@ -555,13 +561,15 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
         </div>
       )}
 
-      {/* Floating: type selector + selected band readouts (bottom-left, graph view only) */}
+      {/* Floating: type selector + selected band readouts (bottom-left, graph
+          view only). Nudged 12px above the BODY_PADDING floor so the chips
+          clear the Hz axis labels. */}
       {view === 'graph' && (
         <div
           style={{
             position: 'absolute',
-            bottom: '16px',
-            left: '16px',
+            bottom: `${BODY_PADDING + 12}px`,
+            left: `${BODY_PADDING}px`,
             display: 'flex',
             alignItems: 'center',
             gap: '8px',

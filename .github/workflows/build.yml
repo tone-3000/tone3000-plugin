@@ -20,6 +20,9 @@ jobs:
     environment: builds
     env:
       VITE_T3K_PUBLISHABLE_KEY: ${{ vars.VITE_T3K_PUBLISHABLE_KEY }}
+      # Compiler cache (see "Setup sccache" step below) — persists compiled
+      # object results across runs via the GitHub Actions cache backend.
+      SCCACHE_GHA_ENABLED: "true"
     strategy:
       fail-fast: false
       matrix:
@@ -50,6 +53,29 @@ jobs:
       - name: Read version
         shell: bash
         run: echo "T3K_VERSION=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_ENV"
+
+      # Compiler cache — reuses object-file compilation results from previous
+      # runs (keyed on compiler input, not source paths), so unchanged JUCE /
+      # NAM / plugin translation units are skipped on the next run instead of
+      # being recompiled from scratch. Uses the GitHub Actions cache backend
+      # (SCCACHE_GHA_ENABLED above), no manual actions/cache wiring needed.
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
+
+      # CPM (see cmake/cpm.cmake) clones JUCE / GoogleTest / clap-juce-extensions
+      # into libs/ on first configure. Caching that directory means CI skips
+      # the git clone (and, for JUCE, the CMakeLists.txt source patches re-run
+      # but no-op immediately since they're guarded by idempotency markers)
+      # whenever the pinned versions haven't changed. Key includes matrix.os
+      # since restored paths/line-endings/permissions shouldn't cross platforms.
+      - name: Cache CPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            libs/juce
+            libs/googletest
+            libs/clap-juce-extensions
+          key: cpm-deps-${{ matrix.os }}-${{ hashFiles('CMakeLists.txt', 'plugin/CMakeLists.txt') }}
 
       - name: Install Linux dependencies
         if: matrix.os == 'linux'
@@ -85,11 +111,26 @@ jobs:
           cmake -B build -S . \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
-            -DBUILD_AAX=OFF
+            -DBUILD_AAX=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_OBJC_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_OBJCXX_COMPILER_LAUNCHER=sccache
 
       - name: Install WebView2 (Windows)
         if: matrix.os == 'windows'
         run: pwsh -File script/install-webview2.ps1
+
+      # CMAKE_<LANG>_COMPILER_LAUNCHER (how sccache hooks in, see below) is only
+      # honored by the Makefile/Ninja generators, not the default Visual Studio
+      # (MSBuild) generator — so Windows configure steps below pass -G Ninja.
+      # Ninja doesn't auto-detect the MSVC toolchain the way the VS generator
+      # does, so set up the cl.exe/link.exe dev environment explicitly first.
+      - name: Setup MSVC dev environment (Windows)
+        if: matrix.os == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
 
       # Steinberg's ASIO SDK (headers only) — required for the ASIO driver
       # option in the standalone's audio settings. Not redistributable, so it
@@ -113,10 +154,12 @@ jobs:
         if: matrix.os == 'windows'
         shell: bash
         run: |
-          cmake -B build -S . \
+          cmake -B build -S . -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DBUILD_AAX=OFF \
-            -DASIO_SDK_PATH="$ASIO_SDK_PATH"
+            -DASIO_SDK_PATH="$ASIO_SDK_PATH" \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
       - name: Configure CMake (Linux)
         if: matrix.os == 'linux'
@@ -124,7 +167,9 @@ jobs:
           cmake -B build -S . \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DCMAKE_TOOLCHAIN_FILE=cmake/linux-toolchain.cmake \
-            -DBUILD_AAX=OFF
+            -DBUILD_AAX=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
       - name: Build UI
         run: |
@@ -139,16 +184,22 @@ jobs:
           cmake -B build -S . \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
-            -DBUILD_AAX=OFF
+            -DBUILD_AAX=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_OBJC_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_OBJCXX_COMPILER_LAUNCHER=sccache
 
       - name: Reconfigure CMake (Windows)
         if: matrix.os == 'windows'
         shell: bash
         run: |
-          cmake -B build -S . \
+          cmake -B build -S . -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DBUILD_AAX=OFF \
-            -DASIO_SDK_PATH="$ASIO_SDK_PATH"
+            -DASIO_SDK_PATH="$ASIO_SDK_PATH" \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
       - name: Reconfigure CMake (Linux)
         if: matrix.os == 'linux'
@@ -156,7 +207,9 @@ jobs:
           cmake -B build -S . \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DCMAKE_TOOLCHAIN_FILE=cmake/linux-toolchain.cmake \
-            -DBUILD_AAX=OFF
+            -DBUILD_AAX=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
       - name: Build plugin (Linux)
         if: matrix.os == 'linux'
