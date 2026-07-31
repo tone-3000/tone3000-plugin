@@ -71,11 +71,9 @@ const PAGE_SIZE = 12;
 const STREAM_STORAGE_KEY = 't3k_browser_stream';
 
 /** Content column — same width as the expanded-block card so the browser
-    frame lines up with BLOCK visually. Header / tabs / grid are flush to
-    this edge (like ← BLOCK); only the gear-filter row uses EDGE_FADE_WIDTH
-    as scroll padding so pills sit outside the fade at rest. */
+    frame lines up with BLOCK visually. Header / tabs / grid / filter pills
+    are flush to this edge (like ← BLOCK). */
 const COLUMN_MAX_WIDTH = CARD_WIDTH;
-const GUTTER = EDGE_FADE_WIDTH;
 const CARD_IMAGE_SIZE = 112;
 
 /** Compact relative time (e.g. "13h", "3d", "2w") for the card creator line. */
@@ -195,22 +193,32 @@ const GearFilterPill: React.FC<{
 
 /** Row of radio-select gear filters for the current stream — default is no
     filter (every gear type). Edges fade to black under the same gradient
-    scrim as the chain gallery's horizontal scroll (`EdgeFade`), hinting more
-    pills sit off-screen instead of hard-clipping them. Spans the full
-    column width with EDGE_FADE_WIDTH as internal scroll padding, so at rest
-    the first/last pill sits just outside the fade zone — exactly like the
-    chain gallery's own lanes — and only slides under the gradient once
+    scrim as the chain gallery's horizontal scroll (`EdgeFade`). The row
+    bleeds EDGE_FADE_WIDTH past the column on each side and re-applies that
+    as scroll padding, so at rest the first/last pill sits flush with the
+    column edge (outside the fade) and only slides under the gradient once
     actually scrolled. */
 const GearFilterRow: React.FC<{ active: string | null; onChange: (id: string | null) => void }> = ({
   active,
   onChange,
 }) => (
-  <div style={{ position: 'relative' }}>
+  <div
+    style={{
+      position: 'relative',
+      marginLeft: `-${EDGE_FADE_WIDTH}px`,
+      marginRight: `-${EDGE_FADE_WIDTH}px`,
+    }}
+  >
     <div
       role="radiogroup"
       aria-label="Filter by gear type"
       className="hide-scrollbar"
-      style={{ display: 'flex', gap: '10px', overflowX: 'auto', padding: `0 ${GUTTER}px` }}
+      style={{
+        display: 'flex',
+        gap: '10px',
+        overflowX: 'auto',
+        padding: `0 ${EDGE_FADE_WIDTH}px`,
+      }}
     >
       {GEAR_FILTERS.map((g) => (
         <GearFilterPill
