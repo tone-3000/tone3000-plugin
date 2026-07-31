@@ -1,7 +1,16 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ArrowLeftRight, Grip, GripHorizontal, PlusCircle, Power, Trash2 } from 'lucide-react';
+import {
+  ArrowLeftRight,
+  ClipboardPaste,
+  Copy,
+  Grip,
+  GripHorizontal,
+  PlusCircle,
+  Power,
+  Trash2,
+} from 'lucide-react';
 import { BlockEnergyBorder, BlockLed } from './BlockLed';
 import { ToneImage } from './GearIcon';
 import { LoadingDots } from './LoadingDots';
@@ -12,6 +21,9 @@ import { HELP, helpProps, toneTileHelp } from './helpText';
 import type { ChainItem, ToneBlock } from '../types/chain';
 import { isInsertSlot } from '../types/chain';
 import { ChromeIconButton } from './ChromeIconButton';
+import { TileMenu } from './TileMenu';
+import type { TileMenuAnchor } from './TileMenu';
+import { copyBlock } from '../hooks/useBlockClipboard';
 import { ICON_SIZE, SURFACE, SURFACE_RAISED, iconButtonStyle } from './theme';
 
 /**
@@ -40,9 +52,45 @@ const DragGripIcon: React.FC<{ stereo: boolean }> = ({ stereo }) => {
     focused element into view, which nudges the whole lane by a pixel. */
 const preventFocus = (e: React.MouseEvent) => e.preventDefault();
 
+/** Right-click → tile-local anchor for the tile's action sheet (suppresses
+    the OS context menu; macOS ctrl-click lands here too). Ctrl-click also
+    fires a synthetic `click` after `contextmenu` — `shouldIgnoreClick`
+    swallows that so the tile doesn't navigate away under the menu. */
+const useTileMenu = () => {
+  const [menuAnchor, setMenuAnchor] = useState<TileMenuAnchor | null>(null);
+  const suppressClickRef = useRef(false);
+  const openMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    suppressClickRef.current = true;
+    // Viewport coords — TileMenu portals to body (outside the CSS-zoom root)
+    // and positions with position:fixed, so no layout-space conversion.
+    setMenuAnchor({ clientX: e.clientX, clientY: e.clientY });
+  }, []);
+  const closeMenu = useCallback(() => setMenuAnchor(null), []);
+  /** True when a tile click should be ignored (followed a contextmenu, is a
+      modifier-click, or the menu is already open — in which case it closes). */
+  const shouldIgnoreClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (suppressClickRef.current) {
+        suppressClickRef.current = false;
+        return true;
+      }
+      if (e.ctrlKey || e.metaKey) return true;
+      if (menuAnchor) {
+        closeMenu();
+        return true;
+      }
+      return false;
+    },
+    [menuAnchor, closeMenu]
+  );
+  return { menuAnchor, openMenu, closeMenu, shouldIgnoreClick };
+};
+
 /** Interactive wiring for a tile's chrome; omitted for the drag ghost. */
 interface TileActions {
-  onOpen: () => void;
+  onOpen: (e: React.MouseEvent) => void;
   onTogglePower: (e: React.MouseEvent) => void;
   onSwap: (e: React.MouseEvent) => void;
   onRemove: (e: React.MouseEvent) => void;
@@ -249,6 +297,7 @@ export const GalleryBlock: React.FC<GalleryBlockProps> = React.memo(
   ({ block, size, stereo = false, onOpen }) => {
   const { blockId, params } = block;
   const actions = useChainActions();
+  const { menuAnchor, openMenu, closeMenu, shouldIgnoreClick } = useTileMenu();
 
   // Optimistic power state; native converges via the chainChanged resync
   // (same pattern as the detail card).
@@ -273,6 +322,7 @@ export const GalleryBlock: React.FC<GalleryBlockProps> = React.memo(
   return (
     <div
       ref={setNodeRef}
+      onContextMenu={openMenu}
       style={{
         // Translate only (no scale) — scale transforms cause subpixel jitter
         // on the overlaid controls.
@@ -282,6 +332,9 @@ export const GalleryBlock: React.FC<GalleryBlockProps> = React.memo(
         // reveals the plus-circle rail behind the vacated slot.
         opacity: isDragging ? 0 : 1,
         flexShrink: 0,
+        position: 'relative',
+        // Above the neighboring tiles while the action sheet is up.
+        zIndex: menuAnchor ? 5 : undefined,
       }}
     >
       <TileSurface
@@ -290,7 +343,10 @@ export const GalleryBlock: React.FC<GalleryBlockProps> = React.memo(
         enabled={enabled}
         stereo={stereo}
         actions={{
-          onOpen: () => onOpen(blockId),
+          onOpen: (e) => {
+            if (shouldIgnoreClick(e)) return;
+            onOpen(blockId);
+          },
           onTogglePower: handleTogglePower,
           onSwap: (e) => {
             e.stopPropagation();
@@ -304,6 +360,20 @@ export const GalleryBlock: React.FC<GalleryBlockProps> = React.memo(
           sortable: { ...attributes, ...listeners },
         }}
       />
+      {menuAnchor && (
+        <TileMenu
+          anchor={menuAnchor}
+          onClose={closeMenu}
+          items={[
+            {
+              label: 'Copy',
+              icon: <Copy size={16} />,
+              help: HELP.copyBlock,
+              onSelect: () => copyBlock(blockId),
+            },
+          ]}
+        />
+      )}
     </div>
   );
 });
@@ -384,12 +454,23 @@ interface AddTileProps {
   routing: AddTileRouting;
   stereo?: boolean;
   onClick: () => void;
+  /** Paste the copied block into this slot; null while there's nothing valid
+      to paste (the action sheet shows Paste disabled). */
+  onPaste?: (() => void) | null;
 }
 
 /** The insert slot as a dashed add tile — sortable so the insert point can be
     repositioned within its lane, like any other block. Routing lines continue
     the lane's connector line through to the plus circle. */
-export const AddTile: React.FC<AddTileProps> = ({ id, size, routing, stereo = false, onClick }) => {
+export const AddTile: React.FC<AddTileProps> = ({
+  id,
+  size,
+  routing,
+  stereo = false,
+  onClick,
+  onPaste = null,
+}) => {
+  const { menuAnchor, openMenu, closeMenu, shouldIgnoreClick } = useTileMenu();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
   });
@@ -410,7 +491,11 @@ export const AddTile: React.FC<AddTileProps> = ({ id, size, routing, stereo = fa
   return (
     <div
       ref={setNodeRef}
-      onClick={onClick}
+      onClick={(e) => {
+        if (shouldIgnoreClick(e)) return;
+        onClick();
+      }}
+      onContextMenu={openMenu}
       className="gallery-tile"
       {...attributes}
       {...listeners}
@@ -421,12 +506,29 @@ export const AddTile: React.FC<AddTileProps> = ({ id, size, routing, stereo = fa
         transition: isDragging ? 'none' : transition,
         opacity: isDragging ? 0 : 1,
         cursor: 'pointer',
+        // Above the neighboring tiles while the action sheet is up.
+        zIndex: menuAnchor ? 5 : undefined,
       }}
     >
       {!isDragging && (routing === 'left' || routing === 'both') && routingLine('left')}
       {!isDragging && (routing === 'right' || routing === 'both') && routingLine('right')}
       <AddTileHeader interactive stereo={stereo} />
       <PlusCircle size={40} strokeWidth={1} />
+      {menuAnchor && (
+        <TileMenu
+          anchor={menuAnchor}
+          onClose={closeMenu}
+          items={[
+            {
+              label: 'Paste',
+              icon: <ClipboardPaste size={16} />,
+              help: HELP.pasteBlock,
+              disabled: onPaste == null,
+              onSelect: () => onPaste?.(),
+            },
+          ]}
+        />
+      )}
     </div>
   );
 };

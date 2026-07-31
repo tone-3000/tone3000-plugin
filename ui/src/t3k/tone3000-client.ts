@@ -361,35 +361,53 @@ export class T3KClient {
     return res.json();
   }
 
-  /** Shared pagination for the session-scoped tone streams. */
+  /** Shared pagination for the session-scoped tone streams; each accepts an
+      optional single-value `gear` filter (the tone browser's filter pills). */
   private async listTones(
     endpoint: 'created' | 'favorited' | 'downloaded',
-    options?: { page?: number; pageSize?: number }
+    options?: { page?: number; pageSize?: number; gear?: string }
   ): Promise<PaginatedResponse<Tone>> {
     const qs = new URLSearchParams({
       page: String(options?.page ?? 1),
       page_size: String(options?.pageSize ?? 10),
     });
+    if (options?.gear) qs.set('gear', options.gear);
     const res = await this.fetch(`/api/v1/tones/${endpoint}?${qs.toString()}`);
     if (!res.ok) throw new Error(`list ${endpoint} failed: ${res.status}`);
     return res.json();
   }
 
-  listCreatedTones(options?: { page?: number; pageSize?: number }) {
+  listCreatedTones(options?: { page?: number; pageSize?: number; gear?: string }) {
     return this.listTones('created', options);
   }
 
-  listFavoritedTones(options?: { page?: number; pageSize?: number }) {
+  listFavoritedTones(options?: { page?: number; pageSize?: number; gear?: string }) {
     return this.listTones('favorited', options);
   }
 
-  listDownloadedTones(options?: { page?: number; pageSize?: number }) {
+  listDownloadedTones(options?: { page?: number; pageSize?: number; gear?: string }) {
     return this.listTones('downloaded', options);
   }
 
-  /** Top 10 trending tones for one gear type (homepage feed; not paginated). */
-  async listTrendingTones(gear: string): Promise<{ data: Tone[] }> {
-    const res = await this.fetch(`/api/v1/tones/trending?gear=${encodeURIComponent(gear)}`);
+  /**
+   * Fetch that attaches a Bearer token when a session exists but degrades to
+   * a plain anonymous request otherwise, for the handful of endpoints the
+   * API documents as auth-optional (e.g. Trending Tones) — signed-out users
+   * still get a public teaser feed instead of being routed through
+   * `onAuthRequired`.
+   */
+  private async fetchOptionalAuth(path: string, init?: RequestInit): Promise<Response> {
+    if (!this.getTokens()) return globalThis.fetch(`${T3K_API}${path}`, init);
+    return this.fetch(path, init);
+  }
+
+  /** Top 10 trending tones, the same feed as the homepage's trending lanes
+      (homepage feed; not paginated). Optionally filtered by gear. Auth is
+      optional: signed-in users get their session automatically; signed-out
+      users still get the public feed as a discovery teaser. */
+  async listTrendingTones(gear?: string): Promise<{ data: Tone[] }> {
+    const qs = gear ? `?gear=${encodeURIComponent(gear)}` : '';
+    const res = await this.fetchOptionalAuth(`/api/v1/tones/trending${qs}`);
     if (!res.ok) throw new Error(`listTrendingTones failed: ${res.status}`);
     return res.json();
   }

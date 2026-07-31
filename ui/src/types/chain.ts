@@ -166,6 +166,20 @@ export interface ActivePreset {
   name: string;
 }
 
+/**
+ * Active chain branch (stereo mode only). The *branch* lane taps its input
+ * from the *trunk* lane's signal after one of the trunk's tone blocks,
+ * instead of from its own channel input. At most one branch exists; native
+ * clears it automatically when the tapped block leaves the trunk lane or
+ * stereo mode turns off.
+ */
+export interface ChainBranch {
+  /** The trunk lane — the side the other lane branches off. */
+  side: ChainSide;
+  /** Tone block in the trunk lane whose output feeds the other lane. */
+  afterBlockId: string;
+}
+
 export interface ChainState {
   revision: number;
   /** Chain edit history (undo/redo). Native flips these together with a
@@ -196,6 +210,8 @@ export interface ChainState {
   chain: ChainItem[];
   /** Right lane — present only while stereo mode is on. */
   chainRight?: ChainItem[];
+  /** Active branch — absent when the chains are independent (or mono). */
+  branch?: ChainBranch;
 }
 
 /** Input channel mode (mirrors Processor::InputMode). */

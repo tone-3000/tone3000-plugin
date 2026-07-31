@@ -81,6 +81,26 @@ export const pillButtonStyle = (primary = true): CSSProperties => ({
   flexShrink: 0,
 });
 
+/**
+ * Filled pill CTA — solid white on black copy, for the one or two highest-
+ * priority actions on a screen (tone browser sign-in prompts). Distinct from
+ * `pillButtonStyle`'s outline treatment, which is used everywhere else.
+ */
+export const filledPillButtonStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '10px 20px',
+  fontSize: '14px',
+  fontWeight: 600,
+  borderRadius: '9999px',
+  border: 'none',
+  backgroundColor: WHITE,
+  color: BLACK,
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+};
+
 /** Base style for a square icon chrome box (faceplate / card / tile).
  *  Grid + placeItems centers glyphs reliably; flex+inline-SVG baseline
  *  quirks are what made Power look low in the expanded block header. */

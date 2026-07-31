@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Power, Radio } from 'lucide-react';
+import { Power } from 'lucide-react';
 import { KnobControl } from './KnobControl';
 import { offsetMsScale, percentScale } from './knobScale';
 import { useParameter } from '../hooks/useParameter';
@@ -57,6 +57,32 @@ const SECONDARY_CENTER_Y = 10 + 14 + KNOB_SIZE_SECONDARY / 2;
 /** The advert stands as tall as the plate's primary knobs. */
 const ADVERT_HEIGHT = KNOB_SIZE_PRIMARY;
 
+/** Elongated outline triangle flanking "SPREAD" — ~3.5:1 length:height,
+    hollow stroke matching the advert pill border. Points right; flip for left.
+    ViewBox pads the acute tip so the miter isn't clipped. */
+const SpreadArrow: React.FC<{ direction: 'left' | 'right' }> = ({ direction }) => (
+  <svg
+    width={20}
+    height={7}
+    viewBox="0 0 24 10"
+    fill="none"
+    aria-hidden
+    style={{
+      flexShrink: 0,
+      display: 'block',
+      transform: direction === 'left' ? 'scaleX(-1)' : undefined,
+    }}
+  >
+    <path
+      d="M2 2 L20.5 5 L2 8 Z"
+      stroke="currentColor"
+      strokeWidth={1.15}
+      strokeLinejoin="miter"
+      strokeMiterlimit={10}
+    />
+  </svg>
+);
+
 /** What sits in the slot while spread is off: a pill CTA that powers it on. */
 const AdvertButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
   <button
@@ -75,8 +101,9 @@ const AdvertButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
       gap: '8px',
     }}
   >
-    <Radio size={ICON_BOX_SIZE} />
+    <SpreadArrow direction="left" />
     SPREAD
+    <SpreadArrow direction="right" />
   </button>
 );
 

@@ -458,6 +458,17 @@ void TONE3000Processor::updateStereoInputDetection() {
 }
 
 void TONE3000Processor::setInputMode(InputMode mode) {
+  if (mode == InputMode::Stereo) {
+    // An *active* branch has a single (mono) source; a stereo fold would
+    // silently drop the non-trunk channel. The UI hides the option — this
+    // guards MIDI/stale callers. A dormant branch (mono mode) doesn't
+    // constrain the fold; re-enabling stereo re-enforces it.
+    juce::ScopedLock lock(chainMutex);
+    if (rtBranchTapIndex >= 0) {
+      DBG("setInputMode: stereo fold unavailable while the chain is branched");
+      return;
+    }
+  }
   inputMode.store(static_cast<int>(mode));
   bumpChainRevision();
   DBG("Input mode: " << inputModeToString(mode));
@@ -763,14 +774,22 @@ void TONE3000Processor::updateCachedParameters() {
 // mode) or 1-2 channels (mono mode). All per-channel work is keyed on buffer.getNumChannels().
 // Must be called while holding chainMutex.
 void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBlock>>& blocks,
-                                             juce::AudioBuffer<float>& buffer) {
+                                             juce::AudioBuffer<float>& buffer, int beginIdx,
+                                             int endIdx) {
   const int numSamples = buffer.getNumSamples();
   const int numChannels = buffer.getNumChannels();
+
+  if (endIdx < 0)
+    endIdx = static_cast<int>(blocks.size());
+  beginIdx = juce::jlimit(0, static_cast<int>(blocks.size()), beginIdx);
+  endIdx = juce::jlimit(beginIdx, static_cast<int>(blocks.size()), endIdx);
 
   // Highest index of an enabled+loaded NAM block. Used twice: a stereo IR is only worth
   // processing in true stereo when there is no NAM downstream to collapse the image back to
   // mono, and NAM blocks *before* this index hand off at calibrated output level (see the
   // post-model gain stage below) while the last one keeps loudness normalization.
+  // Computed over the whole lane even for a partial range — a branched trunk
+  // is still one chain split around the tap, not two chains.
   int lastNamIndex = -1;
   for (int i = 0; i < static_cast<int>(blocks.size()); ++i) {
     const auto& b = blocks[i];
@@ -778,7 +797,7 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
       lastNamIndex = i;
   }
 
-  for (int idx = 0; idx < static_cast<int>(blocks.size()); ++idx) {
+  for (int idx = beginIdx; idx < endIdx; ++idx) {
     const auto& block = blocks[idx];
     if (block->type == ChainBlockType::INSERT) {
       continue;  // Insert block is pass-through, no audio effect
@@ -1086,14 +1105,37 @@ void TONE3000Processor::processChainStage(float** inputs, float** outputs, int n
   }
 
   if (rtStereoChains) {
-    // Stereo mode: each channel is an independent mono lane, processed in
-    // place — no split/merge copies needed.
-    float* left[] = {outputs[0]};
-    float* right[] = {outputs[1]};
-    juce::AudioBuffer<float> bufferL(left, 1, numFrames);
-    juce::AudioBuffer<float> bufferR(right, 1, numFrames);
-    processChainOnBuffer(lane(ChainSide::Left), bufferL);
-    processChainOnBuffer(lane(ChainSide::Right), bufferR);
+    if (rtBranchTapIndex >= 0) {
+      // Branched routing: the trunk lane runs on its own channel; the branch
+      // lane's input is the trunk's signal after the tapped block (not the
+      // raw channel input). Split the trunk around the tap: prefix → copy the
+      // tap signal across → remainder and branch lane run independently.
+      const int trunkCh = branchSourceSide == ChainSide::Right ? 1 : 0;
+      const int branchCh = 1 - trunkCh;
+      const ChainSide branchSide =
+          branchSourceSide == ChainSide::Right ? ChainSide::Left : ChainSide::Right;
+
+      float* trunkPtr[] = {outputs[trunkCh]};
+      float* branchPtr[] = {outputs[branchCh]};
+      juce::AudioBuffer<float> trunkBuf(trunkPtr, 1, numFrames);
+      juce::AudioBuffer<float> branchBuf(branchPtr, 1, numFrames);
+
+      auto& trunk = lane(branchSourceSide);
+      processChainOnBuffer(trunk, trunkBuf, 0, rtBranchTapIndex + 1);
+      std::memcpy(outputs[branchCh], outputs[trunkCh],
+                  sizeof(float) * static_cast<size_t>(numFrames));
+      processChainOnBuffer(trunk, trunkBuf, rtBranchTapIndex + 1);
+      processChainOnBuffer(lane(branchSide), branchBuf);
+    } else {
+      // Stereo mode: each channel is an independent mono lane, processed in
+      // place — no split/merge copies needed.
+      float* left[] = {outputs[0]};
+      float* right[] = {outputs[1]};
+      juce::AudioBuffer<float> bufferL(left, 1, numFrames);
+      juce::AudioBuffer<float> bufferR(right, 1, numFrames);
+      processChainOnBuffer(lane(ChainSide::Left), bufferL);
+      processChainOnBuffer(lane(ChainSide::Right), bufferR);
+    }
   } else {
     juce::AudioBuffer<float> chainBuffer(outputs, rtChainChannels, numFrames);
     processChainOnBuffer(lane(ChainSide::Left), chainBuffer);

@@ -208,8 +208,29 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
                 args[0].toString().toStdString(), args[1].toString(), static_cast<int>(args[2])));
           }))
       .withNativeFunction(
+          // (sourceBlockId, "left" | "right", targetIndex) — clone a tone
+          // block with all its settings (copy/paste and alt-drag duplicate).
+          // Returns the new block id, "" on failure.
+          "duplicateChainBlock",
+          guarded(3, juce::var(""), [editor](const juce::Array<juce::var>& args) {
+            return juce::var(juce::String(editor->processor.duplicateChainBlock(
+                args[0].toString().toStdString(), args[1].toString(), static_cast<int>(args[2]))));
+          }))
+      .withNativeFunction(
           "swapChains", guarded(0, false, [editor](const juce::Array<juce::var>&) {
             return juce::var(editor->processor.swapChains());
+          }))
+      .withNativeFunction(
+          // ("left" | "right", afterBlockId) — branch the other lane off the
+          // named lane after one of its tone blocks (stereo mode only).
+          "setChainBranch", guarded(2, false, [editor](const juce::Array<juce::var>& args) {
+            return juce::var(editor->processor.setChainBranch(
+                args[0].toString(), args[1].toString().toStdString()));
+          }))
+      .withNativeFunction(
+          // Revert to two fully independent chains.
+          "clearChainBranch", guarded(0, false, [editor](const juce::Array<juce::var>&) {
+            return juce::var(editor->processor.clearChainBranch());
           }))
       .withNativeFunction(
           "setStereoMode", guarded(1, false, [editor](const juce::Array<juce::var>& args) {

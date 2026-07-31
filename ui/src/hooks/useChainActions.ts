@@ -24,8 +24,17 @@ export interface ChainActions {
   reorderBlocks: (orderedIds: string[]) => void;
   /** Move a block into the other lane at the given index (stereo drag). */
   moveBlock: (blockId: string, side: ChainSide, index: number) => void;
+  /** Clone a tone block (all settings + model) into `side` at `index` —
+      an insert slot there is filled (paste), otherwise the clone splices
+      in (alt-drag duplicate). */
+  duplicateBlock: (sourceBlockId: string, side: ChainSide, index: number) => void;
   /** Swap the Left and Right chains wholesale (stereo only). */
   swapChains: () => void;
+  /** Branch the other lane off `side` after one of its tone blocks (stereo
+      only) — the other lane's input becomes the tapped signal. */
+  setBranch: (side: ChainSide, afterBlockId: string) => void;
+  /** Revert to two fully independent chains. */
+  clearBranch: () => void;
   /** Native only stores the active model, so the switch always carries the
       full model object (paged in from the API by the picker). */
   switchModel: (blockId: string, modelId: number, model: Model) => Promise<void>;

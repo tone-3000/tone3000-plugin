@@ -96,6 +96,14 @@ public:
   // Move a block into the other lane at the given index (stereo mode drag
   // across chains). Engines move with the block; insert slots can't move.
   bool moveBlockToChain(const std::string& blockId, const juce::String& side, int index);
+  // Clone a tone block — model, EQ, gains, mix, every persisted setting —
+  // into `side` at `index` (absolute lane index, inserts included). A clone
+  // landing on an insert slot consumes it (paste into an empty tile);
+  // anywhere else it splices in like a cross-lane drop. The clone gets a
+  // fresh id and its own engines, loaded cache-first from the source's
+  // in-memory model bytes (no network). Returns the new id, "" on failure.
+  std::string duplicateChainBlock(const std::string& sourceBlockId, const juce::String& side,
+                                  int index);
 
   // TONE3000 OAuth access token. Updated by the UI after the Select flow and
   // again on every refresh. `fetchModelFromUrl` attaches it as a Bearer header
@@ -163,6 +171,20 @@ public:
   // Stereo mode: two independent Left/Right chains.
   void setStereoMode(bool enabled);
   bool isStereoMode() const { return stereoEnabled.load(); }
+
+  // ── Chain branching (stereo mode) ──
+  // A single optional tap point: the *branch* lane takes its input from the
+  // *trunk* lane's signal after one of the trunk's tone blocks, instead of
+  // from its own channel input. Only the branch lane's input source changes —
+  // its blocks are untouched — so reverting to independent chains is trivial.
+  // `side` names the trunk lane; `afterBlockId` the tone block whose output
+  // is tapped. Calling it while already branched re-points the tap (either
+  // lane, one move — no clearing first). Undoable; cleared automatically
+  // when the tapped block leaves the trunk lane. Turning stereo mode off
+  // only makes the branch dormant — it re-engages when stereo comes back
+  // (like the right lane itself).
+  bool setChainBranch(const juce::String& side, const std::string& afterBlockId);
+  bool clearChainBranch();
 
   // Standalone input channel mode. Interfaces usually expose stereo pairs
   // (line 1+2) even when only one jack is plugged in, so the standalone app
@@ -370,8 +392,13 @@ private:
   // 1 channel (a single side in stereo mode) or 1-2 channels (mono mode). All per-channel work
   // is keyed on buffer.getNumChannels(). Runs inside the chain domain (48 kHz — see
   // ChainDomain.h). Must be called while holding `chainMutex`.
+  // `beginIdx`/`endIdx` bound the block range [beginIdx, endIdx) so the
+  // branched routing can split one lane around the tap point; the defaults
+  // run the whole lane (endIdx -1 = blocks.size()). Whole-chain context
+  // (lastNamIndex) is always computed over the full lane regardless of the
+  // range — the range is a routing split, not a different chain.
   void processChainOnBuffer(std::vector<std::unique_ptr<ChainBlock>>& blocks,
-                            juce::AudioBuffer<float>& buffer);
+                            juce::AudioBuffer<float>& buffer, int beginIdx = 0, int endIdx = -1);
 
   // The whole chain stage at the chain rate: lane L (and lane R in stereo
   // mode) over the given channel pointers. Called either directly (48k host)
@@ -494,6 +521,19 @@ private:
   // Select flow (the choice must survive the OAuth redirect); not a view mode.
   ChainSide pendingAddSide{ChainSide::Left};
   juce::CriticalSection chainMutex;
+
+  // ── Chain branch state (see the public setChainBranch) ──
+  // All guarded by chainMutex (the audio thread reads them with the lock
+  // held). `branchAfterBlockId` empty = no branch (today's independent
+  // chains). `rtBranchTapIndex` is the id resolved to a trunk-lane index for
+  // the RT path (-1 when no branch or while the branch lies dormant in mono
+  // mode); refreshBranchTapIndex re-resolves it after every structural change
+  // and clears the branch when the tapped block no longer lives in the trunk
+  // lane (removed, moved across, stale restore).
+  ChainSide branchSourceSide{ChainSide::Left};
+  std::string branchAfterBlockId;
+  int rtBranchTapIndex{-1};
+  void refreshBranchTapIndex();
 
   // ── Global chain-edit fade (see ChainEditFade / requestChainEditFadeAndWait) ──
   // The gain rides the host-rate buffer right after the chain stage; the

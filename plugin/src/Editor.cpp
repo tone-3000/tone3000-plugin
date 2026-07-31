@@ -3,13 +3,30 @@
 
 void TONE3000Editor::parentHierarchyChanged() {
   if (auto* window = dynamic_cast<juce::DocumentWindow*>(getTopLevelComponent())) {
-    window->setUsingNativeTitleBar(true);
-    // Keep whatever scale the constructor restored (or the user last dragged
-    // to) rather than snapping back to the 1x design size.
+    // Snapshot our own size before flipping the title bar style: JUCE
+    // immediately relayouts the title-bar/content split within the window's
+    // current bounds, which can stretch or shrink us before our own
+    // aspect-ratio constrainer catches up — previously "corrected" for with
+    // a hardcoded +28 title-bar-height guess, which doesn't hold on every
+    // OS/version and could leave us a few px off. Re-asserting our exact
+    // pre-toggle size instead lets JUCE's own resize listener
+    // (StandaloneFilterWindow::MainContentComponent, which already measures
+    // the real native frame) grow the *window* to exactly contain us again —
+    // no guesswork.
     const int w = getWidth();
     const int h = getHeight();
-    window->centreWithSize(w, h + 28);  // Extra height for title bar
+    // Whatever resize this dance causes along the way is us correcting
+    // ourselves, not the user choosing a size — don't let it clobber the
+    // persisted scale. Cleared next tick so a deferred cascade from the
+    // relayout is covered too, not just a same-tick one.
+    restoringSize = true;
+    window->setUsingNativeTitleBar(true);
     setSize(w, h);
+    juce::Component::SafePointer<TONE3000Editor> self(this);
+    juce::MessageManager::callAsync([self] {
+      if (self != nullptr)
+        self->restoringSize = false;
+    });
   }
 
 #if JUCE_MAC
@@ -171,7 +188,10 @@ void TONE3000Editor::resized() {
   // itself, and the page applies its own CSS zoom from the viewport width.
   if (mainWebView != nullptr)
     mainWebView->setBounds(getLocalBounds());
-  processor.editorScale.store(currentScale());
+  // Skip persisting while we're correcting our own size rather than
+  // reflecting one the user (or host) actually chose — see restoringSize.
+  if (!restoringSize)
+    processor.editorScale.store(currentScale());
 }
 
 // Get the WebView UI resources from BinaryData

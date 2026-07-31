@@ -185,9 +185,11 @@ export const HELP = {
   presetMoveDown: 'Move Down: one spot later.',
 
   // Chain gallery
-  addTile: 'Add Tone: browse TONE3000 for this slot. Drag tile or grip: move.',
+  addTile: 'Add Tone: browse TONE3000 for this slot. Right-click: paste · drag tile or grip: move.',
   closeToneBrowser: 'Close: back to the chain.',
-  dragGrip: 'Grip: drag to reorder. Stereo: drop on the other lane to move.',
+  dragGrip: `Grip: drag to reorder · ${alt('drag')}: duplicate. Stereo: drop on the other lane to move.`,
+  copyBlock: 'Copy: copy this block — tone, model and all settings.',
+  pasteBlock: 'Paste: add a copy of the copied block in this slot.',
   blockPower: 'Power: bypass this block.',
   retryLoad: 'Retry: re-download this model.',
   swapTone: 'Swap: replace this tone, keeping its slot.',
@@ -196,6 +198,8 @@ export const HELP = {
   panRight: knobHelp('Pan Right', 'Right chain, center ↔ hard right.'),
   panLink: 'Link Pans: mirror both pan knobs.',
   swapChains: 'Swap Chains: exchange Left/Right chains, pans included.',
+  branchGap: 'Branch: feed the other chain from this point in this chain.',
+  branchJunction: 'Branch Point: the other chain starts here. Click: make chains independent.',
 
   // Block card
   blockIn: knobHelp('In', 'block input gain, ±24 dB.'),
@@ -236,7 +240,7 @@ export const HELP = {
 
 /** Gallery tile: leads with the tone's own name. */
 export const toneTileHelp = (title: string) =>
-  `${title}. Click: open. Drag: reorder.`;
+  `${title}. Click: open · drag: reorder · right-click: copy.`;
 
 /** Curve-type selector buttons in the EQ editor. */
 export const bandTypeHelp = (label: string) => `${label}: band curve shape.`;

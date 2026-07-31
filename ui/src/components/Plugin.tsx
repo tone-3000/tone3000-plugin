@@ -77,6 +77,7 @@ export const Plugin: React.FC = () => {
   const {
     chain,
     chainRight,
+    branch,
     canUndo,
     canRedo,
     activePreset,
@@ -379,8 +380,10 @@ export const Plugin: React.FC = () => {
 
   // Adding routes to a lane via the native active-edit side (it has to
   // survive the OAuth redirect, so it lives in native state, not React's).
-  // Signed in: straight to the in-plugin tone browser. Signed out: run the
-  // no-prompt login flow first; its callback opens the browser.
+  // The in-plugin tone browser is no longer gated by sign-in — it opens
+  // straight away with its public Trending feed; the browser itself prompts
+  // for sign-in (see onSignIn below) only if the user reaches for a
+  // session-scoped stream or their own tones.
   const handleAddModel = useCallback(
     (side: ChainSide, insertBlockId: string) => {
       requireInternet(async () => {
@@ -389,11 +392,10 @@ export const Plugin: React.FC = () => {
         // for when the slot id goes stale (e.g. undone away mid-flow).
         sessionStorage.setItem(INSERT_TARGET_STORAGE_KEY, insertBlockId);
         if (stereoEnabled) await actions.setActiveSide(side);
-        if (t3kClient.isAuthenticated()) setShowToneBrowser(true);
-        else startLoginFlow({ openBrowser: true });
+        setShowToneBrowser(true);
       });
     },
-    [actions, requireInternet, startLoginFlow, stereoEnabled, t3kClient]
+    [actions, requireInternet, stereoEnabled]
   );
 
   // Swap: remember the target block, then run the same browse flow as add —
@@ -403,11 +405,10 @@ export const Plugin: React.FC = () => {
       requireInternet(() => {
         sessionStorage.removeItem(INSERT_TARGET_STORAGE_KEY);
         sessionStorage.setItem(SWAP_STORAGE_KEY, blockId);
-        if (t3kClient.isAuthenticated()) setShowToneBrowser(true);
-        else startLoginFlow({ openBrowser: true });
+        setShowToneBrowser(true);
       });
     },
-    [requireInternet, startLoginFlow, t3kClient]
+    [requireInternet]
   );
 
   // Auth-dependent block actions (model switching) key off this. Reading
@@ -426,7 +427,10 @@ export const Plugin: React.FC = () => {
       shareBlock: handleShareBlock,
       reorderBlocks: actions.reorderBlocks,
       moveBlock: actions.moveBlockToChain,
+      duplicateBlock: actions.duplicateBlock,
       swapChains: actions.swapChains,
+      setBranch: actions.setBranch,
+      clearBranch: actions.clearBranch,
       switchModel: handleSwitchModel,
       retryLoad: handleRetryLoad,
       listToneModels: handleListToneModels,
@@ -613,8 +617,13 @@ export const Plugin: React.FC = () => {
                 // has no tokens until the callback's code exchange finishes —
                 // hold the stream fetch so it doesn't fire unauthenticated.
                 authPending={oauthPhase === 'returning'}
+                authenticated={authenticated}
                 onPickTone={selectToneById}
                 onBrowseTone3000={startSelectFlow}
+                // Sign-in CTAs inside the browser (gated streams / Trending's
+                // discovery footer) run the no-prompt login flow and return
+                // to this same browser — never the full Select catalog.
+                onSignIn={() => requireInternet(() => startLoginFlow({ openBrowser: true }))}
                 onClose={() => {
                   // Closing without picking abandons any pending swap/insert target.
                   sessionStorage.removeItem(SWAP_STORAGE_KEY);
@@ -627,6 +636,7 @@ export const Plugin: React.FC = () => {
                 <ChainView
                   chain={chain}
                   chainRight={stereoEnabled ? (chainRight ?? []) : null}
+                  branch={stereoEnabled ? branch : null}
                   sampleRate={sampleRate}
                 />
               </ChainActionsProvider>
@@ -655,6 +665,7 @@ export const Plugin: React.FC = () => {
         stereoOutput={stereoOutput}
         stereoChains={stereoEnabled}
         stereoInput={stereoInput}
+        branched={branch != null}
         inputMode={inputMode}
         onInputModeChange={actions.setInputMode}
       />

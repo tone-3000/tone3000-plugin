@@ -56,6 +56,7 @@ export function useChainState() {
       removeChainBlock: backend.getPluginFunction('removeChainBlock'),
       reorderChainBlocks: backend.getPluginFunction('reorderChainBlocks'),
       moveBlockToChain: backend.getPluginFunction('moveBlockToChain'),
+      duplicateChainBlock: backend.getPluginFunction('duplicateChainBlock'),
       setBlockParam: backend.getPluginFunction('setBlockParam'),
       setBlockEqBand: backend.getPluginFunction('setBlockEqBand'),
       setBlockEqEnabled: backend.getPluginFunction('setBlockEqEnabled'),
@@ -66,6 +67,8 @@ export function useChainState() {
       setNamFullSize: backend.getPluginFunction('setNamFullSize'),
       setActiveEditChain: backend.getPluginFunction('setActiveEditChain'),
       swapChains: backend.getPluginFunction('swapChains'),
+      setChainBranch: backend.getPluginFunction('setChainBranch'),
+      clearChainBranch: backend.getPluginFunction('clearChainBranch'),
       undoChain: backend.getPluginFunction('undoChain'),
       redoChain: backend.getPluginFunction('redoChain'),
     }),
@@ -141,6 +144,13 @@ export function useChainState() {
       /** Move a block into the other lane at the given index (stereo drag). */
       moveBlockToChain: (blockId: string, side: ChainSide, index: number) =>
         run<boolean>('moveBlockToChain', () => native.moveBlockToChain(blockId, side, index)),
+      /** Clone a tone block (all settings + model) into `side` at `index`.
+          Landing on an insert slot fills it (paste); anywhere else splices
+          in (alt-drag). Resolves to the new blockId ('' on failure). */
+      duplicateBlock: (sourceBlockId: string, side: ChainSide, index: number) =>
+        run<string>('duplicateChainBlock', () =>
+          native.duplicateChainBlock(sourceBlockId, side, index)
+        ),
       setStereoMode: (enabled: boolean) =>
         run('setStereoMode', () => native.setStereoMode(enabled)),
       /** Which channels of a stereo source feed the plugin (faceplate button). */
@@ -153,6 +163,13 @@ export function useChainState() {
         run('setActiveEditChain', () => native.setActiveEditChain(side)),
       /** Swap the Left and Right chains wholesale (stereo only). Undoable. */
       swapChains: () => run<boolean>('swapChains', () => native.swapChains()),
+      /** Branch the other lane off `side` after one of its tone blocks
+          (stereo only). The other lane's input becomes the tapped signal.
+          Undoable; native forces the input mode off "stereo". */
+      setBranch: (side: ChainSide, afterBlockId: string) =>
+        run<boolean>('setChainBranch', () => native.setChainBranch(side, afterBlockId)),
+      /** Revert to two fully independent chains. Undoable. */
+      clearBranch: () => run<boolean>('clearChainBranch', () => native.clearChainBranch()),
       /**
        * Fire-and-forget param setter (safe at knob-drag rates). Booleans are
        * sent as 0/1; the revision bump on native makes pollers converge.
@@ -191,6 +208,7 @@ export function useChainState() {
   return {
     chain: state.chain,
     chainRight: state.chainRight ?? null,
+    branch: state.branch ?? null,
     canUndo: state.canUndo ?? false,
     canRedo: state.canRedo ?? false,
     activePreset: state.preset ?? null,

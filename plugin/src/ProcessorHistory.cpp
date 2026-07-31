@@ -16,6 +16,11 @@
 juce::ValueTree TONE3000Processor::captureChainSnapshot(bool includeModelData) const {
   juce::ValueTree snapshot("ChainSnapshot");
   snapshot.setProperty("stereoEnabled", stereoEnabled.load(), nullptr);
+  // Branch routing travels with the chains (undo, presets, DAW state all
+  // share this shape). Empty branchAfterBlockId = independent chains.
+  snapshot.setProperty("branchSide",
+                       branchSourceSide == ChainSide::Right ? "right" : "left", nullptr);
+  snapshot.setProperty("branchAfterBlockId", juce::String(branchAfterBlockId), nullptr);
 
   juce::ValueTree left("ChainBlocks");
   serializeChainToTree(lane(ChainSide::Left), left, includeModelData);
@@ -201,6 +206,24 @@ TONE3000Processor::Lane TONE3000Processor::restoreChainSnapshot(const juce::Valu
   stereoEnabled.store(snapStereo);
   if (!snapStereo)
     pendingAddSide = ChainSide::Left;
+
+  // Branch routing rides the snapshot. refreshBranchTapIndex validates it
+  // against the freshly reconciled trunk lane — a stale id (snapshot from a
+  // chain that no longer holds the block) degrades to independent chains.
+  // Older snapshots without the properties restore as unbranched for free.
+  branchSourceSide = snapshot.getProperty("branchSide").toString() == "right"
+                         ? ChainSide::Right
+                         : ChainSide::Left;
+  branchAfterBlockId =
+      snapshot.getProperty("branchAfterBlockId").toString().toStdString();
+  refreshBranchTapIndex();
+
+  // A restored *active* branch + a stereo input fold would silently drop a
+  // channel — enforce the same invariant setChainBranch does (presets don't
+  // carry inputMode; DAW states restore it just before this runs). A dormant
+  // branch (mono snapshot) doesn't constrain the fold.
+  if (rtBranchTapIndex >= 0 && getInputMode() == InputMode::Stereo)
+    inputMode.store(static_cast<int>(InputMode::Left));
 
   // Mirrors setStereoMode: the right chain's engines must be ready before the
   // audio thread starts running them.

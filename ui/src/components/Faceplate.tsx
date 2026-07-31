@@ -96,10 +96,16 @@ const InputModeGlyph: React.FC<{ mode: InputMode }> = ({ mode }) =>
  */
 const InputModeButton: React.FC<{
   mode: InputMode;
+  /** A chain branch is active: the chain has a single (mono) source, so the
+      "Stereo" routing is unavailable (native enforces the same). */
+  branched: boolean;
   onChange: (mode: InputMode) => void;
-}> = ({ mode, onChange }) => {
+}> = ({ mode, branched, onChange }) => {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const options = branched
+    ? INPUT_MODE_OPTIONS.filter((option) => option.mode !== 'stereo')
+    : INPUT_MODE_OPTIONS;
 
   // Outside click / Escape dismissal (presets-menu / advanced-panel pattern).
   useEffect(() => {
@@ -185,7 +191,7 @@ const InputModeButton: React.FC<{
           >
             Input Mode
           </div>
-          {INPUT_MODE_OPTIONS.map((option) => (
+          {options.map((option) => (
             <button
               key={option.mode}
               type="button"
@@ -337,6 +343,9 @@ interface FaceplateProps {
   stereoChains: boolean;
   /** Plugin is fed a real stereo source — shows the input-mode button. */
   stereoInput: boolean;
+  /** A chain branch is active — hides the "Stereo" input routing (the chain
+      has a single mono source while branched). */
+  branched: boolean;
   inputMode: InputMode;
   onInputModeChange: (mode: InputMode) => void;
 }
@@ -345,6 +354,7 @@ export const Faceplate: React.FC<FaceplateProps> = ({
   stereoOutput,
   stereoChains,
   stereoInput,
+  branched,
   inputMode,
   onInputModeChange,
 }) => {
@@ -393,7 +403,9 @@ export const Faceplate: React.FC<FaceplateProps> = ({
           defaultValue={0.5}
           help={HELP.inputLevel}
         />
-        {stereoInput && <InputModeButton mode={inputMode} onChange={onInputModeChange} />}
+        {stereoInput && (
+          <InputModeButton mode={inputMode} branched={branched} onChange={onInputModeChange} />
+        )}
       </div>
 
       {/* Gate + power */}

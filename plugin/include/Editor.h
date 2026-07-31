@@ -51,11 +51,20 @@ private:
   int extraContentHeight = 0;
   int totalHeight() const { return kBaseHeight + extraContentHeight; }
 
-  // Scale is never stored — the window width is the source of truth, so a
-  // host-driven resize and our own setSize agree by construction.
+  // The window width is always the live source of truth for the current
+  // scale (a host-driven resize and our own setSize agree by construction);
+  // resized() below mirrors it into processor.editorScale so it survives
+  // teardown, restored by the next editor's constructor.
   double currentScale() const { return getWidth() / static_cast<double>(kWidth); }
   void applyScaledSize(double scale);
   void updateResizeConstraints();
+
+  // Guards resized() below against persisting a size we didn't choose:
+  // parentHierarchyChanged() reasserts our size after flipping the native
+  // title bar on, which can otherwise relayout (and briefly mis-size) us
+  // first — see its comment. Cleared asynchronously so a same-tick *and* a
+  // deferred cascade from that relayout are both covered.
+  bool restoringSize = false;
 
   // One shared dark theme for JUCE-drawn surfaces (standalone settings dialog
   // etc.); installed as the default LookAndFeel in the editor constructor.

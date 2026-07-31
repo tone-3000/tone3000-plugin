@@ -145,6 +145,12 @@ void TONE3000Processor::getStateInformation(juce::MemoryBlock& destData) {
     state.setProperty("activePresetId", activePresetId, nullptr);
     state.setProperty("activePresetName", activePresetName, nullptr);
 
+    // Branch routing, same properties a chain snapshot carries (the state
+    // root restores through restoreChainSnapshot).
+    state.setProperty("branchSide",
+                      branchSourceSide == ChainSide::Right ? "right" : "left", nullptr);
+    state.setProperty("branchAfterBlockId", juce::String(branchAfterBlockId), nullptr);
+
     juce::ValueTree chainState("ChainBlocks");
     serializeChainToTree(lane(ChainSide::Left), chainState, true);
     state.appendChild(chainState, nullptr);

@@ -17,7 +17,9 @@ juce_add_console_app(DspTests PRODUCT_NAME "DspTests")
 
 target_sources(DspTests PRIVATE
     src/auto_offset_tests.cpp
+    src/branch_tests.cpp
     src/dsp_tests.cpp
+    src/duplicate_tests.cpp
     src/processor_tests.cpp
     src/spread_tests.cpp
     # Compiled straight from the plugin tree — the tests exercise the real
