@@ -207,6 +207,10 @@ export const HELP = {
   blockOutIr: knobHelp('Out', 'block output gain, ±24 dB (IR pre-trimmed −18 dB).'),
   blockMix: knobHelp('Mix', 'dry/wet blend.'),
   blockNormalize: 'Normalize: level this block\u2019s loudness. Off: raw capture level.',
+  blockNormalizeOverridden:
+    'Normalize: overridden \u2014 calibration hands this model\u2019s true output level to the next NAM block.',
+  blockCalibrated: 'Calibration: active \u2014 levels set from this model\u2019s calibration data.',
+  blockUncalibrated: 'Calibration: inactive \u2014 this model has no calibration data.',
   eqToggle: 'EQ: 6-band EQ editor. Outline: EQ shaping the sound.',
   eqSlidersView: 'Sliders: gain-only fader view.',
   eqCurveView: 'Curve: parametric freq/gain/Q editor.',

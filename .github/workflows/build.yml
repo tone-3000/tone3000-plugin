@@ -1,5 +1,6 @@
 # TONE3000 Plugin - Multi-platform build
-# Builds VST3, Standalone, AU (macOS) on macOS (universal arm64+x86_64), Windows, and Linux
+# Builds VST3, Standalone, AU (macOS) on macOS (universal via per-arch build +
+# lipo — dual -arch clang invocations are not sccache-cacheable), Windows, and Linux
 
 name: Build Plugin
 
@@ -27,7 +28,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macOS universal (arm64 + x86_64 in one binary)
+          # macOS universal: build arm64 + x86_64 separately (sccache-friendly),
+          # then lipo into one artefact tree before packaging.
           - name: macOS Universal
             runs-on: macos-14
             os: macos
@@ -104,13 +106,16 @@ jobs:
           cache: "npm"
           cache-dependency-path: ui/package-lock.json
 
-      # CMake configure first to fetch JUCE (CPM) - required before npm install (UI depends on libs/juce)
-      - name: Configure CMake (macOS)
+      # CMake configure first to fetch JUCE (CPM) — required before npm install
+      # (UI depends on libs/juce). Use the arm64 build dir; x86_64 is configured
+      # after the UI build. Single-arch (not "arm64;x86_64") so sccache can hash
+      # each compile — see lipo step below.
+      - name: Configure CMake (macOS arm64 bootstrap)
         if: matrix.os == 'macos'
         run: |
-          cmake -B build -S . \
+          cmake -B build-arm64 -S . \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
-            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DBUILD_AAX=OFF \
             -DCMAKE_C_COMPILER_LAUNCHER=sccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
@@ -178,12 +183,24 @@ jobs:
           npm run build
           cd ..
 
-      - name: Reconfigure CMake (macOS)
+      - name: Reconfigure CMake (macOS arm64)
         if: matrix.os == 'macos'
         run: |
-          cmake -B build -S . \
+          cmake -B build-arm64 -S . \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
-            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DBUILD_AAX=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_OBJC_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_OBJCXX_COMPILER_LAUNCHER=sccache
+
+      - name: Configure CMake (macOS x86_64)
+        if: matrix.os == 'macos'
+        run: |
+          cmake -B build-x86_64 -S . \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
             -DBUILD_AAX=OFF \
             -DCMAKE_C_COMPILER_LAUNCHER=sccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
@@ -215,9 +232,29 @@ jobs:
         if: matrix.os == 'linux'
         run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel 2
 
-      - name: Build plugin (macOS, Windows)
-        if: matrix.os != 'linux'
+      - name: Build plugin (Windows)
+        if: matrix.os == 'windows'
         run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
+
+      # Sequential per-arch builds (shared runner RAM). Each arch is a distinct
+      # sccache key; cold cache pays ~2× compile once, warm cache hits both.
+      - name: Build plugin (macOS arm64)
+        if: matrix.os == 'macos'
+        run: cmake --build build-arm64 --config ${{ env.BUILD_TYPE }} --parallel
+
+      - name: Build plugin (macOS x86_64)
+        if: matrix.os == 'macos'
+        run: cmake --build build-x86_64 --config ${{ env.BUILD_TYPE }} --parallel
+
+      # Merge single-arch artefact trees into the path create-pkg.sh expects.
+      - name: Lipo universal artefacts (macOS)
+        if: matrix.os == 'macos'
+        run: |
+          chmod +x script/lipo-macos-artefacts.sh
+          ./script/lipo-macos-artefacts.sh \
+            "build-arm64/plugin/TONE3000_artefacts/${{ env.BUILD_TYPE }}" \
+            "build-x86_64/plugin/TONE3000_artefacts/${{ env.BUILD_TYPE }}" \
+            "build/plugin/TONE3000_artefacts/${{ env.BUILD_TYPE }}"
 
       # ── macOS: import Developer ID certs into a temp keychain ───────────────
       # Bails out gracefully if signing secrets are not configured (e.g. PRs

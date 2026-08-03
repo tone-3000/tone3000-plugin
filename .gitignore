@@ -3,6 +3,8 @@
 libs/
 bin/
 build/
+build-arm64/
+build-x86_64/
 release-build/
 output/
 .DS_Store

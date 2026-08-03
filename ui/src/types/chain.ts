@@ -145,6 +145,13 @@ export interface ToneBlock {
       once the model loads. Drives the Mix knob's default (long = 50% wet)
       and the Out knob help (long IRs carry no −18 dB pad). */
   irLong: boolean;
+  /** NAM calibration metadata (dBu) off the loaded model; absent when the
+      model carries none (or nothing is loaded yet). `inputLevelDbu` feeds
+      input calibration; `outputLevelDbu` feeds the mid-chain calibrated
+      hand-off that supersedes normalization (see the post-model gain stage
+      in Processor.cpp). Both are guaranteed finite by native. */
+  inputLevelDbu?: number;
+  outputLevelDbu?: number;
   params: BlockParams;
 }
 

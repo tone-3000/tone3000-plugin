@@ -20,7 +20,7 @@ import {
  * forced to ICON_SIZE and grid-centered in the box (no nested flex/span
  * that WebKit can baseline-shift).
  */
-export type ChromeTone = 'plain' | 'power' | 'armed' | 'link';
+export type ChromeTone = 'plain' | 'power' | 'armed' | 'link' | 'outline';
 
 interface ChromeIconButtonProps {
   onClick: (e: React.MouseEvent) => void;
@@ -28,10 +28,11 @@ interface ChromeIconButtonProps {
   help: string;
   children: React.ReactNode;
   /**
-   * plain — white icon (optional HIGHLIGHT via `filled`).
-   * power — on = white/clear; off = GRAY + HIGHLIGHT.
-   * armed — on = BRAND_YELLOW + BLACK (listening / engaged); off = BORDER + GRAY.
-   * link  — on = white; off = GRAY — never a fill (pan link).
+   * plain   — white icon (optional HIGHLIGHT via `filled`).
+   * power   — on = white/clear; off = GRAY + HIGHLIGHT.
+   * armed   — on = BRAND_YELLOW + BLACK (listening / engaged); off = BORDER + GRAY.
+   * link    — on = white; off = GRAY — never a fill (pan link).
+   * outline — on = WHITE border + icon; off = BORDER + GRAY (block normalize).
    */
   tone?: ChromeTone;
   /** For power/armed/link: feature on / listening / linked. */
@@ -70,6 +71,12 @@ const toneChrome = (
         color: on ? WHITE : GRAY,
         backgroundColor: 'transparent',
         border: '1px solid transparent',
+      };
+    case 'outline':
+      return {
+        color: on ? WHITE : GRAY,
+        backgroundColor: 'transparent',
+        border: on ? `1px solid ${WHITE}` : BORDER,
       };
     default:
       return {

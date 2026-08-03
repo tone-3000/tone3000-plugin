@@ -6,6 +6,7 @@ import {
   Download,
   Equal,
   FolderClosed,
+  Gauge,
   Power,
   Share,
   Trash2,
@@ -21,6 +22,7 @@ import { BlockEqView } from './BlockEqView';
 import type { EqViewMode } from './BlockEqView';
 import { meterId } from '../hooks/useMeters';
 import { useChainActions } from '../hooks/useChainActions';
+import { useParameter } from '../hooks/useParameter';
 import type { BlockParamName, ToneBlock } from '../types/chain';
 import type { Model } from '../types/tone';
 import { isEqFlat } from '../types/chain';
@@ -30,7 +32,7 @@ import { AvatarImage } from './AvatarFallback';
 import { FormatBadge } from './FormatBadge';
 import { HELP, helpProps } from './helpText';
 import { useBlockNormalizeControlEnabled } from './uiPreferences';
-import { ChromeIconButton, ChromeTextButton } from './ChromeIconButton';
+import { ChromeIconButton, ChromeTextButton, chromeIcon } from './ChromeIconButton';
 import {
   BORDER,
   GRAY,
@@ -98,6 +100,11 @@ const EqCurveIcon: React.FC = () => (
 
 interface ChainBlockProps {
   block: ToneBlock;
+  /** Another enabled+loaded NAM after this block in its lane. With input
+      calibration on, such a block hands off at calibrated output level
+      instead of normalizing (see the post-model gain stage in
+      Processor.cpp) — drives the normalize control's overridden state. */
+  namDownstream: boolean;
   /** Host sample rate, for the EQ curve math. */
   sampleRate: number;
   /** Return to the chain gallery (← BLOCK sits above the bordered card). */
@@ -107,7 +114,12 @@ interface ChainBlockProps {
 /** The detail card (full block view). All mutations come from the
     ChainActions context; only the block itself and the sample rate arrive
     as props. */
-export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBack }) => {
+export const ChainBlock: React.FC<ChainBlockProps> = ({
+  block,
+  namDownstream,
+  sampleRate,
+  onBack,
+}) => {
   const { blockId, tone, params } = block;
   const actions = useChainActions();
 
@@ -248,6 +260,22 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
   const modelBusy = block.modelLoading || (!block.loaded && !block.loadFailed);
 
   const isNam = tone.format?.toLowerCase() === 'nam';
+
+  // Calibration state (the gauge indicator + the normalize override). Only
+  // meaningful while the user's input calibration setting is on: the gauge
+  // then reads white when the loaded model carries calibration data and gray
+  // when it doesn't. The overridden check mirrors the DSP's calibrated
+  // hand-off condition exactly (Processor.cpp): calibration on, sane
+  // output_level_dbu metadata, and another NAM downstream — the last NAM
+  // stays on normalization, so its control never reads overridden.
+  const [calibrateInput] = useParameter('calibrateInput', 'toggle');
+  const showCalibration = isNam && calibrateInput;
+  const calibrationActive = block.inputLevelDbu !== undefined;
+  const handOffLevelSane =
+    block.outputLevelDbu !== undefined &&
+    block.outputLevelDbu >= -60 &&
+    block.outputLevelDbu <= 60;
+  const normalizeOverridden = isNam && calibrateInput && namDownstream && handOffLevelSane;
   // Long (reverb-like) IRs load half wet by default (native classifies by
   // kernel length and sets the mix on first load); Alt-click reset on Mix
   // must agree.
@@ -332,14 +360,34 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
             borderBottom: BORDER,
           }}
         >
-          <ChromeIconButton
-            tone="power"
-            on={enabled}
-            help={HELP.blockPower}
-            onClick={handleToggleEnabled}
-          >
-            <Power />
-          </ChromeIconButton>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flexShrink: 0 }}>
+            <ChromeIconButton
+              tone="power"
+              on={enabled}
+              help={HELP.blockPower}
+              onClick={handleToggleEnabled}
+            >
+              <Power />
+            </ChromeIconButton>
+
+            {/* Calibration indicator (not a button): white = the loaded model
+                carries calibration data, gray = it doesn't. Hidden entirely
+                while the calibration setting is off. */}
+            {showCalibration && (
+              <span
+                {...helpProps(calibrationActive ? HELP.blockCalibrated : HELP.blockUncalibrated)}
+                style={{
+                  width: `${ICON_BOX_SIZE}px`,
+                  height: `${ICON_BOX_SIZE}px`,
+                  display: 'grid',
+                  placeItems: 'center',
+                  color: calibrationActive ? WHITE : GRAY,
+                }}
+              >
+                {chromeIcon(<Gauge />, ICON_SIZE)}
+              </span>
+            )}
+          </div>
 
           {/* Right cluster: EQ submenu (pill when open) then share/swap/trash.
               EQ stays rightmost in the submenu so opening grows left only.
@@ -693,17 +741,29 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
               />
             </div>
 
-            {/* Output rail: meter above Out (+ optional normalize). */}
+            {/* Output rail: meter above Out (+ optional normalize). The rail
+                right-aligns and the meter wrapper is knob-wide, so the meter
+                stays centered over the Out knob whether or not the normalize
+                button widens the bottom row to its left. */}
             <div
               style={{
                 display: 'flex',
                 flexDirection: 'column',
-                alignItems: 'center',
+                alignItems: 'flex-end',
                 flexShrink: 0,
                 gap: '12px',
               }}
             >
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', minHeight: 0 }}>
+              <div
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minHeight: 0,
+                  width: `${KNOB_SIZE_SECONDARY}px`,
+                }}
+              >
                 <BlockMeter meterId={meterId.blockOut(blockId)} length={RAIL_METER_HEIGHT} />
               </div>
               <div
@@ -715,15 +775,30 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                 }}
               >
                 {isNam && showNormalizeControl && (
-                  <ChromeIconButton
-                    tone="armed"
-                    on={normalizeOn}
-                    help={HELP.blockNormalize}
-                    onClick={handleToggleNormalize}
-                    offsetY={NORMALIZE_BUTTON_OFFSET}
+                  /* The wrapper carries the vertical nudge and the overridden
+                     hint: a disabled button swallows hover (no mouseover ever
+                     fires), so pointer-events pass through it to this span
+                     and the hint delegation resolves here instead. */
+                  <span
+                    {...helpProps(
+                      normalizeOverridden ? HELP.blockNormalizeOverridden : HELP.blockNormalize
+                    )}
+                    style={{
+                      display: 'inline-flex',
+                      transform: `translateY(${NORMALIZE_BUTTON_OFFSET}px)`,
+                    }}
                   >
-                    <Equal size={ICON_SIZE} />
-                  </ChromeIconButton>
+                    <ChromeIconButton
+                      tone="outline"
+                      on={normalizeOn}
+                      help={HELP.blockNormalize}
+                      onClick={handleToggleNormalize}
+                      disabled={normalizeOverridden}
+                      style={normalizeOverridden ? { pointerEvents: 'none' } : undefined}
+                    >
+                      <Equal size={ICON_SIZE} />
+                    </ChromeIconButton>
+                  </span>
                 )}
                 <KnobControl
                   label="Out"

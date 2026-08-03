@@ -1,5 +1,6 @@
 #include "Processor.h"
 #include <algorithm>
+#include <cmath>
 
 // ####################
 // CHAIN MANAGEMENT
@@ -857,6 +858,19 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
       // Long (reverb-like) IR — drives the UI's Mix knob default/Alt-click
       // reset and the Out knob help (long IRs carry no −18 dB pad).
       item->setProperty("irLong", block->type == ChainBlockType::IR && block->irIsLong);
+
+      // NAM calibration metadata off the loaded engine, absent when the model
+      // carries none (or nothing is loaded yet). Drives the block card's
+      // calibration indicator and the normalize control's overridden state.
+      // Non-finite values never ship — the JSON bridge can't carry them (and
+      // the DSP rejects them too).
+      if (block->type == ChainBlockType::NAM && block->namEngine != nullptr) {
+        if (block->namEngine->hasInputLevel() && std::isfinite(block->namEngine->getInputLevel()))
+          item->setProperty("inputLevelDbu", block->namEngine->getInputLevel());
+        if (block->namEngine->hasOutputLevel() &&
+            std::isfinite(block->namEngine->getOutputLevel()))
+          item->setProperty("outputLevelDbu", block->namEngine->getOutputLevel());
+      }
 
       // User-editable params, grouped so a future "shareable chain preset" can
       // serialize { tone ref, activeModelId, params } per block verbatim.

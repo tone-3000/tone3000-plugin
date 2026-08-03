@@ -328,6 +328,23 @@ export const ChainView: React.FC<ChainViewProps> = ({
       : null;
 
   if (detailBlock) {
+    // Another enabled+loaded NAM after this block in its lane — mirrors the
+    // DSP's lastNamIndex scan (Processor.cpp): with calibration on, such a
+    // block hands off at calibrated output level instead of normalizing.
+    const detailLane = chain.some((item) => item.blockId === detailBlock.blockId)
+      ? chain
+      : (chainRight ?? []);
+    const detailIndex = detailLane.findIndex((item) => item.blockId === detailBlock.blockId);
+    const namDownstream = detailLane
+      .slice(detailIndex + 1)
+      .some(
+        (item): item is ToneBlock =>
+          !isInsertSlot(item) &&
+          item.tone.format?.toLowerCase() === 'nam' &&
+          item.loaded &&
+          item.params.enabled
+      );
+
     return (
       <div
         style={{
@@ -344,6 +361,7 @@ export const ChainView: React.FC<ChainViewProps> = ({
       >
         <ChainBlock
           block={detailBlock}
+          namDownstream={namDownstream}
           sampleRate={sampleRate}
           onBack={() => setDetailBlockId(null)}
         />
