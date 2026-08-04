@@ -361,6 +361,28 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
       // message queue synchronously, so the engine (FFT segmentation and
       // all) is fully built right here on the loader thread — the block can
       // never go live with its IR still initialising in the background.
+      //
+      // "Fully built" is not "fully installed", though: juce::dsp::Convolution
+      // runs its own loader thread, and when that thread wins the race for
+      // the pending-engine slot, prepare() finds it empty and the engine is
+      // instead installed lazily on the *first process() call* — behind a
+      // ~50 ms internal crossfade from dry (CrossoverMixer). Live, that dry
+      // half-window is the un-cabbed signal bleeding through right as the
+      // block's own fade-in ends. So after prepare(), run silence through
+      // the convolver until that window has provably elapsed: the install
+      // and its crossfade happen here on the loader thread, and the engine
+      // goes live deterministically full-wet with silent state.
+      auto elapseConvolverInstallFade = [&spec](juce::dsp::Convolution& convolver) {
+        const int chunk = static_cast<int>(spec.maximumBlockSize);
+        juce::AudioBuffer<float> silence(static_cast<int>(spec.numChannels), chunk);
+        silence.clear();
+        // 3× JUCE's 0.05 s install fade — margin over exactness, it's cheap.
+        const int warmupSamples = static_cast<int>(kChainBaseSampleRate * 0.15);
+        for (int done = 0; done < warmupSamples; done += chunk) {
+          juce::dsp::AudioBlock<float> blockRef(silence);
+          convolver.process(juce::dsp::ProcessContextReplacing<float>(blockRef));
+        }
+      };
 
       // Mono fallback convolver: IR channel 0 applied to every audio channel.
       auto convolverMono = makeConvolver();
@@ -368,6 +390,7 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
                                          juce::dsp::Convolution::Trim::yes, maxIrFileSamples,
                                          juce::dsp::Convolution::Normalise::no);
       convolverMono->prepare(spec);
+      elapseConvolverInstallFade(*convolverMono);
       out.convolverMono = std::move(convolverMono);
 
       // True-stereo convolver: only meaningful when the file actually has 2 channels.
@@ -377,6 +400,7 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
                                              juce::dsp::Convolution::Trim::yes, maxIrFileSamples,
                                              juce::dsp::Convolution::Normalise::no);
         convolverStereo->prepare(spec);
+        elapseConvolverInstallFade(*convolverStereo);
         out.convolverStereo = std::move(convolverStereo);
       }
 
@@ -412,7 +436,7 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
   return out;
 }
 
-void TONE3000Processor::requestSwapFadeAndWait(const std::string& blockId) {
+void TONE3000Processor::requestSwapFadeAndWait(const std::string& blockId, bool muteWetOnly) {
   // No callbacks running → nothing audible; the change can apply directly
   // (and a click gesture on the message thread shouldn't stall on the
   // timeout below).
@@ -430,6 +454,7 @@ void TONE3000Processor::requestSwapFadeAndWait(const std::string& blockId) {
                          (block->namEngine != nullptr || block->convolverMono != nullptr);
     if (!audible)
       return;
+    block->swapMuteWet.store(muteWetOnly);
     block->swapFadeDone.store(false);
     block->swapFadePending.store(true);
   }
@@ -465,6 +490,102 @@ void TONE3000Processor::requestChainEditFadeAndWait() {
   }
 }
 
+void TONE3000Processor::releaseChainEditFadeWhenLoadsSettle() {
+  // The deadline is a *stall* detector, not a total budget: every completed
+  // load pushes it out again (see the job below), so a heavy preset that
+  // rebuilds many engines holds the mute as long as loads keep landing. Only
+  // when nothing has finished for this long (wedged network fetch, starved
+  // pool) does the chain glide back in early — any block still loading then
+  // passes through until it lands, its own splice-in fade covering the entry.
+  constexpr juce::uint32 kStallMs = 2000;
+  chainEditFadeHoldDeadlineMs.store(juce::Time::getMillisecondCounter() + kStallMs);
+
+  // Arm the mute even when requestChainEditFadeAndWait skipped it (audio
+  // idle): if callbacks resume mid-reload the chain comes up muted instead
+  // of blasting dry input, and the waiter below bounds the hold either way.
+  chainEditFadeDone.store(false);
+  chainEditFadePending.store(true);
+
+  // Generation captured *after* the restore queued its loads (and after the
+  // ChainEditFade ctor bumped it): a newer fade session invalidates this
+  // waiter, whoever owns that session then owns the release.
+  const int generation = chainEditFadeHoldGeneration.load();
+
+  // Whether this restore queued any loads is decided here, synchronously —
+  // a fast cached load could land before the job's first scan, and its
+  // splice-in entry still needs the grace period below.
+  bool loadsQueued = false;
+  {
+    juce::ScopedLock lock(chainMutex);
+    for (const auto& l : lanes)
+      for (const auto& b : l)
+        if (b->modelLoading)
+          loadsQueued = true;
+  }
+
+  struct ReleaseJob : public juce::ThreadPoolJob {
+    TONE3000Processor& processor;
+    const int generation;
+    const bool loadsQueued;
+
+    ReleaseJob(TONE3000Processor& p, int gen, bool loads)
+        : ThreadPoolJob("Chain Edit Fade Release"), processor(p), generation(gen),
+          loadsQueued(loads) {}
+
+    JobStatus runJob() override {
+      constexpr juce::uint32 kStallMs = 2000;
+      int lastLoadingCount = std::numeric_limits<int>::max();
+      for (;;) {
+        if (shouldExit())
+          return jobHasFinished;  // pool teardown — audio is gone anyway
+        {
+          // Decision under chainMutex: restores queue loads and flip
+          // modelLoading under this lock, so the scan can't interleave a
+          // half-applied restore.
+          juce::ScopedLock lock(processor.chainMutex);
+          if (processor.chainEditFadeHoldGeneration.load() != generation)
+            return jobHasFinished;  // a newer fade session owns the release
+
+          int loadingCount = 0;
+          for (const auto& l : processor.lanes)
+            for (const auto& b : l)
+              if (b->modelLoading)
+                ++loadingCount;
+
+          // Progress restarts the stall clock: each landed load buys the
+          // remaining ones another window, so the hold scales with the
+          // preset instead of cutting off mid-rebuild.
+          if (loadingCount < lastLoadingCount && loadingCount > 0)
+            processor.chainEditFadeHoldDeadlineMs.store(juce::Time::getMillisecondCounter() +
+                                                        kStallMs);
+          lastLoadingCount = loadingCount;
+
+          if (loadingCount == 0 || juce::Time::getMillisecondCounter() >=
+                                       processor.chainEditFadeHoldDeadlineMs.load())
+            break;
+        }
+        juce::Thread::sleep(20);
+      }
+
+      // A freshly applied block enters through its own ~25 ms splice-in fade
+      // *from dry* (wetFadeGain — the continuity-preserving entry for live
+      // loads). Let that finish under the mute, or a partial-dry sliver of
+      // the last block's entry overlaps the glide-in. Skipped when this
+      // restore queued nothing — a settings-only restore releases
+      // immediately.
+      if (loadsQueued)
+        juce::Thread::sleep(60);
+
+      juce::ScopedLock lock(processor.chainMutex);
+      if (processor.chainEditFadeHoldGeneration.load() == generation)
+        processor.chainEditFadePending.store(false);
+      return jobHasFinished;
+    }
+  };
+
+  loadingThreadPool.addJob(new ReleaseJob(*this, generation, loadsQueued), true);
+}
+
 void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainBlockType newType,
                                                        PreparedBlockModel& prepared) {
   // Loaded state is part of what getChainState reports, so any outcome here
@@ -473,10 +594,13 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
 
   // Whatever the outcome, this load attempt is over. Clearing the fade flag
   // lets the audio thread ramp the wet mix back up when there is something
-  // to hear.
+  // to hear. Remember the fade's shape first — it decides how the new
+  // engine fades in below.
+  const bool muteWetSwap = block.swapFadePending.load() && block.swapMuteWet.load();
   block.modelLoading = false;
   block.swapFadePending.store(false);
   block.swapFadeDone.store(false);
+  block.swapMuteWet.store(false);
 
   if (!prepared.success) {
     // Corrupt/unreadable model — surface the retry UI. The UI already shows
@@ -608,10 +732,23 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
   block.mixSmoother.reset(chainSampleRate(), 0.05f);
   block.mixSmoother.setCurrentAndTargetValue(block.mixNormalized);
 
-  // Splice-in fade: the new engine enters from bypass instead of jumping in
-  // mid-waveform (the outgoing one faded to bypass before the swap — see
-  // requestSwapFadeAndWait).
-  block.wetFadeGain.reset(chainSampleRate(), kWetFadeSeconds);
-  block.wetFadeGain.setCurrentAndTargetValue(0.0f);
+  // Splice-in fade: the new engine enters from silence instead of jumping
+  // in mid-waveform, mirroring how the outgoing one left (see
+  // requestSwapFadeAndWait / ChainBlock.h). A wet-mute swap fades back
+  // through the wet-only mute gain — the dry share of the user's mix held
+  // steady the whole time, so the un-processed input is never exposed. A
+  // bypass-shaped entry (fresh block, or the fade never engaged) crossfades
+  // in from dry via wetFadeGain, exactly as before.
+  block.swapWetMuteGain.reset(chainSampleRate(), kWetFadeSeconds);
+  if (muteWetSwap) {
+    // wetFadeGain stayed at 1 through the whole swap (the audio thread owns
+    // it and it wasn't part of this fade) — leave it alone so a concurrent
+    // power-off glide keeps its course.
+    block.swapWetMuteGain.setCurrentAndTargetValue(0.0f);
+  } else {
+    block.swapWetMuteGain.setCurrentAndTargetValue(1.0f);
+    block.wetFadeGain.reset(chainSampleRate(), kWetFadeSeconds);
+    block.wetFadeGain.setCurrentAndTargetValue(0.0f);
+  }
 }
 

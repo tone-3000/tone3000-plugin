@@ -96,20 +96,37 @@ struct ChainBlock {
   bool applyDefaultMixOnLoad{false};
 
   // ── Click-free wet-path fade (audio thread) + swap handshake ──
-  // `wetFadeGain` multiplies the block's wet mix and is the single smoothing
-  // path for every discontinuous block transition: the audio thread targets
+  // `wetFadeGain` multiplies the block's wet mix and is the smoothing path
+  // for every transition whose end state is bypass: the audio thread targets
   // it at 1 while the block wants to be heard (`enabled` and no swap
-  // pending) and 0 otherwise, so power toggles glide through bypass, new
-  // engines fade in from bypass, and removals fade out before detaching.
+  // pending) and 0 otherwise, so power toggles glide through bypass, fresh
+  // blocks fade in from bypass, and removals fade out before detaching.
   //
   // The handshake: another thread raises `swapFadePending` (engine swap,
-  // failure drop, removal), the audio thread fades to bypass and raises
-  // `swapFadeDone` once silent, and the requester then applies its change
-  // under the chain lock (see requestSwapFadeAndWait — bounded wait; when no
+  // failure drop, removal), the audio thread fades to silence and raises
+  // `swapFadeDone`, and the requester then applies its change under the
+  // chain lock (see requestSwapFadeAndWait — bounded wait; when no
   // callbacks are running the change applies directly, nothing is audible).
+  //
+  // Two fade shapes, picked by `swapMuteWet`:
+  //  - false (bypass fade): wetFadeGain rides the mix, so the output
+  //    crossfades toward the block's dry input. Right for transitions that
+  //    END at bypass (power off, removal, failure drop, fresh-block
+  //    fade-in — dry is what plays afterwards anyway).
+  //  - true (wet mute): engine swaps end back at wet, and their dry input
+  //    was never audible — at 100% mix crossfading through it blasts ~50 ms
+  //    of the un-cabbed/un-ampped signal (a raw amp head into no cab is a
+  //    loud bright burst). Instead `swapWetMuteGain` mutes just the wet
+  //    term while the dry share of the user's mix holds steady: the old
+  //    engine dips to silence, engines swap, the new one fades in from
+  //    silence. wetFadeGain stays at 1 throughout.
+  // Both gains are plain multipliers in the mix loop, so the shapes compose
+  // (a power toggle mid-swap still glides to bypass through wetFadeGain).
   std::atomic<bool> swapFadePending{false};
   std::atomic<bool> swapFadeDone{false};
+  std::atomic<bool> swapMuteWet{false};
   juce::LinearSmoothedValue<float> wetFadeGain;
+  juce::LinearSmoothedValue<float> swapWetMuteGain{1.0f};
 
   // Set by the audio thread when NAM processing throws (the block is disabled
   // in the same breath). The message thread drains it in getChainState and

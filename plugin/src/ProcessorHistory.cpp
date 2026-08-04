@@ -157,8 +157,16 @@ void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState
         const int modelId = cachedModel.getProperty("modelId");
         if (block->modelCache.find(modelId) != block->modelCache.end())
           continue;
+        const juce::var dataVar = cachedModel.getProperty("data");
+        if (const auto* raw = dataVar.getBinaryData()) {
+          // Current format: raw bytes straight out of the binary stream.
+          const auto* bytes = static_cast<const uint8_t*>(raw->getData());
+          block->modelCache[modelId].assign(bytes, bytes + raw->getSize());
+          continue;
+        }
+        // Legacy XML states/presets carried the bytes as Base64 text.
         juce::MemoryOutputStream decoded;
-        if (juce::Base64::convertFromBase64(decoded, cachedModel.getProperty("data").toString())) {
+        if (juce::Base64::convertFromBase64(decoded, dataVar.toString())) {
           const auto* bytes = static_cast<const uint8_t*>(decoded.getData());
           block->modelCache[modelId].assign(bytes, bytes + decoded.getDataSize());
         } else {
@@ -260,6 +268,12 @@ bool TONE3000Processor::undoChain() {
     retired = restoreChainSnapshot(chainHistory.undo(captureChainSnapshot()));
   }
   DBG("Chain undo applied");
+
+  // The restore may have queued background reloads (undone model/tone
+  // changes) — hold the mute until they land (bounded), not just through
+  // the splice, or the dry input plays while the engines rebuild. A
+  // settings-only undo has nothing loading and releases immediately.
+  editFade.releaseWhenChainLoadsSettle();
   return true;
 }
 
@@ -281,5 +295,8 @@ bool TONE3000Processor::redoChain() {
     retired = restoreChainSnapshot(chainHistory.redo(captureChainSnapshot()));
   }
   DBG("Chain redo applied");
+
+  // See undoChain: hold the mute through any queued reloads.
+  editFade.releaseWhenChainLoadsSettle();
   return true;
 }

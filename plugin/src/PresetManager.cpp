@@ -1,11 +1,16 @@
 #include "PresetManager.h"
 #include <algorithm>
+#include <cstring>
 #include <limits>
 
 namespace {
 
 constexpr const char* kUserPrefix = "user:";
 constexpr const char* kFactoryPrefix = "factory:";
+
+// Magic prefix for the binary ValueTree preset format. Older presets are
+// XML (with Base64 model bytes) and are still read transparently.
+constexpr char kPresetMagic[] = {'T', '3', 'K', 'B'};
 
 juce::File presetsRootDir() {
   juce::File base = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory);
@@ -23,18 +28,39 @@ PresetManager::PresetManager()
 juce::ValueTree PresetManager::readPresetFile(const juce::File& file) {
   if (!file.existsAsFile())
     return {};
-  std::unique_ptr<juce::XmlElement> xml(juce::XmlDocument::parse(file));
-  if (xml == nullptr)
-    return {};
-  juce::ValueTree tree = juce::ValueTree::fromXml(*xml);
+
+  juce::ValueTree tree;
+  {
+    juce::FileInputStream in(file);
+    char magic[sizeof(kPresetMagic)]{};
+    if (in.openedOk() && in.read(magic, sizeof(magic)) == static_cast<int>(sizeof(magic)) &&
+        std::memcmp(magic, kPresetMagic, sizeof(magic)) == 0)
+      tree = juce::ValueTree::readFromStream(in);
+  }
+  if (!tree.isValid()) {
+    // Legacy presets: XML with Base64 model bytes.
+    std::unique_ptr<juce::XmlElement> xml(juce::XmlDocument::parse(file));
+    if (xml == nullptr)
+      return {};
+    tree = juce::ValueTree::fromXml(*xml);
+  }
   return tree.hasType(kPresetTag) ? tree : juce::ValueTree();
 }
 
 bool PresetManager::writePresetFile(const juce::File& file, const juce::ValueTree& preset) {
-  std::unique_ptr<juce::XmlElement> xml(preset.createXml());
-  if (xml == nullptr)
-    return false;
-  return xml->writeTo(file);
+  // Write-then-rename so a crash or full disk mid-write can't clobber an
+  // existing preset (the XML writer used to provide this via writeTo).
+  juce::TemporaryFile temp(file);
+  {
+    juce::FileOutputStream out(temp.getFile());
+    if (!out.openedOk())
+      return false;
+    out.write(kPresetMagic, sizeof(kPresetMagic));
+    preset.writeToStream(out);
+    if (out.getStatus().failed())
+      return false;
+  }
+  return temp.overwriteTargetFileWithTemporary();
 }
 
 juce::File PresetManager::fileForId(const juce::String& id) const {

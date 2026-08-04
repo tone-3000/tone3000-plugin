@@ -23,6 +23,7 @@ target_sources(DspTests PRIVATE
     src/multicore_tests.cpp
     src/processor_tests.cpp
     src/spread_tests.cpp
+    src/swap_fade_tests.cpp
     # Compiled straight from the plugin tree — the tests exercise the real
     # processor, not a copy. GUI sources are excluded; HEADLESS=1 below
     # compiles the processor exactly like the headless plugin build.

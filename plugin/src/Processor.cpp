@@ -24,7 +24,10 @@ TONE3000Processor::TONE3000Processor()
       bassFilter(juce::dsp::IIR::Coefficients<float>::makeLowShelf(48000, 100.0f, 1.0f, 1.0f)),
       midFilter(juce::dsp::IIR::Coefficients<float>::makePeakFilter(48000, 1000.0f, 1.0f, 1.0f)),
       trebleFilter(juce::dsp::IIR::Coefficients<float>::makeHighShelf(48000, 4000.0f, 1.0f, 1.0f)),
-      loadingThreadPool(2) {  // 2 threads for background loading
+      // 2 threads for background loading, +1 so a chain-edit-fade release
+      // waiter (releaseChainEditFadeWhenLoadsSettle) never serializes the
+      // very loads it is waiting on.
+      loadingThreadPool(3) {
   // Attach the file logger first thing: state restore (and the background
   // model loads it queues) runs before prepareToPlay, and its diagnostics
   // used to vanish because the logger didn't exist yet.
@@ -391,6 +394,8 @@ void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& b
     block->namNormalizationSmoother.setCurrentAndTargetValue(1.0f);
     block->wetFadeGain.reset(chainRate, kWetFadeSeconds);
     block->wetFadeGain.setCurrentAndTargetValue(block->enabled ? 1.0f : 0.0f);
+    block->swapWetMuteGain.reset(chainRate, kWetFadeSeconds);
+    block->swapWetMuteGain.setCurrentAndTargetValue(1.0f);
 
     // Per-block EQ + spectrum analyzer need the sample rate for their math.
     block->eq.prepare(chainRate);
@@ -829,11 +834,17 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
     }
 
     // Wet-path fade (see ChainBlock.h): power toggles and pending engine
-    // swaps glide the block's wet mix to/from bypass instead of splicing the
-    // waveform. A disabled block keeps processing until the glide reaches
+    // swaps glide the block's wet mix to silence instead of splicing the
+    // waveform. Bypass-bound transitions ride wetFadeGain (output crossfades
+    // toward dry); engine swaps ride swapWetMuteGain (wet term mutes, the
+    // dry share of the user's mix holds — never exposes the un-processed
+    // input). A disabled block keeps processing until the glide reaches
     // bypass, then is skipped exactly like before.
-    const bool wantsWet = block->enabled && !block->swapFadePending.load();
+    const bool swapPending = block->swapFadePending.load();
+    const bool muteSwap = swapPending && block->swapMuteWet.load();
+    const bool wantsWet = block->enabled && !(swapPending && !muteSwap);
     block->wetFadeGain.setTargetValue(block->loaded && wantsWet ? 1.0f : 0.0f);
+    block->swapWetMuteGain.setTargetValue(muteSwap ? 0.0f : 1.0f);
     const bool wetSilent =
         !block->wetFadeGain.isSmoothing() && block->wetFadeGain.getCurrentValue() <= 0.001f;
     if (wetSilent)
@@ -1054,9 +1065,12 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
 
     float blockOutputPeak = 0.0f;
     for (int i = 0; i < numSamples; ++i) {
-      const float g = block->outputGainSmoother.getNextValue();
-      // wetFadeGain rides the mix so every block transition (swap, power
-      // toggle, add/remove) glides through bypass — see ChainBlock.h.
+      // wetFadeGain rides the mix (bypass-bound glides crossfade toward
+      // dry); swapWetMuteGain rides the wet term only (engine swaps dip the
+      // wet path to silence without exposing the dry input) — see
+      // ChainBlock.h.
+      const float g = block->outputGainSmoother.getNextValue() *
+                      block->swapWetMuteGain.getNextValue();
       const float m = block->mixSmoother.getNextValue() * block->wetFadeGain.getNextValue();
       float wetL = buffer.getWritePointer(0)[i] * g;
       float dryL = dryScratch.getReadPointer(0)[i];
@@ -1071,10 +1085,14 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
     }
 
     // Fade handshake: tell a waiting requester the wet path is fully
-    // bypassed and its change (swap/removal) can splice in silently.
-    if (block->swapFadePending.load() && !block->wetFadeGain.isSmoothing() &&
-        block->wetFadeGain.getCurrentValue() <= 0.001f)
-      block->swapFadeDone.store(true);
+    // silent and its change (swap/removal) can splice in silently. Which
+    // gain carried the fade depends on the swap's shape (see ChainBlock.h).
+    {
+      const auto& fadeGain = muteSwap ? block->swapWetMuteGain : block->wetFadeGain;
+      if (block->swapFadePending.load() && !fadeGain.isSmoothing() &&
+          fadeGain.getCurrentValue() <= 0.001f)
+        block->swapFadeDone.store(true);
+    }
 
     // EQ in the POST position (default): the last stage of the block, applied
     // after gain + mix so it shapes exactly what leaves the block. Skipped
@@ -1318,9 +1336,19 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // ####################
   // MODULAR CHAIN PROCESSING (chain domain — 48 kHz × OS factor, see ChainDomain.h)
   // ####################
-  {
-    juce::ScopedLock lock(chainMutex);
-
+  // Runs under chainMutex — but the render thread must never *block* behind a
+  // long splice. Preset/undo restores hold chainMutex on the message thread
+  // while they decode megabytes of embedded model bytes; a blocking lock here
+  // stalls the CoreAudio render thread for 100+ ms, which overloads the
+  // driver and can restart the device (observed in the field: repeated
+  // prepareToPlay/releaseResources cycles and a fallback to the OS default
+  // device right after heavy preset loads). So: try the lock first. If it's
+  // contended while the chain-edit fade has fully landed (pending && done ⇒
+  // the tap below outputs silence no matter what the chain produces), skip
+  // the stage wait-free — inaudible, and the splice can take as long as it
+  // needs. Contention outside a landed fade is ordinary and brief (UI state
+  // pulls, engine installs), so fall back to the blocking lock as before.
+  const auto runChainStage = [&] {
     rtStereoChains = stereoEnabled.load() && numChannels >= 2;
     rtChainChannels = juce::jmin(numChannels, 2);
 
@@ -1363,27 +1391,20 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
       else
         processOversampledChainStage(channels, channels, sliceLen);
     }
-  }
+  };
 
-  // ##########
-  // Chain-edit fade (see ChainEditFade): structural edits that can't be
-  // expressed as one block's wet fade (reorder, cross-lane move) glide the
-  // whole chain output to silence, splice the edit in between callbacks,
-  // and glide back. Idle cost: one atomic load + one branch.
-  // ##########
   {
-    const bool editPending = chainEditFadePending.load();
-    chainEditFadeGain.setTargetValue(editPending ? 0.0f : 1.0f);
-    if (chainEditFadeGain.isSmoothing()) {
-      for (int i = 0; i < numSamples; ++i) {
-        const float g = chainEditFadeGain.getNextValue();
-        for (int ch = 0; ch < numChannels; ++ch)
-          buffer.getWritePointer(ch)[i] *= g;
-      }
-    } else if (editPending && chainEditFadeGain.getCurrentValue() <= 0.001f) {
-      // Fully faded: hold silence until the editor thread finishes its splice.
+    juce::ScopedTryLock tryLock(chainMutex);
+    if (tryLock.isLocked()) {
+      runChainStage();
+    } else if (chainEditFadePending.load() && chainEditFadeDone.load()) {
+      // A splice owns the lock and the output is held at silence: hand the
+      // downstream stages a cleared buffer instead of raw input (the tap
+      // would zero it anyway, but the DC blocker sits before the tap).
       buffer.clear();
-      chainEditFadeDone.store(true);
+    } else {
+      juce::ScopedLock lock(chainMutex);
+      runChainStage();
     }
   }
 
@@ -1488,6 +1509,40 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     juce::dsp::AudioBlock<float> block(buffer);
     juce::dsp::ProcessContextReplacing<float> context(block);
     dcBlocker.process(context);
+  }
+
+  // ##########
+  // Chain-edit fade (see ChainEditFade): structural edits that can't be
+  // expressed as one block's wet fade (reorder, cross-lane move, preset /
+  // undo restores) glide the whole chain output to silence, splice the edit
+  // in between callbacks, and glide back. Idle cost: one atomic load + one
+  // branch.
+  //
+  // The tap deliberately sits AFTER the image stage and DC blocker:
+  //  - Image stage: its hard stops on mode switches (forceIdle) land
+  //    upstream of this gain, so they still splice into silence.
+  //  - DC blocker: NAM models can idle at a DC offset, and a restored rig's
+  //    blocks fade in while the chain is held muted. With the tap upstream
+  //    of the blocker, the blocker would settle to zero state during the
+  //    hold and the new rig's DC would step through it at release — an
+  //    audible thump on every preset/undo switch. Downstream of the
+  //    blocker, the blocker tracks the live chain (including its DC)
+  //    throughout the hold, so release ramps in an already-centered signal.
+  // ##########
+  {
+    const bool editPending = chainEditFadePending.load();
+    chainEditFadeGain.setTargetValue(editPending ? 0.0f : 1.0f);
+    if (chainEditFadeGain.isSmoothing()) {
+      for (int i = 0; i < numSamples; ++i) {
+        const float g = chainEditFadeGain.getNextValue();
+        for (int ch = 0; ch < numChannels; ++ch)
+          buffer.getWritePointer(ch)[i] *= g;
+      }
+    } else if (editPending && chainEditFadeGain.getCurrentValue() <= 0.001f) {
+      // Fully faded: hold silence until the editor thread finishes its splice.
+      buffer.clear();
+      chainEditFadeDone.store(true);
+    }
   }
 
   // ##########

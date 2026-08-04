@@ -658,9 +658,11 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, int fir
   const bool applied = prepared.success;
 
   // A swapped tone's previous engine may still be audibly processing — let
-  // the audio thread fade it to bypass before the outcome is applied (new
-  // engine spliced in, or the block dropped from processing on failure).
-  requestSwapFadeAndWait(blockId);
+  // the audio thread fade it out before the outcome is applied. On success
+  // the wet path mutes in place (the dry input is never exposed — see
+  // ChainBlock.h); on failure the block is dropped from processing, so it
+  // glides to bypass, which is what plays afterwards.
+  requestSwapFadeAndWait(blockId, prepared.success);
 
   {
     juce::ScopedLock lock(chainMutex);
@@ -745,10 +747,13 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
       prepareBlockModelOffThread(blockTypeForPrepare, modelData, filename);
   const bool applied = prepared.success;
 
-  // The outgoing model keeps processing until this moment — fade it to
-  // bypass on the audio thread so the outcome (engine swap, or dropping the
-  // block on a failed prepare) can't click.
-  requestSwapFadeAndWait(blockId);
+  // The outgoing model keeps processing until this moment — fade it out on
+  // the audio thread so the outcome can't click. On success the wet path
+  // mutes in place (an engine swap must never expose the block's dry input
+  // — at 100% mix that's a burst of the un-cabbed/un-ampped signal, see
+  // ChainBlock.h); on a failed prepare the block is dropped, so it glides
+  // to bypass instead.
+  requestSwapFadeAndWait(blockId, prepared.success);
 
   {
     juce::ScopedLock lock(chainMutex);

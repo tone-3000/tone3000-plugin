@@ -127,6 +127,11 @@ bool TONE3000Processor::loadPreset(const juce::String& presetId) {
   }
 
   juce::Logger::writeToLog("[Presets] Loaded preset: " + activePresetName);
+
+  // The restore queued every block's engine build on the background loader —
+  // hold the mute until they land (bounded), else the chain fades back in on
+  // unloaded pass-through blocks and blasts the raw dry input.
+  editFade.releaseWhenChainLoadsSettle();
   return true;
 }
 

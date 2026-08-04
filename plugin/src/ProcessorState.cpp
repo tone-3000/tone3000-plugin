@@ -1,5 +1,7 @@
 #include "Processor.h"
 
+#include <cstring>
+
 // #############################
 // STATE PERSISTENCE
 // #############################
@@ -13,6 +15,9 @@ namespace {
 
 constexpr auto kNamFullSizeKey = "namFullSize";
 constexpr auto kMultiCoreKey = "multiCoreStereo";
+
+// Magic prefix for the binary ValueTree state format (see getStateInformation).
+constexpr char kStateMagic[] = {'T', '3', 'K', 'B'};
 
 juce::PropertiesFile::Options userSettingsOptions() {
   juce::PropertiesFile::Options options;
@@ -134,8 +139,13 @@ void TONE3000Processor::serializeChainToTree(
         juce::ValueTree cachedModel("CachedModel");
         cachedModel.setProperty("modelId", modelId, nullptr);
 
-        juce::String base64Data = juce::Base64::toBase64(modelData.data(), modelData.size());
-        cachedModel.setProperty("data", base64Data, nullptr);
+        // Raw bytes in a binary var: the ValueTree binary stream (state and
+        // preset files) writes these verbatim — a plain memcpy instead of the
+        // Base64 encode the old XML format forced, which mattered because
+        // this can run with chainMutex held (~8 MB per heavy rig). The read
+        // side still accepts legacy Base64 strings.
+        cachedModel.setProperty(
+            "data", juce::var(juce::MemoryBlock(modelData.data(), modelData.size())), nullptr);
 
         cacheState.appendChild(cachedModel, nullptr);
       }
@@ -186,24 +196,33 @@ void TONE3000Processor::getStateInformation(juce::MemoryBlock& destData) {
     state.appendChild(rightChainState, nullptr);
   }
 
-  std::unique_ptr<juce::XmlElement> xml(state.createXml());
-  if (xml != nullptr) {
-    copyXmlToBinary(*xml, destData);
-    DBG("Plugin state saved successfully");
-  }
+  // Magic-prefixed binary ValueTree stream. The old path (Base64 model bytes
+  // inside XML) turned the ~8 MB embed into an 11 MB text blob and burned
+  // 100+ ms encoding on every host save; the binary stream writes the model
+  // bytes verbatim. setStateInformation still reads the legacy XML format.
+  juce::MemoryOutputStream out(destData, false);
+  out.write(kStateMagic, sizeof(kStateMagic));
+  state.writeToStream(out);
+  DBG("Plugin state saved successfully");
 }
 
 void TONE3000Processor::setStateInformation(const void* data, int sizeInBytes) {
-  std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
-  if (xmlState == nullptr) {
-    juce::Logger::writeToLog("[Restore] Failed to parse plugin state XML (" +
-                             juce::String(sizeInBytes) + " bytes)");
-    return;
+  juce::ValueTree state;
+  if (sizeInBytes > static_cast<int>(sizeof(kStateMagic)) &&
+      std::memcmp(data, kStateMagic, sizeof(kStateMagic)) == 0) {
+    state = juce::ValueTree::readFromData(
+        static_cast<const char*>(data) + sizeof(kStateMagic),
+        static_cast<size_t>(sizeInBytes) - sizeof(kStateMagic));
+  } else {
+    // Legacy sessions: Base64-in-XML wrapped by copyXmlToBinary.
+    std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
+    if (xmlState != nullptr)
+      state = juce::ValueTree::fromXml(*xmlState);
   }
 
-  juce::ValueTree state = juce::ValueTree::fromXml(*xmlState);
   if (!state.isValid()) {
-    juce::Logger::writeToLog("[Restore] Invalid plugin state ValueTree");
+    juce::Logger::writeToLog("[Restore] Failed to parse plugin state (" +
+                             juce::String(sizeInBytes) + " bytes)");
     return;
   }
 

@@ -373,13 +373,19 @@ private:
   void applyPreparedModelToChainBlock(ChainBlock& block, ChainBlockType newType,
                                       PreparedBlockModel& prepared);
 
-  /** Ask the audio thread to glide `blockId`'s wet mix down to bypass, then
-      wait (bounded) for the fade, so the caller's change (engine swap,
+  /** Ask the audio thread to glide `blockId`'s wet path down to silence,
+      then wait (bounded) for the fade, so the caller's change (engine swap,
       failure drop, block removal) never splices the waveform (audible
-      click). Returns immediately when the block isn't audibly processing or
-      no audio callbacks are running (the change is inaudible then anyway).
+      click). `muteWetOnly` picks the fade shape (see ChainBlock.h): false
+      crossfades the output toward the block's dry input — right when the
+      change ENDS at bypass (removal, failure drop); true mutes just the wet
+      term while the dry share of the user's mix holds — right for engine
+      swaps, whose dry input was never audible (at 100% mix the bypass fade
+      would blast the un-processed signal, e.g. a raw amp head with no cab).
+      Returns immediately when the block isn't audibly processing or no
+      audio callbacks are running (the change is inaudible then anyway).
       Must be called WITHOUT holding chainMutex. */
-  void requestSwapFadeAndWait(const std::string& blockId);
+  void requestSwapFadeAndWait(const std::string& blockId, bool muteWetOnly = false);
 
   /** Same idea for structural edits that can't be expressed as one block's
       wet fade (reorder, cross-lane move): glide the whole chain output to
@@ -388,15 +394,38 @@ private:
       ChainEditFade RAII below. Must be called WITHOUT holding chainMutex. */
   void requestChainEditFadeAndWait();
 
+  /** Deferred release of the chain-edit fade for whole-chain restores
+      (preset load, undo/redo): a restore queues its blocks' engines on the
+      background loader, so releasing the mute at scope exit plays the raw
+      dry input at full level for the whole reload window — the "preset
+      switch pop". This instead keeps the chain muted until no block is
+      `modelLoading` anymore (or a bounded cap expires — a network fetch
+      shouldn't hold the rig silent), then glides back in on the ready rig.
+      Called via ChainEditFade::releaseWhenChainLoadsSettle. */
+  void releaseChainEditFadeWhenLoadsSettle();
+
   /** RAII wrapper for the chain-edit fade: fades the chain output to silence
       on construction, lets it glide back on scope exit (after the mutation,
-      including early-error returns). */
+      including early-error returns). Restores that queue background model
+      loads call releaseWhenChainLoadsSettle() instead, handing the release
+      to a background waiter that holds the mute until the loads land. */
   struct ChainEditFade {
     explicit ChainEditFade(TONE3000Processor& proc) : p(proc) {
+      // Newer fade session: any deferred waiter still in flight stands down
+      // (its generation is stale) — this fade owns the release now.
+      p.chainEditFadeHoldGeneration.fetch_add(1);
       p.requestChainEditFadeAndWait();
     }
-    ~ChainEditFade() { p.chainEditFadePending.store(false); }
+    ~ChainEditFade() {
+      if (!deferred)
+        p.chainEditFadePending.store(false);
+    }
+    void releaseWhenChainLoadsSettle() {
+      deferred = true;
+      p.releaseChainEditFadeWhenLoadsSettle();
+    }
     TONE3000Processor& p;
+    bool deferred{false};
   };
 
   /** True while the audio thread is actively receiving callbacks (updated
@@ -577,6 +606,12 @@ private:
   std::atomic<bool> chainEditFadePending{false};
   std::atomic<bool> chainEditFadeDone{false};
   juce::LinearSmoothedValue<float> chainEditFadeGain;
+  // Deferred-release bookkeeping (releaseChainEditFadeWhenLoadsSettle): the
+  // generation stamps which fade session a background waiter belongs to —
+  // a newer ChainEditFade invalidates in-flight waiters — and the deadline
+  // caps how long a restore may hold the chain muted while models load.
+  std::atomic<int> chainEditFadeHoldGeneration{0};
+  std::atomic<juce::uint32> chainEditFadeHoldDeadlineMs{0};
 
   // Milliseconds timestamp of the last processBlock, for isAudioActive().
   std::atomic<juce::int64> lastAudioCallbackMs{0};
