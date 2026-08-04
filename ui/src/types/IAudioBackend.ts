@@ -15,7 +15,7 @@ export type ParameterValueType = {
 
 export interface IAudioBackend {
   getParameterState<T extends ParameterType>(name: string, type: T): ParameterMap[T];
-  getPluginFunction(name: string): (...args: any[]) => Promise<any>;
+  getPluginFunction(name: string): (...args: unknown[]) => Promise<unknown>;
   /**
    * Subscribe to a native-emitted event (WebBrowserComponent::emitEvent…).
    * Returns an unsubscribe function. Used for push-style updates (e.g.

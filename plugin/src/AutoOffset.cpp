@@ -46,7 +46,7 @@ void AutoOffset::capture(const juce::AudioBuffer<float>& buffer, int numSamples)
   // Signal gate, same policy as auto-balance: blocks whose loudest channel
   // is below the floor don't count. Gated-out blocks splice the capture, but
   // both channels are cut at identical sample indices, so the relative lag
-  // structure survives (only pairs straddling a splice decorrelate — a few
+  // structure survives (only pairs straddling a splice decorrelate, a few
   // samples per splice against a 2 s window).
   double sumL = 0.0, sumR = 0.0;
   for (int i = 0; i < numSamples; ++i) {
@@ -86,11 +86,11 @@ AutoOffset::Result AutoOffset::analyze() {
   const float* r = captureBuffer.getReadPointer(1);
 
   // Circular cross-correlation via FFT: c = IFFT(FFT(L) · conj(FFT(R))),
-  // where c[k] = Σₙ L[n]·R[n−k]. A peak at positive k means L is a delayed
+  // where c[k] = Σₙ L[n]·R[n-k]. A peak at positive k means L is a delayed
   // copy of R (the left chain lags) → delay the right chain → positive ms,
   // matching the StereoOffset sign convention. Zero-padding the FFT past
   // n + maxLag keeps the wrap-around out of the searched window; negative
-  // lags live at indices fftSize − k. One-shot on the message thread, so
+  // lags live at indices fftSize - k. One-shot on the message thread, so
   // allocating here is fine.
   const int fftOrder = static_cast<int>(std::ceil(std::log2(std::max(2, n + maxLag))));
   const int fftSize = 1 << fftOrder;

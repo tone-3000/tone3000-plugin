@@ -130,7 +130,7 @@ export const KnobControl: React.FC<KnobControlProps> = ({
 
     const handlePointerDown = (e: PointerEvent) => {
       // Alt/Option-click: reset to default. The drag still engages beneath,
-      // which is harmless — releasing without moving stays at the default.
+      // which is harmless: releasing without moving stays at the default.
       if (e.altKey && defaultValueRef.current !== undefined) {
         onChangeRef.current(defaultValueRef.current);
       }
@@ -171,8 +171,8 @@ export const KnobControl: React.FC<KnobControlProps> = ({
       dragStateRef.current?.(false);
     };
 
-    // Pointer events (not mouse events) so the drag state — and with it the
-    // value readout and pinned hint — also engages for touch drags, which
+    // Pointer events (not mouse events) so the drag state, and with it the
+    // value readout and pinned hint, also engages for touch drags, which
     // never synthesize mouse events while moving.
     knobElement.addEventListener('selectstart', preventSelection);
     knobElement.addEventListener('dragstart', preventSelection);

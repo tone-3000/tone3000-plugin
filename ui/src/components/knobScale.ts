@@ -11,7 +11,7 @@ export interface KnobScale {
   fromDisplay(display: number): number;
   /** Full readout string, units included (e.g. "-3.2 dB"). */
   format(norm: number): string;
-  /** Text-entry prefill (number only, no unit — easier to retype). */
+  /** Text-entry prefill (number only, no unit, which is easier to retype). */
   editText(norm: number): string;
 }
 
@@ -47,7 +47,7 @@ export const percentScale: KnobScale = makeScale(
 /** Main/per-block gain: normalized 0.5 = unity, full range ±24 dB.
     Note: IR blocks read the same ±24 dB on their Out knob, but the DSP bakes
     in an extra -18 dB (IR files are typically peak-normalized to 0 dBFS, far
-    too hot at unity) — see irOffsetDb in Processor.cpp. The knob deliberately
+    too hot at unity); see irOffsetDb in Processor.cpp. The knob deliberately
     shows relative dB (0 at center) to keep it simple. */
 export const gainDbScale = linearScale(-24, 24, 'dB', 1);
 

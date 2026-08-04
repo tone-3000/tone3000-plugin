@@ -4,7 +4,8 @@
 #include <cassert>
 #include <vector>
 
-// ── Chain oversampler: power-of-two rate raiser around the chain stage ──
+// Chain oversampler: power-of-two rate raiser around the chain stage
+// (design overview in plugin/docs/oversampling.md).
 //
 // Wraps the entire chain stage (see ChainDomain.h) in a ×2/×4/×8 oversampling
 // round trip: interpolate up, run the chain at kChainBaseSampleRate × factor,
@@ -15,7 +16,7 @@
 // Each doubling is one polyphase half-band stage built from cascaded
 // first-order allpass sections (the classic HIIR structure):
 //
-//   H(z) = (a + z⁻¹) / (1 + a z⁻¹)        y[n] = a·x[n] + x[n-1] − a·y[n-1]
+//   H(z) = (a + z⁻¹) / (1 + a z⁻¹)        y[n] = a·x[n] + x[n-1] - a·y[n-1]
 //
 //   upsample:   y[2n] = A(x[n]),  y[2n+1] = B(x[n])
 //   decimate:   y[n]  = ½·(B(x[2n]) + A(x[2n+1]))
@@ -24,7 +25,8 @@
 // is a minimum-phase design: zero reported latency (group delay is a fraction
 // of a sample across the audible band), very cheap (24 mul/adds per branch
 // pair), and >90 dB stopband rejection. The phase warp near the base Nyquist
-// is inaudible — which is why the filter is fixed and not user-selectable.
+// is inaudible, so I keep the filter fixed rather than user-selectable; a
+// quality knob here would change nothing anyone can hear.
 //
 // Coefficients adapted from DLC86/NAM-Oversampler's AudioDSPTools fork (MIT),
 // itself following the HIIR half-band allpass tables.
@@ -35,9 +37,9 @@
 // a partial pair across blocks.
 //
 // Two entry points, one per direction:
-//   process()             base-rate caller, oversampled section inside — the
+//   process()             base-rate caller, oversampled section inside: the
 //                         chain-stage wrapper (up → chainFn → down).
-//   processBaseRateIsland() oversampled caller, base-rate section inside —
+//   processBaseRateIsland() oversampled caller, base-rate section inside:
 //                         per-IR-block islands (down → baseFn → up). IR
 //                         convolution is linear, so running it above the base
 //                         rate buys nothing and costs ~quadratically (kernel
@@ -101,8 +103,8 @@ public:
 
   /** The inverse wrap: decimate an oversampled-rate section down to the base
       rate, run `baseFn(channels, frames / factor)` there, and interpolate the
-      result back — in place on `channels` (numChannels ≤ 2 oversampled-rate
-      pointers, `numFrames` divisible by the factor — guaranteed for chain
+      result back, in place on `channels` (numChannels ≤ 2 oversampled-rate
+      pointers, `numFrames` divisible by the factor; guaranteed for chain
       buffers, see process()). RT-safe after prepare(). */
   template <typename Fn>
   void processBaseRateIsland(float* const* channels, int numChannels, int numFrames, Fn&& baseFn) {

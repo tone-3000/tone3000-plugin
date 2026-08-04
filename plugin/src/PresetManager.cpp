@@ -8,8 +8,7 @@ namespace {
 constexpr const char* kUserPrefix = "user:";
 constexpr const char* kFactoryPrefix = "factory:";
 
-// Magic prefix for the binary ValueTree preset format. Older presets are
-// XML (with Base64 model bytes) and are still read transparently.
+// Magic prefix for the binary ValueTree preset format.
 constexpr char kPresetMagic[] = {'T', '3', 'K', 'B'};
 
 juce::File presetsRootDir() {
@@ -22,28 +21,22 @@ juce::File presetsRootDir() {
 
 }  // namespace
 
-PresetManager::PresetManager()
-    : userDir(presetsRootDir()), factoryDir(presetsRootDir().getChildFile("Factory")) {}
+PresetManager::PresetManager() : PresetManager(presetsRootDir()) {}
+
+PresetManager::PresetManager(const juce::File& baseDir)
+    : userDir(baseDir), factoryDir(baseDir.getChildFile("Factory")) {}
 
 juce::ValueTree PresetManager::readPresetFile(const juce::File& file) {
   if (!file.existsAsFile())
     return {};
 
-  juce::ValueTree tree;
-  {
-    juce::FileInputStream in(file);
-    char magic[sizeof(kPresetMagic)]{};
-    if (in.openedOk() && in.read(magic, sizeof(magic)) == static_cast<int>(sizeof(magic)) &&
-        std::memcmp(magic, kPresetMagic, sizeof(magic)) == 0)
-      tree = juce::ValueTree::readFromStream(in);
-  }
-  if (!tree.isValid()) {
-    // Legacy presets: XML with Base64 model bytes.
-    std::unique_ptr<juce::XmlElement> xml(juce::XmlDocument::parse(file));
-    if (xml == nullptr)
-      return {};
-    tree = juce::ValueTree::fromXml(*xml);
-  }
+  juce::FileInputStream in(file);
+  char magic[sizeof(kPresetMagic)]{};
+  if (!in.openedOk() || in.read(magic, sizeof(magic)) != static_cast<int>(sizeof(magic)) ||
+      std::memcmp(magic, kPresetMagic, sizeof(magic)) != 0)
+    return {};
+
+  juce::ValueTree tree = juce::ValueTree::readFromStream(in);
   return tree.hasType(kPresetTag) ? tree : juce::ValueTree();
 }
 
@@ -101,7 +94,7 @@ std::vector<PresetManager::Info> PresetManager::list() const {
   // Apply the custom order: within each section, ordered ids first (in file
   // order), then everything else. The sort is stable over the name-sorted
   // scan above, so presets missing from the order file (new saves, ids from
-  // another machine) stay alphabetical after the ordered block — and a
+  // another machine) stay alphabetical after the ordered block, and a
   // missing/empty order file leaves the classic ordering untouched.
   const juce::StringArray order = readOrder();
   if (!order.isEmpty()) {
@@ -174,7 +167,7 @@ PresetManager::Info PresetManager::save(const juce::String& name, juce::ValueTre
     return {};
   }
 
-  // Same-name save overwrites that preset (keeps its id) — the update path.
+  // Same-name save overwrites that preset (keeps its id); this is the update path.
   juce::File file;
   for (const Info& existing : list())
     if (!existing.factory && existing.name.compareIgnoreCase(name) == 0)

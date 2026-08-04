@@ -1,21 +1,21 @@
 /**
  * Snapshot of the standalone app's audio device state, produced by the
  * native StandaloneAudioSettings controller (getAudioDeviceState). The UI
- * treats this as read-only truth: every field is post-open readback — a
- * requested rate/buffer is a wish, these values are what the device actually
+ * treats this as read-only truth: every field is post-open readback. A
+ * requested rate/buffer is a wish; these values are what the device actually
  * runs at. Never available in hosted builds (the DAW owns devices).
  */
 export interface AudioDeviceState {
   /** All registered driver types; a driver picker renders only when > 1
-      (macOS has a single CoreAudio type — never show a one-option select). */
+      (macOS has a single CoreAudio type; never show a one-option select). */
   deviceTypes: string[];
   currentType: string;
   /** False only for ASIO-style backends where one driver owns both
-      directions — those render a single device picker. */
+      directions; those render a single device picker. */
   separateIO: boolean;
   inputDevices: string[];
   outputDevices: string[];
-  /** Currently selected device names ('' = no device — a real option). */
+  /** Currently selected device names ('' = no device, a real option). */
   inputDevice: string;
   outputDevice: string;
   /** True when a device is actually open and running. */
@@ -30,11 +30,11 @@ export interface AudioDeviceState {
   sampleRate: number;
   bufferSizes: number[];
   bufferSize: number;
-  /** Vendor control panel exists (ASIO) — buffer/clock may live there. */
+  /** Vendor control panel exists (ASIO); buffer/clock may live there. */
   hasControlPanel: boolean;
   /** Output monitoring (inverse of the standalone holder's input mute). */
   hearYourself: boolean;
-  /** Built-in mic feeding speakers — monitoring would squeal. */
+  /** Built-in mic feeding speakers; monitoring would squeal. */
   feedbackRisk: boolean;
   /** Windows only: an ASIO driver reports devices while another type is
       current (drives the "lower latency available" nudge). */

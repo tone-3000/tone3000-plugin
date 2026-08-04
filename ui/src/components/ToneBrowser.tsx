@@ -30,7 +30,7 @@ import {
  *
  * No longer gated by TONE3000 sign-in: Trending is a public (auth-optional)
  * feed, so it's always browsable. The three session-scoped streams (Recently
- * used / Favorites / Created) still need an account — while signed out they
+ * used / Favorites / Created) still need an account; while signed out they
  * show a sign-in prompt instead of erroring. Resolving a picked tone (models
  * + a download token) always needs a session too, so tapping a Trending card
  * while signed out routes into sign-in instead of a picker request that
@@ -39,7 +39,7 @@ import {
  * Browse button (always the full-catalog Select flow). Every stream carries
  * an optional single gear-type filter via radio-select pills.
  *
- * All queries run client-side against the TONE3000 API — native is only
+ * All queries run client-side against the TONE3000 API; native is only
  * involved for the final load (access token + model download).
  */
 
@@ -56,7 +56,7 @@ const TABS: { id: StreamKind; label: string }[] = [
 const GATED_STREAMS = new Set<StreamKind>(['downloaded', 'favorited', 'created']);
 
 const EMPTY_COPY: Record<StreamKind, string> = {
-  trending: 'No trending tones right now — check back soon.',
+  trending: 'No trending tones right now. Check back soon.',
   downloaded: 'Tones you download on TONE3000 will show up here.',
   favorited: 'Tones you favorite on TONE3000 will show up here.',
   created: 'Tones you upload to TONE3000 will show up here.',
@@ -70,7 +70,7 @@ const PAGE_SIZE = 12;
 /** Remembers the last-viewed stream so the next browse lands on it. */
 const STREAM_STORAGE_KEY = 't3k_browser_stream';
 
-/** Content column — same width as the expanded-block card so the browser
+/** Content column, same width as the expanded-block card so the browser
     frame lines up with BLOCK visually. Header / tabs / grid / filter pills
     are flush to this edge (like ← BLOCK). */
 const COLUMN_MAX_WIDTH = CARD_WIDTH;
@@ -95,7 +95,7 @@ const timeAgo = (iso?: string): string => {
 
 /** Stream header as tabs: white text + underline when active, muted
     otherwise, each sized to its own label (not stretched full-width). Weight
-    stays constant across states — bolding only the active label reflows the
+    stays constant across states: bolding only the active label reflows the
     others and shifts the row every time the tab changes. */
 const StreamTabs: React.FC<{ active: StreamKind; onChange: (s: StreamKind) => void }> = ({
   active,
@@ -131,7 +131,7 @@ const StreamTabs: React.FC<{ active: StreamKind; onChange: (s: StreamKind) => vo
   </div>
 );
 
-/** Taller than the default outline pill (`pillButtonStyle`) — Browse is the
+/** Taller than the default outline pill (`pillButtonStyle`); Browse is the
     single most important action on this screen (the persistent path to the
     full catalog), so it gets a more prominent 40px-tall treatment; the icon
     and mark scale up with it rather than sitting undersized in the extra
@@ -145,7 +145,7 @@ const browseButtonStyle: React.CSSProperties = {
   fontWeight: 400,
 };
 
-/** Outline pill CTA that opens the full-catalog Select flow — the header's
+/** Outline pill CTA that opens the full-catalog Select flow: the header's
     persistent "Browse" affordance, and the exact same component reused as
     Trending's footer for signed-in users (API design guidance: always keep
     a path to the full catalog visible from any partial tone list). */
@@ -191,7 +191,7 @@ const GearFilterPill: React.FC<{
   </button>
 );
 
-/** Row of radio-select gear filters for the current stream — default is no
+/** Row of radio-select gear filters for the current stream; default is no
     filter (every gear type). Edges fade to black under the same gradient
     scrim as the chain gallery's horizontal scroll (`EdgeFade`). The row
     bleeds EDGE_FADE_WIDTH past the column on each side and re-applies that
@@ -270,7 +270,7 @@ const CountStat: React.FC<{ icon: React.ReactNode; value: number }> = ({ icon, v
   </div>
 );
 
-/** The plugin runtime only loads A2 NAM weights — NAM tones without any A2
+/** The plugin runtime only loads A2 NAM weights, so NAM tones without any A2
     model can't be added and render inert. Other formats are always fine. */
 const isToneUnavailable = (tone: Tone): boolean =>
   tone.format?.toLowerCase() === 'nam' && (tone.a2_models_count ?? 0) === 0;
@@ -497,20 +497,20 @@ interface ToneBrowserProps {
   /**
    * True while an OAuth callback is still being resolved (token exchange in
    * flight). The browser is pre-mounted under the busy scrim on the first
-   * render after the redirect — before `client` has tokens — so the stream
+   * render after the redirect (before `client` has tokens), so the stream
    * fetch must wait for this to clear or a gated stream fails with
    * not_authenticated.
    */
   authPending?: boolean;
   /** True once the TONE3000 OAuth session has tokens. Gates the three
-      session-scoped streams (Recently used / Favorites / Created) — Trending
+      session-scoped streams (Recently used / Favorites / Created); Trending
       stays open either way. */
   authenticated: boolean;
   /** Resolve + load a picked tone; the parent closes the browser on success. */
   onPickTone: (toneId: number) => Promise<void>;
   /** Launch the full-catalog Select flow (prompt=select_tone). */
   onBrowseTone3000: () => void;
-  /** Run the no-prompt login flow without leaving the browser — fired from
+  /** Run the no-prompt login flow without leaving the browser; fired from
       any sign-in CTA (a gated stream's prompt, or Trending's discovery
       footer). Never fired from Browse, which always runs Select instead. */
   onSignIn: () => void;
@@ -565,7 +565,7 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
     if (authPending) return;
 
     // Gated stream, signed out: skip the fetch entirely (it would only fail
-    // with not_authenticated and trip the client's re-auth callback) — the
+    // with not_authenticated and trip the client's re-auth callback); the
     // sign-in prompt renders instead.
     if (showSignInPrompt) {
       setResult(null);
@@ -626,7 +626,7 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
     setStream(next);
     localStorage.setItem(STREAM_STORAGE_KEY, next);
     setPage(1);
-    // Each stream starts unfiltered — filters don't carry across tabs.
+    // Each stream starts unfiltered; filters don't carry across tabs.
     setGearFilter(null);
   };
 
@@ -687,7 +687,7 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
       );
     }
 
-    // Content stays mounted while a new stream/page loads — dimmed and
+    // Content stays mounted while a new stream/page loads, dimmed and
     // non-interactive under the busy overlay (web `Tones.tsx` pattern).
     return (
       <div style={{ position: 'relative' }}>
@@ -703,7 +703,7 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
             const unavailable = isToneUnavailable(tone);
             // Trending is viewable while signed out, but resolving a tone
             // (fetching its models + a download token) still needs a
-            // session — route the click through sign-in instead of a picker
+            // session, so route the click through sign-in instead of a picker
             // request that would just fail as not_authenticated.
             const needsSignIn = stream === 'trending' && !authenticated;
             return (
@@ -723,7 +723,7 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
   })();
 
   // Paginated streams keep the paginator at the end of the scrolled page.
-  // Trending is a fixed top-10 feed — never paginated.
+  // Trending is a fixed top-10 feed and is never paginated.
   const showPaginator =
     !showSignInPrompt && !error && result?.totalPages != null && result.totalPages > 1;
   // Trending always closes with a path to the rest of the catalog: signed
@@ -744,7 +744,7 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
       }}
     >
       <div style={{ maxWidth: `${COLUMN_MAX_WIDTH}px`, margin: '0 auto', width: '100%' }}>
-        {/* Header — pinned while the content scrolls beneath it. Matches the
+        {/* Header, pinned while the content scrolls beneath it. Matches the
             expanded block card header (back arrow + hairline rule). The tabs
             live in the pinned area too, so only the pills and results scroll
             underneath. */}
@@ -764,7 +764,7 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
               alignItems: 'flex-start',
               gap: '16px',
               // Top inset comes from Plugin's shared 24px middle-band pad.
-              // No side inset — flush with the 800px column like ← BLOCK.
+              // No side inset; flush with the 800px column like ← BLOCK.
               padding: '0 0 16px',
             }}
           >
@@ -804,7 +804,7 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
           <StreamTabs active={stream} onChange={switchStream} />
         </div>
 
-        {/* Scrolling content — 24px bottom pad so the paginator / last row
+        {/* Scrolling content; 24px bottom pad so the paginator / last row
             has air above the faceplate (Select fills the center column to
             the faceplate; this pad lives in the scroll content, not the
             shared meter band). */}

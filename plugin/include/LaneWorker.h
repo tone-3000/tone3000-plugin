@@ -6,10 +6,11 @@
 #include <immintrin.h>
 #endif
 
-// ── Lane worker: one realtime helper thread for parallel stereo lanes ──
+// Lane worker: one realtime helper thread for parallel stereo lanes
+// (design overview in plugin/docs/multicore.md).
 //
 // In stereo mode the two chain lanes are fully independent (own engines, own
-// dry scratch — see Processor.h), so the audio thread can hand one lane to
+// dry scratch; see Processor.h), so the audio thread can hand one lane to
 // this worker, process the other itself, and join. The worker is an
 // *extension of the audio callback*: it only ever runs strictly inside the
 // audio thread's chainMutex critical section, so it takes no locks and the
@@ -23,16 +24,16 @@
 //
 // The Armed→Claimed transition is a compare-exchange raced between the worker
 // and join(): whoever wins runs the job. That gives the audio thread a
-// built-in escape hatch — if the worker is descheduled and never picks the
+// built-in escape hatch: if the worker is descheduled and never picks the
 // job up, join() steals it back and runs it inline, degrading to today's
 // serial behavior instead of stalling the callback. Once the worker has
 // claimed, join() spins (the lanes are similarly sized, so the residual wait
 // is short).
 //
 // Scheduling: the thread runs at realtime priority
-// (juce::Thread::startRealtimeThread — time-constraint on macOS, MMCSS "Pro
+// (juce::Thread::startRealtimeThread: time-constraint on macOS, MMCSS "Pro
 // Audio" on Windows) and, when the host provides one, joins the device's
-// audio workgroup (os_workgroup on macOS — without it, Apple Silicon parks
+// audio workgroup (os_workgroup on macOS; without it, Apple Silicon parks
 // the worker on efficiency cores and the join misses deadlines). The
 // workgroup arrives via AudioProcessor::audioWorkgroupContextChanged and is
 // re-joined from the worker thread itself whenever it changes (tokens are
@@ -47,7 +48,7 @@ public:
 
   ~LaneWorker() override { stop(); }
 
-  /** Start (or restart) the worker for the given callback geometry — sizes
+  /** Start (or restart) the worker for the given callback geometry; sizes
       the realtime scheduling contract. Message thread / prepareToPlay only. */
   void start(double sampleRate, int samplesPerBlock) {
     stop();
@@ -86,7 +87,7 @@ public:
   using JobFn = void (*)(void*);
 
   /** RT-safe. Publish a job for the worker. Returns false (nothing
-      published) when the worker isn't running — the caller runs the work
+      published) when the worker isn't running; the caller runs the work
       inline. Exactly one dispatch may be in flight; every successful
       dispatch MUST be paired with join() before the next one. `ctx` must
       stay alive until join() returns. */
@@ -102,7 +103,7 @@ public:
   }
 
   /** RT-safe. Wait for the dispatched job to finish. If the worker never
-      claimed it (descheduled, dying), steal it and run it inline — the
+      claimed it (descheduled, dying), steal it and run it inline; the
       callback then costs exactly what the serial path did. */
   void join() {
     for (;;) {
@@ -119,7 +120,7 @@ public:
           jobState.store(static_cast<int>(JobState::Idle), std::memory_order_relaxed);
           return;
         }
-        continue;  // the worker won the claim race — fall through to spin
+        continue;  // the worker won the claim race; fall through to spin
       }
       cpuPause();  // Claimed: the worker is on it, the residual wait is short
     }
@@ -171,7 +172,7 @@ private:
       }
 
       // Park until the next dispatch. The 1 ms timeout only bounds how long
-      // shutdown/workgroup changes can go unnoticed — dispatch() signals, so
+      // shutdown/workgroup changes can go unnoticed; dispatch() signals, so
       // job pickup latency is the event wake (~µs), not the timeout.
       wake.wait(1);
     }

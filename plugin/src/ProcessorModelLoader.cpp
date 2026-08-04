@@ -9,12 +9,12 @@
 // MODEL LOADING HELPERS
 // #####################################
 
-// ── IR block sizing constants ──
+// IR block sizing constants.
 // TONE3000 IR tones cover two very different species: cab IRs (tens of
 // milliseconds) and convolution-reverb IRs (whole seconds). ONE length
-// cutoff — kShortIrMaxSeconds — classifies every IR as short or long, and
+// cutoff (kShortIrMaxSeconds) classifies every IR as short or long, and
 // that classification drives everything downstream:
-//   short: uniform zero-latency engine, −18 dB output pad, 100% default mix
+//   short: uniform zero-latency engine, -18 dB output pad, 100% default mix
 //   long:  non-uniform engine,           no output pad,     50% default mix
 namespace {
 
@@ -24,7 +24,7 @@ namespace {
 constexpr double kMaxIrSeconds = 10.0;
 
 // The short/long cutoff: cab IRs top out around 0.5 s, reverbs start well
-// above 1 s — nothing meaningful lives at the boundary. IRs always convolve
+// above 1 s; nothing meaningful lives at the boundary. IRs always convolve
 // at the base rate (see ChainBlock::irBaseRateIsland), so the sample
 // threshold is a constant.
 constexpr double kShortIrMaxSeconds = 1.0;
@@ -32,20 +32,20 @@ constexpr int kShortIrMaxBaseSamples = static_cast<int>(kShortIrMaxSeconds * kCh
 
 // Long IRs use JUCE's two-stage non-uniform engine (still zero latency):
 // the first kIrNonUniformHeadSamples convolve in callback-sized partitions,
-// the tail in partitions of this size — per-callback CPU stops scaling
+// the tail in partitions of this size, so per-callback CPU stops scaling
 // linearly with tail length. Bigger head = more per-callback FFT work;
 // smaller = chunkier tail batches. 8192 (~170 ms) is a conventional
 // reverb head size.
 constexpr int kIrNonUniformHeadSamples = 8192;
 
-// ── NAM phase-interleaved oversampling eligibility (see NamEngine.h) ──
+// NAM phase-interleaved oversampling eligibility (see NamEngine.h).
 // Phase interleaving is exact only for architectures whose temporal structure
 // is pure (dilated) convolution: splitting the oversampled stream into factor
 // phases and running one native-rate instance per phase computes the same
 // math as one dilation-scaled instance at the high rate, and the temporal
 // images a dilated kernel produces above the base Nyquist are removed by the
 // chain's decimation filter. Recurrent models (LSTM) update state on
-// consecutive samples and can't be phase-split — they get a single instance
+// consecutive samples and can't be phase-split; they get a single instance
 // running time-scaled at the full chain rate instead.
 bool namConfigIsPhaseSafe(const nlohmann::json& modelJson) {
   const std::string architecture = modelJson.value("architecture", "");
@@ -101,7 +101,7 @@ float TONE3000Processor::computeIrNormalizationGain(const juce::File& irFile,
   }
 
   // The convolver resamples the IR to the base rate (IR convolution always
-  // runs there — see ChainBlock::irBaseRateIsland) and, with Normalise::no,
+  // runs there, see ChainBlock::irBaseRateIsland) and, with Normalise::no,
   // scales it by fileRate/baseRate to preserve the filter's magnitude
   // response; the net effect on kernel *energy* is one factor of
   // fileRate/baseRate. Fold that in so the gain matches what the engine
@@ -117,8 +117,8 @@ float TONE3000Processor::computeIrNormalizationGain(const juce::File& irFile,
   // Attenuation-only unit-energy normalization: the wet path leaves the
   // block at roughly the dry level for cabs and reverbs alike. The 1.0
   // ceiling never boosts a quiet IR; the floor is a safety net against
-  // absurdly hot files — −48 dB rather than −24 because a dense
-  // multi-second reverb IR peaked at 0 dBFS legitimately carries 25–35 dB
+  // absurdly hot files: -48 dB rather than -24 because a dense
+  // multi-second reverb IR peaked at 0 dBFS legitimately carries 25-35 dB
   // more energy than a cab hit.
   const double linear = 1.0 / l2norm;
   const double linearClamped =
@@ -130,7 +130,7 @@ float TONE3000Processor::computeIrNormalizationGain(const juce::File& irFile,
 std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& modelUrl) {
   juce::URL url(modelUrl);
 
-  // The new TONE3000 API requires a Bearer token on `model_url` requests —
+  // The TONE3000 API requires a Bearer token on `model_url` requests;
   // attach the latest token the UI handed us, if any. Anonymous fetches still
   // work for legacy public URLs, so we degrade gracefully when no token is set.
   // Chain the option builders since `InputStreamOptions` has no copy-assign.
@@ -140,7 +140,7 @@ std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& mo
                          : juce::String();
   if (token.isEmpty()) {
     // Happens when a restore-time load misses the embedded cache before the
-    // UI has pushed the auth token — the API rejects anonymous model fetches.
+    // UI has pushed the auth token; the API rejects anonymous model fetches.
     juce::Logger::writeToLog("[ModelLoader] Fetching model without auth token (may be rejected)");
   }
 
@@ -251,7 +251,7 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
         juce::Logger::writeToLog(
             "[ModelLoader] NAM architecture '" +
             juce::String(config.value("architecture", std::string("?"))) +
-            "' can't be phase-interleaved — running time-scaled at ×" +
+            "' can't be phase-interleaved; running time-scaled at ×" +
             juce::String(oversampleFactor));
       }
 
@@ -260,7 +260,7 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
       for (int i = 0; i < instanceCount; ++i) {
         std::unique_ptr<nam::DSP> rawDsp = nam::get_dsp(config);
         if (!rawDsp) {
-          juce::Logger::writeToLog("[ModelLoader] Failed to load NAM model — null DSP returned");
+          juce::Logger::writeToLog("[ModelLoader] Failed to load NAM model: null DSP returned");
           return out;
         }
         if (rawDsp->NumInputChannels() != 1) {
@@ -292,7 +292,7 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
 
       out.namEngine = std::move(engine);
       juce::Logger::writeToLog(
-          "[ModelLoader] NAM model prepared — model sample rate: " +
+          "[ModelLoader] NAM model prepared, model sample rate: " +
           juce::String(out.namEngine->getModelSampleRate()) +
           (phaseSafe ? " (" + juce::String(instanceCount) + " phase instances)" : ""));
 
@@ -300,8 +300,8 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
     } else {
       // IRs go through the JUCE convolution/format-reader API, which wants a
       // file. Use a UUID-only leaf name (plus the right extension) so the
-      // model's display name — which may contain characters that are illegal
-      // in file names — never ends up in the path.
+      // model's display name (which may contain characters that are illegal
+      // in file names) never ends up in the path.
       juce::File tempFile = juce::File::getSpecialLocation(juce::File::tempDirectory)
                                 .getChildFile(juce::Uuid().toString() + "_ir.wav");
 
@@ -321,7 +321,7 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
         return out;
       }
 
-      // The load cap is a time bound, not a fixed sample count — truncating
+      // The load cap is a time bound, not a fixed sample count; truncating
       // a multi-second reverb IR audibly chops its decay. It is passed to
       // JUCE in *file-rate* samples (truncation happens before the convolver
       // resamples to the base rate).
@@ -332,7 +332,7 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
           reader->lengthInSamples, static_cast<juce::int64>(maxIrFileSamples));
       // Upper bound on the engine's kernel length at the base rate; the
       // authoritative (trimmed) length is read back off the built engine
-      // below — a cab IR padded with trailing silence must still classify
+      // below; a cab IR padded with trailing silence must still classify
       // as short for the level logic.
       const int irLengthUpperBound = static_cast<int>(std::llround(
           static_cast<double>(fileSamplesToLoad) * kChainBaseSampleRate / fileSampleRate));
@@ -341,7 +341,7 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
       // Engine by the short/long cutoff. The engine must be constructed
       // before the trimmed size is known, so this one decision uses the
       // pre-trim upper bound; a silence-padded cab merely lands on the
-      // non-uniform engine — a CPU choice, not an audible one. All audible
+      // non-uniform engine, a CPU choice, not an audible one. All audible
       // logic (output pad, default mix) uses the trimmed length below.
       const bool engineLongIr = irLengthUpperBound > kShortIrMaxBaseSamples;
       auto makeConvolver = [engineLongIr] {
@@ -350,7 +350,7 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
                             : std::make_unique<juce::dsp::Convolution>();
       };
 
-      // IR convolution always runs at the base rate — when the chain is
+      // IR convolution always runs at the base rate: when the chain is
       // oversampled, the block's island (ChainBlock::irBaseRateIsland) hands
       // the convolver base-rate frames. So the spec is factor-independent:
       // base rate, base block size.
@@ -359,13 +359,13 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
 
       // Load *before* prepare: prepare() drains the convolver's background
       // message queue synchronously, so the engine (FFT segmentation and
-      // all) is fully built right here on the loader thread — the block can
+      // all) is fully built right here on the loader thread; the block can
       // never go live with its IR still initialising in the background.
       //
       // "Fully built" is not "fully installed", though: juce::dsp::Convolution
       // runs its own loader thread, and when that thread wins the race for
       // the pending-engine slot, prepare() finds it empty and the engine is
-      // instead installed lazily on the *first process() call* — behind a
+      // instead installed lazily on the *first process() call*, behind a
       // ~50 ms internal crossfade from dry (CrossoverMixer). Live, that dry
       // half-window is the un-cabbed signal bleeding through right as the
       // block's own fade-in ends. So after prepare(), run silence through
@@ -376,7 +376,7 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
         const int chunk = static_cast<int>(spec.maximumBlockSize);
         juce::AudioBuffer<float> silence(static_cast<int>(spec.numChannels), chunk);
         silence.clear();
-        // 3× JUCE's 0.05 s install fade — margin over exactness, it's cheap.
+        // 3× JUCE's 0.05 s install fade: margin over exactness, it's cheap.
         const int warmupSamples = static_cast<int>(kChainBaseSampleRate * 0.15);
         for (int done = 0; done < warmupSamples; done += chunk) {
           juce::dsp::AudioBlock<float> blockRef(silence);
@@ -405,7 +405,7 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
       }
 
       // The engine was built synchronously above, so it can report the real
-      // (trimmed + resampled) kernel length — the basis for the short/long
+      // (trimmed + resampled) kernel length, the basis for the short/long
       // classification and the host tail report. Fall back to the pre-trim
       // bound defensively.
       const int engineIrSamples = out.convolverMono->getCurrentIRSize();
@@ -479,7 +479,7 @@ void TONE3000Processor::requestChainEditFadeAndWait() {
     // arm the mute with the gain snapped to its landed value: a device can
     // start *mid-edit* (launch-time state restore racing the audio device
     // open), and callbacks arriving then must come up silent and take the
-    // wait-free skip in processBlock — not blast the half-restored chain or
+    // wait-free skip in processBlock, not blast the half-restored chain or
     // block behind the splice's lock hold. Touching the smoother here is
     // safe: no callbacks are running.
     chainEditFadeGain.setCurrentAndTargetValue(0.0f);
@@ -506,7 +506,7 @@ void TONE3000Processor::releaseChainEditFadeWhenLoadsSettle() {
   // load pushes it out again (see the job below), so a heavy preset that
   // rebuilds many engines holds the mute as long as loads keep landing. Only
   // when nothing has finished for this long (wedged network fetch, starved
-  // pool) does the chain glide back in early — any block still loading then
+  // pool) does the chain glide back in early; any block still loading then
   // passes through until it lands, its own splice-in fade covering the entry.
   constexpr juce::uint32 kStallMs = 2000;
   chainEditFadeHoldDeadlineMs.store(juce::Time::getMillisecondCounter() + kStallMs);
@@ -522,7 +522,7 @@ void TONE3000Processor::releaseChainEditFadeWhenLoadsSettle() {
   // waiter, whoever owns that session then owns the release.
   const int generation = chainEditFadeHoldGeneration.load();
 
-  // Whether this restore queued any loads is decided here, synchronously —
+  // Whether this restore queued any loads is decided here, synchronously:
   // a fast cached load could land before the job's first scan, and its
   // splice-in entry still needs the grace period below.
   bool loadsQueued = false;
@@ -548,7 +548,7 @@ void TONE3000Processor::releaseChainEditFadeWhenLoadsSettle() {
       int lastLoadingCount = std::numeric_limits<int>::max();
       for (;;) {
         if (shouldExit())
-          return jobHasFinished;  // pool teardown — audio is gone anyway
+          return jobHasFinished;  // pool teardown; audio is gone anyway
         {
           // Decision under chainMutex: restores queue loads and flip
           // modelLoading under this lock, so the scan can't interleave a
@@ -579,10 +579,10 @@ void TONE3000Processor::releaseChainEditFadeWhenLoadsSettle() {
       }
 
       // A freshly applied block enters through its own ~25 ms splice-in fade
-      // *from dry* (wetFadeGain — the continuity-preserving entry for live
+      // *from dry* (wetFadeGain, the continuity-preserving entry for live
       // loads). Let that finish under the mute, or a partial-dry sliver of
       // the last block's entry overlaps the glide-in. Skipped when this
-      // restore queued nothing — a settings-only restore releases
+      // restore queued nothing; a settings-only restore releases
       // immediately.
       if (loadsQueued)
         juce::Thread::sleep(60);
@@ -605,7 +605,7 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
 
   // Whatever the outcome, this load attempt is over. Clearing the fade flag
   // lets the audio thread ramp the wet mix back up when there is something
-  // to hear. Remember the fade's shape first — it decides how the new
+  // to hear. Remember the fade's shape first; it decides how the new
   // engine fades in below.
   const bool muteWetSwap = block.swapFadePending.load() && block.swapMuteWet.load();
   block.modelLoading = false;
@@ -614,7 +614,7 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
   block.swapMuteWet.store(false);
 
   if (!prepared.success) {
-    // Corrupt/unreadable model — surface the retry UI. The UI already shows
+    // Corrupt/unreadable model: surface the retry UI. The UI already shows
     // the new tone/model, so the block drops out of processing to match
     // (the caller's pre-apply fade already glided it to bypass); its old
     // engines are swapped out by the next successful load.
@@ -625,13 +625,13 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
 
   // An oversampling change can race an in-flight load: the engine was built
   // with the old factor's phase count and can't be re-prepared into the new
-  // one. Drop it and re-queue — the rebuild reads the settled factor and
+  // one. Drop it and re-queue; the rebuild reads the settled factor and
   // reuses the block's in-memory model cache (no network).
   if (newType == ChainBlockType::NAM && prepared.namEngine != nullptr &&
       prepared.namEngine->getOversampleFactor() != chainOversampleFactor.load()) {
     juce::Logger::writeToLog("[ModelLoader] Oversampling factor changed during prepare (×" +
                              juce::String(prepared.namEngine->getOversampleFactor()) + " -> ×" +
-                             juce::String(chainOversampleFactor.load()) + ") — re-queuing block " +
+                             juce::String(chainOversampleFactor.load()) + "); re-queuing block " +
                              juce::String(block.id));
     block.modelLoading = true;
     queueActiveModelLoad(block);
@@ -640,17 +640,17 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
 
   // A restore-time prepare can race prepareToPlay: the engine may have been
   // sized off a stale (or defaulted) host config, and prepareChain can't have
-  // covered it — the engine wasn't on the block yet. Re-prepare before it
+  // covered it (the engine wasn't on the block yet). Re-prepare before it
   // goes live; feeding an engine more frames than it was prepared for is what
   // used to silently kill blocks on relaunch ("Processing failed").
-  // (Convolver re-prepare rebuilds the FFT engine under chainMutex — heavier
+  // (Convolver re-prepare rebuilds the FFT engine under chainMutex, heavier
   // for reverb-length IRs, but this path only fires on that startup race,
   // when audio has barely started.)
   const int requiredBlockSize = chainDomainBlockSize();
   if (prepared.preparedBlockSize < requiredBlockSize) {
     juce::Logger::writeToLog("[ModelLoader] Chain domain drifted during prepare (block " +
                              juce::String(prepared.preparedBlockSize) + " -> " +
-                             juce::String(requiredBlockSize) + ") — re-preparing");
+                             juce::String(requiredBlockSize) + "); re-preparing");
     if (prepared.namEngine != nullptr)
       prepared.namEngine->prepare(requiredBlockSize);
     // Convolvers always run at the base rate behind the block's island, so
@@ -664,7 +664,7 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
   }
 
   // Engines are *swapped*, not reset: the block's previous engines end up in
-  // `prepared`, and the caller destroys them after releasing chainMutex —
+  // `prepared`, and the caller destroys them after releasing chainMutex;
   // NAM graph / convolution teardown must never run while the audio thread
   // can be blocked on the lock.
   if (newType == ChainBlockType::NAM && prepared.namEngine != nullptr) {
@@ -698,7 +698,7 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
     prepared.irTempFile = juce::File();
 
     // The base-rate island around the convolvers: blocks added mid-session
-    // were never seen by prepareChain, so (re)prepare it here — same
+    // were never seen by prepareChain, so (re)prepare it here with the same
     // capacity/factor arguments as the chain-wide oversampler. Cheap (three
     // small work buffers), and the swap-fade already has the wet path silent.
     block.irBaseRateIsland.prepare(chainOversampleFactor.load(),
@@ -706,8 +706,8 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
 
     // Fresh blocks (Select-flow loads) default their mix by IR length: long
     // IRs are reverbs/effects meant to be blended (half wet), short cab IRs
-    // replace the signal (fully wet). Length is only known here — after the
-    // download — so loadTone arms this one-shot flag instead of guessing
+    // replace the signal (fully wet). Length is only known here, after the
+    // download, so loadTone arms this one-shot flag instead of guessing
     // from tone metadata. Swaps/restores keep the user's mix.
     if (block.applyDefaultMixOnLoad)
       block.mixNormalized = block.irIsLong ? 0.5f : 1.0f;
@@ -719,22 +719,22 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
     block.loaded = true;
     block.loadFailed = false;
   } else {
-    DBG("Prepared model type/engine mismatch — dropping block from processing");
+    DBG("Prepared model type/engine mismatch; dropping block from processing");
     block.loaded = false;
     block.loadFailed = true;
     return;
   }
 
-  // The set of live IR engines changed — keep the host-facing tail length in
+  // The set of live IR engines changed; keep the host-facing tail length in
   // sync (caller holds chainMutex through this whole apply).
   refreshIrTailLength();
 
-  // First successful load done — later loads on this block (model switches,
+  // First successful load done; later loads on this block (model switches,
   // tone swaps) must keep the user's mix.
   block.applyDefaultMixOnLoad = false;
 
   // Per-block smoothers: prepareChain only covers blocks that existed at
-  // prepareToPlay, so (re)arm them here for blocks added mid-session — a
+  // prepareToPlay, so (re)arm them here for blocks added mid-session; a
   // never-reset LinearSmoothedValue jumps instantly (zipper noise on the
   // first knob drag). Snapping to target is inaudible: the wet path is at
   // bypass right now (fade below / fresh block).
@@ -746,14 +746,14 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
   // Splice-in fade: the new engine enters from silence instead of jumping
   // in mid-waveform, mirroring how the outgoing one left (see
   // requestSwapFadeAndWait / ChainBlock.h). A wet-mute swap fades back
-  // through the wet-only mute gain — the dry share of the user's mix held
+  // through the wet-only mute gain; the dry share of the user's mix held
   // steady the whole time, so the un-processed input is never exposed. A
   // bypass-shaped entry (fresh block, or the fade never engaged) crossfades
   // in from dry via wetFadeGain, exactly as before.
   block.swapWetMuteGain.reset(chainSampleRate(), kWetFadeSeconds);
   if (muteWetSwap) {
     // wetFadeGain stayed at 1 through the whole swap (the audio thread owns
-    // it and it wasn't part of this fade) — leave it alone so a concurrent
+    // it and it wasn't part of this fade); leave it alone so a concurrent
     // power-off glide keeps its course.
     block.swapWetMuteGain.setCurrentAndTargetValue(0.0f);
   } else {

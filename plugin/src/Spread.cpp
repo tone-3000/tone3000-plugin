@@ -31,9 +31,9 @@ void Spread::prepare(double newSampleRate, int maxBlockSize) {
 
   // Wobble normalization, analytic. The noise shaper is two cascaded
   // one-poles with coefficient k (see Spread.h for why two); its impulse
-  // response is h[n] = k²(n+1)aⁿ with a = 1−k, so the steady-state output
-  // variance for unit-variance input is Σh² = k⁴(1+a²)/(1−a²)³. Uniform
-  // [-1,1] noise has σ² = 1/3; scale so 3σ reaches the ±1 clamp — only then
+  // response is h[n] = k²(n+1)aⁿ with a = 1-k, so the steady-state output
+  // variance for unit-variance input is Σh² = k⁴(1+a²)/(1-a²)³. Uniform
+  // [-1,1] noise has σ² = 1/3; scale so 3σ reaches the ±1 clamp. Only then
   // does the depth knob actually span the full ±kWobbleMaxMs at any sample
   // rate. (The spec pseudocode's fixed wobNorm = 3.0 "tune once" placeholder
   // was ~100× too small, which made the wobble inaudible.)
@@ -65,7 +65,7 @@ void Spread::setTarget(const SpreadParams& params, bool nowEngaged) {
     if (!nowEngaged)
       return;  // idle and staying idle
     // Engage from idle: clean deck, offset primed at the knob (no glide up
-    // from a stale value — the wet fade-in covers the start), fade from dry.
+    // from a stale value; the wet fade-in covers the start), fade from dry.
     resetDeck();
     offsetStateMs = params.offsetMs;
     wobbleDepth.setCurrentAndTargetValue(params.wobbleDepth);
@@ -99,7 +99,7 @@ void Spread::process(juce::AudioBuffer<float>& buffer) {
   for (int i = 0; i < numSamples; ++i) {
     // The deck is seeded from channel 0 (the mono chain output). With a true
     // stereo source in mono chain mode the channels differ, so each bypass
-    // crossfade endpoint is that channel's own untouched signal — the fade
+    // crossfade endpoint is that channel's own untouched signal; the fade
     // must land exactly on the input, never hard-copy ch0 onto ch1.
     const float xl = l[i];
     const float xr = r[i];
@@ -109,7 +109,7 @@ void Spread::process(juce::AudioBuffer<float>& buffer) {
 
     delayLine.pushSample(0, high);
 
-    // Wobble: white noise through two cascaded 0.3 Hz one-poles — a random
+    // Wobble: white noise through two cascaded 0.3 Hz one-poles, a random
     // walk with no audio-rate residue (see Spread.h).
     wobbleState1 += wobbleCoeff * (random.nextFloat() * 2.0f - 1.0f - wobbleState1);
     wobbleState2 += wobbleCoeff * (wobbleState1 - wobbleState2);

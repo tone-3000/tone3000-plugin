@@ -1,5 +1,5 @@
 /**
- * Chain state model — mirrors the native `getChainState` payload.
+ * Chain state model, mirroring the native `getChainState` payload.
  *
  * Design notes:
  * - Tone metadata is *nested* under `tone` (never spread into the block), so
@@ -72,7 +72,7 @@ export function isEqFlat(eq: BlockEqParams): boolean {
 export interface BlockParams {
   /** Block participates in processing (per-block on/off). */
   enabled: boolean;
-  /** Loudness normalization toggle — NAM blocks only (off = the capture's
+  /** Loudness normalization toggle, NAM blocks only (off = the capture's
       raw level). IR blocks are always normalized natively; this flag is
       inert for them. */
   normalize: boolean;
@@ -88,8 +88,8 @@ export interface BlockParams {
 
 /**
  * An insert placeholder (pass-through slot where new tones are added).
- * Native keeps each lane at its minimum slot layout — at least 5 tiles and
- * always one trailing insert once every minimum slot holds a tone — so a
+ * Native keeps each lane at its minimum slot layout (at least 5 tiles and
+ * always one trailing insert once every minimum slot holds a tone), so a
  * lane can carry several of these, each independently reorderable.
  */
 export interface InsertSlot {
@@ -99,7 +99,7 @@ export interface InsertSlot {
 
 /**
  * Slim tone projection shipped by native (see makeToneSummary in
- * ProcessorChain.cpp). Only what the UI renders — the full API payload
+ * ProcessorChain.cpp). Only what the UI renders; the full API payload
  * (model URLs, tags, …) stays native-side.
  */
 export interface ToneSummary {
@@ -110,9 +110,9 @@ export interface ToneSummary {
   /** First image only (block artwork). */
   images?: string[];
   user?: { username: string; avatar_url: string };
-  /** Only the active model — the picker pages the catalog from the API. */
+  /** Only the active model; the picker pages the catalog from the API. */
   models: { id: number; name: string }[];
-  /** Catalog totals (picker count). NAM uses `a2_models_count` — the plugin
+  /** Catalog totals (picker count). NAM uses `a2_models_count` because the plugin
       only loads v2 architectures. */
   models_count: number;
   a2_models_count: number;
@@ -128,7 +128,7 @@ export interface ToneBlock {
   tone: ToneSummary;
   activeModelId: number;
   /** True when a model is loaded and processing. During a model switch this
-      stays true — the previous model keeps playing until the new one is
+      stays true: the previous model keeps playing until the new one is
       spliced in natively (with a short fade). On a failed load it drops to
       false: the block falls out of processing (matching the new tone/model
       already shown in the UI) until a retry succeeds. */
@@ -141,9 +141,9 @@ export interface ToneBlock {
       the loading overlays (not `loaded`, which stays true mid-switch so the
       old model keeps playing). */
   modelLoading: boolean;
-  /** True for long (reverb-like) IRs — classified natively by kernel length
+  /** True for long (reverb-like) IRs, classified natively by kernel length
       once the model loads. Drives the Mix knob's default (long = 50% wet)
-      and the Out knob help (long IRs carry no −18 dB pad). */
+      and the Out knob help (long IRs carry no -18 dB pad). */
   irLong: boolean;
   /** NAM calibration metadata (dBu) off the loaded model; absent when the
       model carries none (or nothing is loaded yet). `inputLevelDbu` feeds
@@ -165,7 +165,7 @@ export function isInsertSlot(item: ChainItem): item is InsertSlot {
 export interface PresetInfo {
   id: string;
   name: string;
-  /** Bundled TONE3000 preset — read-only (no rename/delete). */
+  /** Bundled TONE3000 preset; read-only (no rename/delete). */
   factory: boolean;
 }
 
@@ -183,7 +183,7 @@ export interface ActivePreset {
  * stereo mode turns off.
  */
 export interface ChainBranch {
-  /** The trunk lane — the side the other lane branches off. */
+  /** The trunk lane: the side the other lane branches off. */
   side: ChainSide;
   /** Tone block in the trunk lane whose output feeds the other lane. */
   afterBlockId: string;
@@ -203,26 +203,26 @@ export interface ChainState {
       stereo standalone input device). Drives the faceplate input-mode button
       and the dual input meters. */
   stereoInput: boolean;
-  /** True in the standalone app — gates standalone-only settings. */
+  /** True in the standalone app; gates standalone-only settings. */
   standalone: boolean;
   /** Which channels of a stereo source feed the plugin (faceplate button):
       both, or one mirrored onto both. */
   inputMode: InputMode;
   /** Global NAM A2 size (machine-wide user setting; false = lite, true =
-      full). Applies to every NAM block — set via `setNamFullSize`. */
+      full). Applies to every NAM block; set via `setNamFullSize`. */
   namFullSize: boolean;
   /** Multi-core stereo (machine-wide user setting). When true, stereo mode
-      processes the two chains on separate CPU cores — set via `setMultiCore`. */
+      processes the two chains on separate CPU cores; set via `setMultiCore`. */
   multiCore: boolean;
-  /** The chain-domain processing rate (fixed 48000 — the whole chain runs at
+  /** The chain-domain processing rate (fixed 48000: the whole chain runs at
       48 kHz behind one resampling boundary). The EQ curve math needs it to
       mirror the audio exactly. */
   sampleRate: number;
   /** Left lane (the only lane in mono mode). */
   chain: ChainItem[];
-  /** Right lane — present only while stereo mode is on. */
+  /** Right lane; present only while stereo mode is on. */
   chainRight?: ChainItem[];
-  /** Active branch — absent when the chains are independent (or mono). */
+  /** Active branch; absent when the chains are independent (or mono). */
   branch?: ChainBranch;
 }
 

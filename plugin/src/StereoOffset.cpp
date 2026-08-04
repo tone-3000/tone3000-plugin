@@ -23,7 +23,7 @@ void StereoOffset::setTarget(const StereoOffsetParams& params, bool nowEngaged) 
       return;  // idle and staying idle
     // Engage from idle: start clean at 0 ms delay. The ramp never outruns
     // real time (kRampSeconds > max delay swing), so after this clear a read
-    // can never reach back past the engage point — no stale audio, no gap.
+    // can never reach back past the engage point: no stale audio, no gap.
     delayLine.reset();
     currentChannel = params.targetChannel;
     delaySamples.setCurrentAndTargetValue(0.0f);

@@ -6,7 +6,7 @@ import { pillButtonStyle } from './theme';
 /**
  * Failed-download state for a chain block (`block.loadFailed`): replaces the
  * loading dots with a short message and a retry button. Rendered over the
- * dimmed tone artwork on both the gallery tile and the detail card — the
+ * dimmed tone artwork on both the gallery tile and the detail card: the
  * house pill CTA, with a dark backing so it reads on any art.
  */
 export const RetryLoadBadge: React.FC<{ onRetry: () => void }> = ({ onRetry }) => (

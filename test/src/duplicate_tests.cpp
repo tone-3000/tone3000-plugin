@@ -1,10 +1,10 @@
-// ── Chain block duplicate tests ──
+// Chain block duplicate tests
 //
 // duplicateChainBlock (the UI's copy/paste and alt-drag duplicate): clones a
 // tone block into a lane index with a fresh id. These pin the contracts:
 //
-//   - the clone carries every persisted setting — gains, mix, enabled,
-//     normalize, EQ — plus the tone/model identity, and loads cache-first
+//   - the clone carries every persisted setting (gains, mix, enabled,
+//     normalize, EQ) plus the tone/model identity, and loads cache-first
 //     from the source's in-memory model bytes (the fake URLs would fail any
 //     network fetch, so a loaded clone proves no download happened),
 //   - a clone landing on an insert slot consumes it (paste); landing on a
@@ -45,7 +45,7 @@ TEST(ChainDuplicateTest, PasteFillsInsertSlotAndCarriesEverySetting) {
   block.setProperty("inputGain", 0.3f, nullptr);
   block.setProperty("outputGain", 0.6f, nullptr);
   block.setProperty("mix", 0.7f, nullptr);
-  juce::ValueTree state("TONE3000State");
+  juce::ValueTree state("ChainSnapshot");
   juce::ValueTree left("ChainBlocks");
   left.appendChild(block, nullptr);
   state.appendChild(left, nullptr);
@@ -60,7 +60,7 @@ TEST(ChainDuplicateTest, PasteFillsInsertSlotAndCarriesEverySetting) {
   band->setProperty("q", 1.2);
   ASSERT_TRUE(proc.setBlockEqBand("blk-a", 2, juce::var(band)));
 
-  // Paste into the first insert slot (lane index 1): the slot is consumed —
+  // Paste into the first insert slot (lane index 1): the slot is consumed;
   // the clone takes its place, the lane stays at its minimum layout.
   const std::string newId = proc.duplicateChainBlock("blk-a", "left", 1);
   ASSERT_FALSE(newId.empty());
@@ -159,7 +159,7 @@ TEST(ChainDuplicateTest, CloneSoundsIdenticalToSource) {
   amp.setProperty("inputGain", 0.55f, nullptr);
   amp.setProperty("outputGain", 0.45f, nullptr);
   amp.setProperty("mix", 0.9f, nullptr);
-  juce::ValueTree state("TONE3000State");
+  juce::ValueTree state("ChainSnapshot");
   state.setProperty("stereoEnabled", true, nullptr);
   juce::ValueTree left("ChainBlocks");
   left.appendChild(amp, nullptr);

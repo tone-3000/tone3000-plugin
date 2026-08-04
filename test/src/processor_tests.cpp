@@ -1,4 +1,4 @@
-// ── Processor-level tests ──
+// Processor-level tests
 //
 // The full TONE3000Processor (headless build) driven the way a host drives
 // it: prepareToPlay + processBlock. These pin the plugin's host-facing
@@ -9,9 +9,10 @@
 //     matches its *measured* group delay,
 //   - toggling oversampling never changes reported latency (no PDC churn),
 //   - parameter state survives a save/restore round trip,
+//   - garbage, legacy-format, and newer-schema state blobs are ignored,
 //   - the tail report covers the DC blocker floor.
 //
-// No models/IRs are loaded here — chains stay empty, so nothing touches the
+// No models/IRs are loaded here; chains stay empty, so nothing touches the
 // network. Runs on the message thread (ScopedJuceInitialiser_GUI in main).
 // Oversampling parameter changes are applied via a re-prepare, exactly like
 // a host would (the live-toggle path is an AsyncUpdater that needs a running
@@ -55,7 +56,7 @@ double settledGainDb(const std::vector<float>& out, const std::vector<float>& in
 
 TEST(ProcessorTest, EmptyChainAt48kIsTransparentWithZeroLatency) {
   // The core promise of the chain-domain design: at a 48 kHz host with
-  // oversampling off, both resampling layers are dropped — no latency, and
+  // oversampling off, both resampling layers are dropped: no latency, and
   // the only thing between input and output is the (5 Hz) DC blocker.
   TONE3000Processor proc;
   proc.setPlayConfigDetails(2, 2, kFs, 512);
@@ -72,7 +73,7 @@ TEST(ProcessorTest, EmptyChainAt48kIsTransparentWithZeroLatency) {
 
 TEST(ProcessorTest, BoundaryReportedLatencyMatchesMeasuredDelay) {
   // At non-48k host rates the Lanczos boundary engages (even with an empty
-  // chain — that's the PDC-stability invariant) and reports its latency to
+  // chain: that's the PDC-stability invariant) and reports its latency to
   // the host. The report is only worth anything if it matches the physical
   // group delay.
   for (double hostRate : {44100.0, 96000.0}) {
@@ -101,7 +102,7 @@ TEST(ProcessorTest, BoundaryReportedLatencyMatchesMeasuredDelay) {
 
 TEST(ProcessorTest, OversamplingTogglesWithoutPdcChange) {
   // The oversampler is minimum-phase precisely so enabling it never changes
-  // reported latency — hosts re-compensate on PDC changes (an audible
+  // reported latency; hosts re-compensate on PDC changes (an audible
   // hiccup). Verified at the worst case: 44.1k host, ×8.
   TONE3000Processor proc;
   proc.setPlayConfigDetails(2, 2, 44100.0, 512);
@@ -152,10 +153,51 @@ TEST(ProcessorTest, ParameterStateSurvivesSaveRestore) {
   EXPECT_EQ(b.parameters.getRawParameterValue("osFactor")->load(), 2.0f);  // choice index
 
   // The restored oversampling setting must actually take effect on the next
-  // prepare — factor 8 leaves reported latency at zero for a 48k host.
+  // prepare; factor 8 leaves reported latency at zero for a 48k host.
   b.setPlayConfigDetails(2, 2, kFs, 512);
   b.prepareToPlay(kFs, 512);
   EXPECT_EQ(b.getLatencySamples(), 0);
+}
+
+TEST(ProcessorTest, IgnoresGarbageLegacyAndNewerSchemaState) {
+  // setStateInformation must leave the current state untouched for anything
+  // it can't own: random bytes, the retired XML format (no T3KB magic), and
+  // a well-formed state from a newer schema than this build understands.
+  TONE3000Processor proc;
+  proc.parameters.getParameter("inputLevel")->setValueNotifyingHost(0.7f);
+  auto inputLevel = [&] { return proc.parameters.getRawParameterValue("inputLevel")->load(); };
+
+  const char garbage[] = "definitely not a plugin state";
+  proc.setStateInformation(garbage, static_cast<int>(sizeof(garbage)));
+  EXPECT_NEAR(inputLevel(), 0.7f, 1e-5f);
+
+  const juce::String legacyXml =
+      "<?xml version=\"1.0\"?><TONE3000State><PARAMETERS/></TONE3000State>";
+  proc.setStateInformation(legacyXml.toRawUTF8(),
+                           static_cast<int>(legacyXml.getNumBytesAsUTF8()));
+  EXPECT_NEAR(inputLevel(), 0.7f, 1e-5f);
+
+  // A valid save from this build, re-framed with a bumped schemaVersion. It
+  // carries inputLevel = 0.2; restoring it would be visible immediately.
+  juce::MemoryBlock saved;
+  {
+    TONE3000Processor future;
+    future.parameters.getParameter("inputLevel")->setValueNotifyingHost(0.2f);
+    future.getStateInformation(saved);
+  }
+  juce::ValueTree tree = juce::ValueTree::readFromData(
+      static_cast<const char*>(saved.getData()) + 4, saved.getSize() - 4);
+  ASSERT_TRUE(tree.isValid());
+  tree.setProperty("schemaVersion", static_cast<int>(tree.getProperty("schemaVersion")) + 1,
+                   nullptr);
+  juce::MemoryBlock reframed;
+  {
+    juce::MemoryOutputStream out(reframed, false);
+    out.write("T3KB", 4);
+    tree.writeToStream(out);
+  }
+  proc.setStateInformation(reframed.getData(), static_cast<int>(reframed.getSize()));
+  EXPECT_NEAR(inputLevel(), 0.7f, 1e-5f) << "state from a newer schema must be ignored";
 }
 
 TEST(ProcessorTest, TailReportCoversDcBlockerWithEmptyChain) {

@@ -4,7 +4,7 @@ import { GRAPH_W, GRAPH_H, clamp } from './eqShared';
 import { BRAND_BLUE, BRAND_RED, BRAND_YELLOW } from './theme';
 
 /**
- * Spectrum backdrop for the EQ editor — isolated so its ~30 fps polling
+ * Spectrum backdrop for the EQ editor, isolated so its ~30 fps polling
  * re-renders only this leaf, never the editor around it. Filled with the
  * brand meter ramp (blue at the bottom → yellow → red at the top), so louder
  * content climbs into the red just like the meters. Render inside an SVG

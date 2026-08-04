@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
@@ -12,18 +12,19 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { ActivePreset, PresetInfo } from '../types/chain';
+import { useDismissable } from '../hooks/useDismissable';
 import { HELP, helpProps } from './helpText';
 import { BORDER, GRAY } from './theme';
 
 /**
  * Top-bar preset controls: ‹ name › pill + save button, with two anchored
- * panels — the save popover (name + save) and the preset browser (search,
+ * panels: the save popover (name + save) and the preset browser (search,
  * TONE3000 factory section, user section with inline rename/delete, and a
  * reorder mode that swaps the row actions for up/down arrows).
  *
  * Pure view: the list and all mutations come from usePresets, the active
  * preset rides the chain state poll. Prev/next walk the list in its shown
- * order — which is also what MIDI program-change numbers follow, so a custom
+ * order, which is also what MIDI program-change numbers follow, so a custom
  * order set here changes what PC 1, PC 2… load.
  */
 
@@ -106,26 +107,11 @@ export const PresetBar: React.FC<PresetBarProps> = ({
   // make sense on the full list, so they hide while a search filter is on.
   const [reordering, setReordering] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
-
-  // Close panels on outside click or Escape.
-  useEffect(() => {
-    if (open === 'none') return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (!containerRef.current?.contains(e.target as Node)) setOpen('none');
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen('none');
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [open]);
+  const closePanels = useCallback(() => setOpen('none'), []);
+  useDismissable(open !== 'none', containerRef, closePanels);
 
   const openSave = useCallback(() => {
-    // Prefill with the active user preset's name — saving it again is the
+    // Prefill with the active user preset's name: saving it again is the
     // one-click "update" path (same name overwrites in place).
     const activeInfo = active ? presets.find((p) => p.id === active.id) : undefined;
     setSaveName(activeInfo && !activeInfo.factory ? activeInfo.name : '');

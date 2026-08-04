@@ -114,7 +114,7 @@ body.dragging {
 
 /* Branch button on a lane's connector gap: hidden until the gap is hovered
    (CSS hover, like .tile-chrome, so it survives re-renders). Applies to
-   set-branch and clear-branch alike — the resting state is always just
+   set-branch and clear-branch alike; the resting state is always just
    the connector lines. */
 .branch-gap .branch-gap-button {
   opacity: 0;

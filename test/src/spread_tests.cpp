@@ -1,7 +1,7 @@
-// ── Spread / StereoOffset tests ──
+// Spread / StereoOffset tests
 //
 // The mechanical guarantees of the post-chain stereo image engines
-// (Spread.h / StereoOffset.h — see doubler-spec.md for the design):
+// (Spread.h / StereoOffset.h; design notes in plugin/docs/spread.md):
 //
 //   SpreadTest        center detent is exactly dual-mono, ± the same offset
 //                     mirrors the channels exactly, the low band stays
@@ -10,7 +10,7 @@
 //   StereoOffsetTest  the chosen side really is delayed by the dialed ms.
 //
 // The by-ear items (mono fold-down comb motion, flange zone, "reads as a
-// second take") live on the manual checklist in doubler-spec.md.
+// second take") can only be checked by listening.
 #include "Spread.h"
 #include "StereoOffset.h"
 #include "test_helpers.h"
@@ -61,11 +61,11 @@ double rms(const std::vector<float>& x, size_t from) {
   return std::sqrt(sum / static_cast<double>(x.size() - from));
 }
 
-// ═════════════════════════ Spread ═════════════════════════
+// Spread
 
 TEST(SpreadTest, CenterDetentIsExactlyDualMono) {
   // At the center detent the lag path blends fully to the dry high band, so
-  // L and R must be bit-identical — even with wobble up and during the
+  // L and R must be bit-identical, even with wobble up and during the
   // engage fade (both channels share the mono input).
   const auto in = makeNoise(64 * kBlock, 1234, 0.5f);
   const auto out = runSpread(in, 0.5f, 0.5f);
@@ -104,7 +104,7 @@ TEST(SpreadTest, LowBandStaysDualMono) {
 }
 
 TEST(SpreadTest, WobbleAtZeroIsTimeInvariant) {
-  // At 0% depth the engine must be exactly time-invariant — zero modulation
+  // At 0% depth the engine must be exactly time-invariant: zero modulation
   // of any kind. Proof by periodicity: feed a bit-exactly periodic input
   // (one 128-sample sine cycle tiled, 375 Hz at 48 kHz) and require the
   // settled output to repeat with the same period. Any wobble leaking into
@@ -123,13 +123,13 @@ TEST(SpreadTest, WobbleAtZeroIsTimeInvariant) {
   for (const auto* ch : {&out.l, &out.r})
     for (size_t i = start; i < ch->size(); ++i)
       ASSERT_NEAR((*ch)[i], (*ch)[i - kPeriod], 1e-6f)
-          << "output not periodic at sample " << i << " — something is modulating";
+          << "output not periodic at sample " << i << "; something is modulating";
 }
 
 TEST(SpreadTest, WobbleAddsNoBroadbandFizz) {
   // The wobble must stay a sub-audio wander: any audio-rate residue in the
   // delay-time noise frequency-modulates the lag channel into broadband
-  // noise skirts — audible fizz. Feed a pure sine at full wobble depth and
+  // noise skirts: audible fizz. Feed a pure sine at full wobble depth and
   // require the floor far from the carrier to stay down. (Regression: a
   // single 0.3 Hz one-pole on the noise leaves ~1% of its variance above
   // 20 Hz, which read as fizz once the depth normalization was corrected.)
@@ -153,7 +153,7 @@ TEST(SpreadTest, WobbleAddsNoBroadbandFizz) {
 TEST(SpreadTest, HardSignFlipsNeverClick) {
   // Slam the knob between the extremes (+24 <-> -24 ms) every 20 blocks.
   // The signed one-pole must carry the delay through zero as a smooth
-  // varispeed bend — never a discontinuity on either channel.
+  // varispeed bend, never a discontinuity on either channel.
   const int numBlocks = 120;
   const auto in = makeSine(numBlocks * kBlock, 440.0, 0.5f);
 
@@ -185,7 +185,7 @@ TEST(SpreadTest, HardSignFlipsNeverClick) {
           << "discontinuity at sample " << i;
 }
 
-// ═════════════════════════ StereoOffset ═════════════════════════
+// StereoOffset
 
 TEST(StereoOffsetTest, DelaysTheChosenSideByTheDialedMs) {
   // Full-right knob = the right chain delayed by 24 ms; the left chain must

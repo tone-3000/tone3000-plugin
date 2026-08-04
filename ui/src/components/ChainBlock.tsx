@@ -63,7 +63,7 @@ const CountStat: React.FC<{ icon: React.ReactNode; value: number }> = ({ icon, v
   </div>
 );
 
-/** EQ view glyphs — 16×16, stroke inherits selected/muted color. */
+/** EQ view glyphs: 16×16, stroke inherits selected/muted color. */
 const EqSlidersIcon: React.FC = () => (
   <svg
     width={16}
@@ -103,7 +103,7 @@ interface ChainBlockProps {
   /** Another enabled+loaded NAM after this block in its lane. With input
       calibration on, such a block hands off at calibrated output level
       instead of normalizing (see the post-model gain stage in
-      Processor.cpp) — drives the normalize control's overridden state. */
+      Processor.cpp); drives the normalize control's overridden state. */
   namDownstream: boolean;
   /** Host sample rate, for the EQ curve math. */
   sampleRate: number;
@@ -141,7 +141,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
   const [eqPre, setEqPre] = useState(params.eq?.pre ?? false);
   const [copied, setCopied] = useState(false);
   const copiedTimeoutRef = useRef<number | undefined>(undefined);
-  // True while one of this card's knobs is grabbed — knob prop syncs pause
+  // True while one of this card's knobs is grabbed; knob prop syncs pause
   // so a stale chain snapshot can't fight the pointer (same pattern as
   // BlockEqView). On release the deferred revision bump resyncs everyone.
   const knobDragRef = useRef(false);
@@ -266,7 +266,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
   // then reads white when the loaded model carries calibration data and gray
   // when it doesn't. The overridden check mirrors the DSP's calibrated
   // hand-off condition exactly (Processor.cpp): calibration on, sane
-  // output_level_dbu metadata, and another NAM downstream — the last NAM
+  // output_level_dbu metadata, and another NAM downstream. The last NAM
   // stays on normalization, so its control never reads overridden.
   const [calibrateInput] = useParameter('calibrateInput', 'toggle');
   const showCalibration = isNam && calibrateInput;
@@ -283,7 +283,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
   // All NAM blocks are A2, so the badge is just the format name.
   const formatBadge = formatLabel(tone.format);
 
-  // Picker's "n/N" total from the tone metadata (A2-only for NAM — that's
+  // Picker's "n/N" total from the tone metadata (A2-only for NAM; that's
   // all the plugin loads).
   const modelsTotal = isNam ? tone.a2_models_count : tone.models_count;
 
@@ -347,7 +347,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
           overflow: 'hidden',
         }}
       >
-        {/* Header — 16px inset, chrome centered in HEADER_HEIGHT. */}
+        {/* Header: 16px inset, chrome centered in HEADER_HEIGHT. */}
         <div
           style={{
             height: `${HEADER_HEIGHT}px`,
@@ -424,7 +424,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
                   <div
                     style={{
                       ...segmentedGroupStyle(),
-                      // Nested track — slightly quieter than the outer pill.
+                      // Nested track, slightly quieter than the outer pill.
                       backgroundColor: 'rgba(118, 118, 128, 0.24)',
                     }}
                   >
@@ -473,7 +473,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
           </div>
         </div>
 
-        {/* Body — tone view uses BODY_PADDING; EQ spectrum/grid bleeds
+        {/* Body: tone view uses BODY_PADDING; EQ spectrum/grid bleeds
             edge-to-edge (interactive chrome insets itself). */}
         <div
           style={{
@@ -489,7 +489,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
             transition: 'opacity 0.2s ease',
             // Keep the body on its own pixel-snapped compositor layer so the
             // opacity fade (power toggle) can't promote/demote a temporary layer
-            // that nudges inner content — notably the scaled EQ SVG — by a pixel.
+            // that nudges inner content (notably the scaled EQ SVG) by a pixel.
             transform: 'translateZ(0)',
             willChange: 'opacity',
           }}
@@ -601,7 +601,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
                   )}
                 </div>
 
-                {/* Tone info — title / gear+badge / counts / creator (Figma gaps). */}
+                {/* Tone info: title / gear+badge / counts / creator (Figma gaps). */}
                 <div
                   style={{
                     display: 'flex',
@@ -696,7 +696,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
 
               {/* Switching models re-downloads through native with a Bearer
                   token, so the picker is inert while signed out. The wrapper
-                  carries the cursor + hint — the select itself is
+                  carries the cursor + hint, as the select itself is
                   pointer-events: none when disabled. */}
               <div
                 {...(!actions.authenticated ? helpProps(HELP.modelSelectSignedOut) : {})}

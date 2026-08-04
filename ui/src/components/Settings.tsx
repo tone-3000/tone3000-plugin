@@ -32,9 +32,9 @@ const CALIBRATION_DOCS_URL =
  * Settings: full-window takeover, tabbed between Plugin Settings (info bar,
  * MIDI / Advanced entry points) and System Settings (the bespoke audio
  * device + MIDI hardware panel). MIDI Mapping and Advanced are sub-screens
- * of the plugin tab — the header X steps back. The System tab only exists
- * in the standalone app — hosts own devices, sample rate and buffer size
- * arrive as facts from the DAW — and with one tab the tab bar drops away.
+ * of the plugin tab; the header X steps back. The System tab only exists
+ * in the standalone app (hosts own devices, sample rate and buffer size
+ * arrive as facts from the DAW), and with one tab the tab bar drops away.
  */
 
 type PluginScreen = 'main' | 'midi' | 'advanced';
@@ -42,10 +42,10 @@ type PluginScreen = 'main' | 'midi' | 'advanced';
 export type SettingsTab = 'plugin' | 'system';
 
 interface SettingsProps {
-  /** Mounted only while open (see Plugin) — closing unmounts, so screen
+  /** Mounted only while open (see Plugin); closing unmounts, so screen
       state and parameter subscriptions reset for free. */
   onClose: () => void;
-  /** True in the standalone app — enables the System Settings tab. */
+  /** True in the standalone app; enables the System Settings tab. */
   standalone: boolean;
   /** Shared audio device state/actions (also drives the app banner). */
   device: AudioDevice;
@@ -54,7 +54,7 @@ interface SettingsProps {
   /** Running build version ("" outside the plugin). */
   version: string;
   /** Newer published build, if the startup check found one (even if the
-      startup modal was dismissed) — shows an update button in the footer. */
+      startup modal was dismissed); shows an update button in the footer. */
   update: UpdateNoticeData | null;
   /** Global NAM A2 size (machine-wide; false = lite, true = full). */
   namFullSize: boolean;
@@ -63,7 +63,7 @@ interface SettingsProps {
       separate CPU cores). */
   multiCore: boolean;
   onMultiCoreChange: (enabled: boolean) => void;
-  /** Chain lanes — the MIDI mapping screen names block-power targets after
+  /** Chain lanes; the MIDI mapping screen names block-power targets after
       the tone currently in each slot. `chainRight` is null outside stereo. */
   chain: ChainItem[];
   chainRight: ChainItem[] | null;
@@ -199,7 +199,7 @@ export const Settings: React.FC<SettingsProps> = ({
   }, [revealLogs]);
 
   // One control: the X steps a sub-screen back to main, and closes from
-  // there — no separate back button.
+  // there, with no separate back button.
   const handleHeaderClose = useCallback(() => {
     if (screen !== 'main') setScreen('main');
     else onClose();
@@ -246,7 +246,7 @@ export const Settings: React.FC<SettingsProps> = ({
         onChange={setHintsEnabled}
       />
 
-      {/* MIDI Learn/mapping — plugin-level (reads the processor's MIDI
+      {/* MIDI Learn/mapping is plugin-level (reads the processor's MIDI
           buffer), so it belongs here and works in DAW builds too. */}
       <div style={{ marginBottom: '36px' }}>
         <span style={sectionLabelStyle}>MIDI Mapping</span>
@@ -501,7 +501,7 @@ export const Settings: React.FC<SettingsProps> = ({
         }}
       >
         {header}
-        {/* One tab (hosted) = no tab bar. Sub-screens hide it too — they're
+        {/* One tab (hosted) = no tab bar. Sub-screens hide it too; they're
             under the plugin tab, and the header X steps back. */}
         {standalone && screen === 'main' && <TabBar active={tab} onChange={setTab} />}
         {tab === 'system' && standalone && screen === 'main' ? (

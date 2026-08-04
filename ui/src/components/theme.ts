@@ -17,7 +17,7 @@ import type { CSSProperties } from 'react';
  *   2. Open / panel showing (EQ editor open): WHITE fill + BLACK label.
  *   3. Armed / listening / shaping (auto-balance, active EQ while closed,
  *      PRE, normalize): BRAND_YELLOW fill + BLACK glyph/label.
- *   4. Link (pan link): on = white icon; off = GRAY icon — never a fill.
+ *   4. Link (pan link): on = white icon; off = GRAY icon, never a fill.
  */
 
 /** Lucide / custom glyph size inside ICON_BOX_SIZE chrome boxes. */
@@ -30,12 +30,12 @@ export const ICON_BOX_RADIUS = 2;
 export const TEXT_BOX_HEIGHT = 20;
 
 /** The two knob footprints (see KnobInner). Every knob in the UI is one of
-    these two sizes — primary for a section's headline control, secondary for
+    these two sizes: primary for a section's headline control, secondary for
     its companion trims. */
 export const KNOB_SIZE_PRIMARY = 48;
 export const KNOB_SIZE_SECONDARY = 36;
 
-/** Brand accents — the only chromatic UI colors outside gray/white/black. */
+/** Brand accents, the only chromatic UI colors outside gray/white/black. */
 export const BRAND_BLUE = '#0000FF';
 export const BRAND_YELLOW = '#FFFF00';
 export const BRAND_RED = '#FF0000';
@@ -59,7 +59,7 @@ export const SURFACE = '#151517';
 export const SURFACE_RAISED = '#1C1C1E';
 
 /**
- * Pill CTA — the house text-button style (preset Save, the tone browser's
+ * Pill CTA: the house text-button style (preset Save, the tone browser's
  * Browse CTA, gear chips): rounded-full outline on a transparent fill.
  * Primary = white outline + white label; secondary (the "dismiss" next to a
  * primary) = hairline outline + muted label.
@@ -82,7 +82,7 @@ export const pillButtonStyle = (primary = true): CSSProperties => ({
 });
 
 /**
- * Filled pill CTA — solid white on black copy, for the one or two highest-
+ * Filled pill CTA: solid white on black copy, for the one or two highest-
  * priority actions on a screen (tone browser sign-in prompts). Distinct from
  * `pillButtonStyle`'s outline treatment, which is used everywhere else.
  */
@@ -144,7 +144,7 @@ export const textBoxStyle = (): CSSProperties => ({
 export const SEGMENTED_TRACK = 'rgba(120, 120, 128, 0.36)';
 
 /**
- * Segmented control shell (LITE/FULL, EQ view). Borderless track fill —
+ * Segmented control shell (LITE/FULL, EQ view). Borderless track fill;
  * selection is white vs MUTED text/icons, not a cell highlight.
  */
 export const segmentedGroupStyle = (): CSSProperties => ({
@@ -162,7 +162,7 @@ export const segmentedGroupStyle = (): CSSProperties => ({
 
 /**
  * One cell inside a segmented group. Non-square chrome (text or icon
- * strips) always gets 4px left/right padding — never a tight ICON_BOX square.
+ * strips) always gets 4px left/right padding, never a tight ICON_BOX square.
  */
 export const segmentedCellStyle = (icon = false): CSSProperties => ({
   height: '100%',
@@ -184,7 +184,7 @@ export const segmentedCellStyle = (icon = false): CSSProperties => ({
 /**
  * Vertical lift for a chrome icon box sitting in a bottom-aligned faceplate
  * row: from the shared label baseline up to the center of a secondary knob.
- * (10px gap + 14px label slot + radius − half the box.)
+ * (10px gap + 14px label slot + radius minus half the box.)
  */
 export const faceplateChromeLift = (secondaryKnobSize: number) =>
   -(10 + 14 + secondaryKnobSize / 2 - ICON_BOX_SIZE / 2);

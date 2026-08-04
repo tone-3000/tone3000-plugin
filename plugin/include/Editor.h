@@ -25,7 +25,7 @@ public:
   void resized() override;
   void parentHierarchyChanged() override;
 
-  /** Extra height above the fixed plugin UI for chrome strips — the app banner
+  /** Extra height above the fixed plugin UI for chrome strips: the app banner
       (standalone only) and/or the hint bar. The webview reports the combined
       height whenever a strip appears/disappears so the window grows instead of
       squishing the core UI. Works in hosts too: setSize() becomes a host
@@ -64,7 +64,7 @@ private:
   // Guards resized() below against persisting a size we didn't choose:
   // parentHierarchyChanged() reasserts our size after flipping the native
   // title bar on, which can otherwise relayout (and briefly mis-size) us
-  // first — see its comment. Cleared asynchronously so a same-tick *and* a
+  // first; see its comment. Cleared asynchronously so a same-tick *and* a
   // deferred cascade from that relayout are both covered.
   bool restoringSize = false;
 
@@ -72,7 +72,7 @@ private:
   // etc.); installed as the default LookAndFeel in the editor constructor.
   juce::SharedResourcePointer<DarkLookAndFeel> darkLookAndFeel;
 
-  // Bespoke audio settings bridge — only constructed in the standalone app
+  // Bespoke audio settings bridge, only constructed in the standalone app
   // (nullptr in hosts, where the DAW owns devices and the System Settings tab
   // never renders). Device-manager changes are pushed to the webview as
   // `audioDeviceChanged` events.
@@ -89,7 +89,7 @@ private:
   void loadMainUrlIfNeeded();
 
   // Chain-change push: a lightweight native timer watches the processor's
-  // revision counter (an atomic read — far cheaper than the webview polling
+  // revision counter (an atomic read, far cheaper than the webview polling
   // across the bridge) and emits a `chainChanged` event when it moves. The
   // UI resyncs on the event and keeps only a slow safety-net poll.
   void timerCallback() override;

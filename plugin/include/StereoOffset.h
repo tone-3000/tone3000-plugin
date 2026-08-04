@@ -5,7 +5,7 @@
 /**
  * Stereo-mode corrective offset: a short static delay applied to one chain,
  * in place, purely for time-aligning the two chains (e.g. captures of the
- * same performance that land a few ms apart). Stereo chain mode only — mono
+ * same performance that land a few ms apart). Stereo chain mode only; mono
  * mode has Spread instead (see Spread.h), a separate feature with its own
  * parameters.
  *
@@ -23,9 +23,9 @@
  *
  * The delay time ramps through a SmoothedValue into a Lagrange-interpolated
  * DelayLine (4-point cubic: a static fractional delay through linear
- * interpolation would carry a fixed HF droop — wrong for a corrective tool).
+ * interpolation would carry a fixed HF droop, wrong for a corrective tool).
  * The ramp (kRampSeconds) is chosen so the delay never grows faster than
- * real time — after a line clear, reads can never land on unwritten (stale
+ * real time; after a line clear, reads can never land on unwritten (stale
  * or zero) samples.
  *
  * Audio thread only; zero allocation after prepare().
@@ -66,7 +66,7 @@ public:
   bool isRunning() const { return running; }
 
   /** Immediate hard stop, no glide. Only safe while the bus is already
-      silent — the chain-edit fade covers mono/stereo mode switches, which is
+      silent; the chain-edit fade covers mono/stereo mode switches, which is
       the one caller. */
   void forceIdle() { running = false; engaged = false; }
 
@@ -89,6 +89,6 @@ private:
   double sampleRate{48000.0};
 
   // Delay ramp: longer than the max delay swing (24 ms) so delay time never
-  // grows faster than real time — see class comment.
+  // grows faster than real time; see class comment.
   static constexpr double kRampSeconds = 0.040;
 };

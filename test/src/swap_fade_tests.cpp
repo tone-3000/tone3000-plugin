@@ -1,16 +1,16 @@
-// ── Engine-swap fade tests ──
+// Engine-swap fade tests
 //
 // Switching a block's model must never expose the block's *dry input*. At
-// 100% mix an IR block's dry input is the signal upstream of the cab — the
+// 100% mix an IR block's dry input is the signal upstream of the cab (the
 // raw amp head: un-cabbed, spectrally flat, and ~18 dB hotter than the
-// cab-padded wet — so a bypass-shaped swap fade (wet mix gliding to 0 =
+// cab-padded wet), so a bypass-shaped swap fade (wet mix gliding to 0 =
 // output crossfading toward dry) blasts a short loud burst of it on every
 // switch, cached or not. Engine swaps therefore mute the wet term in place
 // (ChainBlock::swapWetMuteGain): the old engine dips to silence, engines
 // swap, the new one fades in from silence, and the dry share of the user's
 // mix holds steady throughout. The loader additionally elapses JUCE's
 // internal engine-install crossfade (which also starts from dry) on silence
-// before an engine goes live — see prepareBlockModelOffThread.
+// before an engine goes live; see prepareBlockModelOffThread.
 //
 // This pins the contract end-to-end through the real processor: during a
 // live cache-first model switch on a full-wet IR block, the output level
@@ -18,7 +18,7 @@
 // is far hotter than the cab-processed wet, so any dry leak fails loudly.
 //
 // The rig (ChainTestProcessor, block-tree builders with embedded model
-// bytes) is shared with branch_tests.cpp via chain_test_helpers.h — loads
+// bytes) is shared with branch_tests.cpp via chain_test_helpers.h; loads
 // are cache-first and never touch the network.
 #include "Processor.h"
 #include "chain_test_helpers.h"
@@ -50,7 +50,7 @@ void cacheExtraModel(juce::ValueTree& block, int modelId, const char* fileName) 
   ASSERT_TRUE(testFile(fileName).loadFileAsData(bytes));
   juce::ValueTree cached("CachedModel");
   cached.setProperty("modelId", modelId, nullptr);
-  cached.setProperty("data", juce::Base64::toBase64(bytes.getData(), bytes.getSize()), nullptr);
+  cached.setProperty("data", juce::var(bytes), nullptr);
   block.getChildWithName("ModelCache").appendChild(cached, nullptr);
 }
 
@@ -74,7 +74,7 @@ TEST(SwapFadeTest, LiveIrModelSwitchNeverExposesDryInput) {
   // pre-cached so the switch below never touches the network.
   juce::ValueTree block = makeIrBlockTree("blk", 1, 100);
   cacheExtraModel(block, 101, "cab-ir-test.wav");
-  juce::ValueTree state("TONE3000State");
+  juce::ValueTree state("ChainSnapshot");
   juce::ValueTree lane("ChainBlocks");
   lane.appendChild(block, nullptr);
   state.appendChild(lane, nullptr);
@@ -82,9 +82,9 @@ TEST(SwapFadeTest, LiveIrModelSwitchNeverExposesDryInput) {
   ASSERT_TRUE(waitForChainLoaded(proc));
 
   // A seamlessly loopable drive signal: 250 Hz is 192 samples per cycle,
-  // and 93*512 frames = 248 whole cycles — no splice transient when the
+  // and 93*512 frames = 248 whole cycles; no splice transient when the
   // buffer recycles. The sine's amplitude (the block's dry input level) is
-  // far above the cab-processed wet (unit-energy IR into a −18 dB pad).
+  // far above the cab-processed wet (unit-energy IR into a -18 dB pad).
   const int loopFrames = 93 * kBlock;
   const auto sine = makeSine(loopFrames, 250.0, 0.4f);
 
@@ -129,7 +129,7 @@ TEST(SwapFadeTest, LiveIrModelSwitchNeverExposesDryInput) {
     maxDuringSwitch = std::max(maxDuringSwitch, processOneBlock());
 
   // The swap may dip the wet path to silence, but must never rise above the
-  // settled wet level — with a bypass-shaped fade the dry sine (several
+  // settled wet level; with a bypass-shaped fade the dry sine (several
   // times hotter than the cab output) leaks through and trips this.
   EXPECT_LE(maxDuringSwitch, steadyPeak * 1.25f + 1e-3f)
       << "model switch leaked the block's dry input (un-cabbed signal burst)";
@@ -141,7 +141,7 @@ TEST(SwapFadeTest, UndoRestoreHoldsChainMuteUntilModelsReload) {
   // on the background loader. The chain-edit mute must hold until those
   // loads land (releaseChainEditFadeWhenLoadsSettle): releasing it at
   // splice time fades the chain back in on unloaded pass-through blocks,
-  // blasting the raw dry input for the whole rebuild window — the "preset
+  // blasting the raw dry input for the whole rebuild window, the "preset
   // switch pop". Undoing a model switch exercises the exact same restore
   // path presets use, cache-first, so it pins the contract without preset
   // files or network.
@@ -151,7 +151,7 @@ TEST(SwapFadeTest, UndoRestoreHoldsChainMuteUntilModelsReload) {
 
   juce::ValueTree block = makeIrBlockTree("blk", 1, 100);
   cacheExtraModel(block, 101, "cab-ir-test.wav");
-  juce::ValueTree state("TONE3000State");
+  juce::ValueTree state("ChainSnapshot");
   juce::ValueTree lane("ChainBlocks");
   lane.appendChild(block, nullptr);
   state.appendChild(lane, nullptr);
@@ -159,13 +159,13 @@ TEST(SwapFadeTest, UndoRestoreHoldsChainMuteUntilModelsReload) {
   ASSERT_TRUE(waitForChainLoaded(proc));
 
   // Host-style render thread: the fade handshakes only engage while audio
-  // callbacks are live, and undoChain blocks its caller waiting on them —
+  // callbacks are live, and undoChain blocks its caller waiting on them,
   // so audio must keep running on its own thread, exactly like in a host.
   std::atomic<bool> stop{false};
   std::atomic<bool> track{false};
   std::atomic<float> trackedMax{0.0f};
   std::thread pump([&] {
-    const int loopFrames = 93 * kBlock;  // 248 whole 250 Hz cycles — seamless loop
+    const int loopFrames = 93 * kBlock;  // 248 whole 250 Hz cycles: seamless loop
     const auto sine = makeSine(loopFrames, 250.0, 0.4f);
     juce::AudioBuffer<float> buffer(2, kBlock);
     juce::MidiBuffer midi;
@@ -220,7 +220,7 @@ TEST(SwapFadeTest, UndoRestoreHoldsChainMuteUntilModelsReload) {
   pump.join();
 
   // The transition may dip to silence but must never rise above the settled
-  // wet level — an early mute release plays the raw dry sine (several times
+  // wet level; an early mute release plays the raw dry sine (several times
   // hotter than the cab output) while the engine rebuilds.
   EXPECT_LE(trackedMax.load(), steadyPeak * 1.25f + 1e-3f)
       << "chain restore leaked dry input while models reloaded (preset-switch pop)";

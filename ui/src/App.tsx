@@ -6,7 +6,7 @@ import { MetersProvider } from './hooks/useMeters';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 function App() {
-  // One backend for the app's lifetime — a fresh instance per render would
+  // One backend for the app's lifetime; a fresh instance per render would
   // change the context value and re-render the whole tree every time.
   const backend = useMemo(() => new JuceBackend(), []);
 

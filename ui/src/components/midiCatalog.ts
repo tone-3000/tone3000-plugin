@@ -3,7 +3,7 @@ import type { MidiMapping } from '../types/midiMap';
 /**
  * Display catalog for the MIDI mapping UI: which targets are mappable and
  * how to present them. The native engine accepts any APVTS parameter id (or
- * block-power id) — this list is the UI's curation (setup-domain params like
+ * block-power id); this list is the UI's curation (setup-domain params like
  * calibration stay out; they describe the rig, not something you perform
  * with).
  */
@@ -20,8 +20,8 @@ export interface MappableTarget {
   kind: 'continuous' | 'toggle' | 'trigger';
 }
 
-/** Block-power targets are positional — "Block 1" is a lane's first tone
-    block whatever it currently holds — so a mapping survives tone swaps and
+/** Block-power targets are positional ("Block 1" is a lane's first tone
+    block whatever it currently holds), so a mapping survives tone swaps and
     preset loads, like switches on a pedalboard. "blockNPower" is the Left
     lane (the only lane in mono), "rightBlockNPower" the Right lane (stereo
     only; the mapping screen offers them per the live chain). Display-only
@@ -31,7 +31,7 @@ const BLOCK_POWER_TARGETS = 12;
 
 export const MAPPABLE_TARGETS: MappableTarget[] = [
   // Virtual actions (native resolves the ids itself): step through the
-  // preset list in browser order, wrapping at the ends — for footswitches
+  // preset list in browser order, wrapping at the ends, for footswitches
   // programmed with CC / note buttons instead of program changes.
   { id: 'presetPrevious', name: 'Previous Preset', group: 'Presets', kind: 'trigger' },
   { id: 'presetNext', name: 'Next Preset', group: 'Presets', kind: 'trigger' },
@@ -76,7 +76,7 @@ const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 
 export const midiNoteName = (note: number) =>
   `${NOTE_NAMES[note % 12]}${Math.floor(note / 12) - 1}`;
 
-/** "CC 64" / "Note C2" — the mapping row's source column. */
+/** "CC 64" / "Note C2": the mapping row's source column. */
 export const sourceLabel = (mapping: MidiMapping) =>
   mapping.source === 'cc' ? `CC ${mapping.number}` : `Note ${midiNoteName(mapping.number)}`;
 

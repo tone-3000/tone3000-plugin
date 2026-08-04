@@ -11,10 +11,10 @@ export const DESIGN_HEIGHT = 578;
  * Proportional UI scaling: applies a CSS `zoom` of viewportWidth / 1024 to
  * the ref'd element, so the whole design-space layout (knobs, fonts,
  * spacing) grows with the window. `zoom` re-lays-out and re-rasterizes, so
- * text and SVG stay crisp at fractional scales — unlike `transform: scale`.
+ * text and SVG stay crisp at fractional scales, unlike `transform: scale`.
  *
  * The zoom follows the *actual* viewport, never a requested size: a host
- * that refuses a resize leaves the page width — and therefore the scale —
+ * that refuses a resize leaves the page width (and therefore the scale)
  * untouched. Grow-only, clamped at 1x, matching the native size floor.
  *
  * Deliberately imperative (no React state): a live window drag retunes the

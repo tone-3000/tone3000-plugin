@@ -6,17 +6,16 @@ void TONE3000Editor::parentHierarchyChanged() {
     // Snapshot our own size before flipping the title bar style: JUCE
     // immediately relayouts the title-bar/content split within the window's
     // current bounds, which can stretch or shrink us before our own
-    // aspect-ratio constrainer catches up — previously "corrected" for with
-    // a hardcoded +28 title-bar-height guess, which doesn't hold on every
-    // OS/version and could leave us a few px off. Re-asserting our exact
-    // pre-toggle size instead lets JUCE's own resize listener
-    // (StandaloneFilterWindow::MainContentComponent, which already measures
-    // the real native frame) grow the *window* to exactly contain us again —
-    // no guesswork.
+    // aspect-ratio constrainer catches up. A hardcoded title-bar-height
+    // guess doesn't hold on every OS/version and can leave us a few px off.
+    // Re-asserting our exact pre-toggle size instead lets JUCE's own resize
+    // listener (StandaloneFilterWindow::MainContentComponent, which already
+    // measures the real native frame) grow the *window* to exactly contain
+    // us again, with no guesswork.
     const int w = getWidth();
     const int h = getHeight();
     // Whatever resize this dance causes along the way is us correcting
-    // ourselves, not the user choosing a size — don't let it clobber the
+    // ourselves, not the user choosing a size; don't let it clobber the
     // persisted scale. Cleared next tick so a deferred cascade from the
     // relayout is covered too, not just a same-tick one.
     restoringSize = true;
@@ -42,7 +41,7 @@ void TONE3000Editor::parentHierarchyChanged() {
   // component (i.e. the NSWindow on macOS exists and is on-screen). In a DAW
   // the editor is parented to the host's window before this is called, so the
   // load happens immediately. In Standalone we have to wait until JUCE
-  // finishes wiring up the StandaloneFilterWindow — otherwise the WKWebView's
+  // finishes wiring up the StandaloneFilterWindow, otherwise the WKWebView's
   // NSView attaches to no NSWindow and renders blank on some Macs.
   loadMainUrlIfNeeded();
 }
@@ -85,7 +84,7 @@ TONE3000Editor::TONE3000Editor(TONE3000Processor& p) : AudioProcessorEditor(&p),
 
   // Grow-only resizing: corner/edge drags scale the whole window between the
   // 1024x578 design size and kMaxScale times it, aspect-locked. Restore the
-  // session's scale (persisted via the processor — see ProcessorState.cpp).
+  // session's scale (persisted via the processor; see ProcessorState.cpp).
   setResizable(true, true);
   // Read the persisted scale before touching the constraints: installing the
   // resize limits already snaps the editor to the 1x minimum, and resized()
@@ -109,9 +108,9 @@ void TONE3000Editor::updateResizeConstraints() {
 
 void TONE3000Editor::setExtraContentHeight(int pixels) {
   // setSize() reaches the host as a resize request through the plugin
-  // wrapper (resizeView in VST3), so this works in DAWs too — a host that
-  // refuses keeps the old size and the webview scrolls, the same fallback
-  // as before. Standalone resizes its own window directly.
+  // wrapper (resizeView in VST3), so this works in DAWs too; a host that
+  // refuses keeps the old size and the webview scrolls. Standalone resizes
+  // its own window directly.
   // The UI reports design-space pixels; the window change is scaled.
   // Generous ceiling: banner (~44) + hint bar (~36) with headroom to spare.
   const int clamped = juce::jlimit(0, 160, pixels);
@@ -178,18 +177,18 @@ void TONE3000Editor::loadMainUrlIfNeeded() {
   mainUrl = juce::WebBrowserComponent::getResourceProviderRoot() + "index.html";
 #endif
   // Failed navigations (OAuth redirect with tone3000.com unreachable)
-  // recover by coming back here — see GuardedWebView::pageLoadHadNetworkError.
+  // recover by coming back here; see GuardedWebView::pageLoadHadNetworkError.
   mainWebView->setRecoveryUrl(mainUrl);
   mainWebView->goToURL(mainUrl);
 }
 
 void TONE3000Editor::resized() {
-  // Real pixels only — no transform. The webview handles devicePixelRatio
+  // Real pixels only, no transform. The webview handles devicePixelRatio
   // itself, and the page applies its own CSS zoom from the viewport width.
   if (mainWebView != nullptr)
     mainWebView->setBounds(getLocalBounds());
   // Skip persisting while we're correcting our own size rather than
-  // reflecting one the user (or host) actually chose — see restoringSize.
+  // reflecting one the user (or host) actually chose; see restoringSize.
   if (!restoringSize)
     processor.editorScale.store(currentScale());
 }

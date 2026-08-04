@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { ChevronDown, Equal, Power } from 'lucide-react';
 import { KnobControl } from './KnobControl';
 import { balanceDbScale, gainDbScale, gateDbScale, toneScale } from './knobScale';
@@ -6,7 +6,8 @@ import { SpreadGroup } from './SpreadControls';
 import { OffsetGroup } from './OffsetControls';
 import { useParameter } from '../hooks/useParameter';
 import type { InputMode } from '../types/chain';
-import { useNativeFunction } from '../hooks/useFunction';
+import { useAutoMeasure } from '../hooks/useAutoMeasure';
+import { useDismissable } from '../hooks/useDismissable';
 import { HELP, helpProps } from './helpText';
 import { ChromeIconButton } from './ChromeIconButton';
 import {
@@ -31,14 +32,14 @@ import {
  * Input: a single level knob (per-channel trims live on the chain blocks).
  * When a real stereo source feeds the plugin, an input-mode button joins it
  * to pick what feeds the chain: both channels, or just L/R mirrored onto
- * both. The mode is chain state (session-persisted, not a preset value —
+ * both. The mode is chain state (session-persisted, not a preset value;
  * it's I/O routing, not tone).
  *
  * Output gain: the main level knob plus a small balance knob that trims L/R
  * against each other (±12 dB opposing, center = off). The balance knob only
  * appears when the output actually runs stereo (stereo mode, or mono +
  * spread); DSP forces center when inactive so a leftover setting can't skew
- * a mono bus. All values are host parameters — presets/undo get them for free.
+ * a mono bus. All values are host parameters, so presets/undo get them for free.
  */
 
 const PLATE_HEIGHT = 108;
@@ -55,7 +56,7 @@ const PowerButton: React.FC<{
   </ChromeIconButton>
 );
 
-/** Two overlapping circles — the classic stereo glyph (lucide has none). */
+/** Two overlapping circles, the classic stereo glyph (lucide has none). */
 const StereoIcon: React.FC<{ style?: React.CSSProperties }> = ({ style }) => (
   <svg
     width={17}
@@ -89,7 +90,7 @@ const InputModeGlyph: React.FC<{ mode: InputMode }> = ({ mode }) =>
 /**
  * Input mode: which channels of a stereo source feed the plugin. The
  * trigger (current glyph + down caret) opens a flat floating menu above the
- * plate — same chrome as the Spread advanced panel — listing the three
+ * plate (same chrome as the Spread advanced panel) listing the three
  * routings. Stereo (the default) shows the two-circle glyph; L/R take only
  * that channel (mirrored onto both) and the trigger keeps the filled
  * "engaged" look so a non-default routing is obvious at a glance.
@@ -103,32 +104,17 @@ const InputModeButton: React.FC<{
 }> = ({ mode, branched, onChange }) => {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismissable(open, rootRef, close);
   const options = branched
     ? INPUT_MODE_OPTIONS.filter((option) => option.mode !== 'stereo')
     : INPUT_MODE_OPTIONS;
-
-  // Outside click / Escape dismissal (presets-menu / advanced-panel pattern).
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [open]);
 
   return (
     // The chrome lift lives on the wrapper (not the button) so the floating
     // menu anchors to the lifted trigger. The transform makes the wrapper a
     // stacking context, which would trap the menu's z-index under the chain
-    // view's edge-fade gradients (zIndex 3 in the root context) — so the
+    // view's edge-fade gradients (zIndex 3 in the root context), so the
     // wrapper itself is elevated while the menu is open.
     <div
       ref={rootRef}
@@ -238,42 +224,20 @@ const InputModeButton: React.FC<{
 
 /**
  * Auto balance: one-shot L/R energy match. Click arms a listening
- * measurement on the native side — play for ~2 s and the measured dB
+ * measurement on the native side: play for ~2 s and the measured dB
  * difference is written into the outputBalance parameter (the Bal knob
  * visibly moves). Yellow (listening) while armed; click again to cancel;
  * times out after 15 s of silence.
  */
 const AutoBalanceButton: React.FC = () => {
-  const start = useNativeFunction<boolean>('startAutoBalance');
-  const cancel = useNativeFunction<boolean>('cancelAutoBalance');
-  const poll = useNativeFunction<{ state: string; matchedDb?: number }>('pollAutoBalance');
-  const [listening, setListening] = useState(false);
-
-  useEffect(() => {
-    if (!listening) return;
-    const id = setInterval(async () => {
-      const res = await poll();
-      if (res && res.state !== 'listening') setListening(false);
-    }, 200);
-    return () => clearInterval(id);
-  }, [listening, poll]);
-
-  const handleClick = async () => {
-    if (listening) {
-      await cancel();
-      setListening(false);
-    } else {
-      await start();
-      setListening(true);
-    }
-  };
-
+  const { listening, toggle } = useAutoMeasure('startAutoBalance', 'cancelAutoBalance',
+                                               'pollAutoBalance');
   return (
     <ChromeIconButton
       tone="armed"
       on={listening}
       help={HELP.autoBalance}
-      onClick={handleClick}
+      onClick={toggle}
       offsetY={CHROME_LIFT}
     >
       <Equal size={ICON_SIZE} />
@@ -297,7 +261,7 @@ const OutputGainKnob: React.FC<{
 
   // The (=) button sits on the outer edge, keeping Bal next to the main
   // knob: [=][Bal][knob]. Inactive companions stay mounted but invisible so
-  // the group's footprint is constant — toggling stereo/spread must not
+  // the group's footprint is constant; toggling stereo/spread must not
   // shift the plate (it's laid out with space-between).
   return (
     <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end', gap: '10px' }}>
@@ -333,31 +297,33 @@ const OutputGainKnob: React.FC<{
 };
 
 interface FaceplateProps {
-  /** Output stage runs stereo (stereo mode or mono-mode spread) — shows the
+  /** Output stage runs stereo (stereo mode or mono-mode spread); shows the
       output balance knob. */
   stereoOutput: boolean;
-  /** Two independent chains are running (stereo mode) — shows the auto
+  /** Two independent chains are running (stereo mode); shows the auto
       balance button and swaps the Spread group for the Offset group.
       Mono-mode spread doesn't need auto balance: both channels carry the
       same chain, so their energy already matches. */
   stereoChains: boolean;
-  /** Plugin is fed a real stereo source — shows the input-mode button. */
+  /** Plugin is fed a real stereo source; shows the input-mode button. */
   stereoInput: boolean;
-  /** A chain branch is active — hides the "Stereo" input routing (the chain
+  /** A chain branch is active; hides the "Stereo" input routing (the chain
       has a single mono source while branched). */
   branched: boolean;
   inputMode: InputMode;
   onInputModeChange: (mode: InputMode) => void;
 }
 
-export const Faceplate: React.FC<FaceplateProps> = ({
+// Memoized: Plugin re-renders on every chain poll tick, but the plate only
+// depends on these few flags (its knobs subscribe to their own parameters).
+export const Faceplate = React.memo(function Faceplate({
   stereoOutput,
   stereoChains,
   stereoInput,
   branched,
   inputMode,
   onInputModeChange,
-}) => {
+}: FaceplateProps) {
   const [inputLevel, setInputLevel] = useParameter('inputLevel', 'slider');
   const [toneBass, setToneBass] = useParameter('toneBass', 'slider');
   const [toneMid, setToneMid] = useParameter('toneMid', 'slider');
@@ -486,4 +452,4 @@ export const Faceplate: React.FC<FaceplateProps> = ({
       <OutputGainKnob stereo={stereoOutput} autoBalance={stereoChains} />
     </div>
   );
-};
+});

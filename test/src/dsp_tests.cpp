@@ -1,4 +1,4 @@
-// ── TONE3000 DSP test suite ──
+// TONE3000 DSP test suite
 //
 // Verifies the load-bearing DSP properties of the chain against the real
 // test assets in test/files (A2 NAM captures + cab/reverb IRs):
@@ -9,11 +9,11 @@
 //   NamEngineTest         real A2 WaveNet models: load/run sanity, slicing
 //                         invariance, exactness of the phase-interleaved
 //                         oversampled mode against a hand-built reference,
-//                         and the headline claim — oversampling reduces a
+//                         and the headline claim: oversampling reduces a
 //                         real amp's aliasing.
 //   IrConvolutionTest     real IR files through juce::dsp::Convolution: the
 //                         short/long classification cutoff, true-stereo vs
-//                         mono kernels, and the island guarantee — an IR
+//                         mono kernels, and the island guarantee: an IR
 //                         inside the ×8 oversampled chain matches base-rate
 //                         convolution.
 //
@@ -61,7 +61,7 @@ std::vector<float> runOversampledChain(const std::vector<float>& in, int factor,
   return out;
 }
 
-// ═════════════════════════ ChainOversampler ═════════════════════════
+// ChainOversampler
 
 TEST(ChainOversamplerTest, Factor1IsBitExactPassthrough) {
   const int blockSize = 512, total = 93 * 512;
@@ -71,7 +71,7 @@ TEST(ChainOversamplerTest, Factor1IsBitExactPassthrough) {
 }
 
 TEST(ChainOversamplerTest, ChainStageFrameCountContract) {
-  // Every base frame must become exactly `factor` chain frames per call —
+  // Every base frame must become exactly `factor` chain frames per call;
   // NamEngine's phase interleave and the decimator's pairing depend on it.
   const int blockSize = 512, total = 24 * 512;
   const std::vector<float> in(static_cast<size_t>(total), 0.0f);
@@ -99,7 +99,7 @@ TEST(ChainOversamplerTest, PassbandTransparentWithTinyGroupDelay) {
     EXPECT_NEAR(gainDb, 0.0, 0.1) << "factor " << factor << ": passband gain moved";
 
     // Min-phase halfbands report zero PDC latency but carry a few samples of
-    // physical group delay — it must stay tiny and not blow up with factor.
+    // physical group delay; it must stay tiny and not blow up with factor.
     int bestLag = -1;
     double bestCorr = -1e30;
     for (int lag = 0; lag < 32; ++lag) {
@@ -247,7 +247,7 @@ TEST(ChainOversamplerTest, IslandHandlesMonoBuffers) {
     ASSERT_TRUE(std::isfinite(s));
 }
 
-// ═════════════════════════ NamEngine (real A2 models) ═════════════════════════
+// NamEngine (real A2 models)
 
 // Builds phase instances from a .nam file exactly the way the model loader
 // does (nam::get_dsp per phase, all from the same parsed config).
@@ -305,7 +305,7 @@ TEST_P(NamEngineTest, LoadsAndProducesAmpedAudio) {
 
 TEST_P(NamEngineTest, SlicedProcessingMatchesOneShot) {
   // NAM models stream statefully, so process() slicing (engine prepared
-  // smaller than the buffer it receives) must be inaudible — this is the
+  // smaller than the buffer it receives) must be inaudible; this is the
   // defensive path that keeps blocks alive when a startup prepare raced the
   // host's real block size.
   const int total = 4096;
@@ -333,7 +333,7 @@ TEST_P(NamEngineTest, SlicedProcessingMatchesOneShot) {
 TEST_P(NamEngineTest, PhaseInterleaveMatchesManualPhaseReference) {
   // The oversampled engine (N instances fed every Nth sample) must compute
   // exactly what N hand-driven copies of the model compute on hand-split
-  // phase streams — this pins the de-interleave/re-interleave bookkeeping.
+  // phase streams; this pins the de-interleave/re-interleave bookkeeping.
   const int factor = 4, total = 4096;
   const auto in = makeNoise(total, 4321, 0.5f);
 
@@ -375,7 +375,7 @@ TEST_P(NamEngineTest, PhaseInterleaveMatchesManualPhaseReference) {
 
 TEST(NamEngineAliasingTest, OversamplingReducesRealAmpAliasing) {
   // The headline claim, end to end with a real amp capture (the head-only
-  // model — a cab's rolloff would bury the measurement): drive it with a hot
+  // model; a cab's rolloff would bury the measurement): drive it with a hot
   // ~5 kHz tone and compare the energy at the fold-back frequencies of
   // harmonics 5..15 between factor 1 and factor 8.
   const juce::File model = testFile("a2-amp-test.nam");
@@ -403,13 +403,13 @@ TEST(NamEngineAliasingTest, OversamplingReducesRealAmpAliasing) {
 
   const double alias1 = aliasRatioAtFactor(1);
   const double alias8 = aliasRatioAtFactor(8);
-  std::printf("  real amp: folded harmonics vs fundamental — factor 1: %+.1f dB, factor 8: "
+  std::printf("  real amp: folded harmonics vs fundamental at factor 1: %+.1f dB, factor 8: "
               "%+.1f dB (%.1f dB reduction)\n",
               alias1, alias8, alias1 - alias8);
   EXPECT_LT(alias8, alias1 - 10.0) << "8x oversampling should cut real-amp aliasing by >10 dB";
 }
 
-// ═════════════════════════ IR convolution (real IR files) ═════════════════════════
+// IR convolution (real IR files)
 
 // Loads an IR the way the model loader does: Trim::yes, Normalise::no,
 // engine picked by the same 1 s short/long cutoff, prepared at the base rate.
@@ -437,7 +437,7 @@ std::unique_ptr<juce::dsp::Convolution> makeConvolver(const juce::File& irFile,
 }
 
 TEST(IrConvolutionTest, CabClassifiesShortReverbsClassifyLong) {
-  // The 1 s cutoff drives the −18 dB cab pad and the default mix — a
+  // The 1 s cutoff drives the -18 dB cab pad and the default mix; a
   // misclassification is instantly audible. Kernel lengths are read off the
   // built engines, post trim + resample, exactly like the loader.
   auto cab = makeConvolver(testFile("cab-ir-test.wav"), juce::dsp::Convolution::Stereo::no, 512);
@@ -471,7 +471,7 @@ TEST(IrConvolutionTest, TrueStereoDecorrelatesMonoFanoutDoesNot) {
 
   // JUCE crossfades a freshly installed engine in from dry over the first
   // samples (and not symmetrically across channels), so the contract only
-  // holds once that settles — in the plugin the block's wet fade-in masks
+  // holds once that settles; in the plugin the block's wet fade-in masks
   // exactly this window. Assert on the settled region.
   const int settled = 8192;
 
@@ -489,10 +489,10 @@ TEST(IrConvolutionTest, TrueStereoDecorrelatesMonoFanoutDoesNot) {
   EXPECT_GT(maxL, 1e-4f);
   EXPECT_GT(maxDiff, 1e-4f) << "true-stereo IR produced identical channels";
 
-  // Stereo::no on the same file: kernel 0 fans out to every channel — the
+  // Stereo::no on the same file: kernel 0 fans out to every channel, the
   // mono-fallback contract the RT path relies on upstream of NAM blocks.
   // Within float noise, not bit-exact: JUCE's per-channel install-fade gains
-  // can settle a ULP apart (≈ −120 dB — meaningless, but not zero).
+  // can settle a ULP apart (≈ -120 dB: meaningless, but not zero).
   auto mono = makeConvolver(testFile("reverb-ir-stereo-test.wav"),
                             juce::dsp::Convolution::Stereo::no, blockSize);
   const auto monoOut = processThrough(*mono);
@@ -503,7 +503,7 @@ TEST(IrConvolutionTest, TrueStereoDecorrelatesMonoFanoutDoesNot) {
 TEST(IrConvolutionTest, IslandedConvolutionInOversampledChainMatchesBaseRate) {
   // The island guarantee: an IR block inside the ×8 chain (decimate →
   // convolve at 48 kHz → interpolate) must sound identical to plain base-rate
-  // convolution — same kernel, same rate, only the transparent oversampling
+  // convolution: same kernel, same rate, only the transparent oversampling
   // round trip around it. Compared as magnitude at probe tones (the island's
   // few samples of allpass group delay make a raw time-domain null
   // meaningless, and magnitude is what "sounds identical" means for an LTI
@@ -534,7 +534,7 @@ TEST(IrConvolutionTest, IslandedConvolutionInOversampledChainMatchesBaseRate) {
     }
 
     // Path B: the same convolver configuration behind an island inside the
-    // ×8 oversampled chain — the exact RT-path structure.
+    // ×8 oversampled chain, the exact RT-path structure.
     const int factor = 8;
     auto convolverB = makeConvolver(irFile, juce::dsp::Convolution::Stereo::no, blockSize);
     ChainOversampler island;

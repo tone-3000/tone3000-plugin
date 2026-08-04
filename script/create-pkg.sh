@@ -3,10 +3,9 @@
 #
 # Two modes:
 #
-# 1. Ad-hoc (default, no env vars):
+# 1. Ad-hoc (default, no env vars), for local unsigned builds:
 #    Bundles inside are ad-hoc codesigned, the .pkg envelope is unsigned.
-#    Recipients right-click the .pkg → Open the first time. Installed bundles
-#    sidestep App Translocation, so the WebView UI loads on first launch.
+#    Recipients right-click the .pkg and choose Open the first time.
 #
 # 2. Developer ID + notarization (when env vars are set):
 #    Bundles are signed with `Developer ID Application` + Hardened Runtime
@@ -80,13 +79,13 @@ fi
 if [[ -n "$SIGN_ID_APP" ]]; then
   echo "Signing mode: Developer ID"
   echo "  App:       $SIGN_ID_APP"
-  echo "  Installer: ${SIGN_ID_PKG:-<unset — .pkg envelope will be unsigned!>}"
-  echo "  Notary:    ${NOTARY_PROFILE:-<unset — skipping notarization>}"
+  echo "  Installer: ${SIGN_ID_PKG:-<unset; .pkg envelope will be unsigned!>}"
+  echo "  Notary:    ${NOTARY_PROFILE:-<unset; skipping notarization>}"
 else
   echo "Signing mode: ad-hoc"
 fi
 
-# ─── 0. Helper: sign one bundle ──────────────────────────────────────────────
+# 0. Helper: sign one bundle
 
 sign_bundle() {
   local bundle="$1"
@@ -115,7 +114,7 @@ mkdir -p "$STAGE/aax"
 mkdir -p "$STAGE/clap"
 mkdir -p "$COMPONENTS_DIR"
 
-# ─── 1. Stage artefacts at their final layout ────────────────────────────────
+# 1. Stage artefacts at their final layout
 
 echo "Staging Standalone..."
 ditto "$RELEASE/Standalone/TONE3000.app" "$STAGE/standalone/Applications/TONE3000.app"
@@ -151,7 +150,7 @@ fi
 
 xattr -cr "$STAGE" 2>/dev/null || true
 
-# ─── 2. Sign each staged bundle ──────────────────────────────────────────────
+# 2. Sign each staged bundle
 
 echo "Signing staged bundles..."
 sign_bundle "$STAGE/standalone/Applications/TONE3000.app"
@@ -160,7 +159,7 @@ sign_bundle "$STAGE/standalone/Applications/TONE3000.app"
 [[ $HAVE_AAX  -eq 1 ]] && sign_bundle "$STAGE/aax/TONE3000.aaxplugin"
 [[ $HAVE_CLAP -eq 1 ]] && sign_bundle "$STAGE/clap/TONE3000.clap"
 
-# ─── 3. Build component .pkg files (one per install location) ────────────────
+# 3. Build component .pkg files (one per install location)
 
 echo "Building component packages..."
 
@@ -207,7 +206,7 @@ if [[ $HAVE_CLAP -eq 1 ]]; then
     "$COMPONENTS_DIR/_clap.pkg"
 fi
 
-# ─── 4. Generate distribution.xml for the components we actually built ──────
+# 4. Generate distribution.xml for the components we actually built
 
 DIST_XML="$COMPONENTS_DIR/distribution.xml"
 HAS_WELCOME=0
@@ -279,7 +278,7 @@ XML
   echo '</installer-gui-script>'
 } > "$DIST_XML"
 
-# ─── 5. Build the final wizard pkg ───────────────────────────────────────────
+# 5. Build the final wizard pkg
 
 RESOURCES_ARG=()
 if [[ -d "$INSTALLER_DIR/Resources" ]]; then
@@ -303,7 +302,7 @@ productbuild \
 
 xattr -cr "$OUTPUT_PKG" 2>/dev/null || true
 
-# ─── 6. Notarize + staple (optional) ─────────────────────────────────────────
+# 6. Notarize + staple (optional)
 
 if [[ -n "$SIGN_ID_APP" && -n "$NOTARY_PROFILE" ]]; then
   if [[ -z "$SIGN_ID_PKG" ]]; then
@@ -326,14 +325,14 @@ rm -rf "$STAGE" "$COMPONENTS_DIR"
 echo ""
 echo "Installer ready: $OUTPUT_PKG"
 if [[ -n "$SIGN_ID_APP" && -n "$SIGN_ID_PKG" && -n "$NOTARY_PROFILE" ]]; then
-  echo "Signed + notarized + stapled — recipients can double-click with no warning."
+  echo "Signed + notarized + stapled. Recipients can double-click with no warning."
 elif [[ -n "$SIGN_ID_APP" ]]; then
   echo "Bundles signed with Developer ID."
   if [[ -z "$SIGN_ID_PKG" ]]; then
-    echo "  .pkg envelope is unsigned — set SIGN_ID_PKG to sign it."
+    echo "  .pkg envelope is unsigned; set SIGN_ID_PKG to sign it."
   fi
   if [[ -z "$NOTARY_PROFILE" ]]; then
-    echo "  Not notarized — set NOTARY_PROFILE to notarize and staple."
+    echo "  Not notarized; set NOTARY_PROFILE to notarize and staple."
   fi
 else
   echo "Ad-hoc only. Recipients: right-click the .pkg in Finder → Open → Open."

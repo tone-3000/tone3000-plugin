@@ -28,11 +28,11 @@ interface ChromeIconButtonProps {
   help: string;
   children: React.ReactNode;
   /**
-   * plain   — white icon (optional HIGHLIGHT via `filled`).
-   * power   — on = white/clear; off = GRAY + HIGHLIGHT.
-   * armed   — on = BRAND_YELLOW + BLACK (listening / engaged); off = BORDER + GRAY.
-   * link    — on = white; off = GRAY — never a fill (pan link).
-   * outline — on = WHITE border + icon; off = BORDER + GRAY (block normalize).
+   * plain:   white icon (optional HIGHLIGHT via `filled`).
+   * power:   on = white/clear; off = GRAY + HIGHLIGHT.
+   * armed:   on = BRAND_YELLOW + BLACK (listening / engaged); off = BORDER + GRAY.
+   * link:    on = white; off = GRAY, never a fill (pan link).
+   * outline: on = WHITE border + icon; off = BORDER + GRAY (block normalize).
    */
   tone?: ChromeTone;
   /** For power/armed/link: feature on / listening / linked. */
@@ -88,7 +88,7 @@ const toneChrome = (
 };
 
 /**
- * Normalize Lucide / SVG icons for chrome boxes. Stroke scales with size —
+ * Normalize Lucide / SVG icons for chrome boxes. Stroke scales with size;
  * do NOT use absoluteStrokeWidth (at 14px that locks a 2px stroke and looks
  * bloated). `display:block` kills the inline-SVG baseline gap, and grid
  * centering on the box keeps every glyph optically centered without per-icon
@@ -135,7 +135,7 @@ export const ChromeIconButton: React.FC<ChromeIconButtonProps> = ({
     {...helpProps(help)}
     style={{
       ...iconButtonStyle(ICON_BOX_SIZE),
-      // Grid on the button itself — one centering context, no nested span.
+      // Grid on the button itself: one centering context, no nested span.
       display: 'grid',
       placeItems: 'center',
       ...toneChrome(tone, on, filled),

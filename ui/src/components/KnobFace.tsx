@@ -3,7 +3,7 @@ import { BRAND_YELLOW } from './theme';
 
 /**
  * The knob artwork, shared by both tones. Source of truth for the geometry
- * is design/primary-knob.svg and design/secondary-knob.svg — the two exports
+ * is design/primary-knob.svg and design/secondary-knob.svg. The two exports
  * are the same hardware knob at different sizes, so every radius here is
  * their coordinates normalized to this 200x200 viewBox. Only the three face
  * layers differ between them; keep TONE_FACE_FILLS in sync with the exports.
@@ -14,7 +14,7 @@ export type KnobTone = 'primary' | 'secondary';
 type KnobFaceProps = {
   /** Pointer angle in degrees clockwise from noon, -135..+135. */
   angleDeg: number;
-  /** Angle the value arc grows from — noon for centered knobs, -135
+  /** Angle the value arc grows from: noon for centered knobs, -135
       (bottom left, start of travel) for the rest. */
   arcFromDeg: number;
   tone: KnobTone;
@@ -48,7 +48,7 @@ const TONE_FACE_FILLS: Record<KnobTone, readonly FaceFill[]> = {
   secondary: ['#a3a3a3', ['#a9a9a9', '#000000'], ['#505050', '#000000']],
 };
 
-/** Point on the arc's circle at `thetaDeg` clockwise from noon — same angle
+/** Point on the arc's circle at `thetaDeg` clockwise from noon, the same angle
     convention as the pointer's rotation, so the arc endpoint always lines up
     with wherever the pointer actually is. */
 function pointOnArc(thetaDeg: number) {
@@ -62,7 +62,7 @@ function pointOnArc(thetaDeg: number) {
 /**
  * Value arc from the knob's zero reference out to the pointer. Endpoints are
  * ordered ascending so the sweep flag can stay 1 (clockwise) whichever side
- * of zero the pointer is on — which is what lets one path serve both a
+ * of zero the pointer is on, which is what lets one path serve both a
  * centered knob (zero at noon, fills either way) and a plain one (zero at
  * bottom left, fills one way).
  */
@@ -77,7 +77,7 @@ function valueArcPath(fromDeg: number, toDeg: number): string {
 }
 
 /**
- * The pointer's bevel gradient has directional light baked in — dark top,
+ * The pointer's bevel gradient has directional light baked in: dark top,
  * light bottom, the "chamfered edge catches light from below" convention the
  * whole faceplate uses. Since the pointer is the one thing that rotates, its
  * gradient is counter-rotated by the same angle around its own center, so the

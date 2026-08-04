@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { useDismissable } from '../hooks/useDismissable';
 import { MUTED, SUBTLE, BRAND_RED, BRAND_YELLOW, WHITE } from './theme';
 
 /**
@@ -101,11 +102,11 @@ export const PillToggle: React.FC<{ value: boolean; onChange: (value: boolean) =
 
 /** Custom dropdown select styled like the plugin's other pickers: outlined
     trigger, dark panel, hover-highlight rows. Renders disabled (dimmed, no
-    chevron interaction) for locked single-option lists — per the audio
+    chevron interaction) for locked single-option lists; per the audio
     settings spec, a one-option select must never pretend to be a choice.
     A null value is the empty state: the trigger shows the dimmed
     placeholder and no option renders as selected. Options may carry a
-    sublabel — smaller, dimmer context under the label (the MIDI mapping
+    sublabel: smaller, dimmer context under the label (the MIDI mapping
     picker names each block slot's current tone this way); the trigger
     always shows the label alone. */
 export function SelectField<T extends string>({
@@ -126,15 +127,8 @@ export function SelectField<T extends string>({
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [open]);
+  const close = useCallback(() => setOpen(false), []);
+  useDismissable(open, rootRef, close);
 
   const selected = options.find((option) => option.value === value);
 
@@ -205,7 +199,7 @@ export function SelectField<T extends string>({
                 color: '#ffffff',
                 fontSize: '14px',
                 fontWeight: 400,
-                // No dividers between rows — only the active/hover fill and the
+                // No dividers between rows; only the active/hover fill and the
                 // container border delineate options.
                 background: option.value === value ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
               }}
@@ -232,7 +226,7 @@ export function SelectField<T extends string>({
   );
 }
 
-/** Label + help + control — the repeating field shape of the settings tabs. */
+/** Label + help + control: the repeating field shape of the settings tabs. */
 export const FieldRow: React.FC<{
   label: string;
   help?: React.ReactNode;
@@ -430,7 +424,7 @@ const ALERT_COLORS: Record<AlertVariant, string> = {
   info: BRAND_YELLOW,
 };
 
-/** Circled "!" in the variant color — the shared alert glyph. */
+/** Circled "!" in the variant color; the shared alert glyph. */
 export const AlertIcon: React.FC<{ variant: AlertVariant }> = ({ variant }) => (
   <span
     aria-hidden

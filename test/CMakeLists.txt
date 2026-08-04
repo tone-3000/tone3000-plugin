@@ -1,4 +1,4 @@
-# ── TONE3000 DSP test suite ──
+# TONE3000 DSP test suite.
 # A GTest console app exercising the chain's DSP invariants (oversampler,
 # NamEngine phase interleaving, IR base-rate islands) against the real model
 # and IR assets in test/files. Build and run locally:
@@ -22,10 +22,12 @@ target_sources(DspTests PRIVATE
     src/duplicate_tests.cpp
     src/midi_map_tests.cpp
     src/multicore_tests.cpp
+    src/preset_tests.cpp
     src/processor_tests.cpp
     src/spread_tests.cpp
     src/swap_fade_tests.cpp
-    # Compiled straight from the plugin tree — the tests exercise the real
+    src/tuner_tests.cpp
+    # Compiled straight from the plugin tree so the tests exercise the real
     # processor, not a copy. GUI sources are excluded; HEADLESS=1 below
     # compiles the processor exactly like the headless plugin build.
     ../plugin/src/AutoOffset.cpp
@@ -62,10 +64,10 @@ target_compile_definitions(DspTests PRIVATE
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     # Prevent windows.h min/max macros from breaking std::min/std::max in
-    # AudioDSPTools and plugin code — same as plugin/CMakeLists.txt.
+    # AudioDSPTools and plugin code (same as plugin/CMakeLists.txt).
     $<$<PLATFORM_ID:Windows>:NOMINMAX>
     # The processor compiles in its headless configuration (no Editor /
-    # webview / standalone-window code) — the DSP under test is identical.
+    # webview / standalone-window code); the DSP under test is identical.
     HEADLESS=1
     # midi_map_tests pumps the dispatch loop (runDispatchLoopUntil) to
     # deliver the MidiMapper's AsyncUpdater work; the plugin itself never
@@ -82,7 +84,7 @@ target_link_libraries(DspTests
         juce::juce_audio_processors
         # NAM must be linked whole-archive so its self-registering config
         # parsers (WaveNet/ConvNet/LSTM static initializers) survive the
-        # linker — same recipe as plugin/CMakeLists.txt.
+        # linker (same recipe as plugin/CMakeLists.txt).
         $<$<PLATFORM_ID:Darwin>:-Wl,-force_load,$<TARGET_FILE:NAM>>
         $<$<PLATFORM_ID:Linux>:-Wl,--whole-archive>
         $<$<PLATFORM_ID:Linux>:NAM>

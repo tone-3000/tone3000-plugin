@@ -10,7 +10,7 @@
  * MIDI CC / note → target mapping engine with Learn, plus program-change
  * preset switching.
  *
- * Lives in the processor — not the device layer — so the same map, learn flow
+ * Lives in the processor, not the device layer, so the same map, learn flow
  * and settings UI work identically in the standalone app (enabled MIDI inputs
  * are merged into processBlock's MidiBuffer by JUCE's standalone player) and
  * in hosts (the DAW hands us the buffer). The map serializes with plugin
@@ -19,13 +19,13 @@
  * Targets come in four kinds:
  *   - APVTS parameters ("gateThreshold").
  *   - Positional block powers ("block1Power" = the first tone block in the
- *     Left lane, "rightBlock1Power" = the first in the Right lane — stereo
+ *     Left lane, "rightBlock1Power" = the first in the Right lane; stereo
  *     only). Positional addressing is deliberate: block ids are ephemeral
  *     (tone swaps, preset loads), but "my second stomp bypasses block 2" is
  *     a pedalboard fact that should survive all of that.
- *   - Stereo mode ("stereoEnabled") — chain state, not a parameter, so it
+ *   - Stereo mode ("stereoEnabled"): chain state, not a parameter, so it
  *     gets the same virtual-target treatment as block powers.
- *   - Preset steps ("presetPrevious" / "presetNext") — fire-per-press
+ *   - Preset steps ("presetPrevious" / "presetNext"): fire-per-press
  *     triggers that walk the preset list, for footswitches programmed with
  *     CC / note buttons instead of program changes.
  *
@@ -39,35 +39,35 @@
  *     (see applyEvent): value ≥ 64 fires; a value < 64 also fires unless it
  *     follows a ≥ 64 value from the same control (a momentary switch's
  *     release). Covers momentary pedals (127 then 0), latching values, and
- *     footswitches that only ever send low values — the last kind used to
- *     be dropped entirely by a plain ≥ 64 gate.
+ *     footswitches that only ever send low values; a plain ≥ 64 gate would
+ *     drop that last kind entirely.
  *   - Note-on on any target → toggle (continuous flips 0 ↔ 1).
  *   - Program change n → onProgramChange(n), no mapping needed (the
  *     processor loads the nth preset in list order).
  *
  * Threading: the audio thread applies mappings under a SpinLock try-lock
  * (skipping one buffer on the rare contended edit) and never mutates the map.
- * Parameter writes go through setValueNotifyingHost — the standard MIDI-learn
+ * Parameter writes go through setValueNotifyingHost, the standard MIDI-learn
  * path, which hosts accept from the processing callback. Everything else is
  * deferred to the message thread via AsyncUpdater: learn captures, program
  * changes, preset steps, and block-power / stereo toggles (chain edits take
  * the chain lock and are undoable, so they must never run on the audio
  * thread). Pending toggles are parity-coalesced (XOR per block, a flip
- * counter for stereo, a signed step sum for presets) — two stomps before the
- * async hop still net out to the right state.
+ * counter for stereo, a signed step sum for presets), so two stomps before
+ * the async hop still net out to the right state.
  */
 class MidiMapper : private juce::AsyncUpdater {
 public:
   explicit MidiMapper(juce::AudioProcessorValueTreeState& parameters);
   ~MidiMapper() override;
 
-  // ── Audio thread ──
+  // Audio thread.
   void processMidi(const juce::MidiBuffer& midi);
 
-  // ── Message thread (native bridge) ──
+  // Message thread (native bridge).
   /** { channel, learnTargetId, mappings: [{ targetId, source, number }] } */
   juce::var getState() const;
-  /** Global channel filter: 0 = omni, 1–16 = that channel only. */
+  /** Global channel filter: 0 = omni, 1-16 = that channel only. */
   void setChannelFilter(int channel);
   /** Arm learn for a target: the next CC / note-on (passing the channel
       filter) wins and replaces any existing mapping for that target. Arming
@@ -76,14 +76,14 @@ public:
   void cancelLearn();
   bool removeMapping(const juce::String& targetId);
 
-  // ── Plugin state ──
+  // Plugin state.
   juce::ValueTree toValueTree() const;
-  /** Replaces the whole map (an invalid/missing tree clears it — a project
+  /** Replaces the whole map (an invalid/missing tree clears it; a project
       without mappings must not inherit the previous session's). Unknown
       target ids are dropped. Safe off the message thread. */
   void restoreFromValueTree(const juce::ValueTree& tree);
 
-  // ── Message-thread hooks (set once by the owning processor / editor) ──
+  // Message-thread hooks (set once by the owning processor / editor).
   /** Fired after any change to the map, channel filter or learn state. The
       editor forwards it to the webview so the settings UI refreshes without
       polling. */
@@ -96,7 +96,7 @@ public:
   /** A mapped stereo-mode control fired (net of parity coalescing). */
   std::function<void()> onStereoToggle;
   /** Mapped preset prev/next controls fired; delta is the net step count
-      (+1 per next press, -1 per previous — coalesced like the toggles). */
+      (+1 per next press, -1 per previous, coalesced like the toggles). */
   std::function<void(int delta)> onPresetStep;
 
 private:
@@ -104,7 +104,7 @@ private:
   enum class Kind : int { parameter = 0, blockPower = 1, stereoMode = 2, presetStep = 3 };
 
   /** Virtual target id for the chain's stereo on/off (chain state, not an
-      APVTS parameter — the UI catalog uses the same id). */
+      APVTS parameter; the UI catalog uses the same id). */
   static constexpr const char* kStereoTarget = "stereoEnabled";
   /** Virtual target ids for preset stepping (the UI catalog uses the same
       ids). Triggers, not toggles: each press walks the preset list. */

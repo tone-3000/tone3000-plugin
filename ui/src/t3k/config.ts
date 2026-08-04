@@ -2,7 +2,7 @@
 //
 // PUBLISHABLE_KEY: your `t3k_pub_…` key from Settings → API Keys on tone3000.com.
 //   Bake one in at build time via `VITE_T3K_PUBLISHABLE_KEY`. Required for the
-//   Select flow to work — tone3000.com rejects authorize requests without a
+//   Select flow to work; tone3000.com rejects authorize requests without a
 //   recognised client_id.
 //
 // T3K_API: API origin. Defaults to production; override with `VITE_T3K_API_DOMAIN`
@@ -34,7 +34,7 @@ export const UPDATE_NOTICE_ENABLED =
 
 export const UPDATE_CHECK_URL = `${T3K_API}/api/v1/plugin/version`;
 
-// Model-architecture `2` — passed to the Select OAuth URL and to `GET /api/v1/models`
+// Model-architecture `2`, passed to the Select OAuth URL and to `GET /api/v1/models`
 // only when the tone is format=nam. IR and other formats omit the list-models filter.
 // Hardcoded because the plugin runtime only loads v2 NAM weights.
 // TEMP: set to `undefined` to disable both filters while testing.

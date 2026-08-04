@@ -6,7 +6,7 @@
 // #############################
 //
 // Snapshot-based: every chain mutator records the pre-mutation settings
-// (ChainHistory entries are settings-only ValueTrees — tone JSON + params,
+// (ChainHistory entries are settings-only ValueTrees: tone JSON + params,
 // never model bytes). Undo/redo restore a snapshot by *reconciling* it
 // against the live chains: blocks whose id/tone/model still match keep their
 // loaded engines and in-memory model caches, so undoing a knob tweak costs a
@@ -35,7 +35,7 @@ juce::ValueTree TONE3000Processor::captureChainSnapshot(bool includeModelData) c
 
 void TONE3000Processor::pushChainHistory(const juce::String& coalesceKey) {
   // Mid-gesture updates skip the (comparatively pricey) serialization
-  // entirely — the entry on top of the stack already holds the pre-gesture
+  // entirely; the entry on top of the stack already holds the pre-gesture
   // state, which is exactly what undo should restore.
   if (chainHistory.shouldCoalesce(coalesceKey))
     return;
@@ -43,7 +43,7 @@ void TONE3000Processor::pushChainHistory(const juce::String& coalesceKey) {
 }
 
 void TONE3000Processor::queueActiveModelLoad(ChainBlock& block) {
-  // Every bail below leaves the block unloadable — flag it so the UI shows
+  // Every bail below leaves the block unloadable, so flag it so the UI shows
   // the retry affordance instead of a loader that can never resolve, and log
   // at release level (these paths are the needle for "stuck loading after
   // relaunch" reports).
@@ -76,7 +76,7 @@ void TONE3000Processor::queueActiveModelLoad(ChainBlock& block) {
     const juce::String modelName = modelObj->getProperty("name").toString();
 
     // switchModelInBackground prefers the block's in-memory model cache and
-    // only hits the network when the bytes are gone — ideal for undo/redo.
+    // only hits the network when the bytes are gone: ideal for undo/redo.
     loadingThreadPool.addJob(std::function<void()>(
         [this, blockId = block.id, modelId = block.activeModelId, modelUrl, modelName]() {
           switchModelInBackground(blockId, modelId, modelUrl, modelName);
@@ -91,7 +91,7 @@ void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState
                                                Lane& retired) {
   // Park the live blocks by id so matching ones can be moved back with their
   // engines/model caches intact. Anything left over at the end is a removal
-  // and goes into `retired` — the caller destroys those after releasing
+  // and goes into `retired`; the caller destroys those after releasing
   // chainMutex (engine teardown is heavy).
   std::map<std::string, std::unique_ptr<ChainBlock>> existing;
   for (auto& b : target)
@@ -141,16 +141,16 @@ void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState
 
     // Engines survive only when the loaded model is still the right one.
     // Everything else (fresh block, model switch, load still in flight)
-    // goes through the background loader — cache-first, network fallback.
+    // goes through the background loader: cache-first, network fallback.
     if (modelChanged || !block->loaded) {
       block->loaded = false;
-      block->loadFailed = false;  // fresh load queued below — back to loading UI
+      block->loadFailed = false;  // fresh load queued below, back to loading UI
       block->modelLoading = true;
       // Project files and presets embed model bytes; seed the in-memory cache
       // with *all* of them so offline model switching keeps working and a
       // later save doesn't silently drop the non-active models. Undo
-      // snapshots are settings-only (no ModelCache child) — this is a no-op
-      // there.
+      // snapshots are settings-only (no ModelCache child), so this is a
+      // no-op there.
       const juce::ValueTree cacheState = blockState.getChildWithName("ModelCache");
       for (int j = 0; j < cacheState.getNumChildren(); ++j) {
         const juce::ValueTree cachedModel = cacheState.getChild(j);
@@ -159,20 +159,12 @@ void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState
           continue;
         const juce::var dataVar = cachedModel.getProperty("data");
         if (const auto* raw = dataVar.getBinaryData()) {
-          // Current format: raw bytes straight out of the binary stream.
           const auto* bytes = static_cast<const uint8_t*>(raw->getData());
           block->modelCache[modelId].assign(bytes, bytes + raw->getSize());
-          continue;
-        }
-        // Legacy XML states/presets carried the bytes as Base64 text.
-        juce::MemoryOutputStream decoded;
-        if (juce::Base64::convertFromBase64(decoded, dataVar.toString())) {
-          const auto* bytes = static_cast<const uint8_t*>(decoded.getData());
-          block->modelCache[modelId].assign(bytes, bytes + decoded.getDataSize());
         } else {
           juce::Logger::writeToLog("[Restore] Embedded model bytes for model " +
-                                   juce::String(modelId) + " failed to decode (block " +
-                                   juce::String(block->id) + ") — will refetch");
+                                   juce::String(modelId) + " missing (block " +
+                                   juce::String(block->id) + "); will refetch");
         }
       }
       // One release-level line per reloading block: enough to diagnose
@@ -188,8 +180,8 @@ void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState
     target.push_back(std::move(block));
   }
 
-  // Reconciled chains always come back up to the minimum slot layout —
-  // snapshots from this build already satisfy the invariant (no-op); legacy
+  // Reconciled chains always come back up to the minimum slot layout.
+  // Snapshots from this build already satisfy the invariant (no-op); legacy
   // states/presets that carried a single insert get padded here.
   normalizeLaneInserts(target);
 
@@ -216,7 +208,7 @@ TONE3000Processor::Lane TONE3000Processor::restoreChainSnapshot(const juce::Valu
     pendingAddSide = ChainSide::Left;
 
   // Branch routing rides the snapshot. refreshBranchTapIndex validates it
-  // against the freshly reconciled trunk lane — a stale id (snapshot from a
+  // against the freshly reconciled trunk lane; a stale id (snapshot from a
   // chain that no longer holds the block) degrades to independent chains.
   // Older snapshots without the properties restore as unbranched for free.
   branchSourceSide = snapshot.getProperty("branchSide").toString() == "right"
@@ -227,7 +219,7 @@ TONE3000Processor::Lane TONE3000Processor::restoreChainSnapshot(const juce::Valu
   refreshBranchTapIndex();
 
   // A restored *active* branch + a stereo input fold would silently drop a
-  // channel — enforce the same invariant setChainBranch does (presets don't
+  // channel, so enforce the same invariant setChainBranch does (presets don't
   // carry inputMode; DAW states restore it just before this runs). A dormant
   // branch (mono snapshot) doesn't constrain the fold.
   if (rtBranchTapIndex >= 0 && getInputMode() == InputMode::Stereo)
@@ -239,7 +231,7 @@ TONE3000Processor::Lane TONE3000Processor::restoreChainSnapshot(const juce::Valu
     prepareChain(right);
 
   // Restores can add/remove/retire IR blocks wholesale (undo/redo, presets,
-  // project load) — resync the host-facing tail length.
+  // project load), so resync the host-facing tail length.
   refreshIrTailLength();
 
   bumpChainRevision();
@@ -255,12 +247,12 @@ bool TONE3000Processor::undoChain() {
       return false;
   }
 
-  // A restore can restructure the chain arbitrarily — mute-splice it like
+  // A restore can restructure the chain arbitrarily; mute-splice it like
   // any structural edit. Constructed before the lock: the audio thread
   // needs chainMutex to run the fade down.
   ChainEditFade editFade(*this);
 
-  Lane retired;  // destroyed after the lock — see restoreChainSnapshot
+  Lane retired;  // destroyed after the lock; see restoreChainSnapshot
   {
     juce::ScopedLock lock(chainMutex);
     if (!chainHistory.canUndo())
@@ -270,7 +262,7 @@ bool TONE3000Processor::undoChain() {
   DBG("Chain undo applied");
 
   // The restore may have queued background reloads (undone model/tone
-  // changes) — hold the mute until they land (bounded), not just through
+  // changes); hold the mute until they land (bounded), not just through
   // the splice, or the dry input plays while the engines rebuild. A
   // settings-only undo has nothing loading and releases immediately.
   editFade.releaseWhenChainLoadsSettle();
@@ -287,7 +279,7 @@ bool TONE3000Processor::redoChain() {
   // See undoChain: mute-splice the restore.
   ChainEditFade editFade(*this);
 
-  Lane retired;  // destroyed after the lock — see restoreChainSnapshot
+  Lane retired;  // destroyed after the lock; see restoreChainSnapshot
   {
     juce::ScopedLock lock(chainMutex);
     if (!chainHistory.canRedo())

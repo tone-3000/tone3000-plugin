@@ -1,4 +1,4 @@
-// ── MIDI mapping engine tests ──
+// MIDI mapping engine tests
 //
 // MidiMapper driven through the real processor (headless build), the way
 // processBlock feeds it. These pin the mapping contracts that footswitch
@@ -40,7 +40,7 @@ juce::MidiBuffer noteOnEvent(int note, int channel = 1) {
   return midi;
 }
 
-// Arm learn for `targetId` and answer with the given event — the mapping
+// Arm learn for `targetId` and answer with the given event; the mapping
 // exists once the async commit lands.
 void learn(TONE3000Processor& proc, const juce::String& targetId, const juce::MidiBuffer& midi) {
   proc.midiMapper.startLearn(targetId);
@@ -69,7 +69,7 @@ TEST(MidiMapperTest, LearnCapturesCcAndRoundTripsThroughState) {
 
 TEST(MidiMapperTest, LowValueOnlyCcFiresEveryPress) {
   // A footswitch programmed to send only low values (value 0 per press) must
-  // toggle on every message — a plain "value ≥ 64" press gate drops all of
+  // toggle on every message; a plain "value ≥ 64" press gate drops all of
   // them, which is exactly the field report this pins down.
   TONE3000Processor proc;
   learn(proc, "gateEnabled", ccEvent(24, 0));
@@ -83,7 +83,7 @@ TEST(MidiMapperTest, LowValueOnlyCcFiresEveryPress) {
 
 TEST(MidiMapperTest, MomentaryCcFiresOncePerStomp) {
   // A momentary switch sends 127 on press and 0 on release: the pair must
-  // flip the target once, not twice — and the next stomp must fire again.
+  // flip the target once, not twice, and the next stomp must fire again.
   TONE3000Processor proc;
   learn(proc, "gateEnabled", ccEvent(25, 127));
 
@@ -124,7 +124,7 @@ TEST(MidiMapperTest, CcOnContinuousParameterIsAbsolute) {
 }
 
 TEST(MidiMapperTest, BlockPowerTargetsRouteToTheirLane) {
-  // "blockNPower" is the Left lane, "rightBlockNPower" the Right lane —
+  // "blockNPower" is the Left lane, "rightBlockNPower" the Right lane;
   // deliveries must carry both the position and the lane.
   TONE3000Processor proc;
   learn(proc, "block1Power", ccEvent(30, 127));
@@ -167,7 +167,7 @@ TEST(MidiMapperTest, PresetStepTargetsDeliverCoalescedDeltas) {
   ASSERT_EQ(deltas.size(), 2u);
   EXPECT_EQ(deltas[1], -1);
 
-  // Two rapid next presses before the async hop coalesce into one +2 —
+  // Two rapid next presses before the async hop coalesce into one +2,
   // landing two presets ahead, same as delivering them separately.
   deltas.clear();
   proc.midiMapper.processMidi(ccEvent(26, 127));

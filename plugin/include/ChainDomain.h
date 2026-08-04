@@ -1,7 +1,7 @@
 #pragma once
 
-// ── The chain domain: everything between the input stage and the post-chain
-// stereo stages runs at kChainBaseSampleRate × oversampling factor ──
+// The chain domain: everything between the input stage and the post-chain
+// stereo stages runs at kChainBaseSampleRate × oversampling factor.
 //
 // NAM A2 models are trained at 48 kHz and IRs are loaded at whatever rate the
 // convolver is prepared with, so instead of resampling per block (and paying
@@ -14,8 +14,8 @@
 //
 // One exception inside the oversampled region: IR convolution always runs at
 // the base rate, behind a per-block decimate→convolve→interpolate island
-// (ChainBlock::irBaseRateIsland). Convolution is linear — oversampling it
-// buys nothing and costs ~quadratically — so islands keep IR CPU and sound
+// (ChainBlock::irBaseRateIsland). Convolution is linear (oversampling it
+// buys nothing and costs ~quadratically), so islands keep IR CPU and sound
 // identical at every factor.
 //
 // Consequences, all deliberate:
@@ -30,7 +30,7 @@
 //    filtering from per-block resampler latency), and stereo lanes are always
 //    sample-aligned with each other.
 //
-// The Lanczos ResamplingContainer comes from AudioDSPTools — the same engine
+// The Lanczos ResamplingContainer comes from AudioDSPTools, the same engine
 // the official NAM plugin uses for this exact job. It always targets the
 // *base* rate; the oversampler raises the rate from there, so its ratios stay
 // integer powers of two regardless of the host rate.

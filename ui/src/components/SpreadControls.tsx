@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Power } from 'lucide-react';
 import { KnobControl } from './KnobControl';
 import { offsetMsScale, percentScale } from './knobScale';
 import { useParameter } from '../hooks/useParameter';
+import { useDismissable } from '../hooks/useDismissable';
 import { useCorrelation } from '../hooks/useMeters';
 import { HELP, helpProps } from './helpText';
 import { ChromeIconButton } from './ChromeIconButton';
@@ -20,10 +21,10 @@ import {
 } from './theme';
 
 /**
- * Spread (mono chain mode): an ADT-style mono-to-stereo double — one channel
- * gets a wobbling short lag (see native Spread.h and doubler-spec.md).
+ * Spread (mono chain mode): an ADT-style mono-to-stereo double where one channel
+ * gets a wobbling short lag (see native Spread.h and plugin/docs/spread.md).
  *
- * Faceplate face: a "SPREAD" advert pill while off — clicking it powers
+ * Faceplate face: a "SPREAD" advert pill while off; clicking it powers
  * spread on and reveals the bipolar Offset knob + power button (which
  * collapses back to the advert). Both states share one footprint so the
  * toggle never shifts the plate. Offset center = 0 ms = identity; the sign
@@ -31,12 +32,12 @@ import {
  * the image toward the dry side).
  *
  * Advanced controls are deliberately invisible: right-click anywhere on the
- * group (the standard plugin gesture for a control's extended options —
+ * group (the standard plugin gesture for a control's extended options,
  * taught by the hover hint) opens a small floating panel with the Wobble
- * knob (humanizing delay drift, absolute — up to ±1.2 ms around the offset,
+ * knob (humanizing delay drift, absolute: up to ±1.2 ms around the offset,
  * not a fraction of it) and the mono-safety LED (live L/R output
  * correlation: dim = safe, yellow = caution, red = cancellation on a mono
- * sum). The crossover frequency and allpass cascade stay fixed by design —
+ * sum). The crossover frequency and allpass cascade stay fixed by design;
  * they're what keep the low end mono-safe and the double decorrelated.
  */
 
@@ -47,7 +48,7 @@ const SPREAD_WOBBLE_DEFAULT = 0.25;
 const CHROME_LIFT = faceplateChromeLift(KNOB_SIZE_SECONDARY);
 
 /** Fixed slot width shared by the advert pill, the expanded knob + power
-    row, and the stereo-mode Offset group — every state of the stereo-image
+    row, and the stereo-mode Offset group: every state of the stereo-image
     slot occupies the same footprint so toggles never shift the plate (it's
     laid out with space-between). Sized for the advert, the widest face. */
 export const IMAGE_GROUP_WIDTH = 148;
@@ -57,7 +58,7 @@ const SECONDARY_CENTER_Y = 10 + 14 + KNOB_SIZE_SECONDARY / 2;
 /** The advert stands as tall as the plate's primary knobs. */
 const ADVERT_HEIGHT = KNOB_SIZE_PRIMARY;
 
-/** Elongated outline triangle flanking "SPREAD" — ~3.5:1 length:height,
+/** Elongated outline triangle flanking "SPREAD": ~3.5:1 length:height,
     hollow stroke matching the advert pill border. Points right; flip for left.
     ViewBox pads the acute tip so the miter isn't clipped. */
 const SpreadArrow: React.FC<{ direction: 'left' | 'right' }> = ({ direction }) => (
@@ -107,8 +108,8 @@ const AdvertButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
   </button>
 );
 
-/** Mono-safety LED. Thresholds per the spec: below 0.5 correlation a mono
-    fold-down audibly thins; below 0 it actively cancels. */
+/** Mono-safety LED. Below 0.5 correlation a mono fold-down audibly thins;
+    below 0 it actively cancels. */
 const CorrelationLed: React.FC = () => {
   const correlation = useCorrelation();
   const color = correlation < 0 ? BRAND_RED : correlation < 0.5 ? BRAND_YELLOW : SUBTLE;
@@ -175,27 +176,12 @@ export const SpreadGroup: React.FC = () => {
   const [offset, setOffset] = useParameter('spreadOffset', 'slider');
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const close = useCallback(() => setOpen(false), []);
 
-  // Dismiss on primary click anywhere outside the panel itself (including
-  // the Offset knob / power — they live in the same group wrapper, so the
-  // check must be against the panel, not the group). Right-clicks are left
-  // alone so the group's contextmenu toggle still works.
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (e.button !== 0) return;
-      if (!panelRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [open]);
+  // Dismissal checks against the panel, not the group wrapper: the Offset
+  // knob and power live in the same wrapper but a click on them should
+  // close the panel. primaryOnly keeps the contextmenu toggle working.
+  useDismissable(open, panelRef, close, { primaryOnly: true });
 
   return (
     <div

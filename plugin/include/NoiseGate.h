@@ -97,7 +97,7 @@ public:
   }
 
 private:
-  // ── Fixed tuning (guitar/bass-voiced) ──
+  // Fixed tuning (guitar/bass-voiced).
   static constexpr double kHighpassHz = 80.0;    // below: mains hum, rumble
   static constexpr double kLowpassHz = 5000.0;   // above: hiss, no fundamentals
   static constexpr float kDetectorRiseMs = 0.2f;

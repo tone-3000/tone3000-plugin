@@ -21,7 +21,7 @@ import { MUTED, SUBTLE } from './theme';
 
 /**
  * Re-renders a main-window banner's copy inline, next to the control that
- * fixes it — same words as the banner, but no action/ignore buttons (you're
+ * fixes it: same words as the banner, but no action/ignore buttons (you're
  * already in the form). Placement gating is the caller's; this just draws.
  */
 const InlineBannerAlert: React.FC<{ id: string; state: AudioDeviceState; show?: boolean }> = ({
@@ -49,9 +49,9 @@ const InlineBannerAlert: React.FC<{ id: string; state: AudioDeviceState; show?: 
  *
  * - Driver picker only when the platform registers multiple device types.
  * - One device picker for linked-I/O backends (ASIO), separate input/output
- *   pickers everywhere else — with "No device" as a legitimate option.
+ *   pickers everywhere else, with "No device" as a legitimate option.
  * - Input channel picker with live meters: radio behavior in mono, pick-any-
- *   two (oldest swapped out) in stereo — JUCE's flipBit window as an explicit
+ *   two (oldest swapped out) in stereo; JUCE's flipBit window as an explicit
  *   Mono/Stereo control.
  * - Output stereo-pair picker for multi-out interfaces.
  * - Buffer/rate lists come from the device; the shown values are readback.
@@ -66,8 +66,8 @@ interface SystemSettingsProps {
 /** Sentinel for the "no device" dropdown entry (JUCE's empty device name). */
 const NO_DEVICE = '';
 
-/** Device dropdown options: real devices, a "no device" entry, and — when a
-    selected device vanished mid-session — its stale name so the picker shows
+/** Device dropdown options: real devices, a "no device" entry, and (when a
+    selected device vanished mid-session) its stale name so the picker shows
     what broke instead of going blank. */
 const deviceOptions = (devices: string[], current: string, noneLabel: string) => {
   const options = devices.map((name) => ({ value: name, label: name }));
@@ -80,7 +80,7 @@ const deviceOptions = (devices: string[], current: string, noneLabel: string) =>
 //==============================================================================
 // Input channel picker
 
-/** Compact horizontal strip (~8 dots) — same DotMeter as the block rails. */
+/** Compact horizontal strip (~8 dots); same DotMeter as the block rails. */
 const CHANNEL_METER_LENGTH = 100;
 
 const ChannelRow: React.FC<{
@@ -135,7 +135,7 @@ const ChannelRow: React.FC<{
     >
       {channel.name}
     </span>
-    {/* Live peak (no latch) — sits inside the row button, so no clip clear. */}
+    {/* Live peak (no latch); sits inside the row button, so no clip clear. */}
     <DotMeter
       db={db}
       length={CHANNEL_METER_LENGTH}
@@ -260,7 +260,7 @@ const InputChannelPicker: React.FC<{
 };
 
 //==============================================================================
-// Copy helpers — captions vary by backend, per the UX spec.
+// Copy helpers. Captions vary by backend, per the UX spec.
 
 const bufferCaption = (state: AudioDeviceState): string | null => {
   if (state.bufferSizes.length <= 1)
@@ -292,7 +292,7 @@ export const SystemSettings: React.FC<SystemSettingsProps> = ({ device }) => {
   const { state, actions } = device;
 
   // Errors from mutations render inline (never a modal); Retry reopens the
-  // device — the standard recovery for "device in use" and panel weirdness.
+  // device, the standard recovery for "device in use" and panel weirdness.
   const [error, setError] = useState<string>('');
   const apply = async (action: () => Promise<string>) => setError(await action());
 
@@ -355,7 +355,7 @@ export const SystemSettings: React.FC<SystemSettingsProps> = ({ device }) => {
         </AlertCard>
       )}
 
-      {/* Output monitoring — top of the tab; this is how sound starts. */}
+      {/* Output monitoring goes at the top of the tab; this is how sound starts. */}
       <ToggleRow
         label="Hear Yourself"
         description="Hear your instrument while playing."
@@ -370,7 +370,7 @@ export const SystemSettings: React.FC<SystemSettingsProps> = ({ device }) => {
         <InlineBannerAlert id="input-muted" show={showMuted} state={state} />
       </ToggleRow>
 
-      {/* Driver picker — only when the platform has more than one backend. */}
+      {/* Driver picker, only when the platform has more than one backend. */}
       {state.deviceTypes.length > 1 && (
         <FieldRow
           label="Audio Driver"
@@ -460,7 +460,7 @@ export const SystemSettings: React.FC<SystemSettingsProps> = ({ device }) => {
         <InlineBannerAlert id="no-output" show={showNoOutput} state={state} />
       </FieldRow>
 
-      {/* Stereo output pair — only for multi-out interfaces. */}
+      {/* Stereo output pair, only for multi-out interfaces. */}
       {state.outputPairs.length > 1 && (
         <FieldRow label="Output Channels" help="This interface has more than one output pair.">
           <SelectField
@@ -472,7 +472,7 @@ export const SystemSettings: React.FC<SystemSettingsProps> = ({ device }) => {
         </FieldRow>
       )}
 
-      {/* Buffer size — list and current value are device readback. */}
+      {/* Buffer size; list and current value are device readback. */}
       {state.bufferSizes.length > 0 && (
         <FieldRow
           label="Buffer Size"
@@ -514,7 +514,7 @@ export const SystemSettings: React.FC<SystemSettingsProps> = ({ device }) => {
         </FieldRow>
       )}
 
-      {/* Vendor control panel (ASIO) — buffer/clock often live there. */}
+      {/* Vendor control panel (ASIO); buffer/clock often live there. */}
       {state.hasControlPanel && (
         <FieldRow
           label="Driver Settings"
@@ -537,7 +537,7 @@ export const SystemSettings: React.FC<SystemSettingsProps> = ({ device }) => {
         </FieldRow>
       )}
 
-      {/* MIDI hardware — which devices feed the plugin. What each control
+      {/* MIDI hardware: which devices feed the plugin. What each control
           does is mapped in Plugin Settings → MIDI Mapping. */}
       <MidiInputsSection device={device} />
     </>

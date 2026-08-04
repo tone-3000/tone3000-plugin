@@ -1,4 +1,4 @@
-// ── Chain branch tests ──
+// Chain branch tests
 //
 // Stereo chain branching (see setChainBranch in ProcessorChain.cpp): the
 // branch lane taps its input from the trunk lane's signal after one of the
@@ -9,7 +9,7 @@
 //     channels identical when the branch lane is empty), and reverting
 //     restores independent chains,
 //   - the branch clears itself when the tapped block is removed or moved to
-//     the other lane, follows swapChains, dies with stereo mode — and undo
+//     the other lane, follows swapChains, dies with stereo mode, and undo
 //     brings it back,
 //   - it survives a full plugin state save/restore round trip,
 //   - setting a branch forces the input mode off "stereo" (a branched chain
@@ -17,8 +17,8 @@
 //
 // Chains are seeded through setStateInformation with the IR bytes embedded
 // (ModelCache), so loads are cache-first and never touch the network.
-// (The rig — ChainTestProcessor, block-tree builders, stereo drive/compare —
-// is shared with duplicate_tests.cpp via chain_test_helpers.h.)
+// (The rig is shared with duplicate_tests.cpp via chain_test_helpers.h:
+// ChainTestProcessor, the block-tree builders, and stereo drive/compare.)
 #include "Processor.h"
 #include "chain_test_helpers.h"
 
@@ -41,7 +41,7 @@ TEST(ChainBranchTest, RequiresStereoAndValidToneBlock) {
   // Unknown block id.
   EXPECT_FALSE(proc.setChainBranch("left", "not-a-block"));
 
-  // Insert slots are pass-through placeholders — not tap points.
+  // Insert slots are pass-through placeholders, not tap points.
   const juce::var state = proc.getChainState(-1);
   const auto* chain = state["chain"].getArray();
   ASSERT_NE(chain, nullptr);
@@ -63,8 +63,8 @@ TEST(ChainBranchTest, RoutesTrunkSignalIntoBranchLane) {
   seedStereoChains(proc, {"blk-a"}, {});
   ASSERT_TRUE(waitForChainLoaded(proc)) << "IR block never finished loading from cache";
 
-  // Independent chains: left is convolved (and padded −18 dB), right is the
-  // dry input — the channels must differ substantially.
+  // Independent chains: left is convolved (and padded -18 dB), right is the
+  // dry input; the channels must differ substantially.
   const auto in = makeNoise(240 * kBlock, 1234, 0.25f);
   {
     const auto [l, r] = processStereo(proc, in);
@@ -79,7 +79,7 @@ TEST(ChainBranchTest, RoutesTrunkSignalIntoBranchLane) {
     ASSERT_TRUE(state["branch"].isObject());
     EXPECT_EQ(state["branch"]["side"].toString(), "left");
     EXPECT_EQ(state["branch"]["afterBlockId"].toString(), "blk-a");
-    // A branched chain has one mono source — the stereo fold is forced off.
+    // A branched chain has one mono source; the stereo fold is forced off.
     EXPECT_EQ(state["inputMode"].toString(), "left");
   }
 
@@ -110,7 +110,7 @@ TEST(ChainBranchTest, RoutesTrunkSignalIntoBranchLane) {
 
 // The user-reported dual-cab scenario: trunk = amp head + cab IR, branch
 // lane = the *same* cab IR, tapped between amp and cab. Both channels run
-// identical post-tap processing, so the output must be dual mono — across
+// identical post-tap processing, so the output must be dual mono, across
 // host rates and oversampling factors (each lane owns its own IR island
 // and boundary path; any per-lane state divergence shows up here as an
 // inter-channel level or time offset).
@@ -133,7 +133,7 @@ TEST(ChainBranchTest, BranchedIdenticalCabsStayDualMono) {
     }
     proc.prepareToPlay(cfg.hostRate, kBlock);
 
-    juce::ValueTree state("TONE3000State");
+    juce::ValueTree state("ChainSnapshot");
     state.setProperty("stereoEnabled", true, nullptr);
     juce::ValueTree left("ChainBlocks");
     left.appendChild(makeNamBlockTree("blk-amp", 1, 100), nullptr);
@@ -177,7 +177,7 @@ std::pair<std::vector<float>, std::vector<float>> runAmpIrSetup(bool branched,
   proc.setPlayConfigDetails(2, 2, kFs, kBlock);
   proc.prepareToPlay(kFs, kBlock);
 
-  juce::ValueTree state("TONE3000State");
+  juce::ValueTree state("ChainSnapshot");
   state.setProperty("stereoEnabled", branched, nullptr);
   juce::ValueTree left("ChainBlocks");
   left.appendChild(makeNamBlockTree("blk-amp", 1, 100), nullptr);
@@ -210,32 +210,32 @@ TEST(ChainBranchTest, BranchedDualCabMatchesMonoChainMode) {
 
 // A *stereo* IR file is the one rig where the mono↔branched A/B hears a real
 // difference, by design: mono chain mode runs it in true stereo (L and R
-// convolve different kernels — a wide, decorrelated image), while stereo
+// convolve different kernels: a wide, decorrelated image), while stereo
 // mode's lanes are mono, so each cab instance uses only the IR's first
-// channel. The branched output is still perfect dual mono — it just isn't
+// channel. The branched output is still perfect dual mono; it just isn't
 // the mono-mode sound (the IR's second-channel content is gone).
 TEST(ChainBranchTest, StereoIrDiffersBetweenMonoAndBranchedByDesign) {
   // The reverb IR's kernel is over a second long, so startup transients
   // (block wet fades, the chain-edit fade around setChainBranch) ring far
-  // past the usual settle window — run longer and skip past a full tail.
+  // past the usual settle window; run longer and skip past a full tail.
   const auto in = makeNoise(480 * kBlock, 888, 0.1f);
   const size_t skip = 168000;
   const auto [ml, mr] = runAmpIrSetup(false, "reverb-ir-stereo-test.wav", in);
   const auto [bl, br] = runAmpIrSetup(true, "reverb-ir-stereo-test.wav", in);
 
-  // Mono mode: true stereo — the channels genuinely differ.
+  // Mono mode: true stereo; the channels genuinely differ.
   EXPECT_GT(settledMaxChannelDiff(ml, mr, skip), 1e-3f) << "true-stereo IR should decorrelate";
-  // Branched: dual mono — identical channels…
+  // Branched: dual mono, identical channels…
   EXPECT_LT(settledMaxChannelDiff(bl, br, skip), 1e-4f) << "branched lanes should stay dual mono";
   // …whose left is the mono-mode left up to JUCE engine internals (the
-  // mono and true-stereo convolvers differ ≈ −44 dB on the same kernel —
-  // measured, inaudible), while the right audibly loses the IR's second
+  // mono and true-stereo convolvers differ ≈ -44 dB on the same kernel,
+  // measured and inaudible), while the right audibly loses the IR's second
   // channel.
   EXPECT_LT(settledMaxChannelDiff(ml, bl, skip), 5e-3f);
   EXPECT_GT(settledMaxChannelDiff(mr, br, skip), 1e-3f);
 }
 
-// Moving the tap is one setChainBranch call — no clearing first. Each move
+// Moving the tap is one setChainBranch call, no clearing first. Each move
 // is its own undo step; re-pointing to the current spot is a no-op.
 TEST(ChainBranchTest, RepointsBranchInOneMove) {
   ChainTestProcessor proc;
@@ -308,7 +308,7 @@ TEST(ChainBranchTest, FollowsSwapChainsAndSurvivesMonoRoundTrip) {
     EXPECT_EQ(state["branch"]["afterBlockId"].toString(), "blk-a");
   }
 
-  // Stereo off makes the branch dormant — hidden from the state (mono mode
+  // Stereo off makes the branch dormant: hidden from the state (mono mode
   // has no branch UI) but retained, so it re-engages when stereo comes back.
   proc.setStereoMode(false);
   EXPECT_FALSE(proc.getChainState(-1)["branch"].isObject());

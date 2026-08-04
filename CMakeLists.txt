@@ -69,7 +69,7 @@ endif()
 # macOS: WKWebView paints an opaque white background until the first page paint,
 # which shows as a white flash when the editor opens. JUCE 8 only exposes a
 # background-colour option for Windows (WinWebView2), so patch the WKWebView to
-# not draw its own background — the editor's black paint() shows through instead.
+# not draw its own background; the editor's black paint() shows through instead.
 # Idempotent configure-time patch, same rationale as the devtools patch above.
 if (APPLE)
     set(_juce_webview_mm "${LIB_DIR}/juce/modules/juce_gui_extra/native/juce_WebBrowserComponent_mac.mm")
@@ -94,7 +94,7 @@ endif()
 
 # Linux: JUCE dlopens WebKitGTK/GTK by their UNVERSIONED .so names
 # (libwebkit2gtk-4.1.so etc.), but distros only ship those symlinks in the
-# -dev packages — end-user systems have only the versioned SONAMEs
+# -dev packages; end-user systems have only the versioned SONAMEs
 # (libwebkit2gtk-4.1.so.0). The dlopen fails silently, webKitIsAvailable
 # stays false, every webview call becomes a no-op, and the plugin renders a
 # black screen. Patch the names to the upstream SONAMEs, which exist on every
@@ -127,11 +127,11 @@ endif()
 
 # Linux: JUCE builds its WebKitGTK view on the DEFAULT WebKitWebContext, which
 # breaks login persistence two ways: (1) the default website-data location is
-# derived from the process name — and for plugin (non-standalone) builds JUCE
+# derived from the process name, and for plugin (non-standalone) builds JUCE
 # extracts the webview subprocess to a RANDOMLY-NAMED temp file, so
 # localStorage lands in a different directory every session; (2) WebKitGTK
 # keeps cookies in memory only unless webkit_cookie_manager_set_persistent_storage()
-# is called, which JUCE never does — so the tone3000.com OAuth session dies
+# is called, which JUCE never does, so the tone3000.com OAuth session dies
 # with the process even in the standalone. Patch the subprocess to build its
 # context on an explicit WebKitWebsiteDataManager rooted at
 # ~/.config/TONE3000/WebKit (the same app-data root as presets/logs) and turn
@@ -242,14 +242,14 @@ endif()
 
 # StandaloneFilterWindow patches (idempotent; JUCE lives in gitignored libs/).
 #
-# T3K_NO_MUTE_BANNER — never show JUCE's native "Audio input is muted" strip.
+# T3K_NO_MUTE_BANNER: never show JUCE's native "Audio input is muted" strip.
 # The plugin surfaces mute/feedback state in its own web UI (AppBanner); the
 # native bar would double up and fight over window height.
 #
-# T3K_DARK_MUTE_BANNER — leftover restyle of that strip (kept so a missed hide
+# T3K_DARK_MUTE_BANNER: leftover restyle of that strip (kept so a missed hide
 # patch doesn't flash the stock lightgoldenrodyellow bar). Harmless when hidden.
 #
-# T3K_AUDIO_SAFE_RESTORE — crash-safe restore of the saved audio device. A tiny
+# T3K_AUDIO_SAFE_RESTORE: crash-safe restore of the saved audio device. A tiny
 # sibling sentinel next to the settings file is created just before opening the
 # saved device and cleared once a live device confirms the open
 # (StandaloneAudioSettings::markAudioInitClean). If it's still present next
@@ -328,7 +328,7 @@ if (EXISTS "${_juce_standalone_h}")
     // saved audio device and cleared once a live device confirms the open
     // survived. If it's still present next launch, the last open crashed (see
     // reloadAudioDeviceState) and we boot on the default device instead. Its
-    // own tiny file next to the settings store — never the multi-MB store
+    // own tiny file next to the settings store, never the multi-MB store
     // itself. Empty File() when settings aren't a PropertiesFile.
     File getAudioOpenSentinelFile() const
     {
@@ -404,4 +404,4 @@ CPMAddPackage(
 enable_testing() # Allow running build tests
 
 add_subdirectory(plugin) # Add plugin project
-add_subdirectory(test)   # DSP test suite (DspTests — see script/test-dsp.sh)
+add_subdirectory(test)   # DSP test suite (DspTests, see script/test-dsp.sh)

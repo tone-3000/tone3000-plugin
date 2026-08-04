@@ -37,7 +37,7 @@ import {
 /**
  * 6-band EQ editor shown in the card body while the header EQ toggle is
  * active, with two interchangeable views (chosen via the EQ menu that lives
- * in the card header while the editor is open — see ChainBlock):
+ * in the card header while the editor is open; see ChainBlock):
  *
  * - Graph: the full editor. Grid bleeds edge-to-edge, controls float over
  *   it. Drag dots for freq/gain (vertical drag tunes Q on cut bands),
@@ -93,7 +93,7 @@ const GRID_LABELS: Record<number, string> = {
 };
 
 /** Readout chip that doubles as text entry: click to type, Enter commits,
-    Escape cancels, blur commits — same conventions as the knobs. The value
+    Escape cancels, blur commits (same conventions as the knobs). The value
     area is a fixed width (sized to the longest possible reading) so the chip
     never resizes while values change or while editing. */
 const EditableChip: React.FC<{
@@ -101,7 +101,7 @@ const EditableChip: React.FC<{
   text: string;
   /** Prefill for the editor (number only, unit-free where possible). */
   editText: string;
-  /** Fixed width of the value area, px — the widest reading the chip shows. */
+  /** Fixed width of the value area in px: the widest reading the chip shows. */
   valueWidth: number;
   onCommit: (raw: string) => void;
   disabled?: boolean;
@@ -188,7 +188,7 @@ const parseFreqInput = (raw: string): number | null => {
 interface BlockEqViewProps {
   blockId: string;
   bands: EqBand[];
-  /** EQ power state — a bypassed EQ renders its curve/dots dimmed. */
+  /** EQ power state; a bypassed EQ renders its curve/dots dimmed. */
   eqEnabled: boolean;
   sampleRate: number;
   /** Which editor to show; owned by ChainBlock (the header EQ menu). */
@@ -295,7 +295,7 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
         const gainDb = clamp(band.gainDb + dGain, -EQ_MAX_ABS_GAIN_DB, EQ_MAX_ABS_GAIN_DB);
         updateBand(index, { freqHz, gainDb });
       } else {
-        // Cuts have no gain — vertical drag tunes Q instead (up = tighter).
+        // Cuts have no gain, so vertical drag tunes Q instead (up = tighter).
         const q = clamp(band.q * Math.exp(-dY * 0.02), EQ_MIN_Q, EQ_MAX_Q);
         updateBand(index, { freqHz, q });
       }
@@ -577,7 +577,7 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
         >
           {/* Curve type: outer bands choose shelf vs pass; bells show their
             single (active) option so the selected shape is always visible.
-            Same track language as LITE/FULL — fill + white/grey icons. */}
+            Same track language as LITE/FULL: fill + white/grey icons. */}
           <div style={segmentedGroupStyle()}>
             {typeOptions.map((type) => {
               const active = selectedBand?.type === type;

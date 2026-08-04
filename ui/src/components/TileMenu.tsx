@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { helpProps } from './helpText';
+import { useDismissable } from '../hooks/useDismissable';
 import { DESIGN_WIDTH } from '../hooks/useUiScale';
 import { BORDER, HIGHLIGHT, MUTED, WHITE } from './theme';
 
@@ -10,7 +11,7 @@ import { BORDER, HIGHLIGHT, MUTED, WHITE } from './theme';
  * border, 14px radius, icon + label rows with the shared hover highlight.
  *
  * Portaled to document.body with position:fixed at the click's viewport
- * coords — CSS zoom on the plugin root would otherwise desync layout-space
+ * coords. CSS zoom on the plugin root would otherwise desync layout-space
  * offsets from the cursor as the window scales. Size is matched via
  * transform:scale (same factor as useUiScale); applying CSS zoom here would
  * also scale left/top and shove the panel away from the cursor. Dismissed
@@ -45,24 +46,13 @@ export const TileMenu: React.FC<{
   const rootRef = useRef<HTMLDivElement>(null);
   const scale = Math.max(1, document.documentElement.clientWidth / DESIGN_WIDTH);
 
+  useDismissable(true, rootRef, onClose);
+
+  // Zoom can change under an open menu (window resize): just dismiss;
+  // reopening at the old client point would look wrong anyway.
   useEffect(() => {
-    const onPress = (e: PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) onClose();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    // Zoom can change under an open menu (window resize) — just dismiss;
-    // reopening at the old client point would look wrong anyway.
-    const onResize = () => onClose();
-    document.addEventListener('pointerdown', onPress);
-    document.addEventListener('keydown', onKey);
-    window.addEventListener('resize', onResize);
-    return () => {
-      document.removeEventListener('pointerdown', onPress);
-      document.removeEventListener('keydown', onKey);
-      window.removeEventListener('resize', onResize);
-    };
+    window.addEventListener('resize', onClose);
+    return () => window.removeEventListener('resize', onClose);
   }, [onClose]);
 
   return createPortal(
@@ -78,7 +68,7 @@ export const TileMenu: React.FC<{
       }}
       style={{
         // Fixed to the viewport at the click point. Match UI size with
-        // transform:scale — CSS zoom on this node would also scale left/top,
+        // transform:scale, since CSS zoom on this node would also scale left/top,
         // shoving the panel right/down as the window grows.
         position: 'fixed',
         left: `${anchor.clientX + CURSOR_OFFSET}px`,

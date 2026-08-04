@@ -70,7 +70,7 @@ while IFS= read -r -d '' rel; do
 done < <(cd "$OUT" && find . -type f -print0)
 
 if [[ "$lipo_count" -eq 0 ]]; then
-  echo "ERROR: no Mach-O binaries were lipo'd — check artefact layouts."
+  echo "ERROR: no Mach-O binaries were lipo'd; check artefact layouts."
   exit 1
 fi
 

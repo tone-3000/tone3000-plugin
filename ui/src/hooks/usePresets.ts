@@ -6,7 +6,7 @@ import type { PresetInfo } from '../types/chain';
  * Internal preset store access.
  *
  * Split of responsibilities with useChainState:
- * - The preset *list* lives here — fetched on demand (mount + after every
+ * - The preset *list* lives here, fetched on demand (mount + after every
  *   mutation), never polled. It's a handful of names, and native rescans the
  *   shared presets folder on each call so other plugin instances' saves show
  *   up too.
@@ -14,7 +14,7 @@ import type { PresetInfo } from '../types/chain';
  *   a revision bump), so it stays out of this hook entirely.
  *
  * `onChanged` is called after any mutation that affects chain/param state or
- * the active preset — the owner wires it to useChainState's refresh so the
+ * the active preset. The owner wires it to useChainState's refresh so the
  * UI converges immediately instead of waiting for the next poll.
  */
 export function usePresets(onChanged?: () => void) {
@@ -47,12 +47,13 @@ export function usePresets(onChanged?: () => void) {
     refreshList();
   }, [refreshList]);
 
-  /** Run a preset mutation, then resync the list and the chain state. */
+  /** Run a preset mutation, then resync the list and the chain state. The
+      native bridge is untyped, so T asserts each call's known return shape. */
   const run = useCallback(
-    async <T>(label: string, fn: () => Promise<T>): Promise<T | null> => {
+    async <T>(label: string, fn: () => Promise<unknown>): Promise<T | null> => {
       let result: T | null = null;
       try {
-        result = await fn();
+        result = (await fn()) as T;
       } catch (error) {
         console.error(`Preset action failed (${label}):`, error);
       }

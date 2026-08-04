@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 
 /**
  * In-app clipboard for chain blocks (Copy on a tone tile, Paste on an insert
- * slot). Only the block *id* is held — native resolves the actual data when
+ * slot). Only the block *id* is held. Native resolves the actual data when
  * the paste lands, so a stale copy (block deleted since) simply disables the
  * paste instead of cloning a ghost.
  *
@@ -26,6 +26,6 @@ export const copyBlock = (blockId: string) => {
   emit();
 };
 
-/** The copied block id (may be stale — validate against the live chain). */
+/** The copied block id (may be stale; validate against the live chain). */
 export const useCopiedBlockId = () =>
   useSyncExternalStore(subscribe, () => copiedBlockId);

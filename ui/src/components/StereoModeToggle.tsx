@@ -9,7 +9,7 @@ import { GRAY, HIGHLIGHT, SURFACE_RAISED } from './theme';
  * control outside the chain gallery.
  */
 
-// Two overlapping 12px circles (no lucide equivalent) — drawn to match
+// Two overlapping 12px circles (no lucide equivalent), drawn to match
 // lucide's stroke style so it sits next to Circle seamlessly.
 const StereoCirclesIcon: React.FC<{ size?: number }> = ({ size = 12 }) => {
   // Two size×size circles overlapping by half a radius.
@@ -39,7 +39,7 @@ const StereoCirclesIcon: React.FC<{ size?: number }> = ({ size = 12 }) => {
 const SELECTOR_WIDTH = 80;
 const OUTER_INSET = 4;
 const HIGHLIGHT_WIDTH = 36;
-const SEGMENT_WIDTH = HIGHLIGHT_WIDTH; // 36 — button matches highlight so the icon aligns
+const SEGMENT_WIDTH = HIGHLIGHT_WIDTH; // 36: button matches highlight so the icon aligns
 const HIGHLIGHT_TRAVEL = HIGHLIGHT_WIDTH; // 36
 
 export const StereoModeToggle: React.FC<{
@@ -77,7 +77,7 @@ export const StereoModeToggle: React.FC<{
         flexShrink: 0,
       }}
     >
-      {/* Selection highlight — snaps to the selected side (no animation). */}
+      {/* Selection highlight, snapping to the selected side (no animation). */}
       <span
         aria-hidden
         style={{

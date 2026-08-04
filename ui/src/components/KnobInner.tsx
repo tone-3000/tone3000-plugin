@@ -18,7 +18,7 @@ import type { KnobTone } from './KnobFace';
 export type KnobVariant = 'full' | 'bipolar' | 'panLeft' | 'panRight';
 
 /** Visual tone: primary = a section's headline knob, secondary = its darker,
-    smaller companion trims. Purely cosmetic — either tone can be bipolar or
+    smaller companion trims. Purely cosmetic; either tone can be bipolar or
     plain, that's the variant's job. */
 export type KnobThumb = KnobTone;
 
@@ -48,7 +48,7 @@ const angleFor = (variant: KnobVariant, value: number): number => {
     a plain knob reads it at the bottom-left start of travel. */
 const arcFromFor = (variant: KnobVariant): number => (variant === 'full' ? -135 : 0);
 
-// Memoized: pure function of scalar props — cheap to skip when a parent
+// Memoized: pure function of scalar props, cheap to skip when a parent
 // re-renders idle knobs.
 export const KnobInner: React.FC<KnobInnerProps> = React.memo(function KnobInner({
   value,

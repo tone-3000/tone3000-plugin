@@ -70,8 +70,8 @@ void NamEngine::process(juce::AudioBuffer<float>& buffer) {
 
   // NAM models are mono: process channel 0 through the model... Buffers
   // larger than the prepared size are run in prepared-size slices (models
-  // stream statefully, so slicing is exact) — throwing here used to
-  // permanently disable the block when a startup prepare raced the host's
+  // stream statefully, so slicing is exact); throwing here would
+  // permanently disable the block when a startup prepare races the host's
   // actual block size.
   float* leftChannel = buffer.getWritePointer(0);
   for (int offset = 0; offset < numSamples; offset += maxBlockSize) {

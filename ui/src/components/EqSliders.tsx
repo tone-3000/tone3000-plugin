@@ -232,7 +232,7 @@ export const EqSliders: React.FC<EqSlidersProps> = ({
                   }}
                 />
                 {/* Value fill: bottom of the travel up to the cap, dark →
-                    white toward the cap — exactly like the knob sweep. */}
+                    white toward the cap, exactly like the knob sweep. */}
                 {t > 0.001 && (
                   <div
                     style={{

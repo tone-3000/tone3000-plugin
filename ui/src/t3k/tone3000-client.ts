@@ -1,5 +1,5 @@
 /**
- * tone3000-client.ts — TONE3000 OAuth + API client.
+ * tone3000-client.ts: TONE3000 OAuth + API client.
  *
  * Adapted from the reference implementation at https://github.com/tone-3000/api
  * (`src/tone3000-client.ts`). Trimmed to the surface this plugin needs:
@@ -28,7 +28,7 @@ export type OAuthCallbackResult =
   | { ok: true; tokens: T3KTokens; toneId?: string; canceled?: boolean }
   | { ok: false; error: string };
 
-// ─── PKCE helpers ─────────────────────────────────────────────────────────────
+// PKCE helpers
 
 const PKCE_CODE_VERIFIER_KEY = 't3k_code_verifier';
 const PKCE_STATE_KEY = 't3k_state';
@@ -81,10 +81,10 @@ function buildAuthorizeUrl(
   return url.toString();
 }
 
-// ─── Flow initiators ──────────────────────────────────────────────────────────
+// Flow initiators
 
 /**
- * Select Flow — send the user to tone3000.com to browse and pick a tone.
+ * Select Flow: send the user to tone3000.com to browse and pick a tone.
  *
  * Replaces the current page with the TONE3000 authorize URL. After the user
  * picks a tone (or closes the menubar), TONE3000 redirects back to
@@ -92,7 +92,7 @@ function buildAuthorizeUrl(
  *
  * @param options.gears        underscore-separated gear filter (e.g. 'amp_pedal')
  * @param options.format       single model-format filter (e.g. 'nam', 'ir')
- * @param options.architecture model architecture filter — restricts the
+ * @param options.architecture model architecture filter that restricts the
  *                             catalog to tones whose models match this
  *                             architecture. The plugin passes `2` because it
  *                             only supports v2 NAM architectures at runtime.
@@ -120,7 +120,7 @@ export async function startSelectFlow(
 }
 
 /**
- * Login Flow — standard OAuth authorization with no `prompt`. The user signs
+ * Login Flow: standard OAuth authorization with no `prompt`. The user signs
  * in on tone3000.com (no tone browsing) and is redirected straight back with
  * a `code` to exchange for tokens. Used to authenticate before showing the
  * in-plugin tone browser.
@@ -137,7 +137,7 @@ export async function startLoginFlow(
   window.location.href = buildAuthorizeUrl(publishableKey, redirectUri, extra, pkce);
 }
 
-// ─── Callback handler ─────────────────────────────────────────────────────────
+// Callback handler
 
 /**
  * Handle the OAuth callback after TONE3000 redirects back to your redirect URI.
@@ -160,7 +160,7 @@ export async function handleOAuthCallback(
   const storedState = sessionStorage.getItem(PKCE_STATE_KEY);
   const codeVerifier = sessionStorage.getItem(PKCE_CODE_VERIFIER_KEY);
 
-  // PKCE values are single-use — clear them regardless of outcome.
+  // PKCE values are single-use; clear them regardless of outcome.
   sessionStorage.removeItem(PKCE_STATE_KEY);
   sessionStorage.removeItem(PKCE_CODE_VERIFIER_KEY);
 
@@ -200,7 +200,7 @@ export async function handleOAuthCallback(
   return { ok: true, tokens, toneId, ...(canceled ? { canceled: true } : {}) };
 }
 
-// ─── Token refresh ────────────────────────────────────────────────────────────
+// Token refresh
 
 export async function refreshTokens(
   refreshToken: string,
@@ -230,15 +230,15 @@ export async function refreshTokens(
   };
 }
 
-// ─── Authenticated API client ─────────────────────────────────────────────────
+// Authenticated API client
 
 const STORAGE_KEY = 't3k_tokens';
 
 /**
- * T3KClient — authenticated API client with proactive token refresh.
+ * T3KClient: authenticated API client with proactive token refresh.
  *
  * Tokens are persisted in localStorage so they survive the OAuth redirect
- * round-trip, WebView reloads, and editor restarts — the in-plugin tone
+ * round-trip, WebView reloads, and editor restarts; the in-plugin tone
  * browser can open instantly in later sessions without re-running the OAuth
  * redirect. After the user comes back from tone3000.com, call `setTokens()`
  * once with the freshly exchanged tokens to seed the client.
@@ -255,7 +255,7 @@ export class T3KClient {
   }
 
   /**
-   * Subscribe to token changes — fires for both `setTokens()` calls and
+   * Subscribe to token changes. Fires for both `setTokens()` calls and
    * automatic refreshes. Use this to keep an external store (e.g. the
    * native-side Bearer token in C++) in sync with the latest access token.
    */
@@ -392,7 +392,7 @@ export class T3KClient {
   /**
    * Fetch that attaches a Bearer token when a session exists but degrades to
    * a plain anonymous request otherwise, for the handful of endpoints the
-   * API documents as auth-optional (e.g. Trending Tones) — signed-out users
+   * API documents as auth-optional (e.g. Trending Tones), so signed-out users
    * still get a public teaser feed instead of being routed through
    * `onAuthRequired`.
    */

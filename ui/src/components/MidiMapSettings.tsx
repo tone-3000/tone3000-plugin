@@ -9,18 +9,18 @@ import { BORDER, MUTED, SUBTLE, BRAND_YELLOW } from './theme';
 
 /**
  * MIDI Mapping sub-screen (Plugin Settings): control the plugin from pedals
- * and knobs. Opened from the main plugin settings screen — same pattern as
+ * and knobs. Opened from the main plugin settings screen, same pattern as
  * Advanced. Lives under Plugin Settings (not System) because the map reads
  * the processor's MIDI buffer, so it works identically in DAW builds where
  * the System tab doesn't exist. Mappings serialize with plugin state.
  *
  * Learn flow: pick a target (or hit re-learn on a row), then move a hardware
- * control; the first CC / note-on wins. The engine owns the armed state —
- * this component just renders it — so learn survives screen switches and
+ * control; the first CC / note-on wins. The engine owns the armed state
+ * (this component just renders it), so learn survives screen switches and
  * completes from the hardware side via the midiMapChanged event.
  *
- * Rows are two lines — target on the left (block powers show the tone
- * currently in that chain slot), source + behavior on the right — so nothing
+ * Rows are two lines (target on the left, where block powers show the tone
+ * currently in that chain slot; source + behavior on the right) so nothing
  * ellipses at the settings panel's width.
  */
 
@@ -40,7 +40,7 @@ const blockPowerTarget = (targetId: string): { index: number; right: boolean } |
 };
 
 /** Borderless row action, house icon-chrome style: muted at rest, white on
-    hover — no box like the faceplate's icon buttons. */
+    hover, with no box like the faceplate's icon buttons. */
 const rowIconButtonStyle: React.CSSProperties = {
   width: '26px',
   height: '26px',
@@ -196,8 +196,8 @@ const LearningRow: React.FC<{
 );
 
 export const MidiMapSettings: React.FC<{
-  /** Chain lanes (block powers are positional over each lane's tone blocks)
-      — lets rows and the picker show what each block slot currently holds.
+  /** Chain lanes (block powers are positional over each lane's tone blocks);
+      lets rows and the picker show what each block slot currently holds.
       `chainRight` is null outside stereo mode. */
   chain: ChainItem[];
   chainRight: ChainItem[] | null;
@@ -230,7 +230,7 @@ export const MidiMapSettings: React.FC<{
 
   /** Row / picker subtitle: group, plus the lane and live tone title for
       block powers. A mapping can outlive its block (chains shrink, stereo
-      turns off; mappings are positional pedalboard facts) — say so instead
+      turns off; mappings are positional pedalboard facts), so say so instead
       of showing a stale name. */
   const targetContext = useCallback(
     (targetId: string): string => {
@@ -249,7 +249,7 @@ export const MidiMapSettings: React.FC<{
     const mapped = new Set(state?.mappings.map((m) => m.targetId));
     return MAPPABLE_TARGETS.filter((t) => {
       if (mapped.has(t.id)) return false;
-      // Only offer block powers for blocks that exist right now — the picker
+      // Only offer block powers for blocks that exist right now; the picker
       // names each one after the tone it currently holds.
       const block = blockPowerTarget(t.id);
       if (!block) return true;

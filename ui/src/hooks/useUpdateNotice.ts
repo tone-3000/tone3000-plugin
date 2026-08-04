@@ -8,7 +8,7 @@ import { useAudioBackend } from './useAudioBackend';
  * running build. Deliberately best-effort:
  *
  * - Disabled entirely unless `VITE_T3K_UPDATE_NOTICE=true` (forks skip it).
- * - Never blocks UI load — fires in an effect with a 5s timeout.
+ * - Never blocks UI load; fires in an effect with a 5s timeout.
  * - Any failure (offline, 404, bad payload) is silently ignored.
  * - Skipped in dev / on native builds that don't expose `getPluginVersion`
  *   (the JUCE bridge lists registered functions at startup).
@@ -45,13 +45,13 @@ function writeSnoozeUntil(timestamp: number): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ snoozeUntil: timestamp }));
   } catch {
-    // Storage unavailable — worst case the notice reappears next open.
+    // Storage unavailable; worst case the notice reappears next open.
   }
 }
 
 /**
  * Compare dot-separated numeric versions ("1.2.3", tolerates a leading "v"
- * and non-numeric suffixes). Positive when a > b — strictly-newer check, so
+ * and non-numeric suffixes). Positive when a > b. It's a strictly-newer check, so
  * dev builds and forks ahead of the public release are never prompted.
  */
 export function compareVersions(a: string, b: string): number {
@@ -80,9 +80,9 @@ function isNativeFunctionRegistered(name: string): boolean {
 }
 
 export function useUpdateNotice(): {
-  /** Update to show in the startup modal — null once snoozed/dismissed. */
+  /** Update to show in the startup modal; null once snoozed/dismissed. */
   notice: UpdateNoticeData | null;
-  /** Available update regardless of snooze — for the Settings screen. */
+  /** Available update regardless of snooze, for the Settings screen. */
   update: UpdateNoticeData | null;
   /** The running build's version ("" until resolved / outside the plugin). */
   localVersion: string;
@@ -130,7 +130,7 @@ export function useUpdateNotice(): {
       setUpdate(data);
       if (Date.now() >= readSnoozeUntil()) setNotice(data);
     })().catch(() => {
-      // Best-effort by design: offline, timeout, bad JSON — all ignored.
+      // Best-effort by design: offline, timeout, bad JSON are all ignored.
     });
 
     return () => {

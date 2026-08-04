@@ -24,13 +24,13 @@ import { isInsertSlot } from '../types/chain';
 export const TILE_SIZE = 224;
 /** Stereo shows two lanes, so its tiles shrink to fit the fixed height. */
 export const STEREO_TILE_SIZE = 160;
-/** Gap between tiles — the visible run of each connector line. */
+/** Gap between tiles: the visible run of each connector line. */
 export const TILE_GAP = 24;
 /** Vertical gap between the two stereo lanes. */
 export const LANE_GAP = 24;
 /** Radius of the ghost rail's PlusCircle glyphs (size 40). */
 const RAIL_CIRCLE_RADIUS = 20;
-/** Gutter inside the scroll area — tiles fade out under it while scrolling. */
+/** Gutter inside the scroll area; tiles fade out under it while scrolling. */
 export const EDGE_FADE_WIDTH = 32;
 
 /** Signal-flow routing lines for an add tile at the given lane position. */
@@ -41,17 +41,17 @@ const addTileRouting = (index: number, count: number): AddTileRouting => {
   return 'both';
 };
 
-// ── Chain branching (stereo mode) ──
+// Chain branching (stereo mode)
 // A branch taps one lane's signal on a connector gap and feeds it to the
 // other lane. The affordances live on the gaps between tiles and stay
-// invisible until the gap is hovered (CSS :hover — see index.css) so the
+// invisible until the gap is hovered (CSS :hover, see index.css) so the
 // resting state is just the connector lines. Hovering a gap reveals a
-// filled white dot that sets — or re-points, when a branch already exists —
+// filled white dot that sets (or re-points, when a branch already exists)
 // the branch after the tile to its left; hovering the active tap gap
 // reveals the same dot, which clears the branch on click. The two-lane
 // elbow connector is drawn by ChainView (it spans both lanes).
 
-/** Diameter of the branch dots — half the power-button chrome footprint. */
+/** Diameter of the branch dots: half the power-button chrome footprint. */
 export const BRANCH_CIRCLE_SIZE = ICON_BOX_SIZE / 2;
 
 /** X center of the connector gap *before* the tile at `index` (i.e. gap g
@@ -59,7 +59,7 @@ export const BRANCH_CIRCLE_SIZE = ICON_BOX_SIZE / 2;
 export const gapCenterX = (gapIndex: number, tileSize: number) =>
   gapIndex * (tileSize + TILE_GAP) - TILE_GAP / 2;
 
-/** Filled white disc — set-branch and clear-branch share the same look. */
+/** Filled white disc; set-branch and clear-branch share the same look. */
 const branchDotStyle: React.CSSProperties = {
   width: `${BRANCH_CIRCLE_SIZE}px`,
   height: `${BRANCH_CIRCLE_SIZE}px`,
@@ -89,7 +89,7 @@ const branchGapStyle = (centerX: number): React.CSSProperties => ({
 /**
  * Interactive branch layer over a lane's connector gaps (stereo mode only).
  * Every gap following a tone block carries a hover-revealed filled dot that
- * sets (or, while branched, re-points — one move, no clearing first) the
+ * sets (or, while branched, re-points: one move, no clearing first) the
  * branch to that spot. The one exception is the active tap gap on the trunk
  * lane, whose dot clears the branch instead.
  */
@@ -110,7 +110,7 @@ const BranchRail: React.FC<{
     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3 }}>
       {interactive &&
         items.map((item, index) => {
-          // The tap point is a tone block's output — the gap after it.
+          // The tap point is a tone block's output, i.e. the gap after it.
           if (index === items.length - 1 || isInsertSlot(item)) return null;
           // The active tap gap carries the clear button below instead.
           if (isTrunk && index === tapIndex) return null;
@@ -197,10 +197,10 @@ const GhostRail: React.FC<{ slots: number; tileSize: number }> = ({ slots, tileS
   </div>
 );
 
-/** One lane of tiles over its ghost rail (no scroll of its own — both lanes
+/** One lane of tiles over its ghost rail (no scroll of its own; both lanes
     share the outer scroll area). Native keeps every lane at its minimum slot
-    layout (5 tiles, always ≥1 insert), so each item here is a real block —
-    insert slots included — and every tile is reorderable. */
+    layout (5 tiles, always ≥1 insert), so each item here is a real block,
+    insert slots included, and every tile is reorderable. */
 export const GalleryLane: React.FC<{
   items: ChainItem[];
   tileSize: number;
@@ -213,9 +213,9 @@ export const GalleryLane: React.FC<{
       while there's nothing valid to paste (insert action sheets show Paste
       disabled). */
   onPasteBlock?: ((index: number) => void) | null;
-  /** Which lane this is — keys the branch affordances (stereo only). */
+  /** Which lane this is; keys the branch affordances (stereo only). */
   side?: ChainSide;
-  /** Active branch (stereo only) — drives the junction node on the trunk. */
+  /** Active branch (stereo only); drives the junction node on the trunk. */
   branch?: ChainBranch | null;
   /** Show the hover branch buttons on the connector gaps (stereo, no drag
       in flight). */
@@ -411,7 +411,7 @@ export const StereoPanRail: React.FC = () => {
 /**
  * The two-lane elbow of an active branch: a vertical drop from the trunk
  * lane's tap gap to the branch lane's row, plus the short horizontal stub
- * into the branch lane's first tile — same 1px hairlines as the ghost rail.
+ * into the branch lane's first tile, using the same 1px hairlines as the ghost rail.
  * Positioned by ChainView inside the lanes column (it spans both lanes);
  * `x` is the tap gap's center in column coordinates.
  */
@@ -453,7 +453,7 @@ export const BranchElbow: React.FC<{ x: number; tileSize: number; trunkOnTop: bo
   );
 };
 
-/** Fade the lanes out under the gutters as they scroll — content slides
+/** Fade the lanes out under the gutters as they scroll, so content slides
     behind a smooth ramp to the background instead of hard-clipping. */
 export const EdgeFade: React.FC<{ side: 'left' | 'right' }> = ({ side }) => (
   <div

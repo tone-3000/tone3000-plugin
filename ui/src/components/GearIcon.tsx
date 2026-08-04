@@ -5,7 +5,7 @@ import { GRAY, SURFACE } from './theme';
  * Gear-type glyphs ported from the web app (tone3000 components/icons/Gear.tsx),
  * one per TONE3000 gear id. Used the same ways as on the web:
  * - gear chip filters in the tone browser (small, currentColor);
- * - fallback artwork when a tone has no image (large, gray on SURFACE —
+ * - fallback artwork when a tone has no image (large, gray on SURFACE;
  *   the web's ICON_BG_COLOR_MAP is the same #151517).
  */
 
@@ -80,7 +80,7 @@ const Amp = ({ size = 40, color = GRAY }: Props) => (
 
 const Pedal = ({ size = 40, color = GRAY }: Props) => (
   <svg width={size} height={size} viewBox="0 0 56 56" fill="none" aria-label="Pedal">
-    {/* The web version wraps these in a full-rect clipPath — a no-op, dropped
+    {/* The web version wraps these in a full-rect clipPath (a no-op), dropped
         here to avoid duplicate SVG ids when several pedals render at once. */}
     <path
       fillRule="evenodd"

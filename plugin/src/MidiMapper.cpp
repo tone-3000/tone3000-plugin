@@ -30,7 +30,7 @@ void MidiMapper::processMidi(const juce::MidiBuffer& midi) {
   const int channel = channelFilter.load(std::memory_order_relaxed);
 
   if (learnArmed.load(std::memory_order_relaxed)) {
-    // Learn mode: capture the first eligible event and drive nothing — the
+    // Learn mode: capture the first eligible event and drive nothing. The
     // control being wiggled may already be mapped elsewhere, and jerking that
     // target mid-learn would be hostile.
     for (const auto metadata : midi) {
@@ -58,7 +58,7 @@ void MidiMapper::processMidi(const juce::MidiBuffer& midi) {
     if (channel != 0 && msg.getChannel() != channel)
       continue;
 
-    // Program changes switch presets — always live, no mapping needed.
+    // Program changes switch presets: always live, no mapping needed.
     if (msg.isProgramChange()) {
       pendingProgram.store(msg.getProgramChangeNumber());
       triggerAsyncUpdate();
@@ -79,8 +79,8 @@ void MidiMapper::applyEvent(Mapping& mapping, const juce::MidiMessage& msg) {
   if (mapping.toggle) {
     // Note-ons always fire. For CCs, detect a *press*: any value ≥ 64, or a
     // value < 64 that doesn't follow a ≥ 64 one from this control. A
-    // momentary switch (127 then 0) still fires once per stomp — the 0 is
-    // its release — while footswitches programmed to send only low values (a
+    // momentary switch (127 then 0) still fires once per stomp (the 0 is
+    // its release), while footswitches programmed to send only low values (a
     // common programmable-pedal setup) fire on every message instead of
     // being silently dropped by a plain ≥ 64 gate.
     if (msg.isController()) {
@@ -92,7 +92,7 @@ void MidiMapper::applyEvent(Mapping& mapping, const juce::MidiMessage& msg) {
     }
     switch (mapping.kind) {
       case Kind::blockPower:
-        // Block enable is a locked, undoable chain edit — hop to the message
+        // Block enable is a locked, undoable chain edit, so hop to the message
         // thread. XOR keeps rapid double-stomps parity-correct if they land
         // before the async update runs.
         (mapping.rightBlock ? pendingRightBlockToggles : pendingBlockToggles)
@@ -241,7 +241,7 @@ void MidiMapper::handleAsyncUpdate() {
   if (const int steps = pendingPresetSteps.exchange(0); steps != 0 && onPresetStep)
     onPresetStep(steps);
 
-  // 3. Tell the UI, but only when the map/learn state actually moved —
+  // 3. Tell the UI, but only when the map/learn state actually moved;
   //    performance events alone shouldn't cause settings re-pulls.
   if (mapDirty.exchange(false) && onChanged)
     onChanged();

@@ -26,7 +26,7 @@ double coerceDouble(const juce::var& v) {
 /**
  * Uniform native-function shape: validates arity once, and a malformed call
  * resolves to `fallback` instead of each handler hand-rolling the check. The
- * handler is a plain synchronous `args -> var` — every bridge function here
+ * handler is a plain synchronous `args -> var`; every bridge function here
  * completes inline on the message thread.
  */
 template <typename Fn>
@@ -81,7 +81,7 @@ bool GuardedWebView::pageLoadHadNetworkError(const juce::String& errorInfo) {
   juce::Logger::writeToLog("WebView navigation failed: " + errorInfo);
   // The only remote navigations this view makes are the OAuth redirects to
   // tone3000.com; a failure means the site is unreachable and the user is
-  // stuck on a dead page. Recover by reloading the plugin UI — chain state
+  // stuck on a dead page. Recover by reloading the plugin UI; chain state
   // lives natively and tokens in localStorage, so nothing is lost. In
   // release the recovery URL is served from embedded resources and can't
   // itself hit the network; `recoveryInFlight` stops a retry loop in dev
@@ -158,7 +158,7 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
       .withOptionsFrom(editor->osFactorRelay)
       // --- Chain mutations -------------------------------------------------
       .withNativeFunction(
-          // (toneJson, targetInsertId?) — the tone lands in the insert slot
+          // (toneJson, targetInsertId?): the tone lands in the insert slot
           // the user clicked; absent/stale ids fall back to the active
           // lane's first insert.
           "loadTone", guarded(1, juce::var(""), [editor](const juce::Array<juce::var>& args) {
@@ -174,7 +174,7 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
                                                         args[1].toString()));
           }))
       .withNativeFunction(
-          // (blockId, modelId, modelJson) — native only stores the active
+          // (blockId, modelId, modelJson): native only stores the active
           // model, so the full model object always rides along.
           "switchModel", guarded(3, false, [editor](const juce::Array<juce::var>& args) {
             const juce::var modelData =
@@ -183,7 +183,7 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
                                                            static_cast<int>(args[1]), modelData));
           }))
       .withNativeFunction(
-          // Retry a failed model download (block.loadFailed) — re-queues the
+          // Retry a failed model download (block.loadFailed); re-queues the
           // block's active model through the background loader.
           "retryModelLoad", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
             return juce::var(editor->processor.retryModelLoad(args[0].toString().toStdString()));
@@ -202,13 +202,13 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             return juce::var(editor->processor.reorderChainBlocks(newOrder));
           }))
       .withNativeFunction(
-          // (blockId, "left" | "right", targetIndex) — drag across lanes.
+          // (blockId, "left" | "right", targetIndex): drag across lanes.
           "moveBlockToChain", guarded(3, false, [editor](const juce::Array<juce::var>& args) {
             return juce::var(editor->processor.moveBlockToChain(
                 args[0].toString().toStdString(), args[1].toString(), static_cast<int>(args[2])));
           }))
       .withNativeFunction(
-          // (sourceBlockId, "left" | "right", targetIndex) — clone a tone
+          // (sourceBlockId, "left" | "right", targetIndex): clone a tone
           // block with all its settings (copy/paste and alt-drag duplicate).
           // Returns the new block id, "" on failure.
           "duplicateChainBlock",
@@ -221,7 +221,7 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             return juce::var(editor->processor.swapChains());
           }))
       .withNativeFunction(
-          // ("left" | "right", afterBlockId) — branch the other lane off the
+          // ("left" | "right", afterBlockId): branch the other lane off the
           // named lane after one of its tone blocks (stereo mode only).
           "setChainBranch", guarded(2, false, [editor](const juce::Array<juce::var>& args) {
             return juce::var(editor->processor.setChainBranch(
@@ -238,7 +238,7 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             return juce::var(true);
           }))
       .withNativeFunction(
-          // ("stereo" | "left" | "right") — which channels of a stereo
+          // ("stereo" | "left" | "right"): which channels of a stereo
           // source feed the plugin (the faceplate input-mode button).
           "setInputMode", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
             editor->processor.setInputMode(
@@ -261,7 +261,7 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
           }))
       .withNativeFunction(
           // Machine-wide multi-core stereo (true = process the two stereo
-          // chains on separate cores). Applies instantly (pure scheduling —
+          // chains on separate cores). Applies instantly (pure scheduling,
           // output is bit-identical) and persists in the shared settings
           // file; the current value rides getChainState as `multiCore`.
           "setMultiCore", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
@@ -272,7 +272,7 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
       .withNativeFunction(
           // Single entry point for per-block user params:
           // (blockId, "enabled" | "normalize" | "inputGain" | "outputGain" |
-          //  "mix", numeric value — booleans as 0/1).
+          //  "mix", numeric value; booleans as 0/1).
           "setBlockParam", guarded(3, false, [editor](const juce::Array<juce::var>& args) {
             return juce::var(editor->processor.setBlockParam(
                 args[0].toString().toStdString(), args[1].toString(), coerceDouble(args[2])));
@@ -335,7 +335,7 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
           }))
       // --- Presets -----------------------------------------------------------
       .withNativeFunction(
-          // Fetched on demand (browser open, after mutations) — the active
+          // Fetched on demand (browser open, after mutations); the active
           // preset itself rides the revision-gated getChainState poll.
           "getPresetList", guarded(0, juce::var(), [editor](const juce::Array<juce::var>&) {
             return editor->processor.getPresetList();
@@ -360,7 +360,7 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             return juce::var(editor->processor.deletePreset(args[0].toString()));
           }))
       .withNativeFunction(
-          // (id, delta) — one step up (-1) / down (+1) within the preset's
+          // (id, delta): one step up (-1) / down (+1) within the preset's
           // browser section. Prev/next and MIDI program changes follow it.
           "movePreset", guarded(2, false, [editor](const juce::Array<juce::var>& args) {
             return juce::var(editor->processor.movePreset(
@@ -368,7 +368,7 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
           }))
       // --- Audio device settings (standalone only) ---------------------------
       // All of these route through the StandaloneAudioSettings controller,
-      // which exists only under the standalone holder — in hosts they resolve
+      // which exists only under the standalone holder; in hosts they resolve
       // to void/{ok:false} and the UI never renders the System Settings tab.
       .withNativeFunction(
           "getAudioDeviceState", guarded(0, juce::var(), [editor](const juce::Array<juce::var>&) {
@@ -382,14 +382,14 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
                        : juce::var();
           }))
       .withNativeFunction(
-          // ("input" | "output" | "linked", deviceName — "" = no device)
+          // ("input" | "output" | "linked", deviceName; "" = no device)
           "setAudioDevice", guarded(2, juce::var(), [editor](const juce::Array<juce::var>& args) {
             return editor->audioSettings != nullptr
                        ? editor->audioSettings->setDevice(args[0].toString(), args[1].toString())
                        : juce::var();
           }))
       .withNativeFunction(
-          // ([deviceChannelIndices]) — 1 = mono, 2 = stereo.
+          // ([deviceChannelIndices]): 1 = mono, 2 = stereo.
           "setAudioInputChannels",
           guarded(1, juce::var(), [editor](const juce::Array<juce::var>& args) {
             if (editor->audioSettings == nullptr || !args[0].isArray())
@@ -444,7 +444,7 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
           }))
       // --- MIDI: device layer (standalone only) -------------------------------
       .withNativeFunction(
-          // (identifier, enabled) — which hardware feeds the plugin.
+          // (identifier, enabled): which hardware feeds the plugin.
           "setMidiInputEnabled", guarded(2, juce::var(), [editor](const juce::Array<juce::var>& args) {
             return editor->audioSettings != nullptr
                        ? editor->audioSettings->setMidiInputEnabled(args[0].toString(),
@@ -463,13 +463,13 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             return editor->processor.midiMapper.getState();
           }))
       .withNativeFunction(
-          // (channel) — 0 = omni, 1–16 = that channel only.
+          // (channel): 0 = omni, 1-16 = that channel only.
           "setMidiChannelFilter", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
             editor->processor.midiMapper.setChannelFilter(static_cast<int>(coerceDouble(args[0])));
             return juce::var(true);
           }))
       .withNativeFunction(
-          // (targetId) — arm learn; the next CC / note-on wins.
+          // (targetId): arm learn; the next CC / note-on wins.
           "startMidiLearn", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
             editor->processor.midiMapper.startLearn(args[0].toString());
             return juce::var(true);

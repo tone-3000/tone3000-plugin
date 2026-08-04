@@ -34,7 +34,7 @@ import { ICON_SIZE, SURFACE, SURFACE_RAISED, iconButtonStyle } from './theme';
  *
  * The full visual surface (TileSurface) is shared between the sortable tile
  * and the DragOverlay ghost, so the copy that follows the pointer during a
- * drag looks identical to the resting tile — just semi-transparent.
+ * drag looks identical to the resting tile, just semi-transparent.
  */
 
 /** Opacity of the moving copy while dragging (matches the old chain). */
@@ -48,13 +48,13 @@ const DragGripIcon: React.FC<{ stereo: boolean }> = ({ stereo }) => {
   return <Icon size={ICON_SIZE} style={{ display: 'block' }} />;
 };
 
-/** Keep tile buttons from taking focus on press — the webview scrolls the
+/** Keep tile buttons from taking focus on press: the webview scrolls the
     focused element into view, which nudges the whole lane by a pixel. */
 const preventFocus = (e: React.MouseEvent) => e.preventDefault();
 
 /** Right-click → tile-local anchor for the tile's action sheet (suppresses
     the OS context menu; macOS ctrl-click lands here too). Ctrl-click also
-    fires a synthetic `click` after `contextmenu` — `shouldIgnoreClick`
+    fires a synthetic `click` after `contextmenu`; `shouldIgnoreClick`
     swallows that so the tile doesn't navigate away under the menu. */
 const useTileMenu = () => {
   const [menuAnchor, setMenuAnchor] = useState<TileMenuAnchor | null>(null);
@@ -63,13 +63,13 @@ const useTileMenu = () => {
     e.preventDefault();
     e.stopPropagation();
     suppressClickRef.current = true;
-    // Viewport coords — TileMenu portals to body (outside the CSS-zoom root)
+    // Viewport coords: TileMenu portals to body (outside the CSS-zoom root)
     // and positions with position:fixed, so no layout-space conversion.
     setMenuAnchor({ clientX: e.clientX, clientY: e.clientY });
   }, []);
   const closeMenu = useCallback(() => setMenuAnchor(null), []);
   /** True when a tile click should be ignored (followed a contextmenu, is a
-      modifier-click, or the menu is already open — in which case it closes). */
+      modifier-click, or the menu is already open, in which case it closes). */
   const shouldIgnoreClick = useCallback(
     (e: React.MouseEvent) => {
       if (suppressClickRef.current) {
@@ -133,7 +133,7 @@ const TileSurface: React.FC<{
       }}
     >
       <div
-        // Header reveals on :hover via CSS (see index.css) — JS hover state
+        // Header reveals on :hover via CSS (see index.css), since JS hover state
         // dies across drag re-renders. The inert drag ghost pins it visible.
         className={actions ? 'gallery-tile' : 'gallery-tile tile-chrome-visible'}
         onClick={actions?.onOpen}
@@ -141,7 +141,7 @@ const TileSurface: React.FC<{
         // grip keeps data-drag-handle + touch-action:none as the explicit
         // drag affordance (same distance activation as the rest of the tile).
         {...(actions?.sortable ?? {})}
-        // The inert drag ghost skips help — it rides under the pointer, so its
+        // The inert drag ghost skips help: it rides under the pointer, so its
         // hover events would pin the hint for the whole drag.
         {...(actions ? helpProps(toneTileHelp(tone.title)) : {})}
         style={{
@@ -198,7 +198,7 @@ const TileSurface: React.FC<{
         )}
 
         {/* Translucent strip under the quick actions so they read on any art.
-            Fades in with the header (opacity only — never a layout change). */}
+            Fades in with the header (opacity only, never a layout change). */}
         <div
           className="tile-chrome"
           style={{
@@ -233,7 +233,7 @@ const TileSurface: React.FC<{
             data-drag-handle={actions ? true : undefined}
             onClick={(e) => e.stopPropagation()}
             {...(actions ? helpProps(HELP.dragGrip) : {})}
-            // touch-action: none — otherwise touch devices claim the gesture
+            // touch-action: none, otherwise touch devices claim the gesture
             // for lane scrolling and pointercancel kills the drag instantly.
             style={{ ...gripStyle, cursor: 'grab', color: '#ffffff', touchAction: 'none', lineHeight: 0 }}
           >
@@ -296,7 +296,7 @@ interface GalleryBlockProps {
   onOpen: (blockId: string) => void;
 }
 
-/** Memoized — a lane re-render (e.g. another tile's optimistic state) only
+/** Memoized so a lane re-render (e.g. another tile's optimistic state) only
     reaches tiles whose block snapshot actually changed. Mutations come from
     the ChainActions context, so there are no per-render callback props to
     defeat the memo. */
@@ -331,7 +331,7 @@ export const GalleryBlock: React.FC<GalleryBlockProps> = React.memo(
       ref={setNodeRef}
       onContextMenu={openMenu}
       style={{
-        // Translate only (no scale) — scale transforms cause subpixel jitter
+        // Translate only (no scale); scale transforms cause subpixel jitter
         // on the overlaid controls.
         transform: CSS.Translate.toString(transform),
         transition: isDragging ? 'none' : transition,
@@ -386,7 +386,7 @@ export const GalleryBlock: React.FC<GalleryBlockProps> = React.memo(
 });
 GalleryBlock.displayName = 'GalleryBlock';
 
-/** Radius of the PlusCircle glyph — routing lines run edge-to-circle. */
+/** Radius of the PlusCircle glyph; routing lines run edge-to-circle. */
 const PLUS_CIRCLE_RADIUS = 20;
 
 /** Which tile edges get a routing line into the plus circle (signal-flow
@@ -411,14 +411,14 @@ const addTileFaceStyle = (size: number): React.CSSProperties => ({
 });
 
 /** Header chrome for an insert tile, mirroring the tone tiles' layout: the
-    drag grip at the top-left. No translucent strip — there's no artwork to
+    drag grip at the top-left. No translucent strip, since there's no artwork to
     read against, only the tile's flat surface. Revealed on hover via the
     shared `.gallery-tile .tile-chrome` CSS (always visible on touch-only
-    devices — see index.css); the drag ghost pins it with tile-chrome-visible.
+    devices, see index.css); the drag ghost pins it with tile-chrome-visible.
     Sortable listeners live on the tile face; the grip is the explicit
     drag affordance (`data-drag-handle` + touch-action:none). */
 const AddTileHeader: React.FC<{
-  /** When set, this is a live tile (not the ghost) — mark the grip handle. */
+  /** When set, this is a live tile (not the ghost); mark the grip handle. */
   interactive?: boolean;
   stereo?: boolean;
 }> = ({ interactive = false, stereo = false }) => (
@@ -439,7 +439,7 @@ const AddTileHeader: React.FC<{
       data-drag-handle={interactive ? true : undefined}
       onClick={(e) => e.stopPropagation()}
       {...(interactive ? helpProps(HELP.dragGrip) : {})}
-      // touch-action: none — otherwise touch devices claim the gesture
+      // touch-action: none, otherwise touch devices claim the gesture
       // for lane scrolling and pointercancel kills the drag instantly.
       style={{
         ...gripStyle,
@@ -466,7 +466,7 @@ interface AddTileProps {
   onPaste?: (() => void) | null;
 }
 
-/** The insert slot as a dashed add tile — sortable so the insert point can be
+/** The insert slot as a dashed add tile, sortable so the insert point can be
     repositioned within its lane, like any other block. Routing lines continue
     the lane's connector line through to the plus circle. */
 export const AddTile: React.FC<AddTileProps> = ({

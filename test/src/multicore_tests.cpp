@@ -1,9 +1,9 @@
-// ── Multi-core stereo tests ──
+// Multi-core stereo tests
 //
 // Stereo mode processes the two chain lanes concurrently (see LaneWorker.h):
 // the Right/branch lane runs on a realtime worker thread while the audio
-// thread processes the other. Parallelism is pure scheduling — no arithmetic
-// or ordering changes inside a lane — so its one testable contract is strong:
+// thread processes the other. Parallelism is pure scheduling (no arithmetic
+// or ordering changes inside a lane), so its one testable contract is strong:
 //
 //   - the parallel schedule's output is BIT-IDENTICAL to the serial one,
 //     across topologies (independent lanes, branched), host rates and
@@ -12,7 +12,7 @@
 //     with audio flowing throughout.
 //
 // The rigs deliberately give the lanes different chains and sub-unity mix
-// values: a cross-lane scratch race (the historical hazard — the dry-mix
+// values: a cross-lane scratch race (the historical hazard: the dry-mix
 // buffer used to be shared) corrupts exactly the dry portion of the blend,
 // which identical lanes or mix = 1.0 would hide.
 //
@@ -31,7 +31,7 @@ namespace {
 constexpr int kBlock = 512;
 
 // Skips the first second like the rest of the suite (wet fades, smoothers,
-// convolver engagement) — but expects *zero* difference after it.
+// convolver engagement), but expects *zero* difference after it.
 float settledDiff(const std::vector<float>& a, const std::vector<float>& b) {
   return settledMaxChannelDiff(a, b, 48000);
 }
@@ -40,7 +40,7 @@ float settledDiff(const std::vector<float>& a, const std::vector<float>& b) {
 // Different chains and different mixes per lane, so lane cross-talk of any
 // kind (scratch, engines, gains) shows up as a serial/parallel mismatch.
 juce::ValueTree makeStereoRigState() {
-  juce::ValueTree state("TONE3000State");
+  juce::ValueTree state("ChainSnapshot");
   state.setProperty("stereoEnabled", true, nullptr);
 
   juce::ValueTree left("ChainBlocks");
@@ -129,7 +129,7 @@ TEST(MultiCoreTest, BranchedParallelMatchesSerialBitExact) {
   }
 }
 
-// Informational speedup measurement (no assertion — timings are machine- and
+// Informational speedup measurement (no assertion; timings are machine- and
 // load-dependent): one heavy NAM lane per side, chain-stage wall time under
 // the serial vs. parallel schedule. Expect the parallel run to approach the
 // cost of one lane.
@@ -140,7 +140,7 @@ TEST(MultiCoreTest, ReportsParallelSpeedup) {
     proc.setPlayConfigDetails(2, 2, kFs, kBlock);
     proc.prepareToPlay(kFs, kBlock);
 
-    juce::ValueTree state("TONE3000State");
+    juce::ValueTree state("ChainSnapshot");
     state.setProperty("stereoEnabled", true, nullptr);
     juce::ValueTree left("ChainBlocks");
     left.appendChild(makeNamBlockTree("blk-amp-l", 1, 100), nullptr);
@@ -167,7 +167,7 @@ TEST(MultiCoreTest, ReportsParallelSpeedup) {
 }
 
 // Host lifecycle: the worker is restarted by every prepareToPlay and stopped
-// by releaseResources. Audio must flow correctly through stop/start cycles —
+// by releaseResources. Audio must flow correctly through stop/start cycles,
 // including a processBlock after releaseResources (the dispatch gate falls
 // back to serial when the worker is down, it must not deadlock or crash).
 TEST(MultiCoreTest, WorkerSurvivesHostLifecycle) {

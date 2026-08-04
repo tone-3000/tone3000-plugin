@@ -6,24 +6,24 @@
 /**
  * Auto offset: one-shot time-alignment measurement between the two chains in
  * stereo chain mode. Different NAM models / IRs can carry different baked-in
- * latency, so two chains fed the same instrument can land a few ms apart —
+ * latency, so two chains fed the same instrument can land a few ms apart;
  * this measures that misalignment from the user's real playing and produces
  * the corrective delay for the StereoOffset engine.
  *
  * Why listening, not an impulse: NAM chains are nonlinear (a gate eats a
- * quiet impulse, a hot one smears into distortion — neither measures the
+ * quiet impulse, a hot one smears into distortion; neither measures the
  * path cleanly), and injecting a test signal would mean muting a live bus.
  * Both chains hear the same source, so cross-correlating their outputs
  * yields a sharp peak at the true lag even when the chains are voiced very
- * differently — same reasoning as the auto-balance listening flow, and the
+ * differently; same reasoning as the auto-balance listening flow, and the
  * same UX.
  *
- * Lifecycle (mirrors auto-balance — see Processor.h):
+ * Lifecycle (mirrors auto-balance; see Processor.h):
  *  - start() [message thread] arms the capture.
- *  - capture() [audio thread] appends the raw chain outputs — tapped BEFORE
+ *  - capture() [audio thread] appends the raw chain outputs (tapped BEFORE
  *    the StereoOffset delay, so the measurement is the chains' absolute
- *    misalignment, independent of the current knob — while state is
- *    Listening. Blocks below a −50 dBFS floor don't count (silence between
+ *    misalignment, independent of the current knob) while state is
+ *    Listening. Blocks below a -50 dBFS floor don't count (silence between
  *    phrases must not dilute the correlation); ~15 s without enough signal
  *    times out. Full capture flips to Captured and the audio thread is done.
  *  - analyze() [message thread, in Captured] runs the FFT cross-correlation
@@ -31,7 +31,7 @@
  *    (setValueNotifyingHost stays off the RT path).
  *
  * Analysis: circular cross-correlation via FFT (zero-padded past the lag
- * window, so wrap-around never contaminates it), peak-searched over ±24 ms —
+ * window, so wrap-around never contaminates it), peak-searched over ±24 ms,
  * the range the Offset knob can express (StereoOffsetParams::kMaxOffsetMs).
  * The result carries a confidence: the normalized correlation at the peak
  * (1 = identical up to gain and shift). A misalignment beyond ±24 ms or
@@ -56,8 +56,8 @@ public:
 
   static constexpr double kMeasureSeconds = 2.0;
   static constexpr double kTimeoutSeconds = 15.0;
-  static constexpr double kFloorRms = 3.16e-3;  // −50 dBFS, same as auto-balance
-  /** Lag search half-window — what the Offset knob can express
+  static constexpr double kFloorRms = 3.16e-3;  // -50 dBFS, same as auto-balance
+  /** Lag search half-window: what the Offset knob can express
       (== StereoOffsetParams::kMaxOffsetMs; static-asserted in the .cpp). */
   static constexpr float kMaxLagMs = 24.0f;
 

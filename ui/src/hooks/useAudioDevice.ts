@@ -12,7 +12,7 @@ import type { AudioDeviceState, AudioDeviceResult } from '../types/audioDevice';
  * immediately so the settings panel reflects readback without waiting for
  * the event round trip.
  *
- * Every action resolves to an error string ('' on success) — errors are the
+ * Every action resolves to an error string ('' on success). Errors are the
  * human-readable strings JUCE's setAudioDeviceSetup reports ("device in
  * use", locked ALSA device…), surfaced inline by the caller.
  */

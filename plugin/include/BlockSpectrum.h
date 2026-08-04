@@ -8,13 +8,13 @@
  * Per-block spectrum analyzer for the EQ editor backdrop.
  *
  * Same threading pattern as TunerDetector: the audio thread copies the block's
- * post-EQ output into a lock-free ring buffer — but only while `enabled` is
+ * post-EQ output into a lock-free ring buffer, but only while `enabled` is
  * set, i.e. only while a UI EQ view for this block is actually open. All FFT /
  * smoothing work happens lazily on the message thread inside getSpectrum()
  * (the polled native function), throttled by a small cache interval.
  *
  * getSpectrum() returns kNumBins floats in dB (clamped kMinDb..0),
- * log-spaced from kMinFreqHz to kMaxFreqHz — the exact frequency mapping the
+ * log-spaced from kMinFreqHz to kMaxFreqHz, the exact frequency mapping the
  * EQ graph uses for its x axis, so the UI can plot bins at uniform x spacing.
  * Constants are mirrored in ui/src/hooks/useBlockSpectrum.ts.
  */

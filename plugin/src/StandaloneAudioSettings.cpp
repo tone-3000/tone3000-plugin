@@ -18,7 +18,7 @@
 namespace {
 
 // The product's preferred first-contact setup: 48 kHz (the models' native
-// rate) and 128 samples (~2.7 ms — low latency that still runs everywhere).
+// rate) and 128 samples (~2.7 ms, low latency that still runs everywhere).
 // Only ever *requested* when the device's own lists contain them.
 constexpr double kPreferredSampleRate = 48000.0;
 constexpr int kPreferredBufferSize = 128;
@@ -73,7 +73,7 @@ bool looksLikeSpeakers(const juce::String& name) {
   return n.contains("speaker") || n.contains("built-in output");
 }
 
-// Stereo-pair label, e.g. "Output 1 + 2" — same common-prefix trimming as
+// Stereo-pair label, e.g. "Output 1 + 2". Same common-prefix trimming as
 // JUCE's AudioDeviceSelectorComponent so labels match what users have seen.
 juce::String nameForChannelPair(const juce::String& name1, const juce::String& name2) {
   if (name2.isEmpty())
@@ -176,7 +176,7 @@ juce::var StandaloneAudioSettings::getState() {
   auto* device = dm->getCurrentAudioDevice();
   obj->setProperty("deviceOpen", device != nullptr && device->isOpen());
 
-  // Input channels with their active flags — the picker renders these rows.
+  // Input channels with their active flags; the picker renders these rows.
   juce::Array<juce::var> inputChannels;
   if (device != nullptr) {
     const auto names = device->getInputChannelNames();
@@ -208,7 +208,7 @@ juce::var StandaloneAudioSettings::getState() {
   obj->setProperty("outputPairs", outputPairs);
   obj->setProperty("activeOutputPair", activeOutputPair);
 
-  // Rates and buffers come from the device — never hardcoded — and the
+  // Rates and buffers come from the device (never hardcoded), and the
   // current values are the post-open readback (the truth, not the request).
   juce::Array<juce::var> sampleRates;
   juce::Array<juce::var> bufferSizes;
@@ -233,7 +233,7 @@ juce::var StandaloneAudioSettings::getState() {
   obj->setProperty("micPermission", micStatusString(AudioPermissions::getMicStatus()));
 
   // MIDI inputs, re-enumerated per pull like the audio devices above (the UI
-  // polls while the tab is open, which is also our hot-plug detection — the
+  // polls while the tab is open, which is also our hot-plug detection; the
   // OS doesn't broadcast MIDI device arrivals to the device manager).
   juce::Array<juce::var> midiInputs;
   for (const auto& input : juce::MidiInput::getAvailableDevices()) {
@@ -405,7 +405,7 @@ juce::var StandaloneAudioSettings::openControlPanel() {
   }
 
   if (shown) {
-    // The panel may have changed the setup behind our back — reopen so the
+    // The panel may have changed the setup behind our back; reopen so the
     // readback values (and the plugin) reflect reality.
     dm->closeAudioDevice();
     dm->restartLastAudioDevice();
@@ -436,7 +436,7 @@ juce::var StandaloneAudioSettings::setMidiInputEnabled(const juce::String& ident
     return makeResult("Audio settings are unavailable.");
   dm->setMidiInputDeviceEnabled(identifier, enabled);  // broadcasts → UI re-pulls
   // Enablement rides the holder's audioSetup XML, which JUCE otherwise only
-  // writes on clean shutdown — save eagerly so a crash can't lose the toggle.
+  // writes on clean shutdown; save eagerly so a crash can't lose the toggle.
   if (auto* h = holder())
     h->saveAudioDeviceState();
   return makeResult({});
@@ -457,7 +457,7 @@ void StandaloneAudioSettings::InputLevelTap::audioDeviceIOCallbackWithContext(
     int numOutputChannels, int numSamples, const juce::AudioIODeviceCallbackContext&) {
   // CRITICAL: as a secondary device callback, our output buffer is a reused
   // scratch buffer that AudioDeviceManager *sums into the real output*. We
-  // produce no audio, so we must clear it — leaving it untouched would mix
+  // produce no audio, so we must clear it; leaving it untouched would mix
   // stale/garbage samples into the output and blast the user's ears.
   for (int ch = 0; ch < numOutputChannels; ++ch)
     if (auto* out = outputChannelData[ch])
@@ -528,12 +528,12 @@ void StandaloneAudioSettings::ensureInitialPolicies() {
   if (dm == nullptr || dm->getCurrentAudioDevice() == nullptr)
     return;  // startup may still be waiting on the mic-permission prompt
 
-  // A device is live, so the saved-device open survived — retire the crash
+  // A device is live, so the saved-device open survived; retire the crash
   // sentinel before doing anything that might itself fault.
   markAudioInitClean();
 
   // Nudge the OS mic prompt on a fresh decision (macOS). Harmless if input
-  // already triggered it — the same TCC gate is shared.
+  // already triggered it; the same TCC gate is shared.
   ensureMicPermissionRequested();
 
   initialPoliciesDone = true;
@@ -569,7 +569,7 @@ void StandaloneAudioSettings::ensureMicPermissionRequested() {
     auto* self = weak.get();
     if (self == nullptr)
       return;  // window closed while the prompt was up
-    // On grant, the input stream opened before permission is still silent —
+    // On grant, the input stream opened before permission is still silent;
     // reopen so it goes live without a relaunch. Then refresh either way so
     // the mic-denied banner appears/clears.
     if (granted)
@@ -606,7 +606,7 @@ void StandaloneAudioSettings::applyPreferredSetup() {
   auto setup = dm->getAudioDeviceSetup();
   bool changed = false;
 
-  // Requests are conditional on the device's own lists — never ask JACK for
+  // Requests are conditional on the device's own lists: never ask JACK for
   // a rate or a coarse-period WASAPI device for 128 samples it can't do.
   if (device->getAvailableSampleRates().contains(kPreferredSampleRate) &&
       !juce::exactlyEqual(device->getCurrentSampleRate(), kPreferredSampleRate)) {
@@ -619,8 +619,7 @@ void StandaloneAudioSettings::applyPreferredSetup() {
     changed = true;
   }
 
-  // Guitar-first default: one mono channel (the device's first input) —
-  // the same behavior the old Input 1 default gave.
+  // Guitar-first default: one mono channel (the device's first input).
   if (device->getInputChannelNames().size() > 0 &&
       device->getActiveInputChannels().countNumberOfSetBits() != 1) {
     setup.useDefaultInputChannels = false;

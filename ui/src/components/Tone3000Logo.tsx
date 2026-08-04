@@ -2,7 +2,7 @@ import React from 'react';
 
 /**
  * TONE3000 wordmark, ported from the web project's `components/icons/Logo.tsx`
- * (native 210x32). Inline SVG component — the plugin webview doesn't reliably
+ * (native 210x32). Inline SVG component; the plugin webview doesn't reliably
  * render it via <img src>, so it lives as JSX like on the web.
  */
 export const Tone3000Logo: React.FC<{ height?: number }> = ({ height = 32 }) => (

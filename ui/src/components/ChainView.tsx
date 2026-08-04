@@ -39,7 +39,7 @@ import { isInsertSlot } from '../types/chain';
 /**
  * Chain gallery: blocks render as square image tiles in horizontal,
  * left-to-right lanes over a static ghost rail of plus circles joined by
- * connector lines — the old vertical chain's link UI, rotated. Dragging a
+ * connector lines. Dragging a
  * tile away reveals the rail behind its slot. (Lane internals live in
  * GalleryLane.tsx; this component owns the drag orchestration.)
  *
@@ -80,7 +80,7 @@ const galleryCollisionDetection: CollisionDetection = (args) => {
 
 type Lanes = Record<ChainSide, ChainItem[]>;
 
-/** Id of the ⌥-duplicate stand-in — the inert copy of the dragged block that
+/** Id of the ⌥-duplicate stand-in: the inert copy of the dragged block that
     holds its home slot while the standard drag machinery runs untouched. */
 const DUP_STAND_IN_ID = '__duplicate-stand-in__';
 
@@ -91,7 +91,7 @@ export const ChainView: React.FC<ChainViewProps> = ({
   sampleRate,
 }) => {
   const actions = useChainActions();
-  // Persisted so the detail takeover survives this component unmounting — a
+  // Persisted so the detail takeover survives this component unmounting: a
   // swap from the detail view opens the tone browser (which replaces the whole
   // chain view, and may bounce through the tone3000.com OAuth redirect). The
   // swap keeps the same blockId, so we reopen the detail view for it on return.
@@ -104,10 +104,10 @@ export const ChainView: React.FC<ChainViewProps> = ({
     if (detailBlockId) sessionStorage.setItem(DETAIL_BLOCK_STORAGE_KEY, detailBlockId);
     else sessionStorage.removeItem(DETAIL_BLOCK_STORAGE_KEY);
   }, [detailBlockId]);
-  /** The item under drag — drives the DragOverlay ghost. */
+  /** The item under drag; drives the DragOverlay ghost. */
   const [activeDrag, setActiveDrag] = useState<ChainItem | null>(null);
 
-  /** ⌥ held during the current drag — the drop duplicates instead of moving. */
+  /** ⌥ held during the current drag; the drop duplicates instead of moving. */
   const altDragRef = useRef(false);
 
   // Copy/paste clipboard: paste is only offered while the copied block still
@@ -126,7 +126,7 @@ export const ChainView: React.FC<ChainViewProps> = ({
   const draggingRef = useRef(false);
   /**
    * Set for one frame after a cross-lane move. dnd-kit fires another
-   * onDragOver as soon as the layout shifts, before it has re-measured — and
+   * onDragOver as soon as the layout shifts, before it has re-measured, and
    * with stale rects the nearest target can resolve back to the old lane,
    * bouncing the item between lanes forever (React's "maximum update depth"
    * crash). Cross-lane moves are skipped until the next animation frame,
@@ -135,8 +135,8 @@ export const ChainView: React.FC<ChainViewProps> = ({
   const justCrossedRef = useRef(false);
 
   // Resync the optimistic lanes only when native actually reports new state
-  // (and no drag is in flight). `lanes` must NOT be a dependency here — the
-  // old version included it and unconditionally set a fresh object, which
+  // (and no drag is in flight). `lanes` must NOT be a dependency here: an
+  // earlier version included it and unconditionally set a fresh object, which
   // re-triggered itself in a silent render loop.
   useEffect(() => {
     if (!draggingRef.current) setLanes({ left: chain, right: chainRight ?? [] });
@@ -169,8 +169,8 @@ export const ChainView: React.FC<ChainViewProps> = ({
 
   /**
    * Insert (or remove) the ⌥-duplicate stand-in: an inert copy of the
-   * dragged block pinned at its home slot. The standard drag machinery —
-   * traveling hole, parting neighbors, drop index — runs completely
+   * dragged block pinned at its home slot. The standard drag machinery
+   * (traveling hole, parting neighbors, drop index) runs completely
    * untouched; with the home slot visibly occupied, the exact same gesture
    * reads as pulling a *copy* out instead of moving the block. Rebuilt from
    * native state so toggling ⌥ mid-drag also undoes any optimistic
@@ -189,7 +189,7 @@ export const ChainView: React.FC<ChainViewProps> = ({
     });
 
   // ⌥ tracking rides pointermove (drags move constantly, and the webview can
-  // drop bare modifier keydowns — see KnobControl) with key events for
+  // drop bare modifier keydowns, see KnobControl) with key events for
   // in-place toggles. Tone blocks only; inserts have nothing to duplicate.
   useEffect(() => {
     if (activeDrag == null || isInsertSlot(activeDrag)) return;
@@ -288,7 +288,7 @@ export const ChainView: React.FC<ChainViewProps> = ({
     }
     const finalIndex = laneItems.findIndex((i) => i.blockId === activeId);
 
-    // ⌥-drop: same layout, same index math — the mutation is a clone instead
+    // ⌥-drop: same layout, same index math; the mutation is a clone instead
     // of a move. The stand-in holds the home slot, so `finalIndex` already
     // counts the original staying put; the optimistic lanes match the
     // post-clone chain pixel-for-pixel until the resync swaps in real ids.
@@ -328,7 +328,7 @@ export const ChainView: React.FC<ChainViewProps> = ({
       : null;
 
   if (detailBlock) {
-    // Another enabled+loaded NAM after this block in its lane — mirrors the
+    // Another enabled+loaded NAM after this block in its lane. This mirrors the
     // DSP's lastNamIndex scan (Processor.cpp): with calibration on, such a
     // block hands off at calibrated output level instead of normalizing.
     const detailLane = chain.some((item) => item.blockId === detailBlock.blockId)
@@ -372,7 +372,7 @@ export const ChainView: React.FC<ChainViewProps> = ({
   const stereo = chainRight != null;
   const tileSize = stereo ? STEREO_TILE_SIZE : TILE_SIZE;
 
-  // Validated against the live chain each render — a copied-then-deleted
+  // Validated against the live chain each render, so a copied-then-deleted
   // block leaves Paste disabled rather than pasting a ghost.
   const pasteSourceId =
     copiedBlockId != null &&
@@ -383,7 +383,7 @@ export const ChainView: React.FC<ChainViewProps> = ({
       : null;
 
   // Branched layout: the branch lane starts at the trunk's tap gap, so its
-  // row is indented past the whole trunk prefix (matching the signal flow —
+  // row is indented past the whole trunk prefix (matching the signal flow:
   // its input *is* that prefix's output). Resolved against the optimistic
   // lane state; a stale tap id (mid-resync after the tapped block moved)
   // renders as independent lanes until native's cleared state arrives.
@@ -448,7 +448,7 @@ export const ChainView: React.FC<ChainViewProps> = ({
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
-        {/* One shared scroll area — both lanes pan together, fading out under
+        {/* One shared scroll area: both lanes pan together, fading out under
             the edge gradients as they scroll. */}
         <div style={{ position: 'relative', flex: 1, minWidth: 0, display: 'flex' }}>
           {/* Mono-only section title. Absolutely positioned so it sits in the

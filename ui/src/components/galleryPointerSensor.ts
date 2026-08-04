@@ -2,7 +2,7 @@ import type { PointerEvent } from 'react';
 import { PointerSensor } from '@dnd-kit/core';
 import type { PointerSensorOptions } from '@dnd-kit/core';
 
-/** A few px of travel before a drag engages — tap/click stays open. */
+/** A few px of travel before a drag engages, so tap/click stays open. */
 export const GALLERY_DRAG_DISTANCE_PX = 6;
 
 /**

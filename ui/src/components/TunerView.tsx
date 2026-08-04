@@ -53,7 +53,7 @@ const litCountForCents = (absCents: number): number => {
 };
 
 export const TunerView: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-  // Stateless binding — this polls at 20 Hz, so it must not set hook state.
+  // Stateless binding: this polls at 20 Hz, so it must not set hook state.
   const getTunerReading = useNativeFunction<TunerReading>('getTunerReading');
   const [note, setNote] = useState<string | null>(null);
   const [cents, setCents] = useState(0);

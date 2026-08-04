@@ -50,7 +50,7 @@ const levelColor = (unit: number): Rgb => {
 
 /**
  * Realtime level → color/presence for the gallery inset glow. Does not latch
- * on clip — that lives only on the corner clip dot.
+ * on clip; that lives only on the corner clip dot.
  *
  * `presence` is gated against the noise floor, then scaled by the full-range
  * meter unit so intensity keeps moving from quiet through 0 dBFS.
@@ -69,8 +69,8 @@ export function useBlockEnergy(meterId: string) {
 
 /**
  * Clip latch indicator for gallery tiles: a red dot that appears only while
- * clip is latched. Click to clear. No bezel / no level metering — the inset
- * glow handles realtime viz.
+ * clip is latched. Click to clear. No bezel / no level metering, since the
+ * inset glow handles realtime viz.
  */
 export const BlockLed: React.FC<BlockLedProps> = React.memo(function BlockLed({
   meterId,

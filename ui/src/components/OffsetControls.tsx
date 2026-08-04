@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Equal, Power } from 'lucide-react';
 import { KnobControl } from './KnobControl';
 import { offsetMsScale } from './knobScale';
 import { useParameter } from '../hooks/useParameter';
-import { useNativeFunction } from '../hooks/useFunction';
+import { useAutoMeasure } from '../hooks/useAutoMeasure';
 import { HELP } from './helpText';
 import { ChromeIconButton } from './ChromeIconButton';
 import {
@@ -16,16 +16,16 @@ import { IMAGE_GROUP_WIDTH } from './SpreadControls';
 
 /**
  * Offset (stereo chain mode): a purely corrective alignment delay on one
- * chain (see native StereoOffset.h) — e.g. two captures of one performance
+ * chain (see native StereoOffset.h), e.g. two captures of one performance
  * landing a few ms apart, or NAM models / IRs with different baked-in
- * latency. Knob + power, always visible, dimmed while off — same pattern as
+ * latency. Knob + power, always visible, dimmed while off, same pattern as
  * the Gate group.
  *
- * The knob is bipolar — center = 0 ms = identity; left of center delays the
+ * The knob is bipolar: center = 0 ms = identity; left of center delays the
  * left chain, right of center the right, up to ±24 ms.
  *
  * The auto (=) button on the opposite edge measures the alignment for you:
- * same one-shot listening flow as auto-balance (see native AutoOffset.h) —
+ * same one-shot listening flow as auto-balance (see native AutoOffset.h):
  * click, play ~2 s, and the measured inter-chain lag is written into the
  * offset (powering it on when there's a real correction). It stays live
  * while the group is off, which is the natural starting point for "align
@@ -41,42 +41,20 @@ const CHROME_LIFT = faceplateChromeLift(KNOB_SIZE_SECONDARY);
 
 /**
  * Auto offset: one-shot chain time alignment. Click arms a listening
- * measurement on the native side — play for ~2 s and the measured lag is
+ * measurement on the native side: play for ~2 s and the measured lag is
  * written into stereoOffsetTime (the Offset knob visibly moves). Yellow
  * (listening) while armed; click again to cancel; times out after 15 s of
  * silence or an untrustworthy measurement.
  */
 const AutoOffsetButton: React.FC = () => {
-  const start = useNativeFunction<boolean>('startAutoOffset');
-  const cancel = useNativeFunction<boolean>('cancelAutoOffset');
-  const poll = useNativeFunction<{ state: string; matchedMs?: number }>('pollAutoOffset');
-  const [listening, setListening] = useState(false);
-
-  useEffect(() => {
-    if (!listening) return;
-    const id = setInterval(async () => {
-      const res = await poll();
-      if (res && res.state !== 'listening') setListening(false);
-    }, 200);
-    return () => clearInterval(id);
-  }, [listening, poll]);
-
-  const handleClick = async () => {
-    if (listening) {
-      await cancel();
-      setListening(false);
-    } else {
-      await start();
-      setListening(true);
-    }
-  };
-
+  const { listening, toggle } = useAutoMeasure('startAutoOffset', 'cancelAutoOffset',
+                                              'pollAutoOffset');
   return (
     <ChromeIconButton
       tone="armed"
       on={listening}
       help={HELP.autoOffset}
-      onClick={handleClick}
+      onClick={toggle}
       offsetY={CHROME_LIFT}
     >
       <Equal size={ICON_SIZE} />

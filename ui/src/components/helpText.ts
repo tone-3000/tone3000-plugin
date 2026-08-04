@@ -3,12 +3,12 @@ import { useSyncExternalStore } from 'react';
 /**
  * Central help system: every control publishes a one-line hint here while
  * hovered (or mid-interaction), and the faceplate's pinned readout renders
- * whatever is current — Native Instruments style, instead of browser
+ * whatever is current, Native Instruments style, instead of browser
  * tooltips. All copy lives in this file so wording stays consistent.
  *
  * Copy conventions:
  * - `Name: what it does.` then a shortcut legend of `key: effect` pairs
- *   joined with middots. Keep it terse — the bar shares its row with the
+ *   joined with middots. Keep it terse: the bar shares its row with the
  *   A2-size toggle and CPU readout, and long lines get ellipsized.
  * - Modifier keys are OS-correct: glyphs on macOS (⇧ ⌥, hyphen-joined per
  *   Apple convention), spelled out with `+` elsewhere (Shift+drag).
@@ -24,7 +24,7 @@ import { useSyncExternalStore } from 'react';
 // survives nesting (button inside a hoverable tile) and elements unmounting
 // mid-hover (removing a block never strands its hint on screen).
 //
-// `pinned` overrides hover for the duration of an interaction — a knob drag
+// `pinned` overrides hover for the duration of an interaction: a knob drag
 // can wander off the knob without releasing, so its hint stays pinned until
 // mouseup.
 
@@ -67,7 +67,7 @@ const installDelegation = () => {
 
   document.addEventListener('mouseover', resolve);
   // Touch-only devices never hover, so pressing a control is the hint
-  // trigger there (harmless for mouse users — press implies hover). The
+  // trigger there (harmless for mouse users; press implies hover). The
   // hint stays up after the tap until the next press lands elsewhere.
   document.addEventListener('pointerdown', resolve);
   // Pointer left the window entirely.
@@ -111,7 +111,7 @@ export const setHintsEnabled = (enabled: boolean) => {
   try {
     localStorage.setItem(HINTS_KEY, String(enabled));
   } catch {
-    // Storage unavailable — the toggle still works for this session.
+    // Storage unavailable; the toggle still works for this session.
   }
   emit();
 };
@@ -137,19 +137,19 @@ const KNOB_KEYS = `${shift('drag')}: fine · double-click: type · ${alt('click'
 export const knobHelp = (name: string, desc: string) => `${name}: ${desc} ${KNOB_KEYS}`;
 
 export const HELP = {
-  // Faceplate — gains
+  // Faceplate: gains
   inputLevel: knobHelp('Input', 'chain input level, ±24 dB.'),
   inputMode: 'Input Mode: source channels. Stereo: both · L/R: one. Click: choose.',
   outputLevel: knobHelp('Output', 'master output level, ±24 dB.'),
   outputBalance: knobHelp('Balance', 'level trim between chains, ±12 dB (pre-pan). Center: off.'),
   autoBalance: 'Auto Balance: click, play ~2 s to match chain levels. Click again: cancel.',
 
-  // Faceplate — gate, tone stack, stereo image (spread / offset)
-  gate: knobHelp('Gate', 'noise gate threshold, −100–0 dB.'),
+  // Faceplate: gate, tone stack, stereo image (spread / offset)
+  gate: knobHelp('Gate', 'noise gate threshold, -100 to 0 dB.'),
   gatePower: 'Gate Power: noise gate on/off.',
-  toneBass: knobHelp('Bass', 'tone stack lows, 0–10.'),
-  toneMiddle: knobHelp('Middle', 'tone stack mids, 0–10.'),
-  toneTreble: knobHelp('Treble', 'tone stack highs, 0–10.'),
+  toneBass: knobHelp('Bass', 'tone stack lows, 0-10.'),
+  toneMiddle: knobHelp('Middle', 'tone stack mids, 0-10.'),
+  toneTreble: knobHelp('Treble', 'tone stack highs, 0-10.'),
   tonePower: 'Tone Stack Power: Bass/Middle/Treble on/off.',
   spreadOffset: knobHelp(
     'Offset',
@@ -188,7 +188,7 @@ export const HELP = {
   addTile: 'Add Tone: browse TONE3000 for this slot. Right-click: paste · drag tile or grip: move.',
   closeToneBrowser: 'Close: back to the chain.',
   dragGrip: `Grip: drag to reorder · ${alt('drag')}: duplicate. Stereo: drop on the other lane to move.`,
-  copyBlock: 'Copy: copy this block — tone, model and all settings.',
+  copyBlock: 'Copy: copy this block (tone, model and all settings).',
   pasteBlock: 'Paste: add a copy of the copied block in this slot.',
   blockPower: 'Power: bypass this block.',
   retryLoad: 'Retry: re-download this model.',
@@ -204,7 +204,7 @@ export const HELP = {
   // Block card
   blockIn: knobHelp('In', 'block input gain, ±24 dB.'),
   blockOut: knobHelp('Out', 'block output gain, ±24 dB.'),
-  blockOutIr: knobHelp('Out', 'block output gain, ±24 dB (IR pre-trimmed −18 dB).'),
+  blockOutIr: knobHelp('Out', 'block output gain, ±24 dB (IR pre-trimmed -18 dB).'),
   blockMix: knobHelp('Mix', 'dry/wet blend.'),
   blockNormalize: 'Normalize: level this block\u2019s loudness. Off: raw capture level.',
   blockNormalizeOverridden:

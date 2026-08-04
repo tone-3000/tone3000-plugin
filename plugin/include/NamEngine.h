@@ -8,16 +8,16 @@
 
 /**
  * A JUCE-compatible host for a nam::DSP model, running in the chain domain
- * (kChainBaseSampleRate × oversampling factor — see ChainDomain.h).
- * Sample-rate conversion is NOT this class's job — the whole chain stage sits
- * behind one resampling boundary + oversampler in the processor — so all this
+ * (kChainBaseSampleRate × oversampling factor; see ChainDomain.h).
+ * Sample-rate conversion is NOT this class's job (the whole chain stage sits
+ * behind one resampling boundary + oversampler in the processor), so all this
  * does is:
  *  - float ↔ double conversion (NAM models process NAM_SAMPLE == double),
  *  - mono processing with fan-out to stereo buffers,
  *  - slimmable (A2 container) tier selection,
  *  - phase-interleaved oversampled processing (below).
  *
- * ── Phase-interleaved oversampling ──
+ * Phase-interleaved oversampling:
  * A NAM model oversampled by N with its convolution dilations scaled by N is
  * mathematically identical to N independent copies of the *unscaled* model,
  * each processing every Nth sample of the oversampled stream at the native
@@ -25,7 +25,7 @@
  * phase), and 1×1 convolutions/activations are per-sample. So instead of
  * patching dilation scaling into NeuralAmpModelerCore, the engine holds N
  * instances of the same model and interleaves them. The receptive field stays
- * constant in seconds — the model sounds the same — while its nonlinear
+ * constant in seconds (the model sounds the same) while its nonlinear
  * harmonics land in the widened band where the chain's decimation filter
  * removes them instead of letting them alias.
  *
@@ -58,7 +58,7 @@ public:
       fanned out to channel 1 if present. Must be prepared first. */
   void process(juce::AudioBuffer<float>& buffer);
 
-  /** The rate the model reports it was trained at. Purely informational —
+  /** The rate the model reports it was trained at. Purely informational;
       the chain always feeds it the chain rate (A2 models are all 48 kHz). */
   double getModelSampleRate() const { return modelSampleRate; }
 
@@ -80,7 +80,7 @@ public:
    * A no-op for models that aren't SlimmableModel (non-container A2 files).
    * NAM tier mappers assign the boundary value to the tier above (a two-tier
    * container selects lite for [0, 0.5) and full for [0.5, 1.0]), so the lite
-   * request must be 0.0 — 0.5 would select full.
+   * request must be 0.0; 0.5 would select full.
    * Applied in prepare() and immediately if already prepared. Fans out to
    * every phase instance so all phases always run the same tier.
    */
@@ -89,7 +89,7 @@ public:
   double getSlimmableSize() const noexcept { return requestedSlimmableSize; }
 
 private:
-  /** Instance 0 — the reference for metadata queries (all instances share
+  /** Instance 0: the reference for metadata queries (all instances share
       one model config, so levels/loudness/rate are identical). */
   nam::DSP& primary() const { return *instances.front(); }
 

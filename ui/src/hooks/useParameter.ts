@@ -40,8 +40,8 @@ export function useParameter<T extends ParameterType>(
 
     // Close the initial-sync race: the backend's reply to the frontend's
     // startup `requestInitialUpdate` can land before this listener exists (or
-    // be dropped entirely while the page is still loading — frequent on
-    // Windows WebView2), leaving the knob at its default. Re-read whatever
+    // be dropped entirely while the page is still loading, which is frequent
+    // on Windows WebView2), leaving the knob at its default. Re-read whatever
     // state already arrived, then ask the backend to send it again now that
     // we're subscribed.
     setValue(readCurrent(param));

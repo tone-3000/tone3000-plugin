@@ -62,7 +62,7 @@ inline std::vector<float> makeNoise(int frames, unsigned seed, float amplitude =
 }
 
 // Lag (within [0, maxLag)) at which `out` best matches `in`, over the window
-// [start, start + window) — a group-delay estimate.
+// [start, start + window), a group-delay estimate.
 inline int bestCorrelationLag(const std::vector<float>& out, const std::vector<float>& in,
                               int start, int window, int maxLag) {
   int bestLag = -1;

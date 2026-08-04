@@ -1,7 +1,7 @@
 #pragma once
 // Chain-level test rig shared by branch_tests.cpp and duplicate_tests.cpp:
 // a processor with state-restore access, block-tree builders with model
-// bytes embedded (cache-first loads — no network), and stereo drive/compare
+// bytes embedded (cache-first loads, no network), and stereo drive/compare
 // helpers for asserting on the audible output.
 
 #include "Processor.h"
@@ -12,14 +12,20 @@
 #include <utility>
 #include <vector>
 
-// Exposes AudioProcessor's protected copyXmlToBinary so tests can hand a
-// ValueTree state straight to setStateInformation (the framing must match
-// getXmlFromBinary's).
+// Tests describe a rig as a bare ChainSnapshot tree (lanes + stereo/branch
+// properties). restoreFromTree wraps it in a TONE3000State root and frames it
+// exactly like getStateInformation does (T3KB magic + binary ValueTree
+// stream), so restoring through it pins the real state format.
 struct ChainTestProcessor : TONE3000Processor {
-  void restoreFromTree(const juce::ValueTree& state) {
+  void restoreFromTree(const juce::ValueTree& snapshot) {
+    juce::ValueTree state("TONE3000State");
+    state.setProperty("schemaVersion", 1, nullptr);
+    state.appendChild(snapshot.createCopy(), nullptr);
+
     juce::MemoryBlock data;
-    if (auto xml = state.createXml())
-      copyXmlToBinary(*xml, data);
+    juce::MemoryOutputStream out(data, false);
+    out.write("T3KB", 4);
+    state.writeToStream(out);
     setStateInformation(data.getData(), static_cast<int>(data.getSize()));
   }
 };
@@ -49,7 +55,7 @@ inline juce::ValueTree makeIrBlockTree(const juce::String& blockId, int toneId, 
   EXPECT_TRUE(testFile(fileName).loadFileAsData(bytes));
   juce::ValueTree cached("CachedModel");
   cached.setProperty("modelId", modelId, nullptr);
-  cached.setProperty("data", juce::Base64::toBase64(bytes.getData(), bytes.getSize()), nullptr);
+  cached.setProperty("data", juce::var(bytes), nullptr);
   juce::ValueTree cache("ModelCache");
   cache.appendChild(cached, nullptr);
   block.appendChild(cache, nullptr);
@@ -80,7 +86,7 @@ inline juce::ValueTree makeNamBlockTree(const juce::String& blockId, int toneId,
   EXPECT_TRUE(testFile("a2-amp-test.nam").loadFileAsData(bytes));
   juce::ValueTree cached("CachedModel");
   cached.setProperty("modelId", modelId, nullptr);
-  cached.setProperty("data", juce::Base64::toBase64(bytes.getData(), bytes.getSize()), nullptr);
+  cached.setProperty("data", juce::var(bytes), nullptr);
   juce::ValueTree cache("ModelCache");
   cache.appendChild(cached, nullptr);
   block.appendChild(cache, nullptr);
@@ -92,7 +98,7 @@ inline juce::ValueTree makeNamBlockTree(const juce::String& blockId, int toneId,
 // normalized (insert slots padded) and loads are queued cache-first.
 inline void seedStereoChains(ChainTestProcessor& proc, const std::vector<juce::String>& leftIds,
                              const std::vector<juce::String>& rightIds) {
-  juce::ValueTree state("TONE3000State");
+  juce::ValueTree state("ChainSnapshot");
   state.setProperty("stereoEnabled", true, nullptr);
 
   int toneId = 1, modelId = 100;
@@ -134,7 +140,7 @@ inline bool waitForChainLoaded(TONE3000Processor& proc, int timeoutMs = 20000) {
 }
 
 // Make isAudioActive() false so the next mutation skips its (bounded) fade
-// wait — keeps the tests deterministic and fast.
+// wait, keeping the tests deterministic and fast.
 inline void letAudioGoIdle() { juce::Thread::sleep(200); }
 
 // Drives the processor like a host with identical audio on both channels;

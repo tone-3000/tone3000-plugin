@@ -9,7 +9,7 @@
  * (after the block's output gain + mix stage); the `pre` flag moves it
  * between the block's input gain and its model instead, shaping the signal
  * that drives the amp/IR. Self-contained module: band parameters, biquad
- * coefficient math (RBJ cookbook — mirrored exactly by
+ * coefficient math (RBJ cookbook, mirrored exactly by
  * ui/src/components/eqMath.ts so the drawn curve is the audio truth),
  * processing, and (de)serialization.
  *
@@ -21,7 +21,7 @@
  * Flat-skip: every band precomputes an `active` flag when its params change.
  * Bell/shelf bands with ~0 dB gain are inert; cut bands are active by
  * their nature the moment that type is selected. When no band is active,
- * isActive() is false and callers skip process() entirely — a flat EQ costs
+ * isActive() is false and callers skip process() entirely; a flat EQ costs
  * one branch per audio block.
  *
  * Bypass: `enabled` (the EQ power button) gates isActive() the same way, so a
@@ -74,14 +74,14 @@ public:
   /** Message thread (under chainMutex). Back to flat defaults (and enabled). */
   void resetToDefault();
 
-  /** Message thread (under chainMutex). Bypass toggle — band settings are
+  /** Message thread (under chainMutex). Bypass toggle: band settings are
       kept; a disabled EQ is skipped exactly like a flat one. */
   void setEnabled(bool shouldBeEnabled);
   bool isEnabled() const { return enabled; }
 
   /** Message thread (under chainMutex). Position toggle: true = before the
       block's model (after its input gain), false = after gain + mix
-      (default). Filter state resets on change — the EQ taps a different
+      (default). Filter state resets on change; the EQ taps a different
       signal point. */
   void setPre(bool shouldBePre);
   bool isPre() const { return pre; }

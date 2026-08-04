@@ -19,7 +19,7 @@ class TONE3000Processor;
  *
  * - First contact with a device: request 48 kHz / 128 samples when the device
  *   lists them, and default to a single mono input channel (guitar in input
- *   1). Requests are wishes — the UI always renders the readback values.
+ *   1). Requests are wishes; the UI always renders the readback values.
  * - Returning device: restore its remembered setup verbatim (rate, buffer,
  *   channel masks are persisted per type+input+output combination in the
  *   standalone holder's settings file). Preferences never override a user's
@@ -38,12 +38,12 @@ class TONE3000Processor;
  * the lock-free input level tap used by the channel picker's meters.
  *
  * In hosted builds (or when the standalone holder doesn't exist) none of this
- * is instantiated — construct only when isAvailable() returns true.
+ * is instantiated; construct only when isAvailable() returns true.
  */
 class StandaloneAudioSettings : private juce::ChangeListener {
 public:
   /** @param onDeviceStateChanged Fired (message thread) whenever the device
-      manager broadcasts a change — the editor forwards it to the WebView as
+      manager broadcasts a change; the editor forwards it to the WebView as
       an `audioDeviceChanged` event so the UI can re-pull state. */
   StandaloneAudioSettings(TONE3000Processor& processor,
                           std::function<void()> onDeviceStateChanged);
@@ -55,13 +55,13 @@ public:
   /** Full settings snapshot for the UI (see buildState for the shape). */
   juce::var getState();
 
-  // Setters. Each returns { ok: bool, error: String } — errors are the
+  // Setters. Each returns { ok: bool, error: String }; errors are the
   // human-readable strings setAudioDeviceSetup() reports ("device in use",
   // locked ALSA device…), surfaced inline by the UI instead of a modal.
   juce::var setDeviceType(const juce::String& typeName);
   /** kind: "input" | "output" | "linked" (linked = single-picker ASIO-style
       types where hasSeparateInputsAndOutputs() is false). An empty name means
-      "no device" — a legitimate capture-only / playback-only choice. */
+      "no device", a legitimate capture-only / playback-only choice. */
   juce::var setDevice(const juce::String& kind, const juce::String& name);
   /** Active input channels by device channel index (1 = mono, 2 = stereo). */
   juce::var setInputChannels(const juce::Array<juce::var>& channelIndices);
@@ -74,14 +74,14 @@ public:
   juce::var setHearYourself(bool hear);
   juce::var playTestTone();
   /** Vendor control panel (ASIO). Reopens the device afterwards since the
-      panel can change the setup behind our back — mirrors JUCE's selector. */
+      panel can change the setup behind our back; mirrors JUCE's selector. */
   juce::var openControlPanel();
   /** Close + reopen the current device (recovery after errors / panel edits). */
   juce::var restartDevice();
   /** Jump to the OS microphone privacy page (the fix for a denied mic). */
   juce::var openMicSettings();
 
-  // MIDI device layer (mapping itself lives in the processor's MidiMapper —
+  // MIDI device layer (mapping itself lives in the processor's MidiMapper;
   // this only decides which hardware feeds it). Enabled inputs are merged
   // into one stream by the standalone holder's player; enablement persists
   // in the holder's audioSetup XML, saved eagerly on every toggle.
@@ -94,7 +94,7 @@ public:
   // list is on screen.
   void setInputMetering(bool enabled);
   /** Peak level in dB per device input channel index (inactive channels
-      report the floor — only active channels produce data). */
+      report the floor; only active channels produce data). */
   juce::var getInputLevels();
 
 private:
@@ -117,7 +117,7 @@ private:
 
   void changeListenerCallback(juce::ChangeBroadcaster*) override;
 
-  // One-time policy pass (waits for the device manager to land a device —
+  // One-time policy pass (waits for the device manager to land a device;
   // startup can be deferred behind the mic-permission prompt): fresh installs
   // get the preferred setup, existing installs keep their saved config.
   void ensureInitialPolicies();
@@ -163,7 +163,7 @@ private:
   // re-evaluated only when the input/output pair changes, so a manual Hear
   // Yourself toggle sticks for the current device (see applyMonitoringPolicy).
   juce::String lastMonitoringKey;
-  /** Cached once per session — enumerating ASIO drivers hits the registry. */
+  /** Cached once per session; enumerating ASIO drivers hits the registry. */
   std::optional<bool> cachedAsioAvailable;
 
   // The async mic-permission callback (see ensureMicPermissionRequested) may

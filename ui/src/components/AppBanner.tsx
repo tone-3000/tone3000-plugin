@@ -5,13 +5,13 @@ import { BORDER, MUTED } from './theme';
 
 /**
  * Main-window banner: at most ONE banner, chosen by evaluating rules in
- * priority order against the native device-state snapshot. Standalone only —
+ * priority order against the native device-state snapshot. Standalone only:
  * every rule is device-domain, and nagging users about their DAW's setup
  * inside the plugin window would be hostile (the caller simply doesn't
  * evaluate without a state).
  *
  * The banner adds real window height (the editor grows via
- * setExtraContentHeight) so it never squishes the plugin UI — the caller owns
+ * setExtraContentHeight) so it never squishes the plugin UI; the caller owns
  * that coupling via BANNER_HEIGHT.
  *
  * "Ignore" hides a banner for 24h (persisted per machine in localStorage),
@@ -52,7 +52,7 @@ const noActiveInput = (state: AudioDeviceState) =>
 const BANNER_RULES: BannerRule[] = [
   {
     // The OS is blocking mic access (macOS privacy). This gates ALL audio
-    // input — built-in mic and interfaces alike — so the device opens but the
+    // input, built-in mic and interfaces alike, so the device opens but the
     // stream is silent and nothing else explains why. Highest priority: it's
     // the root cause behind an apparent no-input, and the only fix is the OS
     // privacy page + a relaunch, so it isn't ignorable.
@@ -89,7 +89,7 @@ const BANNER_RULES: BannerRule[] = [
     action: { label: 'Open Settings', kind: 'openSettings' },
   },
   {
-    // Device is open but nothing is routed out — the user won't hear the
+    // Device is open but nothing is routed out, so the user won't hear the
     // plugin. Ranks just below no-input (which owns the disconnected case and
     // takes priority when input is also missing). In linked-I/O backends the
     // single device sets both names, so '' here only means "no device", which
@@ -106,7 +106,7 @@ const BANNER_RULES: BannerRule[] = [
     action: { label: 'Open Settings', kind: 'openSettings' },
   },
   {
-    // Muting feeds the amp sim silence, so the user hears nothing at all —
+    // Muting feeds the amp sim silence, so the user hears nothing at all;
     // always surface it, not just on feedback risk (e.g. an interface where
     // you can't work out why there's no sound). Clears the instant Hear
     // Yourself goes back on, so it needn't be dismissable. Wording depends on
@@ -131,7 +131,7 @@ const BANNER_RULES: BannerRule[] = [
   },
   {
     // The user is monitoring (Hear Yourself on) with a mic-into-speakers setup,
-    // so nothing is muted but a squeal is one gain bump away. Dismissable —
+    // so nothing is muted but a squeal is one gain bump away. Dismissable:
     // some rooms are fine, and it's the user's call once warned.
     id: 'feedback-risk',
     variant: 'warn',
@@ -160,7 +160,7 @@ const BANNER_RULES: BannerRule[] = [
     action: { label: 'Switch to ASIO', kind: 'switchToAsio' },
   },
   {
-    // Skipped when no ≤512 option exists or the driver owns the buffer —
+    // Skipped when no ≤512 option exists or the driver owns the buffer;
     // never nag about something the user can't fix here. Evaluates readback.
     id: 'buffer-latency',
     variant: 'info',
@@ -200,7 +200,7 @@ const BANNER_RULES: BannerRule[] = [
  * Rules keyed by id, so the System Settings form can re-render the same
  * warning/error copy inline next to the relevant control (banners only live on
  * the main screen). The form supplies its own placement gating and drops the
- * action/ignore buttons — it reuses only `variant` + `content` for one source
+ * action/ignore buttons; it reuses only `variant` + `content` for one source
  * of truth on wording.
  */
 export const bannerRuleById: Record<string, BannerRule> = Object.fromEntries(

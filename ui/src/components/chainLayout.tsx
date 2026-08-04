@@ -14,7 +14,7 @@ export const HEADER_HEIGHT = 45;
 export const BODY_HEIGHT = 275;
 /** Inset shared by the tone view and EQ views inside the card body. */
 export const BODY_PADDING = 16;
-/** Bordered card only — the ← BLOCK row sits above it and is not included. */
+/** Bordered card only; the ← BLOCK row sits above it and is not included. */
 export const CARD_HEIGHT = HEADER_HEIGHT + BODY_HEIGHT;
 /** Outer corner radius of the bordered detail card. */
 export const CARD_RADIUS = 16;

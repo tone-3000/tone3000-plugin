@@ -6,7 +6,7 @@ namespace EditorWebViewSetup {
 
 // JUCE's WebBrowserComponent on macOS is a WKWebView on the default (shared,
 // persistent) WKWebsiteDataStore. juce::WebBrowserComponent::clearCookies()
-// only touches NSHTTPCookieStorage, which WKWebView ignores — so the OAuth
+// only touches NSHTTPCookieStorage, which WKWebView ignores, so the OAuth
 // session survives it. This clears every kind of site data (cookies, local /
 // session storage, IndexedDB, caches) but only for tone3000.com records, so
 // the plugin UI's own origin (juce.backend) keeps its storage.

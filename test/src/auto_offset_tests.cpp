@@ -1,8 +1,8 @@
-// ── AutoOffset tests ──
+// AutoOffset tests
 //
 // The auto-offset measurement (AutoOffset.h): cross-correlating the two raw
-// chain outputs must find the true inter-chain lag — in both directions, and
-// through chains voiced differently — while silence never dilutes the
+// chain outputs must find the true inter-chain lag (in both directions, and
+// through chains voiced differently) while silence never dilutes the
 // capture, and a misalignment beyond what the Offset knob can correct is
 // rejected (low confidence) instead of producing a junk value. The last test
 // closes the loop: the measured offset, applied through the real
@@ -85,7 +85,7 @@ TEST(AutoOffsetTest, MeasuresPureDelayLeftChainLagging) {
 TEST(AutoOffsetTest, SurvivesDifferentlyVoicedChains) {
   // The two "chains" get very different tone (bright vs 1 kHz-lowpassed)
   // plus a 350-sample lag. The correlation peak must still land on the true
-  // lag — within a hair: the lowpass has real group delay of its own
+  // lag, within a hair: the lowpass has real group delay of its own
   // (~1/(2π·1 kHz) ≈ 7.6 samples at DC), and the energy-weighted peak
   // rightly absorbs a couple of samples of it.
   const auto x = makeNoise(220 * kBlock, 44, 0.5f);
@@ -95,7 +95,7 @@ TEST(AutoOffsetTest, SurvivesDifferentlyVoicedChains) {
 
   EXPECT_NEAR(result.offsetMs, 350.0f * 1000.0f / static_cast<float>(kFs), 0.25f);
   // White noise vs its 1 kHz-lowpassed copy shares under half its energy, so
-  // ~0.5 is the honest ceiling here — still far above the 0.15 acceptance
+  // ~0.5 is the honest ceiling here, still far above the 0.15 acceptance
   // threshold. Real chains (same instrument, both full-range) sit way higher.
   EXPECT_GT(result.confidence, 0.3f);
 }
@@ -125,7 +125,7 @@ TEST(AutoOffsetTest, GatedCaptureStillMeasuresTheLag) {
   const auto x = makeNoise(440 * kBlock, 45, 0.5f);
   auto l = delayed(x, 120);
   auto r = std::vector<float>(x);
-  // Mute every other 10-block stretch on both channels (below the −50 dBFS
+  // Mute every other 10-block stretch on both channels (below the -50 dBFS
   // block floor means exactly zero here).
   for (size_t i = 0; i < l.size(); ++i) {
     if ((i / (10 * kBlock)) % 2 == 1) {
@@ -153,7 +153,7 @@ TEST(AutoOffsetTest, RejectsMisalignmentBeyondTheKnobRange) {
 TEST(AutoOffsetTest, EndToEndMeasureThenAlignThroughStereoOffset) {
   // The full loop, exactly as pollAutoOffset applies it: measure a
   // 300-sample left-chain lag, map the result onto the knob's normalized
-  // value, run the misaligned pair through the real StereoOffset — the
+  // value, run the misaligned pair through the real StereoOffset; the
   // residual lag between the outputs must be zero.
   constexpr int kLag = 300;
   const auto x = makeNoise(440 * kBlock, 47, 0.5f);

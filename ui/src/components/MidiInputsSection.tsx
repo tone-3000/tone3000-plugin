@@ -5,7 +5,7 @@ import { ChoiceIndicator, FieldRow, FIELD_BORDER, outlinedFieldStyle } from './c
 import { MUTED, SUBTLE } from './theme';
 
 /**
- * MIDI device enablement for the System Settings tab (standalone only —
+ * MIDI device enablement for the System Settings tab (standalone only;
  * hosts route MIDI to the processor themselves, and opening devices from a
  * plugin would fight the host and double-trigger events).
  *

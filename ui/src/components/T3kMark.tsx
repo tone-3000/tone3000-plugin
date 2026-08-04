@@ -2,7 +2,7 @@ import React from 'react';
 
 /**
  * Compact colorful "T3K" mark, ported inline from `public/t3k-mark.svg`
- * (native 36x12) — like `Tone3000Logo`, inlined as JSX rather than an
+ * (native 36x12). Like `Tone3000Logo`, it is inlined as JSX rather than an
  * `<img src>` because the plugin webview doesn't reliably render public
  * assets. Used in compact placements per the API's logo-usage guidance:
  * the Browse CTA and the tone-browser sign-in prompts (after the user has

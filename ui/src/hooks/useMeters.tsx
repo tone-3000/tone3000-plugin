@@ -23,9 +23,9 @@ export type MeterId =
   | `block:${string}:in`
   | `block:${string}:out`;
 
-/** Store key for the CPU readout (a %, not a dB level — see useCpuPercent). */
+/** Store key for the CPU readout (a %, not a dB level; see useCpuPercent). */
 const CPU_ID = 'cpu';
-/** Store key for the spread correlation (-1..1, not dB — see useCorrelation). */
+/** Store key for the spread correlation (-1..1, not dB; see useCorrelation). */
 const CORRELATION_ID = 'correlation';
 
 export const meterId = {
@@ -41,9 +41,9 @@ const CLIP_DB = 0;
 /** Quantize to 0.5 dB so imperceptible changes don't cause re-renders. */
 const QUANTIZE = 2;
 /**
- * Minimum time between bridge fetches. rAF fires at display refresh (120 Hz on
- * ProMotion), but ~30 Hz is indistinguishable for meter ballistics — this caps
- * bridge traffic without changing perceived smoothness.
+ * Minimum time between bridge fetches. rAF fires at display refresh (120 Hz
+ * on ProMotion), but I cap fetches around 30 Hz: it's indistinguishable for
+ * meter ballistics and quarters the bridge traffic on those displays.
  */
 const MIN_FETCH_INTERVAL_MS = 33;
 
@@ -59,7 +59,7 @@ const CPU_EMA_ALPHA = 0.15;
 /**
  * Ids whose clip latches clear together. The main meters' mono and L/R ids
  * are three views of one physical signal (mono = max(L, R)), and which view
- * is on screen changes with stereo mode (e.g. toggling Spread) — so clearing
+ * is on screen changes with stereo mode (e.g. toggling Spread), so clearing
  * a clip on any of them clears all three. A stale latch would otherwise
  * survive on the hidden variant and reappear on the next mode switch.
  * Block meters have no channel variants; they clear individually.
@@ -158,7 +158,7 @@ class MeterStore {
     this.applyCorrelation(res.correlation);
   }
 
-  /** Quantize to 0.05 — the meter is a threshold indicator, so finer steps
+  /** Quantize to 0.05: the meter is a threshold indicator, so finer steps
       would only cause invisible re-renders. Missing/invalid reads as 1
       (idle = trivially mono-safe). */
   private applyCorrelation(raw: number | undefined) {
@@ -171,7 +171,7 @@ class MeterStore {
 
   /**
    * Smooth into an EMA every poll, publish a rounded % on a slow cadence.
-   * No extra native calls — `cpu` already rides getMeterLevels.
+   * No extra native calls; `cpu` already rides getMeterLevels.
    */
   private applyCpu(raw: number | undefined) {
     const sample =
@@ -256,7 +256,7 @@ export function useCorrelation(): number {
   return useSyncExternalStore(subscribe, store.getCorrelation);
 }
 
-/** Audio-callback load as a percent (0–100+, one decimal), for the hint-bar readout. */
+/** Audio-callback load as a percent (0-100+, one decimal), for the hint-bar readout. */
 export function useCpuPercent(): number {
   const store = useContext(MeterStoreContext);
   if (!store) throw new Error('useCpuPercent must be used within a MetersProvider');

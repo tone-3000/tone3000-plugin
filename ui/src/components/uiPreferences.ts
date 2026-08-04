@@ -29,7 +29,7 @@ function boolPref(key: string) {
     try {
       localStorage.setItem(key, String(enabled));
     } catch {
-      // Storage unavailable — the toggle still works for this session.
+      // Storage unavailable. The toggle still works for this session.
     }
     emit();
   };
@@ -42,7 +42,7 @@ function boolPref(key: string) {
 // Off by default: every block simply stays normalized (the block flag itself
 // defaults to on and lives in the chain state, not here).
 // (The NAM A2 size preference is NOT here: it changes DSP, so it lives
-// natively — see `namFullSize` on the chain state / `setNamFullSize`.)
+// natively; see `namFullSize` on the chain state / `setNamFullSize`.)
 const blockNormalizeControl = boolPref('t3k.showBlockNormalizeControl');
 export const setBlockNormalizeControlEnabled = blockNormalizeControl.set;
 export const useBlockNormalizeControlEnabled = blockNormalizeControl.useValue;

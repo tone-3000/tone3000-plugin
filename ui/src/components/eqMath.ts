@@ -98,7 +98,7 @@ function biquadMagnitudeDb(c: BiquadCoeffs, freqHz: number, sampleRate: number):
 
 /**
  * Combined EQ magnitude response (dB) at each of `freqsHz`. Inert bands are
- * skipped — matching the audio thread, which doesn't process them either.
+ * skipped, matching the audio thread, which doesn't process them either.
  */
 export function eqResponseDb(bands: EqBand[], sampleRate: number, freqsHz: number[]): number[] {
   const active = bands.filter(isEqBandActive).map((band) => computeCoeffs(band, sampleRate));

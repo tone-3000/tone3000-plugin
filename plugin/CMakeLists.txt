@@ -108,7 +108,7 @@ juce_add_plugin(${PROJECT_NAME}
     PLUGIN_CODE ${PLUGIN_CODE}
     FORMATS ${_plugin_formats}
     # The LV2 URI is the plugin's permanent identity in LV2 hosts (it keys
-    # sessions and presets) — never change it once released.
+    # sessions and presets). Never change it once released.
     LV2URI "https://www.tone3000.com/plugin"
     PRODUCT_NAME ${PROJECT_NAME}
     NEEDS_WEB_BROWSER ${NEEDS_WEB_BROWSER_VALUE}
@@ -212,7 +212,7 @@ target_link_libraries(${PROJECT_NAME}
         $<$<PLATFORM_ID:Linux>:-Wl,--whole-archive>
         $<$<PLATFORM_ID:Linux>:NAM>
         $<$<PLATFORM_ID:Linux>:-Wl,--no-whole-archive>
-        # Windows (MSVC): /WHOLEARCHIVE is the equivalent — without it the
+        # Windows (MSVC): /WHOLEARCHIVE is the equivalent; without it the
         # linker drops the objects holding the self-registering config parsers
         # ("No config parser registered for architecture ..." at NAM load).
         # Leading '-' so CMake treats the item as a flag (a leading '/' parses
@@ -222,7 +222,6 @@ target_link_libraries(${PROJECT_NAME}
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags
-        #juce::juce_recommended_lto_flags # Maybe remove?
 )
 
 # Ensure NAM is built before plugin (force_load path requires lib to exist)
@@ -268,7 +267,7 @@ target_compile_definitions(${PROJECT_NAME}
 # JUCE_USE_CURL=0 JUCE falls back to a raw-socket implementation that rejects
 # https:// URLs outright (juce_Network_linux.cpp decomposeURL), so every
 # model_url fetch fails. Load curl lazily so there is no link-time libcurl
-# dependency — JUCE dlopens the versioned SONAMEs (libcurl.so.4,
+# dependency: JUCE dlopens the versioned SONAMEs (libcurl.so.4,
 # libcurl-gnutls.so.4, ...) at runtime, which exist on end-user systems
 # without any -dev package. Build hosts need the curl headers
 # (libcurl4-openssl-dev; CI installs it).
@@ -310,7 +309,7 @@ if (WIN32)
         # ASIO driver support in the standalone's audio settings. JUCE keeps
         # ASIO off by default because it needs Steinberg's ASIO SDK headers,
         # which are a separate (non-redistributable) download:
-        # https://www.steinberg.net/asiosdk — extract it and pass
+        # https://www.steinberg.net/asiosdk. Extract it and pass
         # -DASIO_SDK_PATH=<dir> (CI does this automatically). Without the SDK
         # the build still works, just without an ASIO option in the device list.
         set(ASIO_SDK_PATH "" CACHE PATH "Path to the Steinberg ASIO SDK (enables JUCE_ASIO)")
@@ -319,7 +318,7 @@ if (WIN32)
             target_include_directories(${PROJECT_NAME} PUBLIC "${ASIO_SDK_PATH}/common")
             message(STATUS "ASIO enabled (SDK: ${ASIO_SDK_PATH})")
         else()
-            message(STATUS "ASIO disabled — set ASIO_SDK_PATH to the Steinberg ASIO SDK to enable it")
+            message(STATUS "ASIO disabled; set ASIO_SDK_PATH to the Steinberg ASIO SDK to enable it")
         endif()
     endif()
 endif()
@@ -329,10 +328,10 @@ endif()
 # It reuses the shared-code target built by juce_add_plugin unchanged and
 # emits a TONE3000_CLAP target whose .clap lands in the artefacts dir next
 # to VST3/LV2. Like the LV2 URI, the CLAP_ID is the plugin's permanent
-# identity in hosts — never change it once released.
+# identity in hosts. Never change it once released.
 if (NOT HEADLESS AND BUILD_CLAP)
     # Pinned to a commit: the repo's tags track the CLAP protocol version
-    # (0.26.0 = 2022, pre-JUCE 8) and there are no wrapper releases — JUCE 8
+    # (0.26.0 = 2022, pre-JUCE 8) and there are no wrapper releases; JUCE 8
     # compatibility only exists on main.
     CPMAddPackage(
         NAME clap-juce-extensions
@@ -345,13 +344,6 @@ if (NOT HEADLESS AND BUILD_CLAP)
         CLAP_ID "com.tone3000.plugin"
         CLAP_FEATURES audio-effect distortion)
 endif()
-
-# Treat all warnings as errors
-#if (MSVC)
-#    target_compile_options(${PROJECT_NAME} PRIVATE /W4 /WX)
-#else()
-#    target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic)
-#endif()
 
 # Visual Studio Only
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/..) 

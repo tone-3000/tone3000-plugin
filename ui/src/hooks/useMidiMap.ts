@@ -6,8 +6,8 @@ import type { MidiMapState } from '../types/midiMap';
  * Single owner of the MIDI mapping state on the JS side, mirroring
  * useAudioDevice's sync model: native is the source of truth, the UI holds a
  * snapshot. Native pushes a `midiMapChanged` event on every map change (learn
- * commits — which happen when the user moves a hardware control, not from any
- * UI action — plus removals and state restores) and the hook re-pulls.
+ * commits, which happen when the user moves a hardware control and not from
+ * any UI action, plus removals and state restores) and the hook re-pulls.
  * Mutations also re-pull immediately for snappy readback.
  *
  * Unlike the device state this works in hosted builds too: mapping lives in

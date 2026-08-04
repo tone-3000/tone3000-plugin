@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, FolderClosed } from 'lucide-react';
+import { useDismissable } from '../hooks/useDismissable';
 import { LoadingDots } from './LoadingDots';
 
 interface Option {
@@ -17,7 +18,7 @@ interface ModelSelectProps {
   value: string;
   onChange: (id: string) => void;
   height?: number;
-  /** Grays out and blocks all interaction (e.g. signed out — switching
+  /** Grays out and blocks all interaction (e.g. signed out; switching
       models needs an authenticated native download). */
   disabled?: boolean;
   /** The catalog fetch is in flight (renders a dots row in the dropdown). */
@@ -62,22 +63,8 @@ export const ModelSelect: React.FC<ModelSelectProps> = ({
     setIsOpen(false);
   };
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isOpen]);
+  const close = useCallback(() => setIsOpen(false), []);
+  useDismissable(isOpen, containerRef, close);
 
   return (
     <div
@@ -195,7 +182,7 @@ export const ModelSelect: React.FC<ModelSelectProps> = ({
         </span>
       </div>
 
-      {/* Dropdown — opens upward: the select sits at the bottom of the card,
+      {/* Dropdown opens upward: the select sits at the bottom of the card,
           so a downward list would render past the card edge and get clipped. */}
       {isOpen && (
         <div
