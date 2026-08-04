@@ -9,6 +9,7 @@ import {
 } from './uiPreferences';
 import type { UpdateNoticeData } from '../hooks/useUpdateNotice';
 import type { AudioDevice } from '../hooks/useAudioDevice';
+import type { ChainItem } from '../types/chain';
 import { GRAY, SUBTLE } from './theme';
 import {
   FIELD_BORDER,
@@ -62,6 +63,10 @@ interface SettingsProps {
       separate CPU cores). */
   multiCore: boolean;
   onMultiCoreChange: (enabled: boolean) => void;
+  /** Chain lanes — the MIDI mapping screen names block-power targets after
+      the tone currently in each slot. `chainRight` is null outside stereo. */
+  chain: ChainItem[];
+  chainRight: ChainItem[] | null;
 }
 
 // Oversampling rate choices. Values are the osFactor parameter's choice
@@ -138,6 +143,8 @@ export const Settings: React.FC<SettingsProps> = ({
   onNamFullSizeChange,
   multiCore,
   onMultiCoreChange,
+  chain,
+  chainRight,
 }) => {
   const [tab, setTab] = useState<SettingsTab>(standalone ? initialTab : 'plugin');
   const [screen, setScreen] = useState<PluginScreen>('main');
@@ -466,7 +473,7 @@ export const Settings: React.FC<SettingsProps> = ({
     screen === 'advanced' ? (
       advancedScreen
     ) : screen === 'midi' ? (
-      <MidiMapSettings />
+      <MidiMapSettings chain={chain} chainRight={chainRight} />
     ) : (
       pluginMainScreen
     );

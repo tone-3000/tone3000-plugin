@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { MUTED, BRAND_RED, BRAND_YELLOW, WHITE } from './theme';
+import { MUTED, SUBTLE, BRAND_RED, BRAND_YELLOW, WHITE } from './theme';
 
 /**
  * Shared form primitives for settings-style surfaces (Settings takeover,
@@ -104,7 +104,10 @@ export const PillToggle: React.FC<{ value: boolean; onChange: (value: boolean) =
     chevron interaction) for locked single-option lists — per the audio
     settings spec, a one-option select must never pretend to be a choice.
     A null value is the empty state: the trigger shows the dimmed
-    placeholder and no option renders as selected. */
+    placeholder and no option renders as selected. Options may carry a
+    sublabel — smaller, dimmer context under the label (the MIDI mapping
+    picker names each block slot's current tone this way); the trigger
+    always shows the label alone. */
 export function SelectField<T extends string>({
   value,
   options,
@@ -114,7 +117,7 @@ export function SelectField<T extends string>({
   ariaLabel,
 }: {
   value: T | null;
-  options: { value: T; label: string }[];
+  options: { value: T; label: string; sublabel?: string }[];
   onChange: (value: T) => void;
   disabled?: boolean;
   /** Trigger text while value is null (or matches no option). */
@@ -208,6 +211,19 @@ export function SelectField<T extends string>({
               }}
             >
               {option.label}
+              {option.sublabel && (
+                <span
+                  style={{
+                    display: 'block',
+                    fontSize: '11px',
+                    fontWeight: 400,
+                    color: SUBTLE,
+                    marginTop: '2px',
+                  }}
+                >
+                  {option.sublabel}
+                </span>
+              )}
             </div>
           ))}
         </div>

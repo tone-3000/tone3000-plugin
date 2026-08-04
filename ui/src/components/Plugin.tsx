@@ -692,6 +692,8 @@ export const Plugin: React.FC = () => {
           onNamFullSizeChange={actions.setNamFullSize}
           multiCore={multiCore}
           onMultiCoreChange={actions.setMultiCore}
+          chain={chain}
+          chainRight={chainRight}
         />
       )}
 

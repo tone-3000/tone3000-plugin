@@ -547,10 +547,16 @@ private:
   // user, both alphabetical — the same order the preset browser shows).
   // Out-of-range programs are ignored.
   bool loadPresetAtIndex(int index);
-  // Toggle the enabled flag of the chain's Nth tone block (0-based, insert
-  // slots skipped; Left lane in stereo). Positional so mappings survive tone
-  // swaps and preset loads. No-op when the chain is shorter than N.
-  bool toggleBlockPower(int position);
+  // Step the active preset through the list order, wrapping at the ends —
+  // the MIDI twin of the preset bar's ‹ › buttons (mapped "presetPrevious" /
+  // "presetNext" controls land here). With no active preset, a forward step
+  // starts at the first preset and a backward step at the last.
+  bool stepPreset(int delta);
+  // Toggle the enabled flag of a lane's Nth tone block (0-based, insert
+  // slots skipped). Positional so mappings survive tone swaps and preset
+  // loads. No-op when the lane is shorter than N — and for the Right lane
+  // outside stereo mode, so an inert lane is never edited invisibly.
+  bool toggleBlockPower(int position, bool rightLane);
 
   // ── Preset internals (ProcessorPresets.cpp) ──
   // The faceplate parameters a preset carries. Explicitly scoped: rig

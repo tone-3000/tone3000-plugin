@@ -53,10 +53,14 @@ TONE3000Processor::TONE3000Processor()
   parameters.addParameterListener("osFactor", this);
 
   // MIDI performance events (delivered on the message thread — see
-  // MidiMapper): program changes walk the preset list, mapped block-power
-  // and stereo stomps route through the normal undoable chain edit paths.
+  // MidiMapper): program changes and prev/next steps walk the preset list,
+  // mapped block-power and stereo stomps route through the normal undoable
+  // chain edit paths.
   midiMapper.onProgramChange = [this](int program) { loadPresetAtIndex(program); };
-  midiMapper.onBlockPowerToggle = [this](int index) { toggleBlockPower(index); };
+  midiMapper.onPresetStep = [this](int delta) { stepPreset(delta); };
+  midiMapper.onBlockPowerToggle = [this](int index, bool right) {
+    toggleBlockPower(index, right);
+  };
   midiMapper.onStereoToggle = [this] { setStereoMode(!isStereoMode()); };
 
   // Every lane starts at its minimum slot layout (kMinLaneSlots pass-through

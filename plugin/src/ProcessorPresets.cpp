@@ -91,6 +91,33 @@ bool TONE3000Processor::loadPresetAtIndex(int index) {
   return loadPreset(presets[static_cast<size_t>(index)].id);
 }
 
+bool TONE3000Processor::stepPreset(int delta) {
+  const auto presets = presetManager.list();
+  const int count = static_cast<int>(presets.size());
+  if (count == 0 || delta == 0)
+    return false;
+
+  juce::String currentId;
+  {
+    juce::ScopedLock lock(chainMutex);
+    currentId = activePresetId;
+  }
+  int index = -1;
+  for (int i = 0; i < count; ++i) {
+    if (presets[static_cast<size_t>(i)].id == currentId) {
+      index = i;
+      break;
+    }
+  }
+
+  // Mirrors the preset bar's ‹ › buttons: wrap at the ends; with nothing
+  // active (or a deleted preset), next starts at the first and previous at
+  // the last.
+  const int next = index < 0 ? (delta > 0 ? 0 : count - 1)
+                             : ((index + delta) % count + count) % count;
+  return loadPreset(presets[static_cast<size_t>(next)].id);
+}
+
 bool TONE3000Processor::loadPreset(const juce::String& presetId) {
   const juce::ValueTree preset = presetManager.load(presetId);
   const juce::ValueTree snapshot = preset.getChildWithName("ChainSnapshot");

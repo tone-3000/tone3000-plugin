@@ -1203,7 +1203,12 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
   return true;
 }
 
-bool TONE3000Processor::toggleBlockPower(int position) {
+bool TONE3000Processor::toggleBlockPower(int position, bool rightLane) {
+  // The Right lane only processes in stereo mode; a mapped right-block stomp
+  // outside it must not edit chain state the user can't see.
+  if (rightLane && !isStereoMode())
+    return false;
+
   // Resolve the position to a block id under the lock, then route through
   // setBlockParam so a MIDI stomp is exactly a UI power click: undoable,
   // revision-bumped, same validation.
@@ -1212,7 +1217,7 @@ bool TONE3000Processor::toggleBlockPower(int position) {
   {
     juce::ScopedLock lock(chainMutex);
     int seen = 0;
-    for (const auto& block : lane(ChainSide::Left)) {
+    for (const auto& block : lane(rightLane ? ChainSide::Right : ChainSide::Left)) {
       if (block->type == ChainBlockType::INSERT)
         continue;
       if (seen++ == position) {

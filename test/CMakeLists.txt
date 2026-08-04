@@ -20,6 +20,7 @@ target_sources(DspTests PRIVATE
     src/branch_tests.cpp
     src/dsp_tests.cpp
     src/duplicate_tests.cpp
+    src/midi_map_tests.cpp
     src/multicore_tests.cpp
     src/processor_tests.cpp
     src/spread_tests.cpp
@@ -66,6 +67,10 @@ target_compile_definitions(DspTests PRIVATE
     # The processor compiles in its headless configuration (no Editor /
     # webview / standalone-window code) — the DSP under test is identical.
     HEADLESS=1
+    # midi_map_tests pumps the dispatch loop (runDispatchLoopUntil) to
+    # deliver the MidiMapper's AsyncUpdater work; the plugin itself never
+    # needs modal loops.
+    JUCE_MODAL_LOOPS_PERMITTED=1
     # Absolute path to the test assets, so the binary runs from anywhere.
     T3K_TEST_FILES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/files"
 )

@@ -5,7 +5,8 @@
  * mapping UI renders everywhere.
  *
  * Program changes need no mapping: PC n always loads the nth preset in list
- * order (gated by the same channel filter).
+ * order (gated by the same channel filter). Preset stepping *is* a mapping:
+ * the virtual "presetPrevious" / "presetNext" targets fire once per press.
  */
 export interface MidiMapState {
   /** Global channel filter: 0 = omni, 1–16 = that channel only. */

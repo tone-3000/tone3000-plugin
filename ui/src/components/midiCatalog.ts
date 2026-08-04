@@ -9,23 +9,32 @@ import type { MidiMapping } from '../types/midiMap';
  */
 
 export interface MappableTarget {
-  /** APVTS parameter id or positional block power ("block1Power"). */
+  /** APVTS parameter id, positional block power ("block1Power"), or a
+      virtual action id ("presetNext"). */
   id: string;
   name: string;
   /** Section subtitle, mirroring the faceplate's layout. */
   group: string;
-  /** Drives the range/mode display: toggles show "On / Off · Toggle". */
-  kind: 'continuous' | 'toggle';
+  /** Drives the behavior display: continuous knobs are absolute via CC,
+      toggles flip on/off, triggers fire an action once per press. */
+  kind: 'continuous' | 'toggle' | 'trigger';
 }
 
-/** Block-power targets are positional — "Block 1" is the chain's first tone
+/** Block-power targets are positional — "Block 1" is a lane's first tone
     block whatever it currently holds — so a mapping survives tone swaps and
-    preset loads, like switches on a pedalboard. Left lane in stereo mode.
-    Display-only cap (the engine takes up to 64): enough for any realistic
-    pedalboard without burying the picker. */
+    preset loads, like switches on a pedalboard. "blockNPower" is the Left
+    lane (the only lane in mono), "rightBlockNPower" the Right lane (stereo
+    only; the mapping screen offers them per the live chain). Display-only
+    cap (the engine takes up to 64): enough for any realistic pedalboard
+    without burying the picker. */
 const BLOCK_POWER_TARGETS = 12;
 
 export const MAPPABLE_TARGETS: MappableTarget[] = [
+  // Virtual actions (native resolves the ids itself): step through the
+  // preset list in browser order, wrapping at the ends — for footswitches
+  // programmed with CC / note buttons instead of program changes.
+  { id: 'presetPrevious', name: 'Previous Preset', group: 'Presets', kind: 'trigger' },
+  { id: 'presetNext', name: 'Next Preset', group: 'Presets', kind: 'trigger' },
   { id: 'inputLevel', name: 'Input Gain', group: 'Global', kind: 'continuous' },
   { id: 'outputLevel', name: 'Output Level', group: 'Global', kind: 'continuous' },
   { id: 'outputBalance', name: 'Output Balance', group: 'Global', kind: 'continuous' },
@@ -51,23 +60,15 @@ export const MAPPABLE_TARGETS: MappableTarget[] = [
     group: 'Chain',
     kind: 'toggle',
   })),
+  ...Array.from({ length: BLOCK_POWER_TARGETS }, (_, i): MappableTarget => ({
+    id: `rightBlock${i + 1}Power`,
+    name: `Block ${i + 1} Power`,
+    group: 'Chain R',
+    kind: 'toggle',
+  })),
 ];
 
 export const targetById = new Map(MAPPABLE_TARGETS.map((t) => [t.id, t]));
-
-/** Well-known General MIDI controller names (shown under "CC n"). */
-const CC_NAMES: Record<number, string> = {
-  1: 'Mod Wheel',
-  2: 'Breath',
-  4: 'Foot Controller',
-  7: 'Volume',
-  10: 'Pan',
-  11: 'Expression',
-  64: 'Sustain',
-  65: 'Portamento',
-  66: 'Sostenuto',
-  67: 'Soft Pedal',
-};
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
@@ -79,17 +80,12 @@ export const midiNoteName = (note: number) =>
 export const sourceLabel = (mapping: MidiMapping) =>
   mapping.source === 'cc' ? `CC ${mapping.number}` : `Note ${midiNoteName(mapping.number)}`;
 
-/** Subtitle under the source: the CC's common name, if it has one. */
-export const sourceSubtitle = (mapping: MidiMapping) =>
-  mapping.source === 'cc' ? (CC_NAMES[mapping.number] ?? '') : 'Momentary';
-
-/** Whether the pairing behaves as a toggle (mirrors the native derivation:
-    toggle-kind target, or any note source). */
-export const isToggleBehavior = (mapping: MidiMapping) =>
-  mapping.source === 'note' || targetById.get(mapping.targetId)?.kind === 'toggle';
-
-export const rangeLabel = (mapping: MidiMapping) =>
-  isToggleBehavior(mapping) ? 'On / Off' : '0 – 100%';
-
-export const modeLabel = (mapping: MidiMapping) =>
-  isToggleBehavior(mapping) ? 'Toggle' : 'Absolute';
+/** How the pairing behaves, mirroring the native derivation: trigger
+    targets fire per press, toggle targets (and any note source) flip
+    on/off, everything else tracks the CC value absolutely. */
+export const behaviorLabel = (mapping: MidiMapping) => {
+  const kind = targetById.get(mapping.targetId)?.kind;
+  if (kind === 'trigger') return 'Trigger';
+  if (kind === 'toggle' || mapping.source === 'note') return 'Toggle';
+  return 'Absolute';
+};
