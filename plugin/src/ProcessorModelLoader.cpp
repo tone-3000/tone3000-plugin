@@ -474,8 +474,19 @@ void TONE3000Processor::requestSwapFadeAndWait(const std::string& blockId, bool 
 }
 
 void TONE3000Processor::requestChainEditFadeAndWait() {
-  if (!isAudioActive())
-    return;  // no callbacks → the edit is inaudible; apply directly
+  if (!isAudioActive()) {
+    // No callbacks → nothing to fade; the edit applies directly. But still
+    // arm the mute with the gain snapped to its landed value: a device can
+    // start *mid-edit* (launch-time state restore racing the audio device
+    // open), and callbacks arriving then must come up silent and take the
+    // wait-free skip in processBlock — not blast the half-restored chain or
+    // block behind the splice's lock hold. Touching the smoother here is
+    // safe: no callbacks are running.
+    chainEditFadeGain.setCurrentAndTargetValue(0.0f);
+    chainEditFadeDone.store(true);
+    chainEditFadePending.store(true);
+    return;
+  }
 
   chainEditFadeDone.store(false);
   chainEditFadePending.store(true);

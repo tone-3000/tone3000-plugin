@@ -616,9 +616,18 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   autoOffset.prepare(sampleRate);
   inputGate.prepare(sampleRate);
 
-  // Chain-edit fade (reorder / cross-lane move): host-rate, primed audible.
+  // Chain-edit fade: host-rate. Primed audible normally — but a device can
+  // start while a fade session holds the chain (launch: state restore arms
+  // the mute, then the audio device opens while models still load). Priming
+  // to 1 then would blast the half-loaded chain for the glide-down; honor
+  // the pending mute instead and mark it landed (pre-callback, so snapping
+  // is safe — this also unblocks any requester waiting out a device
+  // restart).
   chainEditFadeGain.reset(sampleRate, kWetFadeSeconds);
-  chainEditFadeGain.setCurrentAndTargetValue(1.0f);
+  const bool editFadeHeld = chainEditFadePending.load();
+  chainEditFadeGain.setCurrentAndTargetValue(editFadeHeld ? 0.0f : 1.0f);
+  if (editFadeHeld)
+    chainEditFadeDone.store(true);
 
   // Output-stage gain, primed from the current parameters so a restored
   // session doesn't glide in from the wrong level.

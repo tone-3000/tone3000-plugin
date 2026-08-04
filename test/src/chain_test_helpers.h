@@ -109,7 +109,11 @@ inline void seedStereoChains(ChainTestProcessor& proc, const std::vector<juce::S
   proc.restoreFromTree(state);
 }
 
-// Wait until every tone block in both lanes reports loaded.
+// Wait until every tone block in both lanes reports loaded AND the chain-edit
+// mute has released. Restores hold the mute until their loads settle (plus a
+// grace period) on a *wall-clock* waiter; tests pump audio much faster than
+// realtime, so without this second condition a test can burn through seconds
+// of "audio" while the rig is still (correctly) muted.
 inline bool waitForChainLoaded(TONE3000Processor& proc, int timeoutMs = 20000) {
   const auto deadline = juce::Time::getMillisecondCounter() + static_cast<juce::uint32>(timeoutMs);
   while (juce::Time::getMillisecondCounter() < deadline) {
@@ -122,7 +126,7 @@ inline bool waitForChainLoaded(TONE3000Processor& proc, int timeoutMs = 20000) {
         if (item["kind"].toString() == "tone" && !static_cast<bool>(item["loaded"]))
           allLoaded = false;
     }
-    if (allLoaded)
+    if (allLoaded && !proc.isChainEditFadeHeld())
       return true;
     juce::Thread::sleep(20);
   }

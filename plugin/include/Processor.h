@@ -146,6 +146,12 @@ public:
   bool getNamFullSize() const { return namFullSize.load(); }
   void setNamFullSize(bool full);
 
+  /** True while a chain-edit fade session holds the chain muted (including
+      the deferred hold that waits out a restore's background loads). Lets
+      tests — which pump audio far faster than the wall clock the release
+      waiter runs on — block until the rig is actually audible again. */
+  bool isChainEditFadeHeld() const { return chainEditFadePending.load(); }
+
   // ── Multi-core stereo (machine-wide user setting, like the NAM A2 size) ──
   // When on, stereo mode processes the two chain lanes concurrently: the
   // Right lane (or the branch lane when branched) runs on the LaneWorker

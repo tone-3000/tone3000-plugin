@@ -256,8 +256,11 @@ void TONE3000Processor::setStateInformation(const void* data, int sizeInBytes) {
   // background — no synchronous model prepare under the chain lock.
   //
   // Hosts can re-set state mid-playback (DAW preset browsers) — mute-splice
-  // the restore like any structural edit. Free on project load: no audio
-  // callbacks are running yet, so the fade is skipped entirely.
+  // the restore like any structural edit. On a fresh launch no callbacks run
+  // yet, but the audio device typically starts *during* the load window that
+  // follows, so the mute is held until the restored chain's models settle
+  // (deferred release below) — the first audible buffers are the finished
+  // rig gliding in, never the raw dry input of still-loading blocks.
   ChainEditFade editFade(*this);
 
   Lane retired;  // destroyed after the lock — see restoreChainSnapshot
@@ -273,6 +276,8 @@ void TONE3000Processor::setStateInformation(const void* data, int sizeInBytes) {
     // would resurrect chains the user never saw in this session.
     chainHistory.clear();
   }
+
+  editFade.releaseWhenChainLoadsSettle();
 
   DBG("Plugin state restored successfully");
 }
