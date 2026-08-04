@@ -7,17 +7,18 @@
 // A preset is a self-contained tone: the full chain snapshot (same tree the
 // undo system uses, plus embedded model bytes so it loads offline) and the
 // faceplate parameter values. Loading goes through the same reconciling
-// restore as undo/redo — engines are reused where possible, everything else
-// loads in the background seeded from the embedded bytes — and records one
+// restore as undo/redo (engines are reused where possible, everything else
+// loads in the background seeded from the embedded bytes) and records one
 // undo step, so a preset load is itself undoable.
 
 const std::vector<juce::String>& TONE3000Processor::presetParameterIds() {
   static const std::vector<juce::String> ids = {
-      "inputLevel",    "inputBalance", "outputLevel",   "outputBalance",
-      "toneBass",      "toneMid",      "toneTreble",
-      "gateThreshold", "gateEnabled",  "toneEqEnabled",
-      "spreadEnabled", "spreadAmount",  "spreadJitter",
-      "chainPanLeft",  "chainPanRight", "chainPanLinked",
+      "inputLevel",     "outputLevel",         "outputBalance",
+      "toneBass",       "toneMid",             "toneTreble",
+      "gateThreshold",  "gateEnabled",         "toneEqEnabled",
+      "spreadEnabled",  "spreadOffset",        "spreadWobble",
+      "stereoOffsetEnabled", "stereoOffsetTime",
+      "chainPanLeft",   "chainPanRight",       "chainPanLinked",
   };
   return ids;
 }
@@ -49,7 +50,7 @@ juce::var TONE3000Processor::savePreset(const juce::String& rawName) {
     return {};
 
   juce::ValueTree preset(PresetManager::kPresetTag);
-  preset.setProperty("version", 1, nullptr);
+  preset.setProperty("schemaVersion", 1, nullptr);
 
   {
     juce::ScopedLock lock(chainMutex);
@@ -83,6 +84,40 @@ juce::var TONE3000Processor::savePreset(const juce::String& rawName) {
   return obj.get();
 }
 
+bool TONE3000Processor::loadPresetAtIndex(int index) {
+  const auto presets = presetManager.list();
+  if (index < 0 || index >= static_cast<int>(presets.size()))
+    return false;  // controller sent a program beyond the list: ignore
+  return loadPreset(presets[static_cast<size_t>(index)].id);
+}
+
+bool TONE3000Processor::stepPreset(int delta) {
+  const auto presets = presetManager.list();
+  const int count = static_cast<int>(presets.size());
+  if (count == 0 || delta == 0)
+    return false;
+
+  juce::String currentId;
+  {
+    juce::ScopedLock lock(chainMutex);
+    currentId = activePresetId;
+  }
+  int index = -1;
+  for (int i = 0; i < count; ++i) {
+    if (presets[static_cast<size_t>(i)].id == currentId) {
+      index = i;
+      break;
+    }
+  }
+
+  // Mirrors the preset bar's ‹ › buttons: wrap at the ends; with nothing
+  // active (or a deleted preset), next starts at the first and previous at
+  // the last.
+  const int next = index < 0 ? (delta > 0 ? 0 : count - 1)
+                             : ((index + delta) % count + count) % count;
+  return loadPreset(presets[static_cast<size_t>(next)].id);
+}
+
 bool TONE3000Processor::loadPreset(const juce::String& presetId) {
   const juce::ValueTree preset = presetManager.load(presetId);
   const juce::ValueTree snapshot = preset.getChildWithName("ChainSnapshot");
@@ -90,11 +125,11 @@ bool TONE3000Processor::loadPreset(const juce::String& presetId) {
     return false;
 
   // A preset replaces the whole chain (and jumps the faceplate parameters
-  // below) — mute-splice the transition like any structural edit. The fade
+  // below), so mute-splice the transition like any structural edit. The fade
   // holds until everything is in place, then glides back in on the new rig.
   ChainEditFade editFade(*this);
 
-  Lane retired;  // destroyed after the lock — see restoreChainSnapshot
+  Lane retired;  // destroyed after the lock; see restoreChainSnapshot
   {
     juce::ScopedLock lock(chainMutex);
     pushChainHistory();
@@ -119,6 +154,11 @@ bool TONE3000Processor::loadPreset(const juce::String& presetId) {
   }
 
   juce::Logger::writeToLog("[Presets] Loaded preset: " + activePresetName);
+
+  // The restore queued every block's engine build on the background loader;
+  // hold the mute until they land (bounded), else the chain fades back in on
+  // unloaded pass-through blocks and blasts the raw dry input.
+  editFade.releaseWhenChainLoadsSettle();
   return true;
 }
 
@@ -143,4 +183,10 @@ bool TONE3000Processor::deletePreset(const juce::String& presetId) {
     bumpChainRevision();
   }
   return true;
+}
+
+bool TONE3000Processor::movePreset(const juce::String& presetId, int delta) {
+  // Pure list-order change: nothing about the loaded chain moves, so no
+  // revision bump; the UI re-pulls the preset list after the call.
+  return presetManager.move(presetId, delta);
 }

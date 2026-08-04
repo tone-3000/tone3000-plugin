@@ -1,115 +1,88 @@
 #include "Spread.h"
 #include <cmath>
 
-namespace {
-// One-pole coefficient for a given time constant.
-float envCoeff(double sampleRate, float ms) {
-  return std::exp(static_cast<float>(-1.0 / (sampleRate * ms * 0.001)));
-}
-}  // namespace
-
 void Spread::prepare(double newSampleRate, int maxBlockSize) {
   sampleRate = newSampleRate > 0.0 ? newSampleRate : 48000.0;
+  msToSamples = static_cast<float>(sampleRate * 0.001);
+  lagGain = juce::Decibels::decibelsToGain(kLagGainDb);
+
+  const juce::dsp::ProcessSpec spec{sampleRate,
+                                    static_cast<juce::uint32>(juce::jmax(1, maxBlockSize)), 1};
+
+  crossover.setType(juce::dsp::LinkwitzRileyFilterType::lowpass);
+  crossover.setCutoffFrequency(static_cast<float>(kCrossoverHz));
+  crossover.prepare(spec);
 
   const int maxDelaySamples = static_cast<int>(std::ceil(
-      (SpreadParams::kMaxSpreadMs + SpreadParams::kMaxJitterMs) * 0.001 * sampleRate)) + 8;
+      (SpreadParams::kMaxOffsetMs + kWobbleMaxMs) * 0.001 * sampleRate)) + 8;
   delayLine.setMaximumDelayInSamples(maxDelaySamples);
-  delayLine.prepare({sampleRate, static_cast<juce::uint32>(juce::jmax(1, maxBlockSize)), 1});
+  delayLine.prepare(spec);
 
-  delaySamples.reset(sampleRate, kRampSeconds);
-  delaySamples.setCurrentAndTargetValue(0.0f);
+  for (int i = 0; i < kNumAllpasses; ++i) {
+    const double fc = kAllpassLowHz * std::pow(kAllpassHighHz / kAllpassLowHz,
+                                               static_cast<double>(i) / (kNumAllpasses - 1));
+    const double t = std::tan(juce::MathConstants<double>::pi * fc / sampleRate);
+    allpasses[static_cast<size_t>(i)].a = static_cast<float>((t - 1.0) / (t + 1.0));
+  }
 
-  fastAttack = envCoeff(sampleRate, 1.0f);
-  fastRelease = envCoeff(sampleRate, 50.0f);
-  slowCoeff = envCoeff(sampleRate, 200.0f);
-  refractorySamples = static_cast<int>(0.06 * sampleRate);  // 60 ms per-note hold
+  offsetCoeff = 1.0f - std::exp(static_cast<float>(-1.0 / (kOffsetSmoothSeconds * sampleRate)));
+  wobbleCoeff = 1.0f - std::exp(static_cast<float>(
+      -juce::MathConstants<double>::twoPi * kWobbleRateHz / sampleRate));
+
+  // Wobble normalization, analytic. The noise shaper is two cascaded
+  // one-poles with coefficient k (see Spread.h for why two); its impulse
+  // response is h[n] = k²(n+1)aⁿ with a = 1-k, so the steady-state output
+  // variance for unit-variance input is Σh² = k⁴(1+a²)/(1-a²)³. Uniform
+  // [-1,1] noise has σ² = 1/3; scale so 3σ reaches the ±1 clamp. Only then
+  // does the depth knob actually span the full ±kWobbleMaxMs at any sample
+  // rate. (The spec pseudocode's fixed wobNorm = 3.0 "tune once" placeholder
+  // was ~100× too small, which made the wobble inaudible.)
+  const double k = wobbleCoeff, a = 1.0 - k;
+  const double gainSq = k * k * k * k * (1.0 + a * a) /
+                        ((1.0 - a * a) * (1.0 - a * a) * (1.0 - a * a));
+  const double wobbleSigma = std::sqrt(gainSq / 3.0);
+  wobbleNorm = static_cast<float>(1.0 / (3.0 * wobbleSigma));
+
+  wobbleDepth.reset(sampleRate, kFadeSeconds);
+  wetGain.reset(sampleRate, kFadeSeconds);
 
   running = false;
   engaged = false;
-  jitterOffsetMs = 0.0f;
-  delayLine.reset();
-  resetDetector();
+  resetDeck();
 }
 
-void Spread::resetDetector() {
-  envFast = envSlow = 0.0f;
-  armed = true;
-  refractorySamplesLeft = 0;
+void Spread::resetDeck() {
+  crossover.reset();
+  delayLine.reset();
+  for (auto& ap : allpasses) ap.z = 0.0f;
+  wobbleState1 = wobbleState2 = 0.0f;
+  corrLR = corrLL = corrRR = 0.0f;
+  correlationOut.store(1.0f, std::memory_order_relaxed);
 }
 
 void Spread::setTarget(const SpreadParams& params, bool nowEngaged) {
   if (!running) {
     if (!nowEngaged)
       return;  // idle and staying idle
-    // Engage from idle: start clean at 0 ms delay. The ramp never outruns
-    // real time (kRampSeconds > max delay swing), so after this clear a read
-    // can never reach back past the engage point — no stale audio, no gap.
-    delayLine.reset();
-    resetDetector();
-    jitterOffsetMs = 0.0f;
-    currentChannel = params.targetChannel;
-    delaySamples.setCurrentAndTargetValue(0.0f);
+    // Engage from idle: clean deck, offset primed at the knob (no glide up
+    // from a stale value; the wet fade-in covers the start), fade from dry.
+    resetDeck();
+    offsetStateMs = params.offsetMs;
+    wobbleDepth.setCurrentAndTargetValue(params.wobbleDepth);
+    wetGain.setCurrentAndTargetValue(0.0f);
     running = true;
   }
 
   engaged = nowEngaged;
-  desiredChannel = params.targetChannel;
-  spreadMs = params.spreadMs;
-  jitterMs = params.jitterMs;
-
-  // Disengaging or switching sides glides the delay to zero first;
-  // process() completes the transition once it lands. Otherwise track knob
-  // edits immediately (drags shouldn't wait for the next onset).
-  if (!engaged || desiredChannel != currentChannel)
-    delaySamples.setTargetValue(0.0f);
-  else
-    retargetDelay();
+  targetOffsetMs = params.offsetMs;
+  wobbleDepth.setTargetValue(params.wobbleDepth);
+  wetGain.setTargetValue(engaged ? 1.0f : 0.0f);
 }
 
-void Spread::retargetDelay() {
-  const float totalMs = juce::jlimit(
-      0.0f, SpreadParams::kMaxSpreadMs + SpreadParams::kMaxJitterMs, spreadMs + jitterOffsetMs);
-  delaySamples.setTargetValue(static_cast<float>(totalMs * 0.001 * sampleRate));
-}
-
-void Spread::analyzeOnsets(const float* dryInput, int numSamples) {
-  if (!running)
-    return;
-
-  bool onset = false;
-  for (int i = 0; i < numSamples; ++i) {
-    const float mag = std::abs(dryInput[i]);
-
-    const float fastCoeff = mag > envFast ? fastAttack : fastRelease;
-    envFast = fastCoeff * envFast + (1.0f - fastCoeff) * mag;
-    envSlow = slowCoeff * envSlow + (1.0f - slowCoeff) * mag;
-
-    if (refractorySamplesLeft > 0) {
-      --refractorySamplesLeft;
-      continue;
-    }
-    if (!armed) {
-      // Hysteresis: re-arm only after the last note has actually decayed
-      // (fast envelope back near the slow one). Sustained or compressed
-      // material can't machine-gun retriggers.
-      if (envFast < envSlow * kRearmRatio)
-        armed = true;
-      continue;
-    }
-    if (envFast > kOnsetFloor && envFast > envSlow * kOnsetRatio) {
-      onset = true;
-      armed = false;
-      refractorySamplesLeft = refractorySamples;
-    }
-  }
-
-  // One re-roll per block is plenty (a block is far shorter than the
-  // refractory hold). Only meaningful when jitter is up and the engine is in
-  // steady state (not mid glide-out).
-  if (onset && jitterMs > 0.0f && engaged && desiredChannel == currentChannel) {
-    jitterOffsetMs = (random.nextFloat() * 2.0f - 1.0f) * jitterMs;
-    retargetDelay();
-  }
+void Spread::forceIdle() {
+  running = false;
+  engaged = false;
+  correlationOut.store(1.0f, std::memory_order_relaxed);
 }
 
 void Spread::process(juce::AudioBuffer<float>& buffer) {
@@ -117,24 +90,78 @@ void Spread::process(juce::AudioBuffer<float>& buffer) {
     return;
 
   const int numSamples = buffer.getNumSamples();
-  float* data = buffer.getWritePointer(currentChannel);
+  auto* l = buffer.getWritePointer(0);
+  auto* r = buffer.getWritePointer(1);
+
+  // Correlation block sums (means folded into the followers after the loop).
+  float sumLR = 0.0f, sumLL = 0.0f, sumRR = 0.0f;
 
   for (int i = 0; i < numSamples; ++i) {
-    delayLine.pushSample(0, data[i]);
-    data[i] = delayLine.popSample(0, delaySamples.getNextValue());
+    // The deck is seeded from channel 0 (the mono chain output). With a true
+    // stereo source in mono chain mode the channels differ, so each bypass
+    // crossfade endpoint is that channel's own untouched signal; the fade
+    // must land exactly on the input, never hard-copy ch0 onto ch1.
+    const float xl = l[i];
+    const float xr = r[i];
+
+    float low = 0.0f, high = 0.0f;
+    crossover.processSample(0, xl, low, high);
+
+    delayLine.pushSample(0, high);
+
+    // Wobble: white noise through two cascaded 0.3 Hz one-poles, a random
+    // walk with no audio-rate residue (see Spread.h).
+    wobbleState1 += wobbleCoeff * (random.nextFloat() * 2.0f - 1.0f - wobbleState1);
+    wobbleState2 += wobbleCoeff * (wobbleState1 - wobbleState2);
+    const float wobbleMs = kWobbleMaxMs * wobbleDepth.getNextValue() *
+                           juce::jlimit(-1.0f, 1.0f, wobbleState2 * wobbleNorm);
+
+    // Smooth the SIGNED offset; side and magnitude derive from the result so
+    // zero-crossings pass through identity (spec routing note).
+    offsetStateMs += offsetCoeff * (targetOffsetMs - offsetStateMs);
+    const float tMs = std::abs(offsetStateMs);
+    const bool lagOnR = offsetStateMs >= 0.0f;
+
+    const float delayMs = juce::jlimit(0.0f, SpreadParams::kMaxOffsetMs + kWobbleMaxMs,
+                                       tMs + wobbleMs);
+    float lag = delayLine.popSample(0, delayMs * msToSamples);
+
+    for (auto& ap : allpasses)
+      lag = ap.process(lag);
+    lag *= lagGain;
+
+    // Center-identity blend: below kCenterBlendMs the lag path converges to
+    // the dry high band, so the detent is exactly dual-mono (see header).
+    const float blend = juce::jmin(tMs * (1.0f / kCenterBlendMs), 1.0f);
+    lag = high + (lag - high) * blend;
+
+    const float refOut = low + high;  // LR4 recombination: allpass-flat
+    const float lagOut = low + lag;
+
+    const float wet = wetGain.getNextValue();
+    const float outL = xl + ((lagOnR ? refOut : lagOut) - xl) * wet;
+    const float outR = xr + ((lagOnR ? lagOut : refOut) - xr) * wet;
+    l[i] = outL;
+    r[i] = outR;
+
+    sumLR += outL * outR;
+    sumLL += outL * outL;
+    sumRR += outR * outR;
   }
 
-  // Complete transitions that were gliding toward zero. At exactly 0 ms the
-  // output equals the input, so both the side swap and going idle are
-  // click-free by construction.
-  if (!delaySamples.isSmoothing() && delaySamples.getCurrentValue() <= 0.0f) {
-    if (!engaged) {
-      running = false;
-    } else if (desiredChannel != currentChannel) {
-      currentChannel = desiredChannel;
-      delayLine.reset();
-      jitterOffsetMs = 0.0f;
-      retargetDelay();
-    }
-  }
+  // ~300 ms one-pole over block means, then publish the normalized value.
+  const float norm = 1.0f / static_cast<float>(numSamples);
+  const float corrCoeff = 1.0f - std::exp(static_cast<float>(-numSamples / (kCorrSeconds * sampleRate)));
+  corrLR += corrCoeff * (sumLR * norm - corrLR);
+  corrLL += corrCoeff * (sumLL * norm - corrLL);
+  corrRR += corrCoeff * (sumRR * norm - corrRR);
+  const float energy = corrLL * corrRR;
+  correlationOut.store(energy > kCorrFloor * kCorrFloor
+                           ? juce::jlimit(-1.0f, 1.0f, corrLR / std::sqrt(energy))
+                           : 1.0f,
+                       std::memory_order_relaxed);
+
+  // Disengage completes once the fade-out lands: output equals input again.
+  if (!engaged && !wetGain.isSmoothing() && wetGain.getCurrentValue() <= 0.0f)
+    forceIdle();
 }

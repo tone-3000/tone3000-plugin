@@ -1,5 +1,6 @@
 #include "Processor.h"
 #include <algorithm>
+#include <cmath>
 
 // ####################
 // CHAIN MANAGEMENT
@@ -32,7 +33,7 @@ bool isInsertBlock(const std::unique_ptr<ChainBlock>& b) {
 
 // See the declaration for the invariant. Called after every structural lane
 // change (load/remove/cross-lane move/stereo seed/snapshot restore); pure
-// bookkeeping — no revision bump, no history entry of its own.
+// bookkeeping: no revision bump, no history entry of its own.
 void TONE3000Processor::normalizeLaneInserts(Lane& l) {
   const int total = static_cast<int>(l.size());
   int inserts = static_cast<int>(std::count_if(l.begin(), l.end(), isInsertBlock));
@@ -64,8 +65,7 @@ struct ParsedTone {
   juce::String modelUrl;
   juce::String modelName;
   ChainBlockType type = ChainBlockType::NAM;
-  float defaultMix = 1.0f;  // gear-dependent (reverb-style IRs start at 50%)
-  // Parsed tone with its models pruned to just the one being loaded — native
+  // Parsed tone with its models pruned to just the one being loaded; native
   // only ever stores the active model; the catalog stays on the API and the
   // UI pages it in for the picker.
   juce::var toneVar;
@@ -122,21 +122,11 @@ ParsedTone parseToneForLoading(const juce::String& toneJsonString) {
   out.modelName = firstModel->getProperty("name").toString();
   out.type = (format == "nam") ? ChainBlockType::NAM : ChainBlockType::IR;
 
-  // Store only the model being loaded — native persists just the active
+  // Store only the model being loaded; native persists just the active
   // model; the catalog stays on the API.
   juce::Array<juce::var> prunedModels;
   prunedModels.add(modelsVar.getArray()->getReference(0));
   toneObj->setProperty("models", prunedModels);
-
-  // Default mix by gear: "space"/"pedal" IRs are typically reverbs, meant to
-  // be blended, so they start half wet. Cab IRs and NAM captures replace the
-  // signal and stay fully wet. (Mirrored by defaultMix in ChainBlock.tsx for
-  // the knob's Alt-click reset.)
-  if (out.type == ChainBlockType::IR) {
-    const juce::String gear = toneObj->getProperty("gear").toString().toLowerCase();
-    if (gear == "space" || gear == "pedal")
-      out.defaultMix = 0.5f;
-  }
 
   out.toneVar = toneVar;
   out.toneJson = juce::JSON::toString(toneVar);
@@ -163,9 +153,11 @@ juce::var TONE3000Processor::makeToneSummary(const juce::var& toneVar) {
 
   // Catalog totals for the model picker's "n/N" (only the active model is
   // stored, so the UI can't count the catalog itself). NAM blocks use the
-  // v2-architecture total — the plugin only loads A2 weights.
+  // v2-architecture total; the plugin only loads A2 weights.
   out->setProperty("models_count", tone->getProperty("models_count"));
   out->setProperty("a2_models_count", tone->getProperty("a2_models_count"));
+  // Tone-info stats row (downloads next to the models folder count).
+  out->setProperty("downloads_count", tone->getProperty("downloads_count"));
 
   // Only the first image is ever rendered (block artwork).
   juce::Array<juce::var> images;
@@ -249,15 +241,18 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString,
   auto block = std::make_unique<ChainBlock>(blockId, parsed.type);
   setToneOnBlock(*block, parsed.toneId, parsed.toneJson, parsed.toneVar);
   block->activeModelId = parsed.firstModelId;
-  block->mixNormalized = parsed.defaultMix;
   block->loaded = false;
   block->modelLoading = true;
+  // The right default mix depends on the model itself (long IR = half wet),
+  // which is only known after download; the first successful apply sets it
+  // (see applyPreparedModelToChainBlock).
+  block->applyDefaultMixOnLoad = true;
 
   DBG("Created tone block: " << parsed.toneId << " (block: " << blockId << ")");
   DBG("Queueing first model for background loading: " << parsed.modelName);
 
   // Resolve the slot the tone lands in: the insert the user clicked (looked
-  // up across both lanes — ids are globally unique), or the active lane's
+  // up across both lanes; ids are globally unique), or the active lane's
   // first insert when the id is stale/absent (chain edited mid-flow, or an
   // older UI that doesn't send one).
   Lane* targetLane = nullptr;
@@ -281,18 +276,70 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString,
 
   // The tone takes the slot's position; the consumed insert dies here (it has
   // no engines, so destroying it under the lock is fine). normalizeLaneInserts
-  // then re-pads the lane — which appends a fresh trailing insert once every
+  // then re-pads the lane, which appends a fresh trailing insert once every
   // minimum slot holds a tone.
   if (slot != targetLane->end())
     *slot = std::move(block);
   else
     targetLane->push_back(std::move(block));
   normalizeLaneInserts(*targetLane);
+  refreshBranchTapIndex();  // insert-slot churn can shift the tap index
 
   bumpChainRevision();
   queueToneLoad(blockId, parsed.firstModelId, parsed.modelUrl, parsed.modelName, parsed.type);
 
   return blockId;
+}
+
+std::string TONE3000Processor::duplicateChainBlock(const std::string& sourceBlockId,
+                                                   const juce::String& side, int index) {
+  // Structural like reorder/move (a whole new block splices into the running
+  // chain), so mute-splice instead of relying on one block's wet fade.
+  ChainEditFade editFade(*this);
+  juce::ScopedLock lock(chainMutex);
+
+  const ChainBlock* source = findBlockById(sourceBlockId);
+  if (source == nullptr || source->type == ChainBlockType::INSERT) {
+    DBG("duplicateChainBlock: source not a tone block: " << sourceBlockId);
+    return "";
+  }
+  if (side == "right" && !stereoEnabled.load()) {
+    DBG("duplicateChainBlock: right lane requires stereo mode");
+    return "";
+  }
+
+  pushChainHistory();
+
+  // The settings ride the same per-block tree the undo/state paths use, so
+  // "everything the block remembers" stays defined in exactly one place
+  // (serializeBlockSettings/applyBlockSettings: gains, mix, enabled,
+  // normalize, EQ). Tone identity and model bytes are copied directly: the
+  // clone re-loads its model cache-first, so it comes up without a network
+  // round trip and sounds identical the moment the engine lands.
+  const std::string newId = juce::Uuid().toString().toStdString();
+  auto clone = std::make_unique<ChainBlock>(newId, source->type);
+  applyBlockSettings(*clone, serializeBlockSettings(*source));
+  setToneOnBlock(*clone, source->toneId, source->toneJson, source->toneVar);
+  clone->activeModelId = source->activeModelId;
+  clone->modelCache = source->modelCache;
+  clone->loaded = false;
+  clone->modelLoading = true;
+  clone->applyDefaultMixOnLoad = false;  // the copied mix is a setting, not a default
+
+  Lane& target = side == "right" ? lane(ChainSide::Right) : lane(ChainSide::Left);
+  index = juce::jlimit(0, static_cast<int>(target.size()), index);
+  if (index < static_cast<int>(target.size()) && isInsertBlock(target[static_cast<size_t>(index)]))
+    target[static_cast<size_t>(index)] = std::move(clone);  // paste fills the empty tile
+  else
+    target.insert(target.begin() + index, std::move(clone));
+  normalizeLaneInserts(target);
+  refreshBranchTapIndex();  // insert-slot churn can shift the tap index
+
+  bumpChainRevision();
+  queueActiveModelLoad(*findBlockById(newId));
+  DBG("Duplicated block " << sourceBlockId << " -> " << newId << " (" << side << " @ " << index
+                          << ")");
+  return newId;
 }
 
 bool TONE3000Processor::swapTone(const std::string& blockId, const juce::String& toneJsonString) {
@@ -311,8 +358,8 @@ bool TONE3000Processor::swapTone(const std::string& blockId, const juce::String&
   pushChainHistory();
 
   // Replace the tone in place: same block id (chain position preserved), same
-  // user params (enabled/gains/mix). The old engines — and the block type
-  // they belong to — stay live and keep processing until the new model is
+  // user params (enabled/gains/mix). The old engines (and the block type
+  // they belong to) stay live and keep processing until the new model is
   // spliced in by applyPreparedModelToChainBlock (which also stamps the new
   // type); `modelLoading` drives the UI's loading state meanwhile.
   setToneOnBlock(*block, parsed.toneId, parsed.toneJson, parsed.toneVar);
@@ -320,7 +367,6 @@ bool TONE3000Processor::swapTone(const std::string& blockId, const juce::String&
   block->modelLoading = true;
   block->loadFailed = false;
   block->modelCache.clear();
-  block->namSlimmableSize = 1.0;  // new tone starts at FULL
 
   DBG("Swapped tone on block " << blockId << " -> tone " << parsed.toneId);
 
@@ -345,8 +391,8 @@ bool TONE3000Processor::switchModel(const std::string& blockId, int modelId,
     return false;
   }
 
-  // Native only stores the *active* model — the catalog lives on the API and
-  // the UI pages it in — so the switch always carries the full model object.
+  // Native only stores the *active* model (the catalog lives on the API and
+  // the UI pages it in), so the switch always carries the full model object.
   juce::DynamicObject* model = modelData.getDynamicObject();
   if (model == nullptr || static_cast<int>(model->getProperty("id")) != modelId ||
       model->getProperty("model_url").toString().isEmpty()) {
@@ -399,9 +445,9 @@ bool TONE3000Processor::switchModel(const std::string& blockId, int modelId,
 }
 
 bool TONE3000Processor::removeChainBlock(const std::string& blockId) {
-  // Removal is bypass, so glide the block's wet mix to bypass first — then
+  // Removal is bypass, so glide the block's wet mix to bypass first; then
   // detaching it is inaudible. Bounded wait (~one fade; skipped when audio
-  // is stopped), on the message thread — imperceptible for a click gesture.
+  // is stopped), on the message thread, imperceptible for a click gesture.
   requestSwapFadeAndWait(blockId);
 
   // Detached under the lock, destroyed after releasing it: engine teardown
@@ -425,6 +471,8 @@ bool TONE3000Processor::removeChainBlock(const std::string& blockId) {
         chain.erase(it);
         // Dropping below the minimum grows the lane back to it (at the end).
         normalizeLaneInserts(chain);
+        refreshIrTailLength();  // a long-tailed IR may just have left the chain
+        refreshBranchTapIndex();  // removing the tapped block clears the branch
         bumpChainRevision();
         break;
       }
@@ -491,6 +539,7 @@ bool TONE3000Processor::reorderChainBlocks(const std::vector<std::string>& newOr
   }
 
   chain = std::move(reorderedBlocks);
+  refreshBranchTapIndex();  // the tap follows its block to the new position
   bumpChainRevision();
   DBG("Successfully reordered chain blocks (including insert block)");
   return true;
@@ -498,7 +547,7 @@ bool TONE3000Processor::reorderChainBlocks(const std::vector<std::string>& newOr
 
 bool TONE3000Processor::moveBlockToChain(const std::string& blockId, const juce::String& side,
                                          int index) {
-  // Cross-lane moves change both chains at once — mute-splice like reorder.
+  // Cross-lane moves change both chains at once; mute-splice like reorder.
   ChainEditFade editFade(*this);
   juce::ScopedLock lock(chainMutex);
 
@@ -534,6 +583,7 @@ bool TONE3000Processor::moveBlockToChain(const std::string& blockId, const juce:
   // the target may shed a (trailing) surplus one.
   normalizeLaneInserts(source);
   normalizeLaneInserts(target);
+  refreshBranchTapIndex();  // the tapped block leaving the trunk clears the branch
 
   bumpChainRevision();
   DBG("Moved block " << blockId << " to " << side << " chain at index " << index);
@@ -546,13 +596,13 @@ bool TONE3000Processor::moveBlockToChain(const std::string& blockId, const juce:
 void TONE3000Processor::markBlockLoadFailed(const std::string& blockId) {
   // The previous engine kept playing during the download; the UI already
   // shows the new tone/model, so on failure the block drops out of
-  // processing to match — glided to bypass first, never spliced.
+  // processing to match, glided to bypass first, never spliced.
   requestSwapFadeAndWait(blockId);
 
   juce::ScopedLock lock(chainMutex);
   if (ChainBlock* block = findBlockById(blockId)) {
     juce::Logger::writeToLog("[ModelLoader] Load failed for block " + juce::String(blockId) +
-                             " — showing retry");
+                             ", showing retry");
     block->loaded = false;
     block->loadFailed = true;
     block->modelLoading = false;
@@ -592,28 +642,27 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, int fir
   const juce::String filename =
       modelName + (type == ChainBlockType::NAM ? ".nam" : ".wav");
 
-  double namPersistedSlimmable = 1.0;
   {
     juce::ScopedLock lock(chainMutex);
     ChainBlock* block = findBlockById(blockId);
     if (block == nullptr) {
-      juce::Logger::writeToLog("[Background] Tone load dropped — block not found: " +
+      juce::Logger::writeToLog("[Background] Tone load dropped, block not found: " +
                                juce::String(blockId));
       return;
     }
 
-    namPersistedSlimmable = block->namSlimmableSize;
     block->modelCache[firstModelId] = modelData;
   }
 
-  PreparedBlockModel prepared =
-      prepareBlockModelOffThread(type, modelData, filename, namPersistedSlimmable);
+  PreparedBlockModel prepared = prepareBlockModelOffThread(type, modelData, filename);
   const bool applied = prepared.success;
 
-  // A swapped tone's previous engine may still be audibly processing — let
-  // the audio thread fade it to bypass before the outcome is applied (new
-  // engine spliced in, or the block dropped from processing on failure).
-  requestSwapFadeAndWait(blockId);
+  // A swapped tone's previous engine may still be audibly processing; let
+  // the audio thread fade it out before the outcome is applied. On success
+  // the wet path mutes in place (the dry input is never exposed, see
+  // ChainBlock.h); on failure the block is dropped from processing, so it
+  // glides to bypass, which is what plays afterwards.
+  requestSwapFadeAndWait(blockId, prepared.success);
 
   {
     juce::ScopedLock lock(chainMutex);
@@ -626,7 +675,7 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, int fir
 
     if (block->activeModelId != firstModelId) {
       // Superseded by a newer switch/swap while this one loaded; that job
-      // owns the block's loading state now — just make sure the block isn't
+      // owns the block's loading state now; just make sure the block isn't
       // left faded out.
       block->swapFadePending.store(false);
       return;
@@ -635,7 +684,7 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, int fir
     applyPreparedModelToChainBlock(*block, type, prepared);
   }
   // `prepared` now holds the block's *previous* engines (if any); they are
-  // destroyed here, after the lock — teardown is too heavy to hold it.
+  // destroyed here, after the lock; teardown is too heavy to hold it.
 
   if (applied) {
     DBG("[Background] Successfully loaded tone for block: " << blockId);
@@ -650,14 +699,13 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
   std::vector<uint8_t> modelData;
   bool needsFetch = false;
   ChainBlockType blockTypeForPrepare = ChainBlockType::NAM;
-  double namPersistedSlimmable = 1.0;
 
   {
     juce::ScopedLock lock(chainMutex);
 
     ChainBlock* block = findBlockById(blockId);
     if (block == nullptr) {
-      juce::Logger::writeToLog("[Background] Load dropped — block not found: " + juce::String(blockId));
+      juce::Logger::writeToLog("[Background] Load dropped, block not found: " + juce::String(blockId));
       return;
     }
 
@@ -671,7 +719,6 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
     // in-flight tone swap the block keeps its previous type (that engine is
     // still processing) while this job builds the new tone's engine.
     blockTypeForPrepare = toneEngineType(block->toneVar, block->type);
-    namPersistedSlimmable = block->namSlimmableSize;
     auto cacheIt = block->modelCache.find(modelId);
 
     if (cacheIt != block->modelCache.end()) {
@@ -696,14 +743,17 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
   const juce::String filename =
       modelName + (blockTypeForPrepare == ChainBlockType::NAM ? ".nam" : ".wav");
 
-  PreparedBlockModel prepared = prepareBlockModelOffThread(blockTypeForPrepare, modelData, filename,
-                                                           namPersistedSlimmable);
+  PreparedBlockModel prepared =
+      prepareBlockModelOffThread(blockTypeForPrepare, modelData, filename);
   const bool applied = prepared.success;
 
-  // The outgoing model keeps processing until this moment — fade it to
-  // bypass on the audio thread so the outcome (engine swap, or dropping the
-  // block on a failed prepare) can't click.
-  requestSwapFadeAndWait(blockId);
+  // The outgoing model keeps processing until this moment; fade it out on
+  // the audio thread so the outcome can't click. On success the wet path
+  // mutes in place (an engine swap must never expose the block's dry input:
+  // at 100% mix that's a burst of the un-cabbed/un-ampped signal, see
+  // ChainBlock.h); on a failed prepare the block is dropped, so it glides
+  // to bypass instead.
+  requestSwapFadeAndWait(blockId, prepared.success);
 
   {
     juce::ScopedLock lock(chainMutex);
@@ -728,7 +778,7 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
     applyPreparedModelToChainBlock(*block, blockTypeForPrepare, prepared);
   }
   // `prepared` now holds the block's *previous* engines (if any); they are
-  // destroyed here, after the lock — teardown is too heavy to hold it.
+  // destroyed here, after the lock; teardown is too heavy to hold it.
 
   if (applied) {
     DBG("[Background] Successfully switched to model ID: " << modelId);
@@ -750,39 +800,121 @@ juce::uint32 TONE3000Processor::getCurrentChainRevision() const {
 }
 
 juce::var TONE3000Processor::getChainState(int knownRevision) const {
-  juce::ScopedLock lock(chainMutex);
+  // Per-block copy of everything the payload needs. juce::String and
+  // juce::var are refcounted, so a row copy is a handful of pointer bumps.
+  // I deliberately defer the DynamicObject building (hash-map inserts, many
+  // small allocations) until after chainMutex is released, so a UI resync
+  // can't stall the audio thread on lock contention.
+  struct BlockRow {
+    juce::String id;
+    bool isInsert = false;
+    juce::var toneSummary;
+    int toneId = 0;
+    int activeModelId = 0;
+    bool loaded = false, loadFailed = false, modelLoading = false, irLong = false;
+    bool hasInputDbu = false, hasOutputDbu = false;
+    double inputDbu = 0.0, outputDbu = 0.0;
+    bool enabled = true, normalize = true;
+    float inputGain = 0.5f, outputGain = 0.5f, mix = 1.0f;
+    juce::var eq;
+    bool rtFailed = false;
+  };
 
-  // Read under the lock so the revision always matches the snapshot we build:
-  // mutators bump the revision while holding chainMutex too. (Also promotes
-  // any settled gesture edit into a bump.)
-  const juce::uint32 revision = getCurrentChainRevision();
+  juce::uint32 revision = 0;
+  std::vector<BlockRow> left, right;
+  bool stereo = false, canUndo = false, canRedo = false, branched = false;
+  juce::String presetId, presetName, branchSide, activeSide, branchAfter;
 
-  // Cheap early-out for the UI poll loop: nothing changed since the caller
-  // last synced, so skip building (and shipping) the full state.
-  if (knownRevision >= 0 && static_cast<juce::uint32>(knownRevision) == revision) {
-    juce::DynamicObject::Ptr unchanged = new juce::DynamicObject();
-    unchanged->setProperty("revision", static_cast<int>(revision));
-    unchanged->setProperty("unchanged", true);
-    return unchanged.get();
+  {
+    juce::ScopedLock lock(chainMutex);
+
+    // Read under the lock so the revision always matches the snapshot:
+    // mutators bump the revision while holding chainMutex too. (Also promotes
+    // any settled gesture edit into a bump.)
+    revision = getCurrentChainRevision();
+
+    // Cheap early-out for the UI poll loop when nothing changed.
+    if (knownRevision >= 0 && static_cast<juce::uint32>(knownRevision) == revision) {
+      juce::DynamicObject::Ptr unchanged = new juce::DynamicObject();
+      unchanged->setProperty("revision", static_cast<int>(revision));
+      unchanged->setProperty("unchanged", true);
+      return unchanged.get();
+    }
+
+    auto copyLane = [](const Lane& l, std::vector<BlockRow>& out) {
+      out.reserve(l.size());
+      for (const auto& block : l) {
+        BlockRow row;
+        row.id = juce::String(block->id);
+        // Drain the audio thread's failure flag; the RT path can't build
+        // strings or write logs, so it gets reported below, outside the lock.
+        row.rtFailed = block->rtProcessingFailed.exchange(false);
+        if (block->type == ChainBlockType::INSERT) {
+          row.isInsert = true;
+          out.push_back(std::move(row));
+          continue;
+        }
+        row.toneSummary = block->toneSummary;
+        row.toneId = block->toneId;
+        row.activeModelId = block->activeModelId;
+        row.loaded = block->loaded;
+        row.loadFailed = block->loadFailed;
+        row.modelLoading = block->modelLoading;
+        row.irLong = block->type == ChainBlockType::IR && block->irIsLong;
+        // NAM calibration metadata off the loaded engine, absent when the
+        // model carries none. Non-finite values never ship; the JSON bridge
+        // can't carry them (and the DSP rejects them too).
+        if (block->type == ChainBlockType::NAM && block->namEngine != nullptr) {
+          if (block->namEngine->hasInputLevel() &&
+              std::isfinite(block->namEngine->getInputLevel())) {
+            row.hasInputDbu = true;
+            row.inputDbu = block->namEngine->getInputLevel();
+          }
+          if (block->namEngine->hasOutputLevel() &&
+              std::isfinite(block->namEngine->getOutputLevel())) {
+            row.hasOutputDbu = true;
+            row.outputDbu = block->namEngine->getOutputLevel();
+          }
+        }
+        row.enabled = block->enabled;
+        row.normalize = block->normalizeEnabled;
+        row.inputGain = block->inputGainNormalized;
+        row.outputGain = block->outputGainNormalized;
+        row.mix = block->mixNormalized;
+        row.eq = block->eq.toVar();
+        out.push_back(std::move(row));
+      }
+    };
+
+    copyLane(lane(ChainSide::Left), left);
+    stereo = stereoEnabled.load();
+    if (stereo)
+      copyLane(lane(ChainSide::Right), right);
+
+    canUndo = chainHistory.canUndo();
+    canRedo = chainHistory.canRedo();
+    presetId = activePresetId;
+    presetName = activePresetName;
+    branched = stereo && !branchAfterBlockId.empty();
+    if (branched) {
+      branchSide = branchSourceSide == ChainSide::Right ? "right" : "left";
+      branchAfter = juce::String(branchAfterBlockId);
+    }
+    activeSide = pendingAddSide == ChainSide::Right ? "right" : "left";
   }
 
-  juce::DynamicObject::Ptr state = new juce::DynamicObject();
-
-  // Serialize one lane. Both lanes render at once in the UI now (mono shows
-  // just the left), so the payload always ships them separately.
-  auto serializeChain = [](const std::vector<std::unique_ptr<ChainBlock>>& chain) {
+  // Lock released; build the payload.
+  auto serializeChain = [](const std::vector<BlockRow>& rows) {
     juce::Array<juce::var> chainArray;
-    for (const auto& block : chain) {
-      // Drain the audio thread's failure flag here (the message thread) —
-      // the RT path can't build strings or write logs.
-      if (block->rtProcessingFailed.exchange(false))
-        juce::Logger::writeToLog("[NAM] Processing failed for block " + juce::String(block->id) +
-                                 " — block disabled");
+    for (const auto& row : rows) {
+      if (row.rtFailed)
+        juce::Logger::writeToLog("[NAM] Processing failed for block " + row.id +
+                                 "; block disabled");
 
       juce::DynamicObject::Ptr item = new juce::DynamicObject();
-      item->setProperty("blockId", juce::String(block->id));
+      item->setProperty("blockId", row.id);
 
-      if (block->type == ChainBlockType::INSERT) {
+      if (row.isInsert) {
         item->setProperty("kind", "insert");
         chainArray.add(juce::var(item.get()));
         continue;
@@ -790,39 +922,41 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
 
       item->setProperty("kind", "tone");
 
-      // Slim tone summary, nested (not spread) so runtime fields never collide
-      // with tone fields. Built once when the tone was set (see
-      // makeToneSummary); vars are ref-counted so this ships without
-      // re-parsing or deep-copying.
-      juce::var toneVar = block->toneSummary;
+      // Slim tone summary, nested (not spread) so runtime fields never
+      // collide with tone fields. Built once when the tone was set (see
+      // makeToneSummary) and shipped by reference.
+      juce::var toneVar = row.toneSummary;
       if (!toneVar.isObject()) {
-        // Corrupt/legacy toneJson: emit a minimal stand-in so the UI's `tone`
+        // Corrupt toneJson: emit a minimal stand-in so the UI's `tone`
         // field is always an object.
         juce::DynamicObject::Ptr fallback = new juce::DynamicObject();
-        fallback->setProperty("id", block->toneId);
-        fallback->setProperty("title", "Tone " + juce::String(block->toneId));
+        fallback->setProperty("id", row.toneId);
+        fallback->setProperty("title", "Tone " + juce::String(row.toneId));
         fallback->setProperty("models", juce::Array<juce::var>());
         toneVar = juce::var(fallback.get());
       }
       item->setProperty("tone", toneVar);
 
-      item->setProperty("activeModelId", block->activeModelId);
-      item->setProperty("loaded", block->loaded);
-      item->setProperty("loadFailed", block->loadFailed);
-      item->setProperty("modelLoading", block->modelLoading);
-      item->setProperty("namSlimmable", block->type == ChainBlockType::NAM &&
-                                            block->namIsSlimmable && block->loaded);
+      item->setProperty("activeModelId", row.activeModelId);
+      item->setProperty("loaded", row.loaded);
+      item->setProperty("loadFailed", row.loadFailed);
+      item->setProperty("modelLoading", row.modelLoading);
+      // Long (reverb-like) IR: drives the UI's Mix knob default/Alt-click
+      // reset and the Out knob help (long IRs carry no -18 dB pad).
+      item->setProperty("irLong", row.irLong);
 
-      // User-editable params, grouped so a future "shareable chain preset" can
-      // serialize { tone ref, activeModelId, params } per block verbatim.
+      if (row.hasInputDbu)
+        item->setProperty("inputLevelDbu", row.inputDbu);
+      if (row.hasOutputDbu)
+        item->setProperty("outputLevelDbu", row.outputDbu);
+
       juce::DynamicObject::Ptr params = new juce::DynamicObject();
-      params->setProperty("enabled", block->enabled);
-      params->setProperty("normalize", block->normalizeEnabled);
-      params->setProperty("inputGain", block->inputGainNormalized);
-      params->setProperty("outputGain", block->outputGainNormalized);
-      params->setProperty("mix", block->mixNormalized);
-      params->setProperty("namSlimmableSize", block->namSlimmableSize);
-      params->setProperty("eq", block->eq.toVar());
+      params->setProperty("enabled", row.enabled);
+      params->setProperty("normalize", row.normalize);
+      params->setProperty("inputGain", row.inputGain);
+      params->setProperty("outputGain", row.outputGain);
+      params->setProperty("mix", row.mix);
+      params->setProperty("eq", row.eq);
       item->setProperty("params", juce::var(params.get()));
 
       chainArray.add(juce::var(item.get()));
@@ -830,36 +964,47 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
     return chainArray;
   };
 
+  juce::DynamicObject::Ptr state = new juce::DynamicObject();
   state->setProperty("revision", static_cast<int>(revision));
-  state->setProperty("chain", serializeChain(lane(ChainSide::Left)));
-  if (stereoEnabled.load())
-    state->setProperty("chainRight", serializeChain(lane(ChainSide::Right)));
+  state->setProperty("chain", serializeChain(left));
+  if (stereo)
+    state->setProperty("chainRight", serializeChain(right));
   // History flags ride along with the chain state: they only ever change
   // together with a revision bump (mutation, undo/redo or a state load).
-  state->setProperty("canUndo", chainHistory.canUndo());
-  state->setProperty("canRedo", chainHistory.canRedo());
-  // Active preset for the top-bar pill (only changes with a revision bump).
-  if (activePresetId.isNotEmpty()) {
+  state->setProperty("canUndo", canUndo);
+  state->setProperty("canRedo", canRedo);
+  if (presetId.isNotEmpty()) {
     juce::DynamicObject::Ptr preset = new juce::DynamicObject();
-    preset->setProperty("id", activePresetId);
-    preset->setProperty("name", activePresetName);
+    preset->setProperty("id", presetId);
+    preset->setProperty("name", presetName);
     state->setProperty("preset", juce::var(preset.get()));
   }
-  state->setProperty("stereoEnabled", stereoEnabled.load());
-  state->setProperty("activeSide", pendingAddSide == ChainSide::Right ? "right" : "left");
+  state->setProperty("stereoEnabled", stereo);
+  // Active branch (stereo mode only): which lane is the trunk and which of
+  // its tone blocks feeds the other lane. Absent when the chains are
+  // independent, and while mono, where a set branch lies dormant.
+  if (branched) {
+    juce::DynamicObject::Ptr branch = new juce::DynamicObject();
+    branch->setProperty("side", branchSide);
+    branch->setProperty("afterBlockId", branchAfter);
+    state->setProperty("branch", juce::var(branch.get()));
+  }
+  state->setProperty("activeSide", activeSide);
   // True when a real stereo source feeds the plugin (stereo host bus or a
-  // stereo standalone input device) — drives the dual input meter/gain UI.
+  // stereo standalone input device); drives the faceplate input-mode button
+  // and the dual input meters.
   state->setProperty("stereoInput", stereoInputDetected.load());
-  // Standalone-only input channel picker (Settings). Hosts route explicitly,
-  // so the UI hides the control unless `standalone` is set.
+  // True in the standalone app; gates standalone-only settings.
   state->setProperty("standalone", isStandalone());
-  state->setProperty(
-      "inputMode",
-      inputModeToString(static_cast<InputMode>(standaloneInputMode.load())));
+  state->setProperty("inputMode", inputModeToString(getInputMode()));
+  // The machine-wide settings ride this payload because they change together
+  // with a revision bump, like everything else Settings displays.
+  state->setProperty("namFullSize", namFullSize.load());
+  state->setProperty("multiCore", multiCoreEnabled.load());
   // The EQ editor mirrors the biquad math client-side; block EQs run in the
-  // chain domain, so the drawn curve must use the fixed chain rate — not the
-  // host rate (see ChainDomain.h).
-  state->setProperty("sampleRate", kChainSampleRate);
+  // chain domain, so the drawn curve must use the live chain rate (48 kHz x
+  // oversampling factor), not the host rate (see ChainDomain.h).
+  state->setProperty("sampleRate", chainSampleRate());
   return state.get();
 }
 
@@ -875,6 +1020,11 @@ juce::var TONE3000Processor::getMeterLevels() const {
   };
   root->setProperty("input", channelPair(inputMeterLevelL.load(), inputMeterLevelR.load()));
   root->setProperty("output", channelPair(outputMeterLevelL.load(), outputMeterLevelR.load()));
+  // Audio-callback load as a 0..1 proportion (the hint bar shows it as a %).
+  root->setProperty("cpu", loadMeasurer.getLoadAsProportion());
+  // Spread output correlation (-1..1, 1 when spread is idle) for the
+  // mono-compatibility meter. Riding this poll costs no extra bridge traffic.
+  root->setProperty("correlation", spread.correlation());
 
   juce::DynamicObject::Ptr blocks = new juce::DynamicObject();
   {
@@ -902,7 +1052,7 @@ juce::var TONE3000Processor::getMeterLevels() const {
 // ####################
 void TONE3000Processor::setStereoMode(bool enabled) {
   // Mono ↔ stereo rewires the whole routing (one chain on both channels ↔
-  // two independent lanes) — no single block to fade, so mute-splice like
+  // two independent lanes) with no single block to fade, so mute-splice like
   // reorder. Cheap early-out first: no fade when nothing changes.
   if (stereoEnabled.load() == enabled)
     return;
@@ -916,7 +1066,7 @@ void TONE3000Processor::setStereoMode(bool enabled) {
   pushChainHistory();
 
   // Seed the right chain's minimum slot layout the first time stereo is
-  // enabled (no-op when it already satisfies the invariant — e.g. legacy
+  // enabled (no-op when it already satisfies the invariant; e.g. legacy
   // states that only carried one insert get padded here too).
   auto& right = lane(ChainSide::Right);
   if (enabled)
@@ -927,12 +1077,124 @@ void TONE3000Processor::setStereoMode(bool enabled) {
   if (!enabled)
     pendingAddSide = ChainSide::Left;
 
+  // Branching only runs between two chains: dormant while mono (the fields
+  // persist so toggling back re-engages the branch), live again in stereo.
+  refreshBranchTapIndex();
+
+  // A re-engaged branch means a single mono source again, so re-enforce the
+  // input-mode invariant (the fold may have gone back to stereo while the
+  // branch lay dormant).
+  if (rtBranchTapIndex >= 0 && getInputMode() == InputMode::Stereo)
+    inputMode.store(static_cast<int>(InputMode::Left));
+
   // Make sure the right chain's engines are ready to run in the chain domain.
   if (enabled)
     prepareChain(right);
 
   bumpChainRevision();
   DBG("Stereo mode " << (enabled ? "enabled" : "disabled"));
+}
+
+// ####################
+// CHAIN BRANCHING
+// ####################
+
+// Re-resolve branchAfterBlockId into rtBranchTapIndex for the RT path.
+// Clears the branch entirely when the tapped block is no longer a tone block
+// in the trunk lane (removed, moved across, stale snapshot). Validated in
+// mono mode too, so edits made while the branch is dormant can't leave a
+// stale id behind. Called after every structural change; callers own
+// history/revision/fade; this is pure bookkeeping.
+void TONE3000Processor::refreshBranchTapIndex() {
+  rtBranchTapIndex = -1;
+  if (branchAfterBlockId.empty())
+    return;
+
+  const auto& trunk = lane(branchSourceSide);
+  int tapIdx = -1;
+  for (int i = 0; i < static_cast<int>(trunk.size()); ++i) {
+    const auto& b = trunk[static_cast<size_t>(i)];
+    if (b != nullptr && b->id == branchAfterBlockId && b->type != ChainBlockType::INSERT) {
+      tapIdx = i;
+      break;
+    }
+  }
+  if (tapIdx == -1) {
+    DBG("Branch tap block left the trunk lane; reverting to independent chains");
+    branchAfterBlockId.clear();
+    return;
+  }
+
+  // Dormant in mono mode: the fields persist (a mono round trip brings the
+  // branch back) but the RT path ignores them (like the right lane itself).
+  if (stereoEnabled.load())
+    rtBranchTapIndex = tapIdx;
+}
+
+bool TONE3000Processor::setChainBranch(const juce::String& side,
+                                       const std::string& afterBlockId) {
+  // Rerouting one whole lane's input is structural (no single block to
+  // fade), so mute-splice like reorder.
+  ChainEditFade editFade(*this);
+  juce::ScopedLock lock(chainMutex);
+
+  if (!stereoEnabled.load()) {
+    DBG("setChainBranch: only valid in stereo mode");
+    return false;
+  }
+
+  const ChainSide trunkSide = side == "right" ? ChainSide::Right : ChainSide::Left;
+  const auto& trunk = lane(trunkSide);
+  const bool tapExists =
+      std::any_of(trunk.begin(), trunk.end(), [&](const std::unique_ptr<ChainBlock>& b) {
+        return b != nullptr && b->id == afterBlockId && b->type != ChainBlockType::INSERT;
+      });
+  if (!tapExists) {
+    DBG("setChainBranch: tap block not a tone block in the " << side << " lane: "
+                                                             << afterBlockId);
+    return false;
+  }
+
+  // Re-pointing to the spot already tapped is a no-op: no history entry,
+  // no revision bump (the UI can re-fire on fast clicks).
+  if (branchSourceSide == trunkSide && branchAfterBlockId == afterBlockId)
+    return true;
+
+  pushChainHistory();
+
+  branchSourceSide = trunkSide;
+  branchAfterBlockId = afterBlockId;
+  refreshBranchTapIndex();
+
+  // A branched chain has a single (mono) source: the trunk's channel. A
+  // stereo input fold would silently drop the other channel, so force a
+  // definite pick; the UI hides the "stereo" option while branched.
+  if (getInputMode() == InputMode::Stereo)
+    inputMode.store(static_cast<int>(InputMode::Left));
+
+  bumpChainRevision();
+  DBG("Chain branch set: " << side << " after block " << afterBlockId);
+  return true;
+}
+
+bool TONE3000Processor::clearChainBranch() {
+  {
+    juce::ScopedLock lock(chainMutex);
+    if (branchAfterBlockId.empty())
+      return false;  // nothing to clear: no fade, no history entry
+  }
+
+  ChainEditFade editFade(*this);
+  juce::ScopedLock lock(chainMutex);
+  if (branchAfterBlockId.empty())
+    return false;
+
+  pushChainHistory();
+  branchAfterBlockId.clear();
+  refreshBranchTapIndex();
+  bumpChainRevision();
+  DBG("Chain branch cleared; chains independent again");
+  return true;
 }
 
 void TONE3000Processor::setActiveEditChain(const juce::String& side) {
@@ -945,7 +1207,7 @@ void TONE3000Processor::setActiveEditChain(const juce::String& side) {
 }
 
 bool TONE3000Processor::swapChains() {
-  // Both lanes change output channel at once — mute-splice like reorder.
+  // Both lanes change output channel at once; mute-splice like reorder.
   ChainEditFade editFade(*this);
   juce::ScopedLock lock(chainMutex);
 
@@ -958,6 +1220,11 @@ bool TONE3000Processor::swapChains() {
   // wholesale with its blocks.
   std::swap(lane(ChainSide::Left), lane(ChainSide::Right));
 
+  // The trunk lane moved sides; the branch moves with it.
+  branchSourceSide =
+      branchSourceSide == ChainSide::Left ? ChainSide::Right : ChainSide::Left;
+  refreshBranchTapIndex();
+
   bumpChainRevision();
   DBG("Swapped Left/Right chains");
   return true;
@@ -965,14 +1232,6 @@ bool TONE3000Processor::swapChains() {
 
 bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::String& param,
                                       double value) {
-  // LITE/FULL swaps the NAM weights inside a playing engine — glide the
-  // block's wet mix to bypass first (same handshake as a model swap) so the
-  // tier change can't splice the waveform. Requested before the lock: the
-  // audio thread needs chainMutex to run the fade down. Every path below
-  // clears swapFadePending so the block can't be left bypassed.
-  if (param == "namSlimmableSize")
-    requestSwapFadeAndWait(blockId);
-
   juce::ScopedLock lock(chainMutex);
   ChainBlock* block = findBlockById(blockId);
   if (block == nullptr || block->type == ChainBlockType::INSERT)
@@ -980,16 +1239,9 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
 
   // Validate before recording history, so failed calls never leave an entry.
   const bool isContinuous = param == "inputGain" || param == "outputGain" || param == "mix";
-  const bool isKnown =
-      isContinuous || param == "enabled" || param == "normalize" || param == "namSlimmableSize";
+  const bool isKnown = isContinuous || param == "enabled" || param == "normalize";
   if (!isKnown) {
     DBG("setBlockParam: unknown param: " << param);
-    return false;
-  }
-  if (param == "namSlimmableSize" &&
-      (block->type != ChainBlockType::NAM || !block->namIsSlimmable ||
-       block->namEngine == nullptr)) {
-    block->swapFadePending.store(false);  // fade may be armed — release it
     return false;
   }
 
@@ -1007,11 +1259,6 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
     block->outputGainNormalized = juce::jlimit(0.0f, 1.0f, static_cast<float>(value));
   } else if (param == "mix") {
     block->mixNormalized = juce::jlimit(0.0f, 1.0f, static_cast<float>(value));
-  } else if (param == "namSlimmableSize") {
-    const double clamped = juce::jlimit(0.0, 1.0, value);
-    block->namSlimmableSize = clamped;
-    block->namEngine->setSlimmableSize(clamped);
-    block->swapFadePending.store(false);  // fade back in on the new tier
   }
 
   // Continuous drags settle into one bump after the gesture ends; discrete
@@ -1021,6 +1268,35 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
   else
     bumpChainRevision();
   return true;
+}
+
+bool TONE3000Processor::toggleBlockPower(int position, bool rightLane) {
+  // The Right lane only processes in stereo mode; a mapped right-block stomp
+  // outside it must not edit chain state the user can't see.
+  if (rightLane && !isStereoMode())
+    return false;
+
+  // Resolve the position to a block id under the lock, then route through
+  // setBlockParam so a MIDI stomp is exactly a UI power click: undoable,
+  // revision-bumped, same validation.
+  std::string blockId;
+  bool enabled = false;
+  {
+    juce::ScopedLock lock(chainMutex);
+    int seen = 0;
+    for (const auto& block : lane(rightLane ? ChainSide::Right : ChainSide::Left)) {
+      if (block->type == ChainBlockType::INSERT)
+        continue;
+      if (seen++ == position) {
+        blockId = block->id;
+        enabled = block->enabled;
+        break;
+      }
+    }
+  }
+  if (blockId.empty())
+    return false;  // chain shorter than the mapped slot
+  return setBlockParam(blockId, "enabled", enabled ? 0.0 : 1.0);
 }
 
 // ####################

@@ -4,8 +4,8 @@ import { useAudioBackend } from './useAudioBackend';
 /**
  * Constants mirrored from plugin/include/BlockSpectrum.h: the native analyzer
  * returns SPECTRUM_NUM_BINS dB values (SPECTRUM_MIN_DB..0) log-spaced from
- * 20 Hz to 20 kHz — the same log axis the EQ graph uses, so bin index maps
- * linearly to x position.
+ * 20 Hz to 20 kHz. That's the same log axis the EQ graph uses, so bin index
+ * maps linearly to x position.
  */
 export const SPECTRUM_NUM_BINS = 64;
 export const SPECTRUM_MIN_DB = -100;

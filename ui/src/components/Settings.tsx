@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { X as XIcon, Info, ChevronDown } from 'lucide-react';
+import React, { useCallback, useState } from 'react';
+import { X as XIcon, Plug, MonitorSpeaker } from 'lucide-react';
 import { useParameter } from '../hooks/useParameter';
 import { useNativeFunction } from '../hooks/useFunction';
 import { setHintsEnabled, useHintsEnabled } from './helpText';
@@ -7,258 +7,147 @@ import {
   setBlockNormalizeControlEnabled,
   useBlockNormalizeControlEnabled,
 } from './uiPreferences';
-import type { InputMode } from '../types/chain';
 import type { UpdateNoticeData } from '../hooks/useUpdateNotice';
-import { GRAY, MUTED, SUBTLE } from './theme';
+import type { AudioDevice } from '../hooks/useAudioDevice';
+import type { ChainItem } from '../types/chain';
+import { GRAY, SUBTLE } from './theme';
+import {
+  FIELD_BORDER,
+  RadioOption,
+  SelectField,
+  ToggleRow,
+  ctaButtonStyle,
+  descriptionStyle,
+  outlinedFieldStyle,
+  sectionLabelStyle,
+} from './controls';
+import { SystemSettings } from './SystemSettings';
+import { MidiMapSettings } from './MidiMapSettings';
 
 // External docs: how to measure your rig's calibration levels.
 const CALIBRATION_DOCS_URL =
   'https://neural-amp-modeler.readthedocs.io/en/latest/tutorials/calibration.html';
 
-// Outlined field styling ported from the web app's basic Input
-// (bg-black, 1px zinc-700 border, rounded-md) — outlines instead of the
-// filled grey used by the in-chain model select.
-const FIELD_BORDER = '1px solid #3f3f46';
-const outlinedFieldStyle: React.CSSProperties = {
-  backgroundColor: 'transparent',
-  border: FIELD_BORDER,
-  borderRadius: '6px',
-  color: '#ffffff',
-  fontSize: '14px',
-  fontWeight: 400,
-  outline: 'none',
-  boxSizing: 'border-box',
-};
-
 /**
- * Settings: full-window takeover with a main screen (section cards that open
- * the JUCE audio settings or the Advanced sub-screen) and an Advanced screen
- * (normalization / calibration / diagnostics). Audio settings — including
- * the input channel picker — only exist in the standalone app; hosts manage
- * routing and buffers themselves.
+ * Settings: full-window takeover, tabbed between Plugin Settings (info bar,
+ * MIDI / Advanced entry points) and System Settings (the bespoke audio
+ * device + MIDI hardware panel). MIDI Mapping and Advanced are sub-screens
+ * of the plugin tab; the header X steps back. The System tab only exists
+ * in the standalone app (hosts own devices, sample rate and buffer size
+ * arrive as facts from the DAW), and with one tab the tab bar drops away.
  */
 
+type PluginScreen = 'main' | 'midi' | 'advanced';
+
+export type SettingsTab = 'plugin' | 'system';
+
 interface SettingsProps {
-  /** Mounted only while open (see Plugin) — closing unmounts, so screen
+  /** Mounted only while open (see Plugin); closing unmounts, so screen
       state and parameter subscriptions reset for free. */
   onClose: () => void;
-  /** True in the standalone app — shows standalone-only settings. */
+  /** True in the standalone app; enables the System Settings tab. */
   standalone: boolean;
-  inputMode: InputMode;
-  onSetInputMode: (mode: InputMode) => void;
+  /** Shared audio device state/actions (also drives the app banner). */
+  device: AudioDevice;
+  /** Tab to open on (banner actions land directly on System). */
+  initialTab?: SettingsTab;
   /** Running build version ("" outside the plugin). */
   version: string;
   /** Newer published build, if the startup check found one (even if the
-      startup modal was dismissed) — shows an update button in the footer. */
+      startup modal was dismissed); shows an update button in the footer. */
   update: UpdateNoticeData | null;
+  /** Global NAM A2 size (machine-wide; false = lite, true = full). */
+  namFullSize: boolean;
+  onNamFullSizeChange: (full: boolean) => void;
+  /** Multi-core stereo (machine-wide; processes the two stereo chains on
+      separate CPU cores). */
+  multiCore: boolean;
+  onMultiCoreChange: (enabled: boolean) => void;
+  /** Chain lanes; the MIDI mapping screen names block-power targets after
+      the tone currently in each slot. `chainRight` is null outside stereo. */
+  chain: ChainItem[];
+  chainRight: ChainItem[] | null;
 }
 
-const INPUT_MODE_OPTIONS: { value: InputMode; label: string }[] = [
-  { value: 'input1', label: 'Input 1 (mono)' },
-  { value: 'input2', label: 'Input 2 (mono)' },
-  { value: 'stereo', label: 'Stereo (inputs 1 + 2)' },
+// Oversampling rate choices. Values are the osFactor parameter's choice
+// indices (as strings for SelectField); the DSP maps index i to 2^(i+1).
+const OS_FACTOR_OPTIONS: { value: '0' | '1' | '2'; label: string }[] = [
+  { value: '0', label: '2X - Default' },
+  { value: '1', label: '4X' },
+  { value: '2', label: '8X' },
 ];
 
-// Only headers carry weight; everything else is regular (the app's global
-// stylesheet defaults heavier, so body copy sets 400 explicitly).
-const sectionLabelStyle: React.CSSProperties = {
-  fontSize: '15px',
-  fontWeight: 600,
-  color: '#ffffff',
-};
+// The machine-wide NAM A2 size: one tier for every NAM block. The info bar
+// carries a secondary LITE/FULL toggle for the same setting.
+const NAM_A2_SIZE_OPTIONS: { full: boolean; label: string; description: string }[] = [
+  { full: false, label: 'A2-Lite', description: 'Sounds great and uses less CPU' },
+  { full: true, label: 'A2-Full', description: 'Maximum accuracy model' },
+];
 
-const descriptionStyle: React.CSSProperties = {
-  fontSize: '13px',
-  fontWeight: 400,
-  color: MUTED,
-  margin: '6px 0 0',
-  lineHeight: 1.45,
-};
-
-const ctaButtonStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '12px 16px',
-  borderRadius: '10px',
-  border: '1px solid #ffffff',
-  backgroundColor: 'transparent',
-  color: '#ffffff',
-  fontSize: '15px',
-  fontWeight: 400,
-  cursor: 'pointer',
-  textAlign: 'center',
-};
-
-/** Green pill switch mirroring the web ToggleSimple: 40×24 track (zinc-500
-    off, #00D13B on), 16px white knob with a 4px inset, 300ms ease. */
-const PillToggle: React.FC<{ value: boolean; onChange: (value: boolean) => void }> = ({
-  value,
-  onChange,
-}) => (
-  <button
-    role="switch"
-    aria-checked={value}
-    onClick={() => onChange(!value)}
-    style={{
-      position: 'relative',
-      width: '40px',
-      height: '24px',
-      borderRadius: '12px',
-      border: 'none',
-      padding: 0,
-      cursor: 'pointer',
-      backgroundColor: value ? '#00D13B' : '#71717a',
-      boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.15)',
-      flexShrink: 0,
-      transition: 'background-color 0.3s ease-in-out',
-    }}
-  >
-    <span
-      style={{
-        position: 'absolute',
-        top: '4px',
-        left: '4px',
-        width: '16px',
-        height: '16px',
-        borderRadius: '50%',
-        backgroundColor: '#ffffff',
-        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
-        transform: value ? 'translateX(16px)' : 'translateX(0)',
-        transition: 'transform 0.3s ease-in-out',
-        display: 'block',
-      }}
-    />
-  </button>
-);
-
-/** Custom dropdown select styled like the plugin's other pickers (model
-    select dropdown): grey trigger, dark panel, hover-highlight rows. */
-const SelectField: React.FC<{
-  value: InputMode;
-  options: { value: InputMode; label: string }[];
-  onChange: (value: InputMode) => void;
-}> = ({ value, options, onChange }) => {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [open]);
-
-  const selected = options.find((option) => option.value === value);
-
+/** Full-width tab bar (mockup style: icon + label, active underline). */
+const TabBar: React.FC<{
+  active: SettingsTab;
+  onChange: (tab: SettingsTab) => void;
+}> = ({ active, onChange }) => {
+  const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
+    { id: 'plugin', label: 'Plugin Settings', icon: <Plug size={16} /> },
+    { id: 'system', label: 'System Settings', icon: <MonitorSpeaker size={16} /> },
+  ];
   return (
-    <div ref={rootRef} style={{ position: 'relative' }}>
-      <button
-        onClick={() => setOpen((prev) => !prev)}
-        style={{
-          ...outlinedFieldStyle,
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '10px',
-          padding: '12px 16px',
-          cursor: 'pointer',
-        }}
-      >
-        {selected?.label}
-        <ChevronDown
-          size={16}
-          style={{
-            color: MUTED,
-            flexShrink: 0,
-            transform: open ? 'rotate(180deg)' : 'none',
-            transition: 'transform 0.15s ease',
-          }}
-        />
-      </button>
-
-      {open && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 4px)',
-            left: 0,
-            right: 0,
-            borderRadius: '6px',
-            background: '#000000',
-            border: FIELD_BORDER,
-            overflow: 'hidden',
-            zIndex: 100,
-          }}
-        >
-          {options.map((option, index) => (
-            <div
-              key={option.value}
-              onClick={() => {
-                onChange(option.value);
-                setOpen(false);
-              }}
-              onMouseEnter={(e) => {
-                if (option.value !== value)
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-              }}
-              onMouseLeave={(e) => {
-                if (option.value !== value) e.currentTarget.style.background = 'transparent';
-              }}
-              style={{
-                padding: '12px 16px',
-                cursor: 'pointer',
-                color: '#ffffff',
-                fontSize: '14px',
-                fontWeight: 400,
-                background: option.value === value ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-                borderBottom: index < options.length - 1 ? FIELD_BORDER : 'none',
-              }}
-            >
-              {option.label}
-            </div>
-          ))}
-        </div>
-      )}
+    <div
+      role="tablist"
+      style={{ display: 'flex', borderBottom: FIELD_BORDER, marginBottom: '28px' }}
+    >
+      {tabs.map((tab) => {
+        const selected = tab.id === active;
+        return (
+          <button
+            key={tab.id}
+            role="tab"
+            aria-selected={selected}
+            onClick={() => onChange(tab.id)}
+            style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              padding: '12px 0',
+              background: 'transparent',
+              border: 'none',
+              borderBottom: `2px solid ${selected ? '#ffffff' : 'transparent'}`,
+              marginBottom: '-1px',
+              color: selected ? '#ffffff' : SUBTLE,
+              fontSize: '14px',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        );
+      })}
     </div>
   );
 };
 
-/** Section label with a pill toggle on the right, description underneath. */
-const ToggleRow: React.FC<{
-  label: string;
-  description: React.ReactNode;
-  value: boolean;
-  onChange: (value: boolean) => void;
-  children?: React.ReactNode;
-}> = ({ label, description, value, onChange, children }) => (
-  <div style={{ marginBottom: '32px' }}>
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '16px',
-      }}
-    >
-      <span style={sectionLabelStyle}>{label}</span>
-      <PillToggle value={value} onChange={onChange} />
-    </div>
-    <p style={descriptionStyle}>{description}</p>
-    {children}
-  </div>
-);
-
 export const Settings: React.FC<SettingsProps> = ({
   onClose,
   standalone,
-  inputMode,
-  onSetInputMode,
+  device,
+  initialTab = 'plugin',
   version,
   update,
+  namFullSize,
+  onNamFullSizeChange,
+  multiCore,
+  onMultiCoreChange,
+  chain,
+  chainRight,
 }) => {
-  const [screen, setScreen] = useState<'main' | 'advanced'>('main');
+  const [tab, setTab] = useState<SettingsTab>(standalone ? initialTab : 'plugin');
+  const [screen, setScreen] = useState<PluginScreen>('main');
 
   const hintsEnabled = useHintsEnabled();
   const blockNormalizeControlEnabled = useBlockNormalizeControlEnabled();
@@ -268,6 +157,9 @@ export const Settings: React.FC<SettingsProps> = ({
     'inputCalibrationLevel',
     'slider'
   );
+
+  const [osEnabled, setOsEnabled] = useParameter('osEnabled', 'toggle');
+  const [osFactorIndex, setOsFactorIndex] = useParameter('osFactor', 'comboBox');
 
   // Convert between normalized (0-1) and actual dBu values (-60 to +60 dBu):
   // JUCE WebView normalizes all slider parameters to 0-1 regardless of range.
@@ -289,8 +181,6 @@ export const Settings: React.FC<SettingsProps> = ({
     setDbuDraft(null);
   };
 
-  const showAudioSettings = useNativeFunction<boolean>('showAudioSettings');
-
   // Diagnostics: forward the on-disk log so users can share it for debugging.
   const copyLogs = useNativeFunction<boolean>('copyLogs');
   const revealLogs = useNativeFunction<string>('revealLogs');
@@ -308,12 +198,15 @@ export const Settings: React.FC<SettingsProps> = ({
     setTimeout(() => setLogStatus(null), 3000);
   }, [revealLogs]);
 
-  // One control: the X steps Advanced back to the main screen, and closes
-  // from there — no separate back button.
+  // One control: the X steps a sub-screen back to main, and closes from
+  // there, with no separate back button.
   const handleHeaderClose = useCallback(() => {
-    if (screen === 'advanced') setScreen('main');
+    if (screen !== 'main') setScreen('main');
     else onClose();
   }, [onClose, screen]);
+
+  const headerTitle =
+    screen === 'advanced' ? 'Advanced' : screen === 'midi' ? 'MIDI Mapping' : 'Settings';
 
   const header = (
     <div
@@ -321,11 +214,11 @@ export const Settings: React.FC<SettingsProps> = ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: '28px',
+        marginBottom: '20px',
       }}
     >
       <span style={{ fontSize: '22px', fontWeight: 600, color: '#ffffff' }}>
-        {screen === 'advanced' ? 'Advanced' : 'Settings'}
+        {headerTitle}
       </span>
       <button
         onClick={handleHeaderClose}
@@ -344,58 +237,32 @@ export const Settings: React.FC<SettingsProps> = ({
     </div>
   );
 
-  const mainScreen = (
+  const pluginMainScreen = (
     <>
-      {standalone && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: '10px',
-            marginBottom: '32px',
-          }}
-        >
-          <Info size={16} style={{ color: MUTED, flexShrink: 0, marginTop: '1px' }} />
-          <p style={{ ...descriptionStyle, margin: 0 }}>
-            Experiencing latency? Lower your "Audio Buffer Size" to 256 samples or less in Audio
-            Settings.
-          </p>
-        </div>
-      )}
-
-      {standalone && (
-        <div style={{ marginBottom: '36px' }}>
-          <span style={sectionLabelStyle}>Audio Settings</span>
-          <p style={{ ...descriptionStyle, marginBottom: '16px' }}>
-            Configure your interface, sample rate, buffer size and more.
-          </p>
-
-          {/* Input channel picker: interfaces expose stereo pairs even when
-              only one jack is plugged in, so pick what carries signal. */}
-          <div style={{ marginBottom: '16px' }}>
-            <SelectField value={inputMode} options={INPUT_MODE_OPTIONS} onChange={onSetInputMode} />
-            <p style={{ ...descriptionStyle, fontSize: '12px' }}>
-              Use mono for a single instrument cable (e.g. guitar in input 1).
-            </p>
-          </div>
-
-          <button onClick={() => showAudioSettings()} style={ctaButtonStyle}>
-            Audio Settings
-          </button>
-        </div>
-      )}
-
       <ToggleRow
-        label="Hints"
-        description="Shows a help bar under the faceplate describing the control under your pointer, with its shortcuts."
+        label="Info Bar"
+        description="Bar under the faceplate with hover help for controls, the NAM LITE/FULL toggle, and CPU load."
         value={hintsEnabled}
         onChange={setHintsEnabled}
       />
 
+      {/* MIDI Learn/mapping is plugin-level (reads the processor's MIDI
+          buffer), so it belongs here and works in DAW builds too. */}
+      <div style={{ marginBottom: '36px' }}>
+        <span style={sectionLabelStyle}>MIDI Mapping</span>
+        <p style={{ ...descriptionStyle, marginBottom: '16px' }}>
+          Control the plugin from pedals and knobs. Mappings are saved with the
+          plugin and work in your DAW too.
+        </p>
+        <button onClick={() => setScreen('midi')} style={ctaButtonStyle}>
+          MIDI Mapping
+        </button>
+      </div>
+
       <div style={{ marginBottom: '36px' }}>
         <span style={sectionLabelStyle}>Advanced</span>
         <p style={{ ...descriptionStyle, marginBottom: '16px' }}>
-          Normalization, calibration and diagnostics.
+          NAM A2 size, normalization, calibration and diagnostics.
         </p>
         <button onClick={() => setScreen('advanced')} style={ctaButtonStyle}>
           Advanced
@@ -434,6 +301,23 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const advancedScreen = (
     <>
+      <div style={{ marginBottom: '32px' }} role="radiogroup" aria-label="NAM A2 Size">
+        <span style={sectionLabelStyle}>NAM A2 Size</span>
+        <p style={{ ...descriptionStyle, marginBottom: '18px' }}>
+          One size for every NAM tone on this machine. Also switchable from the LITE/FULL
+          toggle in the info bar.
+        </p>
+        {NAM_A2_SIZE_OPTIONS.map((option) => (
+          <RadioOption
+            key={option.label}
+            selected={namFullSize === option.full}
+            label={option.label}
+            description={option.description}
+            onSelect={() => onNamFullSizeChange(option.full)}
+          />
+        ))}
+      </div>
+
       <ToggleRow
         label="Per-Block Normalization"
         description="Each block has normalization enabled, which levels output for consistent volume across signal blocks. Turning this on reveals an optional control that lets you disable normalization per block."
@@ -514,6 +398,49 @@ export const Settings: React.FC<SettingsProps> = ({
         )}
       </ToggleRow>
 
+      <ToggleRow
+        label="Oversampling"
+        description="Reduces aliasing. Higher rates improve quality but use more CPU."
+        value={osEnabled}
+        onChange={setOsEnabled}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            marginTop: '4px',
+          }}
+        >
+          <span
+            style={{
+              fontSize: '13px',
+              fontWeight: 400,
+              color: osEnabled ? '#ffffff' : SUBTLE,
+              flexShrink: 0,
+            }}
+          >
+            Rate
+          </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <SelectField
+              value={String(osFactorIndex) as '0' | '1' | '2'}
+              options={OS_FACTOR_OPTIONS}
+              onChange={(v) => setOsFactorIndex(Number(v))}
+              disabled={!osEnabled}
+              ariaLabel="Oversampling rate"
+            />
+          </div>
+        </div>
+      </ToggleRow>
+
+      <ToggleRow
+        label="Multi-Core Stereo"
+        description="In stereo mode, processes the two chains on separate CPU cores for more headroom. Doesn't change the sound."
+        value={multiCore}
+        onChange={onMultiCoreChange}
+      />
+
       <div>
         <span style={sectionLabelStyle}>Diagnostics</span>
         <p style={{ ...descriptionStyle, marginBottom: '16px' }}>
@@ -542,6 +469,15 @@ export const Settings: React.FC<SettingsProps> = ({
     </>
   );
 
+  const pluginTab =
+    screen === 'advanced' ? (
+      advancedScreen
+    ) : screen === 'midi' ? (
+      <MidiMapSettings chain={chain} chainRight={chainRight} />
+    ) : (
+      pluginMainScreen
+    );
+
   return (
     <div
       style={{
@@ -565,7 +501,14 @@ export const Settings: React.FC<SettingsProps> = ({
         }}
       >
         {header}
-        {screen === 'advanced' ? advancedScreen : mainScreen}
+        {/* One tab (hosted) = no tab bar. Sub-screens hide it too; they're
+            under the plugin tab, and the header X steps back. */}
+        {standalone && screen === 'main' && <TabBar active={tab} onChange={setTab} />}
+        {tab === 'system' && standalone && screen === 'main' ? (
+          <SystemSettings device={device} />
+        ) : (
+          pluginTab
+        )}
       </div>
     </div>
   );

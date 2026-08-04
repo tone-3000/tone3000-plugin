@@ -69,7 +69,7 @@ endif()
 # macOS: WKWebView paints an opaque white background until the first page paint,
 # which shows as a white flash when the editor opens. JUCE 8 only exposes a
 # background-colour option for Windows (WinWebView2), so patch the WKWebView to
-# not draw its own background — the editor's black paint() shows through instead.
+# not draw its own background; the editor's black paint() shows through instead.
 # Idempotent configure-time patch, same rationale as the devtools patch above.
 if (APPLE)
     set(_juce_webview_mm "${LIB_DIR}/juce/modules/juce_gui_extra/native/juce_WebBrowserComponent_mac.mm")
@@ -94,7 +94,7 @@ endif()
 
 # Linux: JUCE dlopens WebKitGTK/GTK by their UNVERSIONED .so names
 # (libwebkit2gtk-4.1.so etc.), but distros only ship those symlinks in the
-# -dev packages — end-user systems have only the versioned SONAMEs
+# -dev packages; end-user systems have only the versioned SONAMEs
 # (libwebkit2gtk-4.1.so.0). The dlopen fails silently, webKitIsAvailable
 # stays false, every webview call becomes a no-op, and the plugin renders a
 # black screen. Patch the names to the upstream SONAMEs, which exist on every
@@ -127,11 +127,11 @@ endif()
 
 # Linux: JUCE builds its WebKitGTK view on the DEFAULT WebKitWebContext, which
 # breaks login persistence two ways: (1) the default website-data location is
-# derived from the process name — and for plugin (non-standalone) builds JUCE
+# derived from the process name, and for plugin (non-standalone) builds JUCE
 # extracts the webview subprocess to a RANDOMLY-NAMED temp file, so
 # localStorage lands in a different directory every session; (2) WebKitGTK
 # keeps cookies in memory only unless webkit_cookie_manager_set_persistent_storage()
-# is called, which JUCE never does — so the tone3000.com OAuth session dies
+# is called, which JUCE never does, so the tone3000.com OAuth session dies
 # with the process even in the standalone. Patch the subprocess to build its
 # context on an explicit WebKitWebsiteDataManager rooted at
 # ~/.config/TONE3000/WebKit (the same app-data root as presets/logs) and turn
@@ -240,13 +240,63 @@ if (EXISTS "${_juce_webview_linux}")
     endif()
 endif()
 
-# Standalone: the "Audio input is muted" notification banner is hard-coded to
-# lightgoldenrodyellow with black text inside JUCE's StandaloneFilterWindow and
-# is not themeable via LookAndFeel. Restyle it to the brand palette: black bar,
-# white text, pure-yellow divider. Idempotent configure-time patch.
+# StandaloneFilterWindow patches (idempotent; JUCE lives in gitignored libs/).
+#
+# T3K_NO_MUTE_BANNER: never show JUCE's native "Audio input is muted" strip.
+# The plugin surfaces mute/feedback state in its own web UI (AppBanner); the
+# native bar would double up and fight over window height.
+#
+# T3K_DARK_MUTE_BANNER: leftover restyle of that strip (kept so a missed hide
+# patch doesn't flash the stock lightgoldenrodyellow bar). Harmless when hidden.
+#
+# T3K_AUDIO_SAFE_RESTORE: crash-safe restore of the saved audio device. A tiny
+# sibling sentinel next to the settings file is created just before opening the
+# saved device and cleared once a live device confirms the open
+# (StandaloneAudioSettings::markAudioInitClean). If it's still present next
+# launch, last open crashed and we boot on the default device instead.
 set(_juce_standalone_h "${LIB_DIR}/juce/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h")
 if (EXISTS "${_juce_standalone_h}")
     file(READ "${_juce_standalone_h}" _juce_standalone_src)
+    # Preserve whatever line ending JUCE shipped with (CRLF on some checkouts).
+    if (_juce_standalone_src MATCHES "\r\n")
+        set(_juce_nl "\r\n")
+    else()
+        set(_juce_nl "\n")
+    endif()
+
+    if (NOT _juce_standalone_src MATCHES "T3K_NO_MUTE_BANNER")
+        set(_juce_mute_banner_old
+"        void inputMutedChanged (bool newInputMutedValue)
+        {
+            shouldShowNotification = newInputMutedValue;
+            notification.setVisible (shouldShowNotification);")
+        set(_juce_mute_banner_new
+"        void inputMutedChanged (bool newInputMutedValue)
+        {
+            // T3K_NO_MUTE_BANNER: the muted-input state is surfaced by the
+            // plugin's own web UI banner (see AppBanner \"auto-muted\"), which
+            // grows the window instead of overlaying the editor. Never show
+            // JUCE's native strip so the two can't double up or fight over
+            // the window height.
+            ignoreUnused (newInputMutedValue);
+            shouldShowNotification = false;
+            notification.setVisible (shouldShowNotification);")
+        string(REPLACE "\n" "${_juce_nl}" _juce_mute_banner_old "${_juce_mute_banner_old}")
+        string(REPLACE "\n" "${_juce_nl}" _juce_mute_banner_new "${_juce_mute_banner_new}")
+        string(REPLACE
+            "${_juce_mute_banner_old}"
+            "${_juce_mute_banner_new}"
+            _juce_standalone_src "${_juce_standalone_src}")
+        if (NOT _juce_standalone_src MATCHES "T3K_NO_MUTE_BANNER")
+            message(FATAL_ERROR
+                "T3K_NO_MUTE_BANNER: failed to patch ${_juce_standalone_h}. "
+                "The JUCE source layout likely changed in this version. Update the patch "
+                "anchors in CMakeLists.txt.")
+        endif()
+        set(_juce_standalone_dirty TRUE)
+        message(STATUS "Patched JUCE StandaloneFilterWindow: hide native mute banner")
+    endif()
+
     if (NOT _juce_standalone_src MATCHES "T3K_DARK_MUTE_BANNER")
         string(REPLACE
             "notification.setColour (Label::textColourId, Colours::black);"
@@ -266,8 +316,76 @@ if (EXISTS "${_juce_standalone_h}")
                 "The JUCE source layout likely changed in this version. Update the patch "
                 "anchors in CMakeLists.txt.")
         endif()
-        file(WRITE "${_juce_standalone_h}" "${_juce_standalone_src}")
+        set(_juce_standalone_dirty TRUE)
         message(STATUS "Patched JUCE StandaloneFilterWindow: dark mute-warning banner")
+    endif()
+
+    if (NOT _juce_standalone_src MATCHES "T3K_AUDIO_SAFE_RESTORE")
+        set(_juce_sentinel_method
+"    void valueChanged (Value& value) override            { muteInput = (bool) value.getValue(); }
+
+    // T3K_AUDIO_SAFE_RESTORE: sentinel file dropped just before opening the
+    // saved audio device and cleared once a live device confirms the open
+    // survived. If it's still present next launch, the last open crashed (see
+    // reloadAudioDeviceState) and we boot on the default device instead. Its
+    // own tiny file next to the settings store, never the multi-MB store
+    // itself. Empty File() when settings aren't a PropertiesFile.
+    File getAudioOpenSentinelFile() const
+    {
+        if (auto* pf = dynamic_cast<PropertiesFile*> (settings.get()))
+            return pf->getFile().getSiblingFile (\"TONE3000-audio-open.tmp\");
+
+        return {};
+    }")
+        # Normalize the replacement's newlines to match the file.
+        string(REPLACE "\n" "${_juce_nl}" _juce_sentinel_method "${_juce_sentinel_method}")
+        string(REPLACE
+            "    void valueChanged (Value& value) override            { muteInput = (bool) value.getValue(); }"
+            "${_juce_sentinel_method}"
+            _juce_standalone_src "${_juce_standalone_src}")
+
+        set(_juce_sentinel_reload_old
+"            savedState = settings->getXmlValue (\"audioSetup\");
+
+           #if ! (JUCE_IOS || JUCE_ANDROID)
+            shouldMuteInput.setValue (settings->getBoolValue (\"shouldMuteInput\", true));
+           #endif")
+        set(_juce_sentinel_reload_new
+"            savedState = settings->getXmlValue (\"audioSetup\");
+
+            // T3K_AUDIO_SAFE_RESTORE: if the sentinel from last launch is still
+            // here, opening the saved device crashed (e.g. a mic + Bluetooth
+            // output CoreAudio aggregate whose combiner JUCE can crash tearing
+            // down when the BT device churns at startup). Boot clean on the
+            // default device; a clean run overwrites \"audioSetup\" on exit.
+            const auto sentinel = getAudioOpenSentinelFile();
+            if (sentinel != File() && sentinel.existsAsFile())
+                savedState.reset();
+            if (sentinel != File())
+                sentinel.create();
+
+           #if ! (JUCE_IOS || JUCE_ANDROID)
+            shouldMuteInput.setValue (settings->getBoolValue (\"shouldMuteInput\", true));
+           #endif")
+        string(REPLACE "\n" "${_juce_nl}" _juce_sentinel_reload_old "${_juce_sentinel_reload_old}")
+        string(REPLACE "\n" "${_juce_nl}" _juce_sentinel_reload_new "${_juce_sentinel_reload_new}")
+        string(REPLACE
+            "${_juce_sentinel_reload_old}"
+            "${_juce_sentinel_reload_new}"
+            _juce_standalone_src "${_juce_standalone_src}")
+
+        if (NOT _juce_standalone_src MATCHES "T3K_AUDIO_SAFE_RESTORE")
+            message(FATAL_ERROR
+                "T3K_AUDIO_SAFE_RESTORE: failed to patch ${_juce_standalone_h}. "
+                "The JUCE source layout likely changed in this version. Update the patch "
+                "anchors in CMakeLists.txt.")
+        endif()
+        set(_juce_standalone_dirty TRUE)
+        message(STATUS "Patched JUCE StandaloneFilterWindow: crash-safe audio device restore")
+    endif()
+
+    if (_juce_standalone_dirty)
+        file(WRITE "${_juce_standalone_h}" "${_juce_standalone_src}")
     endif()
 endif()
 
@@ -286,3 +404,4 @@ CPMAddPackage(
 enable_testing() # Allow running build tests
 
 add_subdirectory(plugin) # Add plugin project
+add_subdirectory(test)   # DSP test suite (DspTests, see script/test-dsp.sh)

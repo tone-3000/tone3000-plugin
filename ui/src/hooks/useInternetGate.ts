@@ -3,8 +3,8 @@ import { useCallback, useRef, useState } from 'react';
 /**
  * Instant connectivity check via `navigator.onLine`. `false` means the OS has
  * no network interface up (the "internet not set up" case we're guarding
- * against); `true` doesn't guarantee the wider internet is reachable — that's
- * what the recovery paths are for (failed-navigation recovery, block retry).
+ * against); `true` doesn't guarantee the wider internet is reachable, which
+ * is what the recovery paths are for (failed-navigation recovery, block retry).
  * We deliberately skip any network probe to keep the + button instant.
  */
 export function checkInternet(): boolean {

@@ -1,72 +1,83 @@
 #pragma once
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_dsp/juce_dsp.h>
+#include <array>
+#include <atomic>
 
 /**
- * Stereo spread: a short per-note delay applied to one channel, shared by
- * both modes (they're mutually exclusive, so one engine + one parameter set
- * serves both):
+ * Spread: a mono-to-stereo ADT-style doubler (mono chain mode only; see
+ * plugin/docs/spread.md for the design overview).
  *
- * - Mono mode: the chain output is doubled onto both channels and the spread
- *   side is delayed — a classic slap double.
- * - Stereo mode: the spread side's chain is delayed in place, shifting it
- *   against the other chain for width.
+ * The mono chain output is split at 130 Hz (Linkwitz-Riley 4th order). The
+ * low band feeds both channels untouched, mono-safe by construction. The
+ * high band goes dry to one channel and through the "lag deck", a wobbling
+ * fractional delay (4-point Lagrange, mandatory: linear interpolation under a
+ * time-varying fractional offset low-passes in rhythm with the wobble) plus a
+ * static six-stage allpass decorrelation cascade and a +1.5 dB precedence
+ * trim, to the other. The wobble (random-walk modulation of the delay time:
+ * white noise through two cascaded 0.3 Hz one-poles) is what makes the lag
+ * read as a second human performance, and it keeps the mono-sum comb moving
+ * so fold-down reads as gentle chorus, never a stationary notch.
  *
- * Controls (see SpreadParams for the normalized encoding):
- * - spread: bipolar knob. Center = 0 ms; left of center delays the left
- *   channel, right of center the right channel.
- * - jitter: ± range of random per-note variation, re-rolled at each detected
- *   note/chord attack so every hit lands like a slightly different take.
+ * The allpass cascade decorrelates phase without touching magnitude, the
+ * same principle as the allpass decorrelators evaluated in O. Das, "An
+ * Open-Source Stereo Widening Plugin", Proc. 27th Int. Conf. on Digital
+ * Audio Effects (DAFx24), Guildford, UK, 2024
+ * (https://www.dafx.de/paper-archive/2024/papers/DAFx24_paper_92.pdf).
  *
- * Lifecycle: while the power switch is on the engine always runs (a 0 ms
- * delay is identity, and the per-sample cost is one delay push/pop on one
- * channel), so knob moves never hard-enable/disable DSP. Turning the power
- * off glides the delay to zero first and only then goes idle; crossing the
- * knob through center glides to zero, swaps the delayed channel, and glides
- * back up. Every transition passes through 0 ms, which is why none of them
- * click: at zero delay the output equals the input, sample for sample.
+ * The single musical control is a signed Offset in ms (±24): the sign picks
+ * the lagged channel ("knob points at the fake one"; precedence pulls the
+ * image toward the dry side), the magnitude the base delay. The signed value
+ * runs through one ~100 ms one-pole so sweeps across center pass cleanly
+ * through identity instead of leaving decaying lag on the old side, and
+ * knob moves read as a tape-style varispeed glide.
  *
- * The delay time ramps through a SmoothedValue into a linear-interpolated
- * DelayLine. The ramp (kRampSeconds) is chosen so the delay never grows
- * faster than real time — after a line clear, reads can never land on
- * unwritten (stale or zero) samples — and jitter retargets read as a subtle
- * tape-like bend rather than a pitch jerk.
+ * Wobble depth is absolute, not relative to the offset: 100% = ±1.2 ms of
+ * slow drift around the dialed offset (≈ ±2-4 cents of continuous pitch
+ * wander; pitch shift is the derivative of delay time). The normalization
+ * of the filtered noise is computed analytically in prepare() (see there).
  *
- * Onset detection runs on the *dry pre-chain input* (analyzeOnsets), not the
- * processed output: amps compress pick attacks into mush and their noise
- * floor fakes constant "onsets". The detector is a classic fast/slow
- * envelope crossing with two guards against machine-gunning on sustained or
- * compressed material: a refractory hold after each trigger, plus a re-arm
- * hysteresis — no new trigger until the fast envelope has dipped back near
- * the slow one (i.e. the previous note actually decayed or was muted).
+ * Center identity: at T = 0 the lag deck's output still differs from dry
+ * (the allpass cascade and lag gain stay engaged), but the center detent
+ * must be exactly dual-mono. So I blend the lag path back to the dry high
+ * band as |t| falls below kCenterBlendMs, which keeps sweeps continuous
+ * (the tape-flange zone effectively starts around 1 ms).
  *
- * Audio thread only; zero allocation after prepare().
+ * Engage/bypass is a ~25 ms equal-gain crossfade between the untouched input
+ * and the doubled image: unlike the stereo offset there is no glide-through-
+ * zero trick available, because even at 0 ms the deck's output differs from
+ * the input (LR4 recombination is allpass-flat, not identity). While the
+ * switch is on the deck always runs at full strength: there is no wet/dry;
+ * Offset is the only musical dimension.
+ *
+ * Correlation: process() keeps a ~300 ms running normalized L/R
+ * cross-correlation of its output, published through an atomic for the UI
+ * meter. Normalized correlation is invariant to the per-channel balance
+ * gains applied downstream, so measuring here equals measuring at the bus.
+ *
+ * Audio thread only (the correlation atomic is read by the UI thread); zero
+ * allocation after prepare().
  */
 
-/** Decoded spread parameters. Normalized knob values map here in exactly one
-    place so the DSP and any future UI readouts agree. */
+/** Decoded spread parameters. Normalized knob values map here in exactly
+    one place so the DSP and any UI readouts agree. */
 struct SpreadParams {
-  static constexpr float kMaxSpreadMs = 24.0f;
-  // ±4 ms: enough to hear a "different take" randomness without ever
-  // crossing into chorus/vibrato territory (studios typically land 1–4 ms).
-  static constexpr float kMaxJitterMs = 4.0f;
+  // Same span as the stereo-mode corrective Offset (StereoOffsetParams) so
+  // the two faces of the stereo-image slot read identically.
+  static constexpr float kMaxOffsetMs = 24.0f;
 
-  int targetChannel = 1;  // channel that gets delayed (0 = left, 1 = right)
-  float spreadMs = 0.0f;
-  float jitterMs = 0.0f;
+  float offsetMs = 0.0f;     // signed; > 0 lags the right channel
+  float wobbleDepth = 0.25f;  // 0..1 of the ±1.2 ms wobble range
 
-  /** amountNorm: bipolar 0..1, 0.5 = center = 0 ms. jitterNorm: 0..1.
-      Values within a hair of zero decode to exactly zero so knob detents
-      genuinely mean zero. */
-  static SpreadParams fromNormalized(float amountNorm, float jitterNorm) {
+  /** offsetNorm: bipolar 0..1, 0.5 = center = 0 ms. wobbleNorm: 0..1. Values
+      within a hair of center decode to exactly zero so the knob detent
+      genuinely means zero. */
+  static SpreadParams fromNormalized(float offsetNorm, float wobbleNorm) {
     constexpr float kEps = 0.005f;
     SpreadParams p;
-    const float bipolar = juce::jlimit(0.0f, 1.0f, amountNorm) * 2.0f - 1.0f;
-    p.targetChannel = bipolar < 0.0f ? 0 : 1;
-    const float amount = std::abs(bipolar);
-    p.spreadMs = amount < kEps ? 0.0f : amount * kMaxSpreadMs;
-    const float jitter = juce::jlimit(0.0f, 1.0f, jitterNorm);
-    p.jitterMs = jitter < kEps ? 0.0f : jitter * kMaxJitterMs;
+    const float bipolar = juce::jlimit(0.0f, 1.0f, offsetNorm) * 2.0f - 1.0f;
+    p.offsetMs = std::abs(bipolar) < kEps ? 0.0f : bipolar * kMaxOffsetMs;
+    p.wobbleDepth = juce::jlimit(0.0f, 1.0f, wobbleNorm);
     return p;
   }
 };
@@ -76,56 +87,93 @@ public:
   void prepare(double sampleRate, int maxBlockSize);
 
   /** Per-block parameter update. `engaged` is the power switch: turning it
-      off starts a glide-out (isRunning() stays true until the delay lands on
-      zero); turning it on from idle starts clean at 0 ms. */
+      off starts the fade-out (isRunning() stays true until it lands);
+      turning it on from idle resets the deck and fades in. */
   void setTarget(const SpreadParams& params, bool engaged);
 
-  /** True while the engine needs analyzeOnsets() + process() this block.
-      False = fully idle, safe to skip both. */
+  /** True while the engine needs process() this block. False = fully idle,
+      safe to skip. */
   bool isRunning() const { return running; }
 
-  /** Feed the dry pre-chain input (channel 0) to the onset detector; an
-      attack re-rolls the jitter offset. Call before the chain overwrites the
-      buffer. No-op while jitter is zero (the followers still track so the
-      detector state is warm when jitter comes up). */
-  void analyzeOnsets(const float* dryInput, int numSamples);
+  /** Immediate hard stop, no fade. Only safe while the bus is already
+      silent; the chain-edit fade covers mono/stereo mode switches, which is
+      the one caller. */
+  void forceIdle();
 
-  /** Requires >= 2 channels: delays the current spread channel in place.
-      Completes pending glide-out transitions (side swap / idle). */
+  /** Requires >= 2 channels. The deck is seeded from channel 0 (the mono
+      chain output); the engage/bypass crossfade endpoints are each channel's
+      own untouched signal, so with a true stereo source in mono chain mode
+      (where the channels differ) the fade lands exactly on the input.
+      Writes the stereo image in place. */
   void process(juce::AudioBuffer<float>& buffer);
 
-private:
-  void retargetDelay();
-  void resetDetector();
+  /** Latest output correlation (-1..1) for the UI meter; 1 when idle or on
+      silence. Readable from any thread. */
+  float correlation() const { return correlationOut.load(std::memory_order_relaxed); }
 
-  juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> delayLine;
-  juce::SmoothedValue<float> delaySamples;
+private:
+  void resetDeck();
+
+  /** First-order allpass (transposed direct form II, one state). Static
+      coefficients: movement comes from the delay wobble; modulating allpass
+      coefficients would reintroduce phasiness. */
+  struct Allpass {
+    float a = 0.0f;
+    float z = 0.0f;
+    float process(float x) noexcept {
+      const float v = x - a * z;
+      const float y = a * v + z;
+      z = v;
+      return y;
+    }
+  };
+
+  // Fixed design values (rationale in plugin/docs/spread.md).
+  static constexpr double kCrossoverHz = 130.0;   // locks low E dual-mono
+  static constexpr int kNumAllpasses = 6;
+  static constexpr double kAllpassLowHz = 300.0;  // cascade fc log-spaced
+  static constexpr double kAllpassHighHz = 6000.0;
+  static constexpr float kLagGainDb = 1.5f;       // precedence patch, not cure
+  static constexpr double kWobbleRateHz = 0.3;    // random-walk LPF corner
+  static constexpr float kWobbleMaxMs = 1.2f;     // ≈ ±2-4 cents drift at 100%
+  static constexpr double kOffsetSmoothSeconds = 0.1;  // signed-value one-pole
+  static constexpr float kCenterBlendMs = 1.0f;   // lag→ref blend below this
+  static constexpr double kFadeSeconds = 0.025;   // engage/bypass crossfade
+  static constexpr double kCorrSeconds = 0.3;     // correlation window
+  // Mean-square floor (~-100 dBFS) below which correlation reports 1:
+  // silence is trivially mono-compatible, not "decorrelated".
+  static constexpr float kCorrFloor = 1.0e-10f;
+
+  juce::dsp::LinkwitzRileyFilter<float> crossover;
+  juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Lagrange3rd> delayLine;
+  std::array<Allpass, kNumAllpasses> allpasses;
 
   bool running{false};
   bool engaged{false};
-  int currentChannel{1};  // side being delayed right now
-  int desiredChannel{1};  // side the knob asks for (adopted via a zero glide)
-  float spreadMs{0.0f};
-  float jitterMs{0.0f};
-  float jitterOffsetMs{0.0f};
 
-  // Onset detector state (see class comment).
-  float envFast{0.0f};
-  float envSlow{0.0f};
-  bool armed{true};
-  int refractorySamplesLeft{0};
+  float targetOffsetMs{0.0f};
+  float offsetStateMs{0.0f};  // smoothed SIGNED offset (sign = lagged side)
+  float offsetCoeff{0.0f};
+
+  // Two cascaded one-poles (12 dB/oct). One pole is not enough: its 6 dB/oct
+  // tail leaves ~1% of the noise variance above 20 Hz, and audio-rate
+  // delay-time noise FMs the lag channel into broadband fizz (regression
+  // covered by SpreadTest.WobbleAddsNoBroadbandFizz).
+  float wobbleState1{0.0f};
+  float wobbleState2{0.0f};
+  float wobbleCoeff{0.0f};
+  float wobbleNorm{1.0f};  // analytic ~unit-peak normalization, see prepare()
+  juce::Random random;
+  juce::LinearSmoothedValue<float> wobbleDepth;
+
+  // Engage/bypass crossfade: 0 = untouched input, 1 = doubled image.
+  juce::LinearSmoothedValue<float> wetGain;
+
+  // Correlation followers (one-pole means of L·R, L², R²) + published value.
+  float corrLR{0.0f}, corrLL{0.0f}, corrRR{0.0f};
+  std::atomic<float> correlationOut{1.0f};
 
   double sampleRate{48000.0};
-  float fastAttack{0.0f}, fastRelease{0.0f};
-  float slowCoeff{0.0f};
-  int refractorySamples{0};
-
-  juce::Random random;
-
-  // Delay ramp: longer than the max delay swing (36 ms) so delay time never
-  // grows faster than real time — see class comment.
-  static constexpr double kRampSeconds = 0.040;
-  static constexpr float kOnsetRatio = 2.0f;   // fast must exceed slow by 2x to fire
-  static constexpr float kRearmRatio = 1.2f;   // and dip back under 1.2x to re-arm
-  static constexpr float kOnsetFloor = 0.003f; // ~-50 dB: ignore noise-floor "onsets"
+  float msToSamples{48.0f};
+  float lagGain{1.0f};
 };

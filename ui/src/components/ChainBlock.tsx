@@ -3,9 +3,11 @@ import {
   ArrowLeft,
   ArrowLeftRight,
   Check,
+  Download,
   Equal,
+  FolderClosed,
+  Gauge,
   Power,
-  RotateCcw,
   Share,
   Trash2,
 } from 'lucide-react';
@@ -20,102 +22,104 @@ import { BlockEqView } from './BlockEqView';
 import type { EqViewMode } from './BlockEqView';
 import { meterId } from '../hooks/useMeters';
 import { useChainActions } from '../hooks/useChainActions';
+import { useParameter } from '../hooks/useParameter';
 import type { BlockParamName, ToneBlock } from '../types/chain';
 import type { Model } from '../types/tone';
 import { isEqFlat } from '../types/chain';
-import { CARD_WIDTH, CARD_HEIGHT } from './chainLayout';
+import { CARD_WIDTH, CARD_HEIGHT, CARD_RADIUS, HEADER_HEIGHT, BODY_PADDING } from './chainLayout';
 import { formatLabel, gearLabel } from '../t3k/labels';
 import { AvatarImage } from './AvatarFallback';
 import { FormatBadge } from './FormatBadge';
 import { HELP, helpProps } from './helpText';
 import { useBlockNormalizeControlEnabled } from './uiPreferences';
-import { KNOB_CENTER_OFFSET } from './SpreadControls';
+import { ChromeIconButton, ChromeTextButton, chromeIcon } from './ChromeIconButton';
 import {
-  ACTIVE_OUTLINE,
   BORDER,
   GRAY,
-  HIGHLIGHT,
+  ICON_BOX_SIZE,
+  ICON_SIZE,
+  KNOB_SIZE_SECONDARY,
   MUTED,
-  iconButtonStyle,
+  SEGMENTED_TRACK,
+  WHITE,
+  segmentedCellStyle,
+  segmentedGroupStyle,
 } from './theme';
 
-const HEADER_HEIGHT = 40;
-const IMAGE_SIZE = 224;
-const KNOB_SIZE = 36;
+/** Tone image; matches the Figma detail mock (fits body with model select). */
+const IMAGE_SIZE = 192;
 /** Mini meter height in the side rails (meter sits centered above its knob). */
-const RAIL_METER_HEIGHT = 180;
+const RAIL_METER_HEIGHT = 160;
+/** Centers the normalize (=) chrome box on the Out knob. */
+const NORMALIZE_BUTTON_OFFSET = -(KNOB_SIZE_SECONDARY - ICON_BOX_SIZE) / 2;
 
-const headerButtonStyle = iconButtonStyle(24);
+/** Downloads / models count with a leading icon (same pattern as ToneBrowser). */
+const CountStat: React.FC<{ icon: React.ReactNode; value: number }> = ({ icon, value }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+    <span style={{ display: 'grid', placeItems: 'center', color: GRAY }}>{icon}</span>
+    <span style={{ fontSize: '14px', fontWeight: 400, color: MUTED }}>
+      {value.toLocaleString()}
+    </span>
+  </div>
+);
 
-/** EQ menu glyphs, drawn for legibility at header size (two clean faders /
-    one bell curve with its drag dot) rather than generic icon-set art.
-    `currentColor` + 1.5 stroke + round caps to match Lucide at this size. */
+/** EQ view glyphs: 16×16, stroke inherits selected/muted color. */
 const EqSlidersIcon: React.FC = () => (
   <svg
-    width={14}
-    height={14}
-    viewBox="0 0 14 14"
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
     stroke="currentColor"
-    strokeWidth={1.5}
+    strokeWidth={1.33333}
     strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ display: 'block', flexShrink: 0 }}
   >
-    <line x1={4.5} y1={1.5} x2={4.5} y2={12.5} />
-    <line x1={9.5} y1={1.5} x2={9.5} y2={12.5} />
-    <circle cx={4.5} cy={9} r={2} fill="currentColor" stroke="none" />
-    <circle cx={9.5} cy={4.5} r={2} fill="currentColor" stroke="none" />
+    <path d="M11.3333 6.66669V12.6667" />
+    <path d="M4.66675 3.33331V9.33331" />
+    <path d="M13.3333 4.66669C13.3333 3.56212 12.4378 2.66669 11.3333 2.66669C10.2287 2.66669 9.33325 3.56212 9.33325 4.66669C9.33325 5.77126 10.2287 6.66669 11.3333 6.66669C12.4378 6.66669 13.3333 5.77126 13.3333 4.66669Z" />
+    <path d="M6.66675 11.3333C6.66675 10.2287 5.77132 9.33331 4.66675 9.33331C3.56218 9.33331 2.66675 10.2287 2.66675 11.3333C2.66675 12.4379 3.56218 13.3333 4.66675 13.3333C5.77132 13.3333 6.66675 12.4379 6.66675 11.3333Z" />
   </svg>
 );
 
 const EqCurveIcon: React.FC = () => (
   <svg
     width={16}
-    height={14}
-    viewBox="0 0 16 14"
+    height={16}
+    viewBox="0 0 16 16"
     fill="none"
     stroke="currentColor"
     strokeWidth={1.5}
     strokeLinecap="round"
+    style={{ display: 'block', flexShrink: 0 }}
   >
-    <path d="M1 11 C5 11 5.5 3 8 3 C10.5 3 11 11 15 11" />
-    <circle cx={8} cy={3} r={1.8} fill="currentColor" stroke="none" />
+    <path d="M1 13.5C5 13.5 5.5 2.5 8 2.5C10.5 2.5 11 13.5 15 13.5" />
   </svg>
 );
 
-/** Segmented button group in the card header (matches the LITE/FULL control). */
-const headerGroupStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'row',
-  height: '24px',
-  borderRadius: '6px',
-  border: BORDER,
-  overflow: 'hidden',
-  flexShrink: 0,
-};
-
-const headerGroupButtonStyle: React.CSSProperties = {
-  width: '28px',
-  height: '100%',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  border: 'none',
-  cursor: 'pointer',
-  backgroundColor: 'transparent',
-  padding: 0,
-};
-
 interface ChainBlockProps {
   block: ToneBlock;
+  /** Another enabled+loaded NAM after this block in its lane. With input
+      calibration on, such a block hands off at calibrated output level
+      instead of normalizing (see the post-model gain stage in
+      Processor.cpp); drives the normalize control's overridden state. */
+  namDownstream: boolean;
   /** Host sample rate, for the EQ curve math. */
   sampleRate: number;
-  /** Return to the chain gallery (back arrow lives in this card's header). */
+  /** Return to the chain gallery (← BLOCK sits above the bordered card). */
   onBack: () => void;
 }
 
 /** The detail card (full block view). All mutations come from the
     ChainActions context; only the block itself and the sample rate arrive
     as props. */
-export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBack }) => {
+export const ChainBlock: React.FC<ChainBlockProps> = ({
+  block,
+  namDownstream,
+  sampleRate,
+  onBack,
+}) => {
   const { blockId, tone, params } = block;
   const actions = useChainActions();
 
@@ -128,7 +132,6 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
   const [inputGain, setInputGain] = useState(params.inputGain ?? 0.5);
   const [outputGain, setOutputGain] = useState(params.outputGain ?? 0.5);
   const [mix, setMix] = useState(params.mix ?? 1.0);
-  const [slimmableSize, setSlimmableSize] = useState(params.namSlimmableSize ?? 1);
   const [isSwitchingModel, setIsSwitchingModel] = useState(false);
   const [showEq, setShowEq] = useState(false);
   const [eqView, setEqView] = useState<EqViewMode>('sliders');
@@ -138,7 +141,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
   const [eqPre, setEqPre] = useState(params.eq?.pre ?? false);
   const [copied, setCopied] = useState(false);
   const copiedTimeoutRef = useRef<number | undefined>(undefined);
-  // True while one of this card's knobs is grabbed — knob prop syncs pause
+  // True while one of this card's knobs is grabbed; knob prop syncs pause
   // so a stale chain snapshot can't fight the pointer (same pattern as
   // BlockEqView). On release the deferred revision bump resyncs everyone.
   const knobDragRef = useRef(false);
@@ -161,10 +164,6 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
   }, [params.mix]);
   useEffect(() => setEqOn(params.eq?.enabled ?? true), [params.eq?.enabled]);
   useEffect(() => setEqPre(params.eq?.pre ?? false), [params.eq?.pre]);
-  useEffect(
-    () => setSlimmableSize(params.namSlimmableSize ?? 1),
-    [blockId, params.namSlimmableSize]
-  );
   useEffect(() => () => window.clearTimeout(copiedTimeoutRef.current), []);
 
   const setParam = useCallback(
@@ -208,18 +207,6 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
       copiedTimeoutRef.current = window.setTimeout(() => setCopied(false), 1500);
     }
   }, [actions, block]);
-
-  // NAM tier mappers select the bottom tier for values in [0, 0.5) — the
-  // boundary itself belongs to the tier above — so LITE must send 0.0, not 0.5.
-  const isLite = slimmableSize < 0.5;
-  const handleNamSizeMode = useCallback(
-    (useLite: boolean) => {
-      const size = useLite ? 0.0 : 1.0;
-      setSlimmableSize(size);
-      setParam('namSlimmableSize', size);
-    },
-    [setParam]
-  );
 
   // Native persists only the block's *active* model; the full catalog (tones
   // max out at 300 models) is fetched client-side in one call per tone.
@@ -271,19 +258,32 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
   // previous model keeps playing during a switch (`loaded` stays true), so
   // loading affordances key off `modelLoading`, not `loaded`.
   const modelBusy = block.modelLoading || (!block.loaded && !block.loadFailed);
-  // LITE/FULL is inert while a model is in flight or nothing is loaded
-  // (failed load): stable look, not-allowed cursor, clicks no-op.
-  const namSizeLocked = modelBusy || !block.loaded;
 
   const isNam = tone.format?.toLowerCase() === 'nam';
-  // Reverb-style IRs (gear "space"/"pedal") load half wet by default (native
-  // sets it in parseToneForLoading); Alt-click reset on Mix must agree.
-  const isReverbIr = !isNam && ['space', 'pedal'].includes(tone.gear?.toLowerCase() ?? '');
-  const defaultMix = isReverbIr ? 0.5 : 1;
+
+  // Calibration state (the gauge indicator + the normalize override). Only
+  // meaningful while the user's input calibration setting is on: the gauge
+  // then reads white when the loaded model carries calibration data and gray
+  // when it doesn't. The overridden check mirrors the DSP's calibrated
+  // hand-off condition exactly (Processor.cpp): calibration on, sane
+  // output_level_dbu metadata, and another NAM downstream. The last NAM
+  // stays on normalization, so its control never reads overridden.
+  const [calibrateInput] = useParameter('calibrateInput', 'toggle');
+  const showCalibration = isNam && calibrateInput;
+  const calibrationActive = block.inputLevelDbu !== undefined;
+  const handOffLevelSane =
+    block.outputLevelDbu !== undefined &&
+    block.outputLevelDbu >= -60 &&
+    block.outputLevelDbu <= 60;
+  const normalizeOverridden = isNam && calibrateInput && namDownstream && handOffLevelSane;
+  // Long (reverb-like) IRs load half wet by default (native classifies by
+  // kernel length and sets the mix on first load); Alt-click reset on Mix
+  // must agree.
+  const defaultMix = block.irLong ? 0.5 : 1;
   // All NAM blocks are A2, so the badge is just the format name.
   const formatBadge = formatLabel(tone.format);
 
-  // Picker's "n/N" total from the tone metadata (A2-only for NAM — that's
+  // Picker's "n/N" total from the tone metadata (A2-only for NAM; that's
   // all the plugin loads).
   const modelsTotal = isNam ? tone.a2_models_count : tone.models_count;
 
@@ -297,251 +297,203 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
       style={{
         display: 'flex',
         flexDirection: 'column',
-        position: 'relative',
         width: `${CARD_WIDTH}px`,
-        height: `${CARD_HEIGHT}px`,
         boxSizing: 'border-box',
       }}
     >
-      {/* Header — a plain row separated from the body by a hairline rule. */}
-      <div
+      {/* ← BLOCK sits above the bordered card (Figma: 16px mono, gap 16). */}
+      <button
+        type="button"
+        onClick={onBack}
+        {...helpProps(HELP.backToChain)}
         style={{
-          height: `${HEADER_HEIGHT}px`,
-          flexShrink: 0,
+          alignSelf: 'flex-start',
           display: 'flex',
           alignItems: 'center',
-          gap: '24px',
-          padding: '0 0 16px',
-          boxSizing: 'border-box',
-          borderBottom: BORDER,
+          gap: '16px',
+          marginBottom: '16px',
+          background: 'transparent',
+          border: 'none',
+          outline: 'none',
+          padding: 0,
+          cursor: 'pointer',
+          color: WHITE,
         }}
       >
-        <button
-          onClick={onBack}
-          {...helpProps(HELP.backToChain)}
-          style={{ ...headerButtonStyle, color: '#ffffff' }}
-        >
-          <ArrowLeft size={18} />
-        </button>
-
-        <button
-          onClick={handleToggleEnabled}
-          {...helpProps(HELP.blockPower)}
+        <ArrowLeft size={16} style={{ display: 'block', flexShrink: 0 }} />
+        <span
           style={{
-            ...headerButtonStyle,
-            color: enabled ? '#ffffff' : GRAY,
-            backgroundColor: enabled ? 'transparent' : HIGHLIGHT,
-          }}
-        >
-          <Power size={14} />
-        </button>
-
-        {/* LITE/FULL for every NAM block (architecture=2 = always A2).
-            Subtle segmented control: the active side just reads white.
-            While a model loads the control keeps its normal look (no
-            opacity flicker) — clicks just no-op behind a not-allowed
-            cursor until the new engine is in. */}
-        {isNam && (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'center',
-              height: '24px',
-              borderRadius: '4px',
-              // Same grey as the model select bar so the header controls match.
-              backgroundColor: 'rgba(120, 120, 128, 0.36)',
-              overflow: 'hidden',
-              flexShrink: 0,
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => !namSizeLocked && handleNamSizeMode(true)}
-              {...helpProps(HELP.namLite)}
-              style={{
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                padding: '0 4px 0 10px',
-                fontSize: '11px',
-                fontWeight: 400,
-                fontFamily: 'monospace',
-                border: 'none',
-                cursor: namSizeLocked ? 'not-allowed' : 'pointer',
-                backgroundColor: 'transparent',
-                color: isLite ? '#ffffff' : MUTED,
-                transition: 'color 0.15s ease',
-              }}
-            >
-              LITE
-            </button>
-            <button
-              type="button"
-              onClick={() => !namSizeLocked && handleNamSizeMode(false)}
-              {...helpProps(HELP.namFull)}
-              style={{
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                padding: '0 10px 0 4px',
-                fontSize: '11px',
-                fontWeight: 400,
-                fontFamily: 'monospace',
-                border: 'none',
-                cursor: namSizeLocked ? 'not-allowed' : 'pointer',
-                backgroundColor: 'transparent',
-                color: !isLite ? '#ffffff' : MUTED,
-                transition: 'color 0.15s ease',
-              }}
-            >
-              FULL
-            </button>
-          </div>
-        )}
-
-        <div style={{ flex: 1, minWidth: 0 }} />
-
-        {/* EQ menu — lives here (not floating over the grid) while the EQ
-            editor is open: view switcher, then reset + power. */}
-        {showEq && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div style={headerGroupStyle}>
-              <button
-                onClick={() => setEqView('sliders')}
-                {...helpProps(HELP.eqSlidersView)}
-                style={{
-                  ...headerGroupButtonStyle,
-                  color: eqView === 'sliders' ? '#ffffff' : MUTED,
-                  backgroundColor: eqView === 'sliders' ? HIGHLIGHT : 'transparent',
-                }}
-              >
-                <EqSlidersIcon />
-              </button>
-              <button
-                onClick={() => setEqView('graph')}
-                {...helpProps(HELP.eqCurveView)}
-                style={{
-                  ...headerGroupButtonStyle,
-                  borderLeft: BORDER,
-                  color: eqView === 'graph' ? '#ffffff' : MUTED,
-                  backgroundColor: eqView === 'graph' ? HIGHLIGHT : 'transparent',
-                }}
-              >
-                <EqCurveIcon />
-              </button>
-            </div>
-            {/* PRE moves the EQ before the block's model (after In Gain);
-                off = the default post-block position. Same two-state look
-                as the EQ toggle: outline + white text while engaged. */}
-            <button
-              onClick={handleToggleEqPre}
-              {...helpProps(HELP.eqPre)}
-              style={{
-                ...headerButtonStyle,
-                width: 'auto',
-                padding: '0 8px',
-                fontSize: '11px',
-                fontWeight: 400,
-                fontFamily: 'monospace',
-                border: eqPre ? ACTIVE_OUTLINE : BORDER,
-                color: eqPre ? '#ffffff' : MUTED,
-                backgroundColor: eqPre ? HIGHLIGHT : 'transparent',
-              }}
-            >
-              PRE
-            </button>
-            {/* Reset and power stand alone (no bordered group). */}
-            <button
-              onClick={() => actions.resetBlockEq(blockId)}
-              {...helpProps(HELP.eqReset)}
-              style={{ ...headerButtonStyle, border: 'none', color: '#ffffff' }}
-            >
-              <RotateCcw size={14} />
-            </button>
-            <button
-              onClick={handleToggleEqEnabled}
-              {...helpProps(HELP.eqPower)}
-              style={{
-                ...headerButtonStyle,
-                border: 'none',
-                color: eqOn ? '#ffffff' : GRAY,
-                backgroundColor: eqOn ? 'transparent' : HIGHLIGHT,
-              }}
-            >
-              <Power size={14} />
-            </button>
-          </div>
-        )}
-
-        {/* EQ view toggle. Two independent signals (see theme.ts patterns):
-            white text + bright outline = the EQ is shaping audio (on and
-            non-flat), even when the editor is closed; grey fill = the
-            editor panel is currently open (like the tuner toggle). */}
-        <button
-          onClick={() => setShowEq((prev) => !prev)}
-          {...helpProps(HELP.eqToggle)}
-          style={{
-            ...headerButtonStyle,
-            width: 'auto',
-            padding: '0 8px',
-            fontSize: '11px',
-            fontWeight: 400,
             fontFamily: 'monospace',
-            border: eqActive ? ACTIVE_OUTLINE : BORDER,
-            color: eqActive || showEq ? '#ffffff' : MUTED,
-            backgroundColor: showEq ? HIGHLIGHT : 'transparent',
+            fontSize: '16px',
+            fontWeight: 400,
+            textTransform: 'uppercase',
+            lineHeight: 1.4,
           }}
         >
-          EQ
-        </button>
+          Block
+        </span>
+      </button>
 
-        <button
-          onClick={handleShare}
-          {...helpProps(HELP.shareTone)}
-          style={{ ...headerButtonStyle, color: '#ffffff' }}
-        >
-          {copied ? <Check size={14} /> : <Share size={14} />}
-        </button>
-        <button
-          onClick={() => actions.swapBlock(blockId)}
-          {...helpProps(HELP.swapTone)}
-          style={{ ...headerButtonStyle, color: '#ffffff' }}
-        >
-          <ArrowLeftRight size={14} />
-        </button>
-        <button
-          onClick={() => actions.removeBlock(blockId)}
-          {...helpProps(HELP.removeBlock)}
-          style={{ ...headerButtonStyle, color: '#ffffff' }}
-        >
-          <Trash2 size={14} />
-        </button>
-      </div>
-
-      {/* Body */}
       <div
         style={{
-          flex: 1,
-          minHeight: 0,
           display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'stretch',
-          // The EQ grid bleeds edge-to-edge; the normal view only breathes
-          // below the header rule (no side/bottom gutters — the card has no
-          // border or background to inset from).
-          gap: showEq ? 0 : '24px',
-          padding: showEq ? 0 : '16px 0 0',
+          flexDirection: 'column',
+          position: 'relative',
+          width: '100%',
+          height: `${CARD_HEIGHT}px`,
           boxSizing: 'border-box',
-          opacity: enabled ? 1 : 0.45,
-          transition: 'opacity 0.2s ease',
-          // Keep the body on its own pixel-snapped compositor layer so the
-          // opacity fade (power toggle) can't promote/demote a temporary layer
-          // that nudges inner content — notably the scaled EQ SVG — by a pixel.
-          transform: 'translateZ(0)',
-          willChange: 'opacity',
+          border: BORDER,
+          borderRadius: `${CARD_RADIUS}px`,
+          overflow: 'hidden',
         }}
       >
+        {/* Header: 16px inset, chrome centered in HEADER_HEIGHT. */}
+        <div
+          style={{
+            height: `${HEADER_HEIGHT}px`,
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: `0 ${BODY_PADDING}px`,
+            boxSizing: 'border-box',
+            borderBottom: BORDER,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flexShrink: 0 }}>
+            <ChromeIconButton
+              tone="power"
+              on={enabled}
+              help={HELP.blockPower}
+              onClick={handleToggleEnabled}
+            >
+              <Power />
+            </ChromeIconButton>
+
+            {/* Calibration indicator (not a button): white = the loaded model
+                carries calibration data, gray = it doesn't. Hidden entirely
+                while the calibration setting is off. */}
+            {showCalibration && (
+              <span
+                {...helpProps(calibrationActive ? HELP.blockCalibrated : HELP.blockUncalibrated)}
+                style={{
+                  width: `${ICON_BOX_SIZE}px`,
+                  height: `${ICON_BOX_SIZE}px`,
+                  display: 'grid',
+                  placeItems: 'center',
+                  color: calibrationActive ? WHITE : GRAY,
+                }}
+              >
+                {chromeIcon(<Gauge />, ICON_SIZE)}
+              </span>
+            )}
+          </div>
+
+          {/* Right cluster: EQ submenu (pill when open) then share/swap/trash.
+              EQ stays rightmost in the submenu so opening grows left only.
+              marginRight cancels the pill's right pad so EQ doesn't shift
+              relative to share. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flexShrink: 0 }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: showEq ? '16px' : 0,
+                padding: showEq ? '4px 12px' : 0,
+                // Pull back by the pill's right pad so EQ stays put vs share.
+                marginRight: showEq ? -12 : 0,
+                borderRadius: showEq ? 100 : 0,
+                backgroundColor: showEq ? SEGMENTED_TRACK : 'transparent',
+                flexShrink: 0,
+                boxSizing: 'border-box',
+              }}
+            >
+              {showEq && (
+                <>
+                  <ChromeIconButton
+                    tone="power"
+                    on={eqOn}
+                    help={HELP.eqPower}
+                    onClick={handleToggleEqEnabled}
+                  >
+                    <Power />
+                  </ChromeIconButton>
+                  <ChromeTextButton armed={eqPre} help={HELP.eqPre} onClick={handleToggleEqPre}>
+                    PRE
+                  </ChromeTextButton>
+                  <div
+                    style={{
+                      ...segmentedGroupStyle(),
+                      // Nested track, slightly quieter than the outer pill.
+                      backgroundColor: 'rgba(118, 118, 128, 0.24)',
+                    }}
+                  >
+                    <button
+                      onClick={() => setEqView('sliders')}
+                      {...helpProps(HELP.eqSlidersView)}
+                      style={{
+                        ...segmentedCellStyle(true),
+                        color: eqView === 'sliders' ? WHITE : GRAY,
+                      }}
+                    >
+                      <EqSlidersIcon />
+                    </button>
+                    <button
+                      onClick={() => setEqView('graph')}
+                      {...helpProps(HELP.eqCurveView)}
+                      style={{
+                        ...segmentedCellStyle(true),
+                        color: eqView === 'graph' ? WHITE : GRAY,
+                      }}
+                    >
+                      <EqCurveIcon />
+                    </button>
+                  </div>
+                </>
+              )}
+              <ChromeTextButton
+                armed={eqActive}
+                open={showEq}
+                help={HELP.eqToggle}
+                onClick={() => setShowEq((prev) => !prev)}
+              >
+                EQ
+              </ChromeTextButton>
+            </div>
+
+            <ChromeIconButton help={HELP.shareTone} onClick={handleShare}>
+              {copied ? <Check /> : <Share />}
+            </ChromeIconButton>
+            <ChromeIconButton help={HELP.swapTone} onClick={() => actions.swapBlock(blockId)}>
+              <ArrowLeftRight />
+            </ChromeIconButton>
+            <ChromeIconButton help={HELP.removeBlock} onClick={() => actions.removeBlock(blockId)}>
+              <Trash2 />
+            </ChromeIconButton>
+          </div>
+        </div>
+
+        {/* Body: tone view uses BODY_PADDING; EQ spectrum/grid bleeds
+            edge-to-edge (interactive chrome insets itself). */}
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'stretch',
+            gap: showEq ? 0 : '24px',
+            padding: showEq ? 0 : `${BODY_PADDING}px`,
+            boxSizing: 'border-box',
+            opacity: enabled ? 1 : 0.45,
+            transition: 'opacity 0.2s ease',
+            // Keep the body on its own pixel-snapped compositor layer so the
+            // opacity fade (power toggle) can't promote/demote a temporary layer
+            // that nudges inner content (notably the scaled EQ SVG) by a pixel.
+            transform: 'translateZ(0)',
+            willChange: 'opacity',
+          }}
+        >
         {showEq ? (
           <BlockEqView
             blockId={blockId}
@@ -553,14 +505,14 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
           />
         ) : (
           <>
-            {/* Input rail: knob pinned at the bottom, meter centered in the
-                space between it and the card header */}
+            {/* Input rail: meter above In knob (Figma: gap 12). */}
             <div
               style={{
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 flexShrink: 0,
+                gap: '12px',
               }}
             >
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', minHeight: 0 }}>
@@ -574,34 +526,31 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                   setParam('inputGain', val);
                 }}
                 onDragStateChange={handleKnobDragState}
-                size={KNOB_SIZE}
+                size={KNOB_SIZE_SECONDARY}
                 labelSize={12}
                 labelBottom={false}
-                innerColor="#000000"
+                thumb="secondary"
                 scale={gainDbScale}
                 defaultValue={0.5}
                 help={HELP.blockIn}
               />
             </div>
 
-            {/* Center: image + tone info on top, model picker spanning the full
-            width below (it extends under the image, not bound to the info
-            column). */}
+            {/* Center: image + tone info on top, model picker spanning full width. */}
             <div
               style={{
                 flex: 1,
                 minWidth: 0,
+                alignSelf: 'stretch',
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'space-between',
-                gap: '22px',
               }}
             >
               <div
                 style={{
                   display: 'flex',
                   flexDirection: 'row',
-                  // Copy centers on the image's vertical middle, web-style.
                   alignItems: 'center',
                   gap: '24px',
                   minWidth: 0,
@@ -633,11 +582,6 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                       boxSize={IMAGE_SIZE}
                     />
                   </div>
-                  {/* Loading dots while a model downloads/prepares (mirrors
-                      the gallery tile); if it failed (e.g. a model switch
-                      while offline), the retry affordance instead — the
-                      switch is driven from this card, so the failure must
-                      be visible in place. */}
                   {(modelBusy || block.loadFailed) && (
                     <div
                       style={{
@@ -657,53 +601,80 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                   )}
                 </div>
 
-                {/* Tone info */}
+                {/* Tone info: title / gear+badge / counts / creator (Figma gaps). */}
                 <div
                   style={{
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: '6px',
+                    gap: '16px',
                     minWidth: 0,
                     flex: 1,
                   }}
                 >
-                  <span
+                  <div
                     style={{
-                      fontSize: '18px',
-                      color: '#ffffff',
-                      fontWeight: '600',
-                      // Two-line clamp with trailing ellipsis.
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      minWidth: 0,
                     }}
                   >
-                    {tone.title}
-                  </span>
+                    <span
+                      style={{
+                        fontSize: '18px',
+                        color: WHITE,
+                        fontWeight: 700,
+                        lineHeight: 1.4,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {tone.title}
+                    </span>
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: '16px',
+                      }}
+                    >
+                      {tone.gear && (
+                        <span style={{ fontSize: '14px', color: MUTED, fontWeight: 400 }}>
+                          {gearLabel(tone.gear)}
+                        </span>
+                      )}
+                      {formatBadge && <FormatBadge label={formatBadge} />}
+                    </div>
+                  </div>
 
                   <div
                     style={{
                       display: 'flex',
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: '12px',
+                      gap: '24px',
                     }}
                   >
-                    {tone.gear && (
-                      <span style={{ fontSize: '14px', color: MUTED, fontWeight: '400' }}>
-                        {gearLabel(tone.gear)}
-                      </span>
-                    )}
-                    {formatBadge && <FormatBadge label={formatBadge} />}
+                    <CountStat
+                      icon={<Download size={16} />}
+                      value={tone.downloads_count ?? 0}
+                    />
+                    <CountStat
+                      icon={<FolderClosed size={16} />}
+                      value={tone.models_count ?? 0}
+                    />
                   </div>
 
                   {tone.user && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <div
                         style={{
-                          width: '23px',
-                          height: '23px',
+                          width: '32px',
+                          height: '32px',
                           borderRadius: '50%',
                           overflow: 'hidden',
                           flexShrink: 0,
@@ -712,10 +683,10 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                         <AvatarImage
                           src={tone.user.avatar_url}
                           alt={tone.user.username}
-                          size={23}
+                          size={32}
                         />
                       </div>
-                      <span style={{ fontSize: '14px', color: '#ffffff', fontWeight: '400' }}>
+                      <span style={{ fontSize: '14px', color: GRAY, fontWeight: 400 }}>
                         {tone.user.username}
                       </span>
                     </div>
@@ -725,7 +696,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
 
               {/* Switching models re-downloads through native with a Bearer
                   token, so the picker is inert while signed out. The wrapper
-                  carries the cursor + hint — the select itself is
+                  carries the cursor + hint, as the select itself is
                   pointer-events: none when disabled. */}
               <div
                 {...(!actions.authenticated ? helpProps(HELP.modelSelectSignedOut) : {})}
@@ -761,28 +732,38 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                   setParam('mix', val);
                 }}
                 onDragStateChange={handleKnobDragState}
-                size={KNOB_SIZE}
+                size={KNOB_SIZE_SECONDARY}
                 labelSize={12}
                 labelBottom={false}
-                innerColor="#000000"
+                thumb="secondary"
                 defaultValue={defaultMix}
                 help={HELP.blockMix}
               />
             </div>
 
-            {/* Output rail: knob pinned at the bottom, meter centered in the
-                space between it and the card header. Per-block normalization
-                (=) sits left of Out — same placement language as the faceplate
-                auto-balance (=) beside Bal. NAM only, revealed by Advanced. */}
+            {/* Output rail: meter above Out (+ optional normalize). The rail
+                right-aligns and the meter wrapper is knob-wide, so the meter
+                stays centered over the Out knob whether or not the normalize
+                button widens the bottom row to its left. */}
             <div
               style={{
                 display: 'flex',
                 flexDirection: 'column',
-                alignItems: 'center',
+                alignItems: 'flex-end',
                 flexShrink: 0,
+                gap: '12px',
               }}
             >
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', minHeight: 0 }}>
+              <div
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minHeight: 0,
+                  width: `${KNOB_SIZE_SECONDARY}px`,
+                }}
+              >
                 <BlockMeter meterId={meterId.blockOut(blockId)} length={RAIL_METER_HEIGHT} />
               </div>
               <div
@@ -794,28 +775,30 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                 }}
               >
                 {isNam && showNormalizeControl && (
-                  <button
-                    onClick={handleToggleNormalize}
-                    {...helpProps(HELP.blockNormalize)}
+                  /* The wrapper carries the vertical nudge and the overridden
+                     hint: a disabled button swallows hover (no mouseover ever
+                     fires), so pointer-events pass through it to this span
+                     and the hint delegation resolves here instead. */
+                  <span
+                    {...helpProps(
+                      normalizeOverridden ? HELP.blockNormalizeOverridden : HELP.blockNormalize
+                    )}
                     style={{
-                      width: '18px',
-                      height: '18px',
-                      borderRadius: '5px',
-                      border: normalizeOn ? ACTIVE_OUTLINE : BORDER,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      padding: 0,
-                      flexShrink: 0,
-                      boxSizing: 'border-box',
-                      color: normalizeOn ? '#ffffff' : GRAY,
-                      backgroundColor: normalizeOn ? HIGHLIGHT : 'transparent',
-                      transform: `translateY(${KNOB_CENTER_OFFSET}px)`,
+                      display: 'inline-flex',
+                      transform: `translateY(${NORMALIZE_BUTTON_OFFSET}px)`,
                     }}
                   >
-                    <Equal size={12} />
-                  </button>
+                    <ChromeIconButton
+                      tone="outline"
+                      on={normalizeOn}
+                      help={HELP.blockNormalize}
+                      onClick={handleToggleNormalize}
+                      disabled={normalizeOverridden}
+                      style={normalizeOverridden ? { pointerEvents: 'none' } : undefined}
+                    >
+                      <Equal size={ICON_SIZE} />
+                    </ChromeIconButton>
+                  </span>
                 )}
                 <KnobControl
                   label="Out"
@@ -825,18 +808,19 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({ block, sampleRate, onBac
                     setParam('outputGain', val);
                   }}
                   onDragStateChange={handleKnobDragState}
-                  size={KNOB_SIZE}
+                  size={KNOB_SIZE_SECONDARY}
                   labelSize={12}
                   labelBottom={false}
-                  innerColor="#000000"
+                  thumb="secondary"
                   scale={gainDbScale}
                   defaultValue={0.5}
-                  help={isNam ? HELP.blockOut : HELP.blockOutIr}
+                  help={isNam || block.irLong ? HELP.blockOut : HELP.blockOutIr}
                 />
               </div>
             </div>
           </>
         )}
+      </div>
       </div>
     </div>
   );

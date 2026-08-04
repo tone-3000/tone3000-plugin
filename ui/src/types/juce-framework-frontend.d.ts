@@ -35,5 +35,5 @@ declare module 'juce-framework-frontend' {
   export function getSliderState(name: string): SliderState;
   export function getToggleState(name: string): ToggleState;
   export function getComboBoxState(name: string): ComboBoxState;
-  export function getNativeFunction(name: string): (...args: any[]) => Promise<any>;
+  export function getNativeFunction(name: string): (...args: unknown[]) => Promise<unknown>;
 }

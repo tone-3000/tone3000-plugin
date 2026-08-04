@@ -4,7 +4,7 @@
 ;   iscc /DVersion=x.y.z /DArtefactsDir=..\..\..\build\plugin\TONE3000_artefacts\Release script\installer\windows\tone3000.iss
 ;
 ; Defines (override with /D on the command line):
-;   Version       plugin version string — REQUIRED; pass the contents of the
+;   Version       plugin version string, REQUIRED. Pass the contents of the
 ;                 repo-root VERSION file (single source of truth, no default
 ;                 here so the installer can never ship a stale version)
 ;   ArtefactsDir  path to the JUCE Release artefacts dir, absolute or relative

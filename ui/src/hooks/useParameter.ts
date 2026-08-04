@@ -4,10 +4,10 @@ import type { ParameterType, ParameterMap, ParameterValueType } from '../types/I
 
 type Parameter<T extends ParameterType> = ParameterMap[T];
 
-function readCurrent<T extends ParameterType>(param: Parameter<T>, type: T): ParameterValueType[T] {
-  if (type === 'toggle')
-    return (param as ParameterMap['toggle']).getValue() as ParameterValueType[T];
-  return (param as ParameterMap['slider']).getValue() as ParameterValueType[T];
+// Every adapted parameter (slider, toggle, comboBox) exposes the same
+// getValue/setValue shape; only the value type differs per kind.
+function readCurrent<T extends ParameterType>(param: Parameter<T>): ParameterValueType[T] {
+  return param.getValue() as ParameterValueType[T];
 }
 
 export function useParameter<T extends ParameterType>(
@@ -16,7 +16,7 @@ export function useParameter<T extends ParameterType>(
 ): [ParameterValueType[T], (value: ParameterValueType[T]) => void] {
   const backend = useAudioBackend();
   const param = backend.getParameterState(identifier, type) as Parameter<T>;
-  const [value, setValue] = useState<ParameterValueType[T]>(() => readCurrent(param, type));
+  const [value, setValue] = useState<ParameterValueType[T]>(() => readCurrent(param));
 
   const updateValue = useCallback(
     (newValue: ParameterValueType[T]) => {
@@ -24,14 +24,9 @@ export function useParameter<T extends ParameterType>(
       if (newValue === value) return;
 
       setValue(newValue);
-
-      if (type === 'toggle') {
-        (param as ParameterMap['toggle']).setValue(newValue as ParameterValueType['toggle']);
-      } else {
-        (param as ParameterMap['slider']).setValue(newValue as ParameterValueType['slider']);
-      }
+      (param.setValue as (v: ParameterValueType[T]) => void)(newValue);
     },
-    [param, type, value]
+    [param, value]
   );
 
   useEffect(() => {
@@ -45,11 +40,11 @@ export function useParameter<T extends ParameterType>(
 
     // Close the initial-sync race: the backend's reply to the frontend's
     // startup `requestInitialUpdate` can land before this listener exists (or
-    // be dropped entirely while the page is still loading — frequent on
-    // Windows WebView2), leaving the knob at its default. Re-read whatever
+    // be dropped entirely while the page is still loading, which is frequent
+    // on Windows WebView2), leaving the knob at its default. Re-read whatever
     // state already arrived, then ask the backend to send it again now that
     // we're subscribed.
-    setValue(readCurrent(param, type));
+    setValue(readCurrent(param));
     param.requestInitialUpdate?.();
 
     return () => {

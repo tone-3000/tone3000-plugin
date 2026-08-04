@@ -51,7 +51,8 @@ export interface Tone {
   sizes: string[];
   user: User;
   models: Model[];
-  makes: any[];
+  /** Gear makes from the API; the plugin never reads them. */
+  makes: unknown[];
   tags: Tag[];
 }
 

@@ -16,7 +16,7 @@ Manual install
 --------------
 Copy TONE3000.vst3 to ~/.vst3/, TONE3000.lv2 to ~/.lv2/, TONE3000.clap to
 ~/.clap/ and (optionally) the TONE3000 binary anywhere on your PATH. Install
-only the formats your DAW uses — one is enough.
+only the formats your DAW uses; one is enough.
 
 Runtime dependencies
 --------------------

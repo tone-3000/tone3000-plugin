@@ -58,5 +58,5 @@ private:
   double lastFrequency = 0.0;
   double lastConfidence = 0.0;
   double lastLevelDb = -120.0;
-  juce::int64 lastAnalysisMs = 0;
+  juce::int64 lastAnalysisMs = 0; 
 };

@@ -11,7 +11,7 @@ export interface KnobScale {
   fromDisplay(display: number): number;
   /** Full readout string, units included (e.g. "-3.2 dB"). */
   format(norm: number): string;
-  /** Text-entry prefill (number only, no unit — easier to retype). */
+  /** Text-entry prefill (number only, no unit, which is easier to retype). */
   editText(norm: number): string;
 }
 
@@ -47,7 +47,7 @@ export const percentScale: KnobScale = makeScale(
 /** Main/per-block gain: normalized 0.5 = unity, full range ±24 dB.
     Note: IR blocks read the same ±24 dB on their Out knob, but the DSP bakes
     in an extra -18 dB (IR files are typically peak-normalized to 0 dBFS, far
-    too hot at unity) — see irOffsetDb in Processor.cpp. The knob deliberately
+    too hot at unity); see irOffsetDb in Processor.cpp. The knob deliberately
     shows relative dB (0 at center) to keep it simple. */
 export const gainDbScale = linearScale(-24, 24, 'dB', 1);
 
@@ -60,20 +60,25 @@ export const gateDbScale = linearScale(-100, 0, 'dB', 0);
 /** Faceplate tone stack: parameter range 0.01..10, shown as 0..10. */
 export const toneScale = linearScale(0.01, 10, '', 1);
 
-/** Spread amount (bipolar): center = 0 ms, ends delay L/R by 24 ms. */
-export const spreadMsScale: KnobScale = {
-  toDisplay: (n) => (n - 0.5) * 48,
-  fromDisplay: (d) => 0.5 + d / 48,
-  format: (n) => {
-    const ms = (n - 0.5) * 48;
-    if (Math.abs(ms) < 0.05) return '0 ms';
-    return `${Math.abs(ms).toFixed(1)} ms ${ms < 0 ? 'L' : 'R'}`;
-  },
-  editText: (n) => ((n - 0.5) * 48).toFixed(1),
+/** Bipolar one-sided delay: center = 0 ms, ends reach ±maxMs. Display shows
+    the magnitude plus the delayed side ("15.0 ms R"). */
+const sidedMsScale = (maxMs: number): KnobScale => {
+  const span = 2 * maxMs;
+  return {
+    toDisplay: (n) => (n - 0.5) * span,
+    fromDisplay: (d) => 0.5 + d / span,
+    format: (n) => {
+      const ms = (n - 0.5) * span;
+      if (Math.abs(ms) < 0.05) return '0 ms';
+      return `${Math.abs(ms).toFixed(1)} ms ${ms < 0 ? 'L' : 'R'}`;
+    },
+    editText: (n) => ((n - 0.5) * span).toFixed(1),
+  };
 };
 
-/** Spread jitter: 0..4 ms. */
-export const jitterMsScale = linearScale(0, 4, 'ms', 1);
+/** Offset (bipolar), shared by the mono-mode Spread lag and the stereo-mode
+    corrective delay: center = 0 ms, ends reach 24 ms toward L or R. */
+export const offsetMsScale = sidedMsScale(24);
 
 /**
  * Chain pan halves. The left knob covers normalized 0..0.5 (hard left ..

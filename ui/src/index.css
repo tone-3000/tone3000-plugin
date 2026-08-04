@@ -10,7 +10,7 @@ body {
      accidental text selection or I-beam cursors. Text inputs opt back in. */
   overscroll-behavior: none;
   touch-action: manipulation;
-  user-select: none;
+  user-select: none; /* prevent text selection */
   -webkit-user-select: none;
   cursor: default;
 }
@@ -109,6 +109,25 @@ body.dragging {
   .gallery-tile .tile-chrome {
     opacity: 1;
     pointer-events: auto;
+  }
+}
+
+/* Branch button on a lane's connector gap: hidden until the gap is hovered
+   (CSS hover, like .tile-chrome, so it survives re-renders). Applies to
+   set-branch and clear-branch alike; the resting state is always just
+   the connector lines. */
+.branch-gap .branch-gap-button {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.branch-gap:hover .branch-gap-button {
+  opacity: 1;
+}
+
+/* Touch-only devices can't hover a 24px gap: keep the buttons visible. */
+@media (hover: none) {
+  .branch-gap .branch-gap-button {
+    opacity: 1;
   }
 }
 

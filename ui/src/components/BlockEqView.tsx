@@ -19,15 +19,25 @@ import {
   hasGain,
   yToGain,
 } from './eqShared';
+import { BODY_PADDING } from './chainLayout';
 import { EqSliders } from './EqSliders';
 import { SpectrumBackdrop } from './SpectrumBackdrop';
 import { HELP, bandTypeHelp, helpProps, pinHelp, unpinHelp } from './helpText';
-import { BORDER, MUTED, SUBTLE } from './theme';
+import {
+  ICON_BOX_RADIUS,
+  ICON_SIZE,
+  MUTED,
+  SEGMENTED_TRACK,
+  SUBTLE,
+  TEXT_BOX_HEIGHT,
+  segmentedCellStyle,
+  segmentedGroupStyle,
+} from './theme';
 
 /**
  * 6-band EQ editor shown in the card body while the header EQ toggle is
  * active, with two interchangeable views (chosen via the EQ menu that lives
- * in the card header while the editor is open — see ChainBlock):
+ * in the card header while the editor is open; see ChainBlock):
  *
  * - Graph: the full editor. Grid bleeds edge-to-edge, controls float over
  *   it. Drag dots for freq/gain (vertical drag tunes Q on cut bands),
@@ -51,8 +61,6 @@ import { BORDER, MUTED, SUBTLE } from './theme';
 
 export type EqViewMode = 'graph' | 'sliders';
 
-const OVERLAY_BG = 'rgba(0, 0, 0, 0.72)';
-
 // Controls stay black/white/gray (like the knobs); the only color in the EQ
 // is the brand-gradient spectrum behind everything.
 const CURVE_COLOR = '#8E8E93';
@@ -73,10 +81,19 @@ const CURVE_FREQS = Array.from({ length: CURVE_POINTS }, (_, i) =>
 );
 
 const GRID_FREQS = [50, 100, 200, 500, 1000, 2000, 5000, 10000];
-const GRID_LABELS: Record<number, string> = { 100: '100', 1000: '1k', 10000: '10k' };
+const GRID_LABELS: Record<number, string> = {
+  50: '50',
+  100: '100',
+  200: '200',
+  500: '500',
+  1000: '1k',
+  2000: '2k',
+  5000: '5k',
+  10000: '10k',
+};
 
 /** Readout chip that doubles as text entry: click to type, Enter commits,
-    Escape cancels, blur commits — same conventions as the knobs. The value
+    Escape cancels, blur commits (same conventions as the knobs). The value
     area is a fixed width (sized to the longest possible reading) so the chip
     never resizes while values change or while editing. */
 const EditableChip: React.FC<{
@@ -84,7 +101,7 @@ const EditableChip: React.FC<{
   text: string;
   /** Prefill for the editor (number only, unit-free where possible). */
   editText: string;
-  /** Fixed width of the value area, px — the widest reading the chip shows. */
+  /** Fixed width of the value area in px: the widest reading the chip shows. */
   valueWidth: number;
   onCommit: (raw: string) => void;
   disabled?: boolean;
@@ -115,7 +132,7 @@ const EditableChip: React.FC<{
       }}
       style={{ ...style, cursor: disabled || editing ? undefined : 'text' }}
     >
-      <span style={{ fontSize: '11px', color: SUBTLE }}>{label}</span>
+      <span style={{ fontSize: '12px', fontFamily: 'monospace', color: SUBTLE }}>{label}</span>
       {editing ? (
         <input
           ref={inputRef}
@@ -135,6 +152,7 @@ const EditableChip: React.FC<{
             border: 'none',
             color: '#ffffff',
             fontSize: '12px',
+            fontFamily: 'monospace',
             textAlign: 'left',
             outline: 'none',
             padding: 0,
@@ -145,6 +163,7 @@ const EditableChip: React.FC<{
           style={{
             width: `${valueWidth}px`,
             fontSize: '12px',
+            fontFamily: 'monospace',
             color: '#ffffff',
             textAlign: 'left',
             whiteSpace: 'nowrap',
@@ -169,7 +188,7 @@ const parseFreqInput = (raw: string): number | null => {
 interface BlockEqViewProps {
   blockId: string;
   bands: EqBand[];
-  /** EQ power state — a bypassed EQ renders its curve/dots dimmed. */
+  /** EQ power state; a bypassed EQ renders its curve/dots dimmed. */
   eqEnabled: boolean;
   sampleRate: number;
   /** Which editor to show; owned by ChainBlock (the header EQ menu). */
@@ -276,7 +295,7 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
         const gainDb = clamp(band.gainDb + dGain, -EQ_MAX_ABS_GAIN_DB, EQ_MAX_ABS_GAIN_DB);
         updateBand(index, { freqHz, gainDb });
       } else {
-        // Cuts have no gain — vertical drag tunes Q instead (up = tighter).
+        // Cuts have no gain, so vertical drag tunes Q instead (up = tighter).
         const q = clamp(band.q * Math.exp(-dY * 0.02), EQ_MIN_Q, EQ_MAX_Q);
         updateBand(index, { freqHz, q });
       }
@@ -380,11 +399,11 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
-    height: '28px',
-    padding: '0 10px',
-    borderRadius: '8px',
-    border: BORDER,
-    backgroundColor: OVERLAY_BG,
+    height: `${TEXT_BOX_HEIGHT}px`,
+    padding: '0 4px',
+    borderRadius: ICON_BOX_RADIUS,
+    border: 'none',
+    backgroundColor: SEGMENTED_TRACK,
     boxSizing: 'border-box',
     whiteSpace: 'nowrap',
   };
@@ -399,10 +418,10 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
         backgroundColor: '#000000',
       }}
     >
-      {/* Grid: bleeds to the card body edges, everything else floats on top */}
+      {/* Spectrum/grid bleed edge-to-edge; floating chrome + sliders inset. */}
       {view === 'sliders' ? (
         <>
-          {/* Spectrum bleeds edge-to-edge behind the sliders too */}
+          {/* Spectrum bleeds behind the inset faders. */}
           <svg
             width="100%"
             height="100%"
@@ -443,7 +462,12 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
                   strokeWidth={1}
                 />
                 {GRID_LABELS[f] && (
-                  <text x={x + 4} y={GRAPH_H - 5} fill="rgba(235, 235, 245, 0.35)" fontSize={9}>
+                  <text
+                    x={x + 4}
+                    y={GRAPH_H - BODY_PADDING}
+                    fill="rgba(235, 235, 245, 0.35)"
+                    fontSize={9}
+                  >
                     {GRID_LABELS[f]}
                   </text>
                 )}
@@ -517,14 +541,14 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
         </svg>
       )}
 
-      {/* Floating: band readout (top-left, graph view only). The grid bleeds
-          edge-to-edge; floating controls keep the card's 16px bounds. */}
+      {/* Floating: band readout (top-left, graph view only). Spectrum/grid
+          bleed edge-to-edge; chrome keeps the card's BODY_PADDING gutters. */}
       {view === 'graph' && (
         <div
           style={{
             position: 'absolute',
-            top: '16px',
-            left: '16px',
+            top: `${BODY_PADDING}px`,
+            left: `${BODY_PADDING}px`,
             fontSize: '11px',
             color: MUTED,
             pointerEvents: 'none',
@@ -537,32 +561,25 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
         </div>
       )}
 
-      {/* Floating: type selector + selected band readouts (bottom-left, graph view only) */}
+      {/* Floating: type selector + selected band readouts (bottom-left, graph
+          view only). Nudged 12px above the BODY_PADDING floor so the chips
+          clear the Hz axis labels. */}
       {view === 'graph' && (
         <div
           style={{
             position: 'absolute',
-            bottom: '16px',
-            left: '16px',
+            bottom: `${BODY_PADDING + 12}px`,
+            left: `${BODY_PADDING}px`,
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
           }}
         >
           {/* Curve type: outer bands choose shelf vs pass; bells show their
-            single (active) option so the selected shape is always visible. */}
-          <div
-            style={{
-              display: 'flex',
-              height: '28px',
-              borderRadius: '8px',
-              border: BORDER,
-              overflow: 'hidden',
-              backgroundColor: OVERLAY_BG,
-              flexShrink: 0,
-            }}
-          >
-            {typeOptions.map((type, i) => {
+            single (active) option so the selected shape is always visible.
+            Same track language as LITE/FULL: fill + white/grey icons. */}
+          <div style={segmentedGroupStyle()}>
+            {typeOptions.map((type) => {
               const active = selectedBand?.type === type;
               return (
                 <button
@@ -570,23 +587,21 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
                   onClick={() => handleTypeChange(type)}
                   {...helpProps(bandTypeHelp(BAND_TYPE_LABELS[type]))}
                   style={{
-                    width: '32px',
-                    height: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    border: 'none',
-                    borderLeft: i > 0 ? BORDER : 'none',
+                    ...segmentedCellStyle(true),
                     cursor: typeOptions.length > 1 ? 'pointer' : 'default',
-                    backgroundColor: active ? 'rgba(235, 235, 245, 0.16)' : 'transparent',
-                    padding: 0,
+                    color: active ? '#ffffff' : MUTED,
                   }}
                 >
-                  <svg width={16} height={14} viewBox="0 0 16 14">
+                  <svg
+                    width={ICON_SIZE}
+                    height={ICON_SIZE}
+                    viewBox="0 0 16 14"
+                    style={{ display: 'block', flexShrink: 0 }}
+                  >
                     <path
                       d={TYPE_GLYPHS[type]}
                       fill="none"
-                      stroke={active ? '#FFFFFF' : MUTED}
+                      stroke="currentColor"
                       strokeWidth={1.6}
                       strokeLinecap="round"
                     />

@@ -11,7 +11,7 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
  * Delete the webview's tone3000.com session state (cookies, site storage).
  *
  * Logout in the UI clears the tokens it holds, but the OAuth flows ride on
- * the site session inside the webview — with the cookie still present the
+ * the site session inside the webview; with the cookie still present the
  * next authorize redirect silently re-issues a code without ever showing a
  * login screen. Platform-specific implementations (WebViewCookies.mm / .cpp).
  */
@@ -23,7 +23,7 @@ void clearAuthCookies();
  *
  * WKWebView's hover states and cursor changes ride on mouseMoved: NSEvents,
  * which AppKit only delivers when the window opts in. JUCE's own windows do
- * (Standalone works out of the box), but most DAW plugin windows don't —
+ * (Standalone works out of the box), but most DAW plugin windows don't,
  * killing :hover and cursor feedback in the web UI while clicks keep working.
  * Takes the editor's NSView* (peer native handle); implemented in
  * WindowMouseEvents.mm.
@@ -38,7 +38,7 @@ void enableHostWindowMouseMovedEvents(void* nsViewPtr);
  * injected into every page this view loads, so navigation is restricted to
  * origins we trust: the embedded resource provider, the Vite dev server, and
  * tone3000.com (the OAuth Select flow navigates the view there by design).
- * Anything else — a stray link, a dropped file, a window.open — is blocked
+ * Anything else (a stray link, a dropped file, a window.open) is blocked
  * in-view and handed to the system browser instead.
  */
 class GuardedWebView : public juce::WebBrowserComponent {

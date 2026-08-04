@@ -16,7 +16,10 @@ interface BiquadCoeffs {
 }
 
 function computeCoeffs(band: EqBand, sampleRate: number): BiquadCoeffs {
-  const freq = Math.min(Math.max(band.freqHz, EQ_MIN_FREQ_HZ), Math.min(EQ_MAX_FREQ_HZ, sampleRate * 0.49));
+  const freq = Math.min(
+    Math.max(band.freqHz, EQ_MIN_FREQ_HZ),
+    Math.min(EQ_MAX_FREQ_HZ, sampleRate * 0.49)
+  );
   const A = Math.pow(10, band.gainDb / 40);
   const omega = (2 * Math.PI * freq) / sampleRate;
   const sn = Math.sin(omega);
@@ -83,7 +86,11 @@ function biquadMagnitudeDb(c: BiquadCoeffs, freqHz: number, sampleRate: number):
   const cosW = Math.cos(omega);
   const cos2W = Math.cos(2 * omega);
   const num =
-    c.b0 * c.b0 + c.b1 * c.b1 + c.b2 * c.b2 + 2 * (c.b0 * c.b1 + c.b1 * c.b2) * cosW + 2 * c.b0 * c.b2 * cos2W;
+    c.b0 * c.b0 +
+    c.b1 * c.b1 +
+    c.b2 * c.b2 +
+    2 * (c.b0 * c.b1 + c.b1 * c.b2) * cosW +
+    2 * c.b0 * c.b2 * cos2W;
   const den = 1 + c.a1 * c.a1 + c.a2 * c.a2 + 2 * (c.a1 + c.a1 * c.a2) * cosW + 2 * c.a2 * cos2W;
   const magSq = num / Math.max(den, 1e-24);
   return 10 * Math.log10(Math.max(magSq, 1e-24));
@@ -91,7 +98,7 @@ function biquadMagnitudeDb(c: BiquadCoeffs, freqHz: number, sampleRate: number):
 
 /**
  * Combined EQ magnitude response (dB) at each of `freqsHz`. Inert bands are
- * skipped — matching the audio thread, which doesn't process them either.
+ * skipped, matching the audio thread, which doesn't process them either.
  */
 export function eqResponseDb(bands: EqBand[], sampleRate: number, freqsHz: number[]): number[] {
   const active = bands.filter(isEqBandActive).map((band) => computeCoeffs(band, sampleRate));

@@ -11,8 +11,8 @@ interface OAuthOverlayProps {
 }
 
 /**
- * Busy scrim over the whole plugin while an OAuth redirect is in flight —
- * leaving for tone3000.com or resolving the callback after landing back.
+ * Busy scrim over the whole plugin while an OAuth redirect is in flight:
+ * either leaving for tone3000.com or resolving the callback after landing back.
  * The normal UI keeps rendering underneath (dimmed + blurred, web-style)
  * instead of a blank takeover, so the user comes straight back to the view
  * they'll interact with. Errors surface on the same scrim with a retry.
@@ -20,12 +20,7 @@ interface OAuthOverlayProps {
  * zIndex sits above every takeover (tone browser / settings are 2000) so a
  * redirect kicked off from inside one still dims it.
  */
-export const OAuthOverlay: React.FC<OAuthOverlayProps> = ({
-  phase,
-  error,
-  onRetry,
-  onDismiss,
-}) => {
+export const OAuthOverlay: React.FC<OAuthOverlayProps> = ({ phase, error, onRetry, onDismiss }) => {
   if (phase === 'idle') return null;
 
   return (

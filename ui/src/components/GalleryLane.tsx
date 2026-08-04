@@ -8,12 +8,12 @@ import { panScale } from './knobScale';
 
 const PAN_LEFT_SCALE = panScale('left');
 const PAN_RIGHT_SCALE = panScale('right');
-import { PillIconButton } from './SpreadControls';
+import { ChromeIconButton } from './ChromeIconButton';
 import { HELP, helpProps } from './helpText';
-import { BORDER } from './theme';
+import { BORDER, ICON_BOX_SIZE, ICON_SIZE, KNOB_SIZE_SECONDARY, WHITE } from './theme';
 import { useParameter } from '../hooks/useParameter';
 import { useChainActions } from '../hooks/useChainActions';
-import type { ChainItem } from '../types/chain';
+import type { ChainBranch, ChainItem, ChainSide } from '../types/chain';
 import { isInsertSlot } from '../types/chain';
 /**
  * Lane-level pieces of the chain gallery (see ChainView for the drag
@@ -23,14 +23,14 @@ import { isInsertSlot } from '../types/chain';
 
 export const TILE_SIZE = 224;
 /** Stereo shows two lanes, so its tiles shrink to fit the fixed height. */
-export const STEREO_TILE_SIZE = 176;
-/** Gap between tiles — the visible run of each connector line. */
+export const STEREO_TILE_SIZE = 160;
+/** Gap between tiles: the visible run of each connector line. */
 export const TILE_GAP = 24;
 /** Vertical gap between the two stereo lanes. */
 export const LANE_GAP = 24;
 /** Radius of the ghost rail's PlusCircle glyphs (size 40). */
 const RAIL_CIRCLE_RADIUS = 20;
-/** Gutter inside the scroll area — tiles fade out under it while scrolling. */
+/** Gutter inside the scroll area; tiles fade out under it while scrolling. */
 export const EDGE_FADE_WIDTH = 32;
 
 /** Signal-flow routing lines for an add tile at the given lane position. */
@@ -39,6 +39,112 @@ const addTileRouting = (index: number, count: number): AddTileRouting => {
   if (index === 0) return 'right';
   if (index === count - 1) return 'left';
   return 'both';
+};
+
+// Chain branching (stereo mode)
+// A branch taps one lane's signal on a connector gap and feeds it to the
+// other lane. The affordances live on the gaps between tiles and stay
+// invisible until the gap is hovered (CSS :hover, see index.css) so the
+// resting state is just the connector lines. Hovering a gap reveals a
+// filled white dot that sets (or re-points, when a branch already exists)
+// the branch after the tile to its left; hovering the active tap gap
+// reveals the same dot, which clears the branch on click. The two-lane
+// elbow connector is drawn by ChainView (it spans both lanes).
+
+/** Diameter of the branch dots: half the power-button chrome footprint. */
+export const BRANCH_CIRCLE_SIZE = ICON_BOX_SIZE / 2;
+
+/** X center of the connector gap *before* the tile at `index` (i.e. gap g
+    sits between tiles g-1 and g), in lane-content coordinates. */
+export const gapCenterX = (gapIndex: number, tileSize: number) =>
+  gapIndex * (tileSize + TILE_GAP) - TILE_GAP / 2;
+
+/** Filled white disc; set-branch and clear-branch share the same look. */
+const branchDotStyle: React.CSSProperties = {
+  width: `${BRANCH_CIRCLE_SIZE}px`,
+  height: `${BRANCH_CIRCLE_SIZE}px`,
+  borderRadius: '50%',
+  backgroundColor: WHITE,
+  border: 'none',
+  cursor: 'pointer',
+  padding: 0,
+  boxSizing: 'border-box',
+  flexShrink: 0,
+};
+
+/** Full-gap hover zone wrapping a branch dot: the whole 24px connector
+    run is the hit/hover area, the button itself stays hidden until then. */
+const branchGapStyle = (centerX: number): React.CSSProperties => ({
+  position: 'absolute',
+  left: `${centerX - TILE_GAP / 2}px`,
+  top: 0,
+  bottom: 0,
+  width: `${TILE_GAP}px`,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  pointerEvents: 'auto',
+});
+
+/**
+ * Interactive branch layer over a lane's connector gaps (stereo mode only).
+ * Every gap following a tone block carries a hover-revealed filled dot that
+ * sets (or, while branched, re-points: one move, no clearing first) the
+ * branch to that spot. The one exception is the active tap gap on the trunk
+ * lane, whose dot clears the branch instead.
+ */
+const BranchRail: React.FC<{
+  items: ChainItem[];
+  tileSize: number;
+  side: ChainSide;
+  branch: ChainBranch | null;
+  /** False while a drag is in flight (gap hit targets would fight drops). */
+  interactive: boolean;
+  onSetBranch: (afterBlockId: string) => void;
+  onClearBranch: () => void;
+}> = ({ items, tileSize, side, branch, interactive, onSetBranch, onClearBranch }) => {
+  const isTrunk = branch != null && branch.side === side;
+  const tapIndex = isTrunk ? items.findIndex((i) => i.blockId === branch.afterBlockId) : -1;
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3 }}>
+      {interactive &&
+        items.map((item, index) => {
+          // The tap point is a tone block's output, i.e. the gap after it.
+          if (index === items.length - 1 || isInsertSlot(item)) return null;
+          // The active tap gap carries the clear button below instead.
+          if (isTrunk && index === tapIndex) return null;
+          return (
+            <div
+              key={`${item.blockId}-branch-gap`}
+              className="branch-gap"
+              style={branchGapStyle(gapCenterX(index + 1, tileSize))}
+            >
+              <button
+                type="button"
+                className="branch-gap-button"
+                onClick={() => onSetBranch(item.blockId)}
+                aria-label="Branch from here"
+                {...helpProps(HELP.branchGap)}
+                style={branchDotStyle}
+              />
+            </div>
+          );
+        })}
+      {isTrunk && tapIndex !== -1 && (
+        <div className="branch-gap" style={branchGapStyle(gapCenterX(tapIndex + 1, tileSize))}>
+          <button
+            type="button"
+            className="branch-gap-button"
+            onClick={onClearBranch}
+            aria-label="Make chains independent"
+            {...helpProps(HELP.branchJunction)}
+            style={branchDotStyle}
+          />
+        </div>
+      )}
+    </div>
+  );
 };
 
 /**
@@ -91,19 +197,57 @@ const GhostRail: React.FC<{ slots: number; tileSize: number }> = ({ slots, tileS
   </div>
 );
 
-/** One lane of tiles over its ghost rail (no scroll of its own — both lanes
+/** One lane of tiles over its ghost rail (no scroll of its own; both lanes
     share the outer scroll area). Native keeps every lane at its minimum slot
-    layout (5 tiles, always ≥1 insert), so each item here is a real block —
-    insert slots included — and every tile is reorderable. */
+    layout (5 tiles, always ≥1 insert), so each item here is a real block,
+    insert slots included, and every tile is reorderable. */
 export const GalleryLane: React.FC<{
   items: ChainItem[];
   tileSize: number;
+  /** Stereo lanes use the 3×3 grip; mono uses the horizontal grip. */
+  stereo?: boolean;
   onOpen: (blockId: string) => void;
   /** Open the tone browser targeting the clicked insert slot. */
   onAdd: (insertBlockId: string) => void;
-}> = ({ items, tileSize, onOpen, onAdd }) => (
+  /** Paste the copied block into the insert slot at this lane index; null
+      while there's nothing valid to paste (insert action sheets show Paste
+      disabled). */
+  onPasteBlock?: ((index: number) => void) | null;
+  /** Which lane this is; keys the branch affordances (stereo only). */
+  side?: ChainSide;
+  /** Active branch (stereo only); drives the junction node on the trunk. */
+  branch?: ChainBranch | null;
+  /** Show the hover branch buttons on the connector gaps (stereo, no drag
+      in flight). */
+  branchInteractive?: boolean;
+  onSetBranch?: (afterBlockId: string) => void;
+  onClearBranch?: () => void;
+}> = ({
+  items,
+  tileSize,
+  stereo = false,
+  onOpen,
+  onAdd,
+  onPasteBlock = null,
+  side = 'left',
+  branch = null,
+  branchInteractive = false,
+  onSetBranch,
+  onClearBranch,
+}) => (
   <div style={{ position: 'relative', width: 'max-content' }}>
     <GhostRail slots={items.length} tileSize={tileSize} />
+    {stereo && (branchInteractive || branch != null) && (
+      <BranchRail
+        items={items}
+        tileSize={tileSize}
+        side={side}
+        branch={branch}
+        interactive={branchInteractive}
+        onSetBranch={onSetBranch ?? (() => {})}
+        onClearBranch={onClearBranch ?? (() => {})}
+      />
+    )}
     <SortableContext
       items={items.map((item) => item.blockId)}
       strategy={horizontalListSortingStrategy}
@@ -124,11 +268,19 @@ export const GalleryLane: React.FC<{
               key={item.blockId}
               id={item.blockId}
               size={tileSize}
+              stereo={stereo}
               routing={addTileRouting(index, items.length)}
               onClick={() => onAdd(item.blockId)}
+              onPaste={onPasteBlock != null ? () => onPasteBlock(index) : null}
             />
           ) : (
-            <GalleryBlock key={item.blockId} block={item} size={tileSize} onOpen={onOpen} />
+            <GalleryBlock
+              key={item.blockId}
+              block={item}
+              size={tileSize}
+              stereo={stereo}
+              onOpen={onOpen}
+            />
           )
         )}
       </div>
@@ -137,10 +289,10 @@ export const GalleryLane: React.FC<{
 );
 
 /**
- * Right rail for stereo: per-lane pan knobs (each centered on its lane), with
+ * Left rail for stereo: per-lane pan knobs (each centered on its lane), with
  * the link toggle and whole-chain swap on the seam between them. Constant-
- * power pan positions (0 = hard left, 1 = hard right): Pan L covers hard
- * left..center on a half track, Pan R center..hard right. Linked (default)
+ * power pan positions (0 = hard left, 1 = hard right): Pan Left covers hard
+ * left..center on a half track, Pan Right center..hard right. Linked (default)
  * mirrors the knobs so width changes stay symmetric.
  */
 export const StereoPanRail: React.FC = () => {
@@ -195,14 +347,15 @@ export const StereoPanRail: React.FC = () => {
       <div style={knobRegion}>
         <div style={spacer} />
         <KnobControl
-          label="Pan L"
+          label="Pan Left"
           value={panLeft}
           onChange={handlePanLeft}
           variant="panLeft"
           min={0}
           max={0.5}
-          size={30}
+          size={KNOB_SIZE_SECONDARY}
           labelSize={10}
+          thumb="secondary"
           scale={PAN_LEFT_SCALE}
           defaultValue={0}
           help={HELP.panLeft}
@@ -216,44 +369,35 @@ export const StereoPanRail: React.FC = () => {
           alignItems: 'center',
           gap: '4px',
           border: BORDER,
-          borderRadius: '8px',
+          borderRadius: '9999px',
           padding: '3px 5px',
         }}
       >
-        <PillIconButton on={linked} help={HELP.panLink} onClick={handleToggleLink} offsetY={0}>
-          <Link size={12} />
-        </PillIconButton>
-        <button
-          onClick={swapChains}
-          {...helpProps(HELP.swapChains)}
-          style={{
-            width: '22px',
-            height: '22px',
-            borderRadius: '6px',
-            border: 'none',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            padding: 0,
-            color: '#ffffff',
-            background: 'transparent',
-          }}
+        <ChromeIconButton
+          tone="link"
+          on={linked}
+          help={HELP.panLink}
+          onClick={handleToggleLink}
+          offsetY={0}
         >
-          <ArrowUpDown size={12} />
-        </button>
+          <Link size={ICON_SIZE} />
+        </ChromeIconButton>
+        <ChromeIconButton help={HELP.swapChains} onClick={swapChains} offsetY={0}>
+          <ArrowUpDown size={ICON_SIZE} />
+        </ChromeIconButton>
       </div>
       <div style={knobRegion}>
         <div style={connector} />
         <KnobControl
-          label="Pan R"
+          label="Pan Right"
           value={panRight}
           onChange={handlePanRight}
           variant="panRight"
           min={0.5}
           max={1}
-          size={30}
+          size={KNOB_SIZE_SECONDARY}
           labelSize={10}
+          thumb="secondary"
           scale={PAN_RIGHT_SCALE}
           defaultValue={1}
           help={HELP.panRight}
@@ -264,7 +408,52 @@ export const StereoPanRail: React.FC = () => {
   );
 };
 
-/** Fade the lanes out under the gutters as they scroll — content slides
+/**
+ * The two-lane elbow of an active branch: a vertical drop from the trunk
+ * lane's tap gap to the branch lane's row, plus the short horizontal stub
+ * into the branch lane's first tile, using the same 1px hairlines as the ghost rail.
+ * Positioned by ChainView inside the lanes column (it spans both lanes);
+ * `x` is the tap gap's center in column coordinates.
+ */
+export const BranchElbow: React.FC<{ x: number; tileSize: number; trunkOnTop: boolean }> = ({
+  x,
+  tileSize,
+  trunkOnTop,
+}) => {
+  const topLaneCenter = tileSize / 2;
+  const bottomLaneCenter = tileSize + LANE_GAP + tileSize / 2;
+  const stubY = trunkOnTop ? bottomLaneCenter : topLaneCenter;
+  const line: React.CSSProperties = {
+    position: 'absolute',
+    backgroundColor: '#ffffff',
+    pointerEvents: 'none',
+    zIndex: 1,
+  };
+  return (
+    <>
+      <div
+        style={{
+          ...line,
+          left: `${x}px`,
+          top: `${topLaneCenter}px`,
+          width: '1px',
+          height: `${bottomLaneCenter - topLaneCenter}px`,
+        }}
+      />
+      <div
+        style={{
+          ...line,
+          left: `${x}px`,
+          top: `${stubY}px`,
+          width: `${TILE_GAP / 2}px`,
+          height: '1px',
+        }}
+      />
+    </>
+  );
+};
+
+/** Fade the lanes out under the gutters as they scroll, so content slides
     behind a smooth ramp to the background instead of hard-clipping. */
 export const EdgeFade: React.FC<{ side: 'left' | 'right' }> = ({ side }) => (
   <div

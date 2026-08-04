@@ -23,6 +23,11 @@ export type MeterId =
   | `block:${string}:in`
   | `block:${string}:out`;
 
+/** Store key for the CPU readout (a %, not a dB level; see useCpuPercent). */
+const CPU_ID = 'cpu';
+/** Store key for the spread correlation (-1..1, not dB; see useCorrelation). */
+const CORRELATION_ID = 'correlation';
+
 export const meterId = {
   /** Per-channel main meter ('input'/'output' alone = max of both channels). */
   main: (type: 'input' | 'output', channel: 'l' | 'r'): MeterId => `${type}:${channel}`,
@@ -36,16 +41,25 @@ const CLIP_DB = 0;
 /** Quantize to 0.5 dB so imperceptible changes don't cause re-renders. */
 const QUANTIZE = 2;
 /**
- * Minimum time between bridge fetches. rAF fires at display refresh (120 Hz on
- * ProMotion), but ~30 Hz is indistinguishable for meter ballistics — this caps
- * bridge traffic without changing perceived smoothness.
+ * Minimum time between bridge fetches. rAF fires at display refresh (120 Hz
+ * on ProMotion), but I cap fetches around 30 Hz: it's indistinguishable for
+ * meter ballistics and quarters the bridge traffic on those displays.
  */
 const MIN_FETCH_INTERVAL_MS = 33;
 
 /**
+ * CPU readout: average samples into the existing ~30 Hz meter poll (no extra
+ * bridge traffic), then publish a whole percent at most this often. Instantaneous
+ * load jumps every callback; without this the digit flickers unreadable.
+ */
+const CPU_UI_INTERVAL_MS = 400;
+/** EMA weight toward each new sample (~0.5 s time-constant at 30 Hz). */
+const CPU_EMA_ALPHA = 0.15;
+
+/**
  * Ids whose clip latches clear together. The main meters' mono and L/R ids
  * are three views of one physical signal (mono = max(L, R)), and which view
- * is on screen changes with stereo mode (e.g. toggling Spread) — so clearing
+ * is on screen changes with stereo mode (e.g. toggling Spread), so clearing
  * a clip on any of them clears all three. A stale latch would otherwise
  * survive on the hidden variant and reappear on the next mode switch.
  * Block meters have no channel variants; they clear individually.
@@ -58,6 +72,13 @@ const clipGroup = (id: string): string[] => {
 
 class MeterStore {
   private levels = new Map<string, number>();
+  /** Spread output correlation (-1..1, 1 when idle), quantized (see below). */
+  private correlation = 1;
+  /** Displayed CPU % (one decimal), published at CPU_UI_INTERVAL_MS after EMA smoothing. */
+  private cpuPercent = 0;
+  private cpuEma = 0;
+  private cpuSeeded = false;
+  private lastCpuPublishMs = 0;
   /** Meter ids that have hit CLIP_DB; latched until clearClip(). */
   private clips = new Set<string>();
   private listeners = new Map<string, Set<() => void>>();
@@ -88,6 +109,10 @@ class MeterStore {
   };
 
   get = (id: string): number => this.levels.get(id) ?? FLOOR_DB;
+
+  getCpu = (): number => this.cpuPercent;
+
+  getCorrelation = (): number => this.correlation;
 
   getClip = (id: string): boolean => this.clips.has(id);
 
@@ -129,6 +154,43 @@ class MeterStore {
       this.update(meterId.blockIn(blockId), levels.in);
       this.update(meterId.blockOut(blockId), levels.out);
     }
+    this.applyCpu(res.cpu);
+    this.applyCorrelation(res.correlation);
+  }
+
+  /** Quantize to 0.05: the meter is a threshold indicator, so finer steps
+      would only cause invisible re-renders. Missing/invalid reads as 1
+      (idle = trivially mono-safe). */
+  private applyCorrelation(raw: number | undefined) {
+    const finite = typeof raw === 'number' && Number.isFinite(raw);
+    const value = finite ? Math.round(Math.max(-1, Math.min(1, raw)) * 20) / 20 : 1;
+    if (this.correlation === value) return;
+    this.correlation = value;
+    this.listeners.get(CORRELATION_ID)?.forEach((callback) => callback());
+  }
+
+  /**
+   * Smooth into an EMA every poll, publish a rounded % on a slow cadence.
+   * No extra native calls; `cpu` already rides getMeterLevels.
+   */
+  private applyCpu(raw: number | undefined) {
+    const sample =
+      typeof raw === 'number' && Number.isFinite(raw) ? Math.max(0, raw) : 0;
+    if (!this.cpuSeeded) {
+      this.cpuEma = sample;
+      this.cpuSeeded = true;
+    } else {
+      this.cpuEma += (sample - this.cpuEma) * CPU_EMA_ALPHA;
+    }
+
+    const now = performance.now();
+    if (now - this.lastCpuPublishMs < CPU_UI_INTERVAL_MS) return;
+    this.lastCpuPublishMs = now;
+
+    const percent = Math.round(this.cpuEma * 1000) / 10;
+    if (this.cpuPercent === percent) return;
+    this.cpuPercent = percent;
+    this.listeners.get(CPU_ID)?.forEach((callback) => callback());
   }
 
   /** Fan an [L, R] pair out to :l / :r ids plus the combined mono id. */
@@ -148,9 +210,7 @@ class MeterStore {
     const clipped = finite && raw >= CLIP_DB && !this.clips.has(id);
     if (clipped) this.clips.add(id);
 
-    const value = finite
-      ? Math.round(Math.max(FLOOR_DB, raw) * QUANTIZE) / QUANTIZE
-      : FLOOR_DB;
+    const value = finite ? Math.round(Math.max(FLOOR_DB, raw) * QUANTIZE) / QUANTIZE : FLOOR_DB;
     if (this.levels.get(id) === value && !clipped) return;
     this.levels.set(id, value);
     this.listeners.get(id)?.forEach((callback) => callback());
@@ -181,6 +241,31 @@ export function useMeter(id: MeterId | string): number {
   const getSnapshot = useCallback(() => store.get(id), [store, id]);
 
   return useSyncExternalStore(subscribe, getSnapshot);
+}
+
+/** Spread output correlation (-1..1, 1 when idle), for the mono-safety
+    indicator in the spread group. Rides the shared meter poll. */
+export function useCorrelation(): number {
+  const store = useContext(MeterStoreContext);
+  if (!store) throw new Error('useCorrelation must be used within a MetersProvider');
+
+  const subscribe = useCallback(
+    (callback: () => void) => store.subscribe(CORRELATION_ID, callback),
+    [store]
+  );
+  return useSyncExternalStore(subscribe, store.getCorrelation);
+}
+
+/** Audio-callback load as a percent (0-100+, one decimal), for the hint-bar readout. */
+export function useCpuPercent(): number {
+  const store = useContext(MeterStoreContext);
+  if (!store) throw new Error('useCpuPercent must be used within a MetersProvider');
+
+  const subscribe = useCallback(
+    (callback: () => void) => store.subscribe(CPU_ID, callback),
+    [store]
+  );
+  return useSyncExternalStore(subscribe, store.getCpu);
 }
 
 /**

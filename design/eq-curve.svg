@@ -1,0 +1,5 @@
+<svg width="16" height="14" viewBox="0 0 16 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- EQ view switcher: curve glyph (ChainBlock EqCurveIcon) -->
+  <path d="M1 11 C5 11 5.5 3 8 3 C10.5 3 11 11 15 11" stroke="black" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+  <circle cx="8" cy="3" r="1.8" fill="black"/>
+</svg>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Secondary · bipolar: thumb at noon, no fill. -->
+  <!-- Figma-safe: flat tree, unique ids, no nested svg / gradientTransform / rotate groups -->
+  <defs>
+<linearGradient id="knobsecondarybipolarnoon-face1" x1="100.00" y1="17.25" x2="100.00" y2="182.75" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#000000"/>
+</linearGradient>
+<linearGradient id="knobsecondarybipolarnoon-face2" x1="100.00" y1="20.95" x2="100.00" y2="179.05" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#505050"/>
+  <stop offset="1" stop-color="#000000"/>
+</linearGradient>
+<linearGradient id="knobsecondarybipolarnoon-bevel" x1="100.00" y1="34.60" x2="100.00" y2="63.40" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#040404"/>
+  <stop offset="0.2" stop-color="#1B1B1B"/>
+  <stop offset="0.5" stop-color="#626262"/>
+  <stop offset="0.78" stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#A9A9A9"/>
+</linearGradient>
+  </defs>
+<circle cx="100.00" cy="100.00" r="100" fill="#1D1D1D"/>
+<circle cx="100.00" cy="100.00" r="98.4" fill="#000000"/>
+
+<circle cx="100.00" cy="100.00" r="86.4" fill="#1D1D1D"/>
+<circle cx="100.00" cy="100.00" r="84.9" fill="#A3A3A3"/>
+<circle cx="100.00" cy="100.00" r="82.75" fill="url(#knobsecondarybipolarnoon-face1)"/>
+<circle cx="100.00" cy="100.00" r="79.05" fill="url(#knobsecondarybipolarnoon-face2)"/>
+<circle cx="100.00" cy="49.00" r="14.4" fill="url(#knobsecondarybipolarnoon-bevel)"/>
+<circle cx="100.00" cy="49.00" r="10.25" fill="#000000"/>
+</svg>

@@ -1,5 +1,7 @@
 # TONE3000 Plugin - Multi-platform build
-# Builds VST3, Standalone, AU (macOS) on macOS (universal arm64+x86_64), Windows, and Linux
+# Builds VST3, Standalone, AU (macOS) on macOS, Windows, and Linux. macOS is
+# universal via per-arch builds + lipo, since dual -arch clang invocations are
+# not sccache-cacheable.
 
 name: Build Plugin
 
@@ -20,11 +22,15 @@ jobs:
     environment: builds
     env:
       VITE_T3K_PUBLISHABLE_KEY: ${{ vars.VITE_T3K_PUBLISHABLE_KEY }}
+      # Compiler cache (see "Setup sccache" step below); persists compiled
+      # object results across runs via the GitHub Actions cache backend.
+      SCCACHE_GHA_ENABLED: "true"
     strategy:
       fail-fast: false
       matrix:
         include:
-          # macOS universal (arm64 + x86_64 in one binary)
+          # macOS universal: build arm64 + x86_64 separately (sccache-friendly),
+          # then lipo into one artefact tree before packaging.
           - name: macOS Universal
             runs-on: macos-14
             os: macos
@@ -50,6 +56,29 @@ jobs:
       - name: Read version
         shell: bash
         run: echo "T3K_VERSION=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_ENV"
+
+      # Compiler cache: reuses object-file compilation results from previous
+      # runs (keyed on compiler input, not source paths), so unchanged JUCE /
+      # NAM / plugin translation units are skipped on the next run instead of
+      # being recompiled from scratch. Uses the GitHub Actions cache backend
+      # (SCCACHE_GHA_ENABLED above), no manual actions/cache wiring needed.
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
+
+      # CPM (see cmake/cpm.cmake) clones JUCE / GoogleTest / clap-juce-extensions
+      # into libs/ on first configure. Caching that directory means CI skips
+      # the git clone (and, for JUCE, the CMakeLists.txt source patches re-run
+      # but no-op immediately since they're guarded by idempotency markers)
+      # whenever the pinned versions haven't changed. Key includes matrix.os
+      # since restored paths/line-endings/permissions shouldn't cross platforms.
+      - name: Cache CPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            libs/juce
+            libs/googletest
+            libs/clap-juce-extensions
+          key: cpm-deps-${{ matrix.os }}-${{ hashFiles('CMakeLists.txt', 'plugin/CMakeLists.txt') }}
 
       - name: Install Linux dependencies
         if: matrix.os == 'linux'
@@ -78,20 +107,38 @@ jobs:
           cache: "npm"
           cache-dependency-path: ui/package-lock.json
 
-      # CMake configure first to fetch JUCE (CPM) - required before npm install (UI depends on libs/juce)
-      - name: Configure CMake (macOS)
+      # CMake configure first to fetch JUCE (CPM), required before npm install
+      # (UI depends on libs/juce). Use the arm64 build dir; x86_64 is configured
+      # after the UI build. Single-arch (not "arm64;x86_64") so sccache can hash
+      # each compile; see the lipo step below.
+      - name: Configure CMake (macOS arm64 bootstrap)
         if: matrix.os == 'macos'
         run: |
-          cmake -B build -S . \
+          cmake -B build-arm64 -S . \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
-            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
-            -DBUILD_AAX=OFF
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DBUILD_AAX=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_OBJC_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_OBJCXX_COMPILER_LAUNCHER=sccache
 
       - name: Install WebView2 (Windows)
         if: matrix.os == 'windows'
         run: pwsh -File script/install-webview2.ps1
 
-      # Steinberg's ASIO SDK (headers only) — required for the ASIO driver
+      # CMAKE_<LANG>_COMPILER_LAUNCHER (how sccache hooks in, see below) is only
+      # honored by the Makefile/Ninja generators, not the default Visual Studio
+      # (MSBuild) generator, so Windows configure steps below pass -G Ninja.
+      # Ninja doesn't auto-detect the MSVC toolchain the way the VS generator
+      # does, so set up the cl.exe/link.exe dev environment explicitly first.
+      - name: Setup MSVC dev environment (Windows)
+        if: matrix.os == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      # Steinberg's ASIO SDK (headers only), required for the ASIO driver
       # option in the standalone's audio settings. Not redistributable, so it
       # is fetched at build time rather than vendored in the repo.
       - name: Download ASIO SDK (Windows)
@@ -102,7 +149,7 @@ jobs:
           Expand-Archive asiosdk.zip -DestinationPath "$env:RUNNER_TEMP\asiosdk"
           $sdk = (Get-ChildItem "$env:RUNNER_TEMP\asiosdk" -Directory | Select-Object -First 1).FullName
           if (-not (Test-Path "$sdk\common\iasiodrv.h")) {
-            Write-Error "ASIO SDK layout unexpected — iasiodrv.h not found under $sdk"
+            Write-Error "ASIO SDK layout unexpected: iasiodrv.h not found under $sdk"
             exit 1
           }
           $sdk = $sdk -replace '\\', '/'   # forward slashes so CMake doesn't eat backslash escapes
@@ -113,10 +160,12 @@ jobs:
         if: matrix.os == 'windows'
         shell: bash
         run: |
-          cmake -B build -S . \
+          cmake -B build -S . -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DBUILD_AAX=OFF \
-            -DASIO_SDK_PATH="$ASIO_SDK_PATH"
+            -DASIO_SDK_PATH="$ASIO_SDK_PATH" \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
       - name: Configure CMake (Linux)
         if: matrix.os == 'linux'
@@ -124,7 +173,9 @@ jobs:
           cmake -B build -S . \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DCMAKE_TOOLCHAIN_FILE=cmake/linux-toolchain.cmake \
-            -DBUILD_AAX=OFF
+            -DBUILD_AAX=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
       - name: Build UI
         run: |
@@ -133,22 +184,46 @@ jobs:
           npm run build
           cd ..
 
-      - name: Reconfigure CMake (macOS)
+      - name: Lint UI (Linux)
+        if: matrix.os == 'linux'
+        run: |
+          cd ui
+          npm run lint
+
+      - name: Reconfigure CMake (macOS arm64)
         if: matrix.os == 'macos'
         run: |
-          cmake -B build -S . \
+          cmake -B build-arm64 -S . \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
-            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
-            -DBUILD_AAX=OFF
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DBUILD_AAX=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_OBJC_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_OBJCXX_COMPILER_LAUNCHER=sccache
+
+      - name: Configure CMake (macOS x86_64)
+        if: matrix.os == 'macos'
+        run: |
+          cmake -B build-x86_64 -S . \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DBUILD_AAX=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_OBJC_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_OBJCXX_COMPILER_LAUNCHER=sccache
 
       - name: Reconfigure CMake (Windows)
         if: matrix.os == 'windows'
         shell: bash
         run: |
-          cmake -B build -S . \
+          cmake -B build -S . -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DBUILD_AAX=OFF \
-            -DASIO_SDK_PATH="$ASIO_SDK_PATH"
+            -DASIO_SDK_PATH="$ASIO_SDK_PATH" \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
       - name: Reconfigure CMake (Linux)
         if: matrix.os == 'linux'
@@ -156,17 +231,49 @@ jobs:
           cmake -B build -S . \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DCMAKE_TOOLCHAIN_FILE=cmake/linux-toolchain.cmake \
-            -DBUILD_AAX=OFF
+            -DBUILD_AAX=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
       - name: Build plugin (Linux)
         if: matrix.os == 'linux'
         run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel 2
 
-      - name: Build plugin (macOS, Windows)
-        if: matrix.os != 'linux'
+      - name: Build plugin (Windows)
+        if: matrix.os == 'windows'
         run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
 
-      # ── macOS: import Developer ID certs into a temp keychain ───────────────
+      # Sequential per-arch builds (shared runner RAM). Each arch is a distinct
+      # sccache key; cold cache pays ~2× compile once, warm cache hits both.
+      - name: Build plugin (macOS arm64)
+        if: matrix.os == 'macos'
+        run: cmake --build build-arm64 --config ${{ env.BUILD_TYPE }} --parallel
+
+      - name: Build plugin (macOS x86_64)
+        if: matrix.os == 'macos'
+        run: cmake --build build-x86_64 --config ${{ env.BUILD_TYPE }} --parallel
+
+      # The default build already compiles DspTests (registered with ctest),
+      # so running the suite costs seconds. macOS runs the native arm64 build.
+      - name: Run DSP tests (Linux / Windows)
+        if: matrix.os != 'macos'
+        run: ctest --test-dir build/test --output-on-failure
+
+      - name: Run DSP tests (macOS)
+        if: matrix.os == 'macos'
+        run: ctest --test-dir build-arm64/test --output-on-failure
+
+      # Merge single-arch artefact trees into the path create-pkg.sh expects.
+      - name: Lipo universal artefacts (macOS)
+        if: matrix.os == 'macos'
+        run: |
+          chmod +x script/lipo-macos-artefacts.sh
+          ./script/lipo-macos-artefacts.sh \
+            "build-arm64/plugin/TONE3000_artefacts/${{ env.BUILD_TYPE }}" \
+            "build-x86_64/plugin/TONE3000_artefacts/${{ env.BUILD_TYPE }}" \
+            "build/plugin/TONE3000_artefacts/${{ env.BUILD_TYPE }}"
+
+      # macOS: import Developer ID certs into a temp keychain.
       # Bails out gracefully if signing secrets are not configured (e.g. PRs
       # from forks). In that case create-pkg.sh falls back to ad-hoc signing.
       #
@@ -184,7 +291,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${MACOS_CERTIFICATE_APP:-}" || -z "${MACOS_CERTIFICATE_PKG:-}" ]]; then
-            echo "Signing secrets not configured — build will be ad-hoc signed."
+            echo "Signing secrets not configured; build will be ad-hoc signed."
             exit 0
           fi
 
@@ -239,7 +346,7 @@ jobs:
           SRC=$(ls build/TONE3000-v*.pkg | head -n 1)
           DEST="build/$(basename "${SRC%.pkg}")-macos-universal.pkg"
           mv "$SRC" "$DEST"
-          echo "Renamed installer → $DEST"
+          echo "Renamed installer to $DEST"
 
       - name: Clean up macOS signing keychain
         if: matrix.os == 'macos' && always()
@@ -259,9 +366,8 @@ jobs:
           path: build/TONE3000-v*-macos-universal.pkg
           if-no-files-found: error
 
-      # ── Windows: build a setup.exe with Inno Setup ───────────────────────────
-      # Inno Setup ships on current windows-latest images; install via choco if
-      # a future image drops it again.
+      # Windows: build a setup.exe with Inno Setup. It ships on current
+      # windows-latest images; install via choco if a future image drops it.
       - name: Build installer (Windows)
         if: matrix.os == 'windows'
         shell: pwsh
@@ -284,7 +390,7 @@ jobs:
           path: build/TONE3000-v*-setup.exe
           if-no-files-found: error
 
-      # ── Linux: tarball with install script (the usual convention on Linux) ──
+      # Linux: tarball with install script (the usual convention on Linux).
       - name: Package tarball (Linux)
         if: matrix.os == 'linux'
         run: |

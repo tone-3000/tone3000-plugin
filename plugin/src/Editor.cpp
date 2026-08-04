@@ -3,9 +3,29 @@
 
 void TONE3000Editor::parentHierarchyChanged() {
   if (auto* window = dynamic_cast<juce::DocumentWindow*>(getTopLevelComponent())) {
+    // Snapshot our own size before flipping the title bar style: JUCE
+    // immediately relayouts the title-bar/content split within the window's
+    // current bounds, which can stretch or shrink us before our own
+    // aspect-ratio constrainer catches up. A hardcoded title-bar-height
+    // guess doesn't hold on every OS/version and can leave us a few px off.
+    // Re-asserting our exact pre-toggle size instead lets JUCE's own resize
+    // listener (StandaloneFilterWindow::MainContentComponent, which already
+    // measures the real native frame) grow the *window* to exactly contain
+    // us again, with no guesswork.
+    const int w = getWidth();
+    const int h = getHeight();
+    // Whatever resize this dance causes along the way is us correcting
+    // ourselves, not the user choosing a size; don't let it clobber the
+    // persisted scale. Cleared next tick so a deferred cascade from the
+    // relayout is covered too, not just a same-tick one.
+    restoringSize = true;
     window->setUsingNativeTitleBar(true);
-    window->centreWithSize(1024, 628);  // Add extra height for title bar
-    setSize(1024, 600);
+    setSize(w, h);
+    juce::Component::SafePointer<TONE3000Editor> self(this);
+    juce::MessageManager::callAsync([self] {
+      if (self != nullptr)
+        self->restoringSize = false;
+    });
   }
 
 #if JUCE_MAC
@@ -21,7 +41,7 @@ void TONE3000Editor::parentHierarchyChanged() {
   // component (i.e. the NSWindow on macOS exists and is on-screen). In a DAW
   // the editor is parented to the host's window before this is called, so the
   // load happens immediately. In Standalone we have to wait until JUCE
-  // finishes wiring up the StandaloneFilterWindow — otherwise the WKWebView's
+  // finishes wiring up the StandaloneFilterWindow, otherwise the WKWebView's
   // NSView attaches to no NSWindow and renders blank on some Macs.
   loadMainUrlIfNeeded();
 }
@@ -42,12 +62,64 @@ TONE3000Editor::TONE3000Editor(TONE3000Processor& p) : AudioProcessorEditor(&p),
   mainWebView->setOpaque(true);
   addAndMakeVisible(*mainWebView);
 
+  // Bespoke audio settings (standalone only): the controller listens to the
+  // device manager and pushes changes to the UI, which re-pulls state.
+  if (StandaloneAudioSettings::isAvailable())
+    audioSettings = std::make_unique<StandaloneAudioSettings>(processor, [this] {
+      if (mainWebView != nullptr)
+        mainWebView->emitEventIfBrowserIsVisible("audioDeviceChanged", juce::var{});
+    });
+
+  // MIDI map push (all builds): learn commits, removals and state restores
+  // land as one event so the settings UI re-pulls instead of polling.
+  processor.midiMapper.onChanged = [this] {
+    if (mainWebView != nullptr)
+      mainWebView->emitEventIfBrowserIsVisible("midiMapChanged", juce::var{});
+  };
+
   // Chain-change push (see Editor.h). 20 Hz keeps mutation→UI latency at
   // ~50 ms worst case for the cost of one atomic read per tick.
   lastPushedRevision = processor.getCurrentChainRevision();
   startTimerHz(20);
 
-  setSize(1024, 600);
+  // Grow-only resizing: corner/edge drags scale the whole window between the
+  // 1024x578 design size and kMaxScale times it, aspect-locked. Restore the
+  // session's scale (persisted via the processor; see ProcessorState.cpp).
+  setResizable(true, true);
+  // Read the persisted scale before touching the constraints: installing the
+  // resize limits already snaps the editor to the 1x minimum, and resized()
+  // writes that back through processor.editorScale.
+  const double savedScale = juce::jlimit(1.0, kMaxScale, processor.editorScale.load());
+  updateResizeConstraints();
+  applyScaledSize(savedScale);
+}
+
+void TONE3000Editor::applyScaledSize(double scale) {
+  setSize(juce::roundToInt(kWidth * scale), juce::roundToInt(totalHeight() * scale));
+}
+
+void TONE3000Editor::updateResizeConstraints() {
+  setResizeLimits(kWidth, totalHeight(), juce::roundToInt(kWidth * kMaxScale),
+                  juce::roundToInt(totalHeight() * kMaxScale));
+  // The ratio tracks the chrome strips, so corner drags at any extra-height
+  // state preserve the current layout exactly.
+  getConstrainer()->setFixedAspectRatio(static_cast<double>(kWidth) / totalHeight());
+}
+
+void TONE3000Editor::setExtraContentHeight(int pixels) {
+  // setSize() reaches the host as a resize request through the plugin
+  // wrapper (resizeView in VST3), so this works in DAWs too; a host that
+  // refuses keeps the old size and the webview scrolls. Standalone resizes
+  // its own window directly.
+  // The UI reports design-space pixels; the window change is scaled.
+  // Generous ceiling: banner (~44) + hint bar (~36) with headroom to spare.
+  const int clamped = juce::jlimit(0, 160, pixels);
+  if (clamped == extraContentHeight)
+    return;
+  const double scale = currentScale();
+  extraContentHeight = clamped;
+  updateResizeConstraints();
+  applyScaledSize(scale);
 }
 
 void TONE3000Editor::timerCallback() {
@@ -61,6 +133,13 @@ void TONE3000Editor::timerCallback() {
 
 TONE3000Editor::~TONE3000Editor() {
   stopTimer();
+  // The mapper outlives the editor (it's the processor's); detach our webview
+  // hook before the webview dies.
+  processor.midiMapper.onChanged = nullptr;
+  // Tear down the audio settings bridge first: it holds a device-manager
+  // change listener (and possibly the input meter tap) that must not outlive
+  // the webview it reports to.
+  audioSettings.reset();
   // The tuner and block spectrum analyzers are only useful while the UI is
   // visible; stop feeding them when the editor goes away (the webview can't
   // send the disables itself on teardown).
@@ -98,13 +177,20 @@ void TONE3000Editor::loadMainUrlIfNeeded() {
   mainUrl = juce::WebBrowserComponent::getResourceProviderRoot() + "index.html";
 #endif
   // Failed navigations (OAuth redirect with tone3000.com unreachable)
-  // recover by coming back here — see GuardedWebView::pageLoadHadNetworkError.
+  // recover by coming back here; see GuardedWebView::pageLoadHadNetworkError.
   mainWebView->setRecoveryUrl(mainUrl);
   mainWebView->goToURL(mainUrl);
 }
 
 void TONE3000Editor::resized() {
-  mainWebView->setBounds(getLocalBounds());
+  // Real pixels only, no transform. The webview handles devicePixelRatio
+  // itself, and the page applies its own CSS zoom from the viewport width.
+  if (mainWebView != nullptr)
+    mainWebView->setBounds(getLocalBounds());
+  // Skip persisting while we're correcting our own size rather than
+  // reflecting one the user (or host) actually chose; see restoringSize.
+  if (!restoringSize)
+    processor.editorScale.store(currentScale());
 }
 
 // Get the WebView UI resources from BinaryData

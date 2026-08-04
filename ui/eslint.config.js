@@ -19,5 +19,11 @@ export default tseslint.config([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // Style constants and hooks are deliberately co-located with the
+      // components that use them; HMR falling back to a full page reload
+      // in dev is an acceptable trade for that.
+      'react-refresh/only-export-components': 'off',
+    },
   },
 ])

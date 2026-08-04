@@ -1,12 +1,13 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { LogIn, LogOut, Settings as SettingsIcon } from 'lucide-react';
 import type { User } from '../types/tone';
 import { AvatarImage } from './AvatarFallback';
+import { useDismissable } from '../hooks/useDismissable';
 import { HELP, helpProps } from './helpText';
 import { BORDER, SURFACE_RAISED } from './theme';
 
 /**
- * Account pill for the main header — port of the web navbar's hamburger menu
+ * Account pill for the main header, a port of the web navbar's hamburger menu
  * (`Navlinks.tsx` HamburgerMenu): hamburger + avatar in a rounded-full
  * bordered button, opening a dark dropdown. Replaces the old settings icon;
  * Settings lives inside, alongside Logout when signed in.
@@ -56,16 +57,8 @@ export const AccountMenu: React.FC<AccountMenuProps> = ({
 }) => {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
-
-  // Same outside-click dismissal as the web menu.
-  useEffect(() => {
-    if (!open) return;
-    const handle = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
-  }, [open]);
+  const close = useCallback(() => setOpen(false), []);
+  useDismissable(open, rootRef, close);
 
   return (
     <div ref={rootRef} style={{ position: 'relative' }}>
@@ -114,7 +107,6 @@ export const AccountMenu: React.FC<AccountMenuProps> = ({
             display: 'flex',
             flexDirection: 'column',
             zIndex: 1000,
-            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.6)',
           }}
         >
           <button

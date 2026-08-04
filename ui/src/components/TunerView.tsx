@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { X as XIcon } from 'lucide-react';
 import { useNativeFunction } from '../hooks/useFunction';
-import { GRAY } from './theme';
+import { BRAND_BLUE, BRAND_RED, BRAND_YELLOW, GRAY } from './theme';
 
 interface TunerReading {
   frequency: number;
@@ -16,7 +16,14 @@ const IN_TUNE_CENTS = 5;
 const MAX_CENTS = 50;
 
 // Bar colors from the center outward (blue → yellow → red), per screenshot.
-const SIDE_COLORS = ['#0000FF', '#FFFF00', '#FFFF00', '#FF0000', '#FF0000', '#FF0000'];
+const SIDE_COLORS = [
+  BRAND_BLUE,
+  BRAND_YELLOW,
+  BRAND_YELLOW,
+  BRAND_RED,
+  BRAND_RED,
+  BRAND_RED,
+];
 const DIM_OPACITY = 0.14;
 const POLL_MS = 50;
 
@@ -46,7 +53,7 @@ const litCountForCents = (absCents: number): number => {
 };
 
 export const TunerView: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-  // Stateless binding — this polls at 20 Hz, so it must not set hook state.
+  // Stateless binding: this polls at 20 Hz, so it must not set hook state.
   const getTunerReading = useNativeFunction<TunerReading>('getTunerReading');
   const [note, setNote] = useState<string | null>(null);
   const [cents, setCents] = useState(0);
@@ -153,7 +160,7 @@ export const TunerView: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       style={{
         width: '61px',
         height: '53px',
-        backgroundColor: '#0000FF',
+        backgroundColor: BRAND_BLUE,
         clipPath:
           direction === 'up'
             ? 'polygon(50% 0, 100% 100%, 0 100%)'

@@ -21,8 +21,8 @@ const LABEL_GAP = 10;
 const LABEL_COLOR = GRAY;
 
 /**
- * Main input/output meter: vertical dot column(s) in the block-meter style —
- * the full color scale is always visible (dimmed) and lights to the level.
+ * Main input/output meter: vertical dot column(s) in the block-meter style.
+ * The full color scale is always visible (dimmed) and lights to the level.
  * The scale tops out at 0 dBFS; the topmost dot is a clip LED that lights only
  * when the level hits 0 dB, latches red, and clears on click.
  * Each column subscribes to its own meter id, so a channel only re-renders

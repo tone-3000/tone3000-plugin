@@ -9,8 +9,8 @@ interface UpdateNoticeProps {
   onRemindLater: (days: number) => void;
 }
 
-// The message body is remote HTML. Formatting tags only — no scripts, no
-// event handlers, no embeds — so a compromised or spoofed response can never
+// The message body is remote HTML. Formatting tags only (no scripts, no
+// event handlers, no embeds), so a compromised or spoofed response can never
 // execute in the webview (which holds the JUCE bridge and OAuth tokens).
 const SANITIZE_OPTIONS = {
   ALLOWED_TAGS: ['p', 'br', 'b', 'strong', 'i', 'em', 'a', 'ul', 'ol', 'li'],
@@ -26,7 +26,7 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   }
 });
 
-// Closing without picking a duration is the shortest snooze — the notice is
+// Closing without picking a duration is the shortest snooze: the notice is
 // deliberately persistent until the user updates.
 const DISMISS_DAYS = 1;
 const REMIND_OPTIONS = [
@@ -92,9 +92,7 @@ export const UpdateNotice: React.FC<UpdateNoticeProps> = ({ notice, onRemindLate
           <X size={16} />
         </button>
 
-        <div style={{ fontSize: 15, fontWeight: 600 }}>
-          Update available — v{notice.version}
-        </div>
+        <div style={{ fontSize: 15, fontWeight: 600 }}>Update available: v{notice.version}</div>
 
         <div
           style={{ fontSize: 13, fontWeight: 400, lineHeight: 1.5, color: MUTED, maxWidth: 340 }}

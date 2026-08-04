@@ -1,6 +1,6 @@
 import type { EqBandType } from '../types/chain';
 import { EQ_MAX_ABS_GAIN_DB } from '../types/chain';
-import { CARD_WIDTH, CARD_HEIGHT } from './chainLayout';
+import { CARD_WIDTH, CARD_HEIGHT, HEADER_HEIGHT } from './chainLayout';
 
 /**
  * Geometry and glyphs shared by the EQ editor views (BlockEqView's graph,
@@ -8,9 +8,11 @@ import { CARD_WIDTH, CARD_HEIGHT } from './chainLayout';
  * coordinate space so the spectrum backdrop lines up in either one.
  */
 
-// Full card body: card width/height minus the 2px border, minus the 40px header.
+// Full card body: outer card minus 1px border each side and the chrome
+// header. Spectrum/grid bleed edge-to-edge; interactive chrome is inset
+// separately by BODY_PADDING.
 export const GRAPH_W = CARD_WIDTH - 2;
-export const GRAPH_H = CARD_HEIGHT - 2 - 40;
+export const GRAPH_H = CARD_HEIGHT - 2 - HEADER_HEIGHT;
 export const GRAPH_PAD_Y = 12; // keep dots inside the frame at ±15 dB
 
 export const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);

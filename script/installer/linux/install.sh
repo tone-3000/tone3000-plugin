@@ -25,12 +25,10 @@ CLAP_DIR="${CLAP_DIR:-$HOME/.clap}"
 BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
-# ──────────────────────────────────────────────────────────────────────────────
 # Runtime dependency handling
-# ──────────────────────────────────────────────────────────────────────────────
 
 # Captured once: `ldconfig -p | grep -q ...` (the previous approach) is racy
-# under `set -o pipefail` — grep -q exits as soon as it finds a match, which
+# under `set -o pipefail`: grep -q exits as soon as it finds a match, which
 # can SIGPIPE a still-writing ldconfig, and pipefail then reports that SIGPIPE
 # exit as the whole pipeline failing even though grep found the library. That
 # made this script randomly claim present libraries (webkit, gtk3, ...) were
@@ -208,9 +206,7 @@ check_linked_libs() {
   return 0
 }
 
-# ──────────────────────────────────────────────────────────────────────────────
 # Main
-# ──────────────────────────────────────────────────────────────────────────────
 
 if [[ "${1:-}" == "--uninstall" ]]; then
   rm -rf "$VST3_DIR/TONE3000.vst3"

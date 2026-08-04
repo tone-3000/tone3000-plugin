@@ -13,8 +13,9 @@ import { isUnchanged } from '../types/chain';
 /**
  * Fallback poll cadence for chain state. The primary sync channel is the
  * native `chainChanged` push event (the editor watches the revision counter
- * and emits within ~50 ms of any mutation); this slow poll only exists as a
- * safety net in case an event is dropped (e.g. while the webview is hidden).
+ * and emits within ~50 ms of any mutation); I keep this slow poll purely as
+ * a safety net in case an event is dropped (e.g. while the webview is
+ * hidden). Unchanged revisions short-circuit natively, so it's near free.
  */
 const FALLBACK_POLL_INTERVAL_MS = 3000;
 
@@ -26,7 +27,9 @@ const EMPTY_STATE: ChainState = {
   activeSide: 'left',
   stereoInput: false,
   standalone: false,
-  inputMode: 'input1',
+  inputMode: 'stereo',
+  namFullSize: false,
+  multiCore: true,
   sampleRate: 48000,
   chain: [],
 };
@@ -55,15 +58,20 @@ export function useChainState() {
       removeChainBlock: backend.getPluginFunction('removeChainBlock'),
       reorderChainBlocks: backend.getPluginFunction('reorderChainBlocks'),
       moveBlockToChain: backend.getPluginFunction('moveBlockToChain'),
+      duplicateChainBlock: backend.getPluginFunction('duplicateChainBlock'),
       setBlockParam: backend.getPluginFunction('setBlockParam'),
       setBlockEqBand: backend.getPluginFunction('setBlockEqBand'),
       setBlockEqEnabled: backend.getPluginFunction('setBlockEqEnabled'),
       setBlockEqPre: backend.getPluginFunction('setBlockEqPre'),
       resetBlockEq: backend.getPluginFunction('resetBlockEq'),
       setStereoMode: backend.getPluginFunction('setStereoMode'),
+      setInputMode: backend.getPluginFunction('setInputMode'),
+      setNamFullSize: backend.getPluginFunction('setNamFullSize'),
+      setMultiCore: backend.getPluginFunction('setMultiCore'),
       setActiveEditChain: backend.getPluginFunction('setActiveEditChain'),
       swapChains: backend.getPluginFunction('swapChains'),
-      setInputMode: backend.getPluginFunction('setInputMode'),
+      setChainBranch: backend.getPluginFunction('setChainBranch'),
+      clearChainBranch: backend.getPluginFunction('clearChainBranch'),
       undoChain: backend.getPluginFunction('undoChain'),
       redoChain: backend.getPluginFunction('redoChain'),
     }),
@@ -100,12 +108,13 @@ export function useChainState() {
     };
   }, [backend, refresh]);
 
-  /** Run a mutation, then resync from native regardless of outcome. */
+  /** Run a mutation, then resync from native regardless of outcome. The
+      native bridge is untyped, so T asserts each call's known return shape. */
   const run = useCallback(
-    async <T>(label: string, fn: () => Promise<T>): Promise<T | null> => {
+    async <T>(label: string, fn: () => Promise<unknown>): Promise<T | null> => {
       let result: T | null = null;
       try {
-        result = await fn();
+        result = (await fn()) as T;
       } catch (error) {
         console.error(`Chain mutation failed (${label}):`, error);
       }
@@ -117,7 +126,7 @@ export function useChainState() {
 
   const actions = useMemo(
     () => ({
-      /** Add a tone at an insert slot (the one the user clicked, when given —
+      /** Add a tone at an insert slot (the one the user clicked, when given;
           stale/absent ids land at the active lane's first insert). Resolves
           to the new blockId ('' on failure). */
       loadTone: (toneJson: string, targetInsertId?: string) =>
@@ -125,7 +134,7 @@ export function useChainState() {
       /** Replace an existing block's tone in place (keeps position + params). */
       swapTone: (blockId: string, toneJson: string) =>
         run<boolean>('swapTone', () => native.swapTone(blockId, toneJson)),
-      /** `modelJson` is the full model object (id/name/model_url) — native
+      /** `modelJson` is the full model object (id/name/model_url); native
           only stores the active model and resolves the switch from this. */
       switchModel: (blockId: string, modelId: number, modelJson: string) =>
         run<boolean>('switchModel', () => native.switchModel(blockId, modelId, modelJson)),
@@ -139,15 +148,36 @@ export function useChainState() {
       /** Move a block into the other lane at the given index (stereo drag). */
       moveBlockToChain: (blockId: string, side: ChainSide, index: number) =>
         run<boolean>('moveBlockToChain', () => native.moveBlockToChain(blockId, side, index)),
+      /** Clone a tone block (all settings + model) into `side` at `index`.
+          Landing on an insert slot fills it (paste); anywhere else splices
+          in (alt-drag). Resolves to the new blockId ('' on failure). */
+      duplicateBlock: (sourceBlockId: string, side: ChainSide, index: number) =>
+        run<string>('duplicateChainBlock', () =>
+          native.duplicateChainBlock(sourceBlockId, side, index)
+        ),
       setStereoMode: (enabled: boolean) =>
         run('setStereoMode', () => native.setStereoMode(enabled)),
+      /** Which channels of a stereo source feed the plugin (faceplate button). */
+      setInputMode: (mode: InputMode) => run('setInputMode', () => native.setInputMode(mode)),
+      /** Global NAM A2 size (machine-wide; false = lite, true = full).
+          Retiers every loaded NAM block natively and persists on disk. */
+      setNamFullSize: (full: boolean) =>
+        run('setNamFullSize', () => native.setNamFullSize(full)),
+      /** Multi-core stereo (machine-wide). Pure scheduling: applies
+          instantly and persists on disk. */
+      setMultiCore: (enabled: boolean) =>
+        run('setMultiCore', () => native.setMultiCore(enabled)),
       setActiveSide: (side: ChainSide) =>
         run('setActiveEditChain', () => native.setActiveEditChain(side)),
       /** Swap the Left and Right chains wholesale (stereo only). Undoable. */
       swapChains: () => run<boolean>('swapChains', () => native.swapChains()),
-      /** Standalone input channel mode (Settings). */
-      setInputMode: (mode: InputMode) =>
-        run<boolean>('setInputMode', () => native.setInputMode(mode)),
+      /** Branch the other lane off `side` after one of its tone blocks
+          (stereo only). The other lane's input becomes the tapped signal.
+          Undoable; native forces the input mode off "stereo". */
+      setBranch: (side: ChainSide, afterBlockId: string) =>
+        run<boolean>('setChainBranch', () => native.setChainBranch(side, afterBlockId)),
+      /** Revert to two fully independent chains. Undoable. */
+      clearBranch: () => run<boolean>('clearChainBranch', () => native.clearChainBranch()),
       /**
        * Fire-and-forget param setter (safe at knob-drag rates). Booleans are
        * sent as 0/1; the revision bump on native makes pollers converge.
@@ -160,17 +190,17 @@ export function useChainState() {
       },
       /**
        * Fire-and-forget whole-band EQ update (safe at dot-drag rates). The
-       * band object is the atomic mutation unit — clean for undo/redo later.
+       * band object is the atomic mutation unit, clean for undo/redo later.
        */
       setBlockEqBand: (blockId: string, bandIndex: number, band: EqBand) => {
         Promise.resolve(native.setBlockEqBand(blockId, bandIndex, band)).catch((error) =>
           console.error('setBlockEqBand failed:', error)
         );
       },
-      /** EQ power/bypass — band settings persist, processing is skipped. */
+      /** EQ power/bypass: band settings persist, processing is skipped. */
       setBlockEqEnabled: (blockId: string, enabled: boolean) =>
         run<boolean>('setBlockEqEnabled', () => native.setBlockEqEnabled(blockId, enabled)),
-      /** EQ position — pre = before the block's model, off = after the block. */
+      /** EQ position: pre = before the block's model, off = after the block. */
       setBlockEqPre: (blockId: string, pre: boolean) =>
         run<boolean>('setBlockEqPre', () => native.setBlockEqPre(blockId, pre)),
       /** Back to flat defaults (and native skips EQ processing again). */
@@ -186,13 +216,16 @@ export function useChainState() {
   return {
     chain: state.chain,
     chainRight: state.chainRight ?? null,
+    branch: state.branch ?? null,
     canUndo: state.canUndo ?? false,
     canRedo: state.canRedo ?? false,
     activePreset: state.preset ?? null,
     stereoEnabled: state.stereoEnabled,
     stereoInput: state.stereoInput ?? false,
+    inputMode: state.inputMode ?? 'stereo',
+    namFullSize: state.namFullSize ?? false,
+    multiCore: state.multiCore ?? true,
     standalone: state.standalone ?? false,
-    inputMode: state.inputMode ?? 'input1',
     sampleRate: state.sampleRate || 48000,
     refresh,
     actions,

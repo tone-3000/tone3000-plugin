@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Primary · bipolar: thumb at noon, no fill. -->
+  <!-- Figma-safe: flat tree, unique ids, no nested svg / gradientTransform / rotate groups -->
+  <defs>
+<linearGradient id="knobprimarybipolarnoon-face0" x1="100.00" y1="15.10" x2="100.00" y2="184.90" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A8A8A8"/>
+  <stop offset="1" stop-color="#3D3D3D"/>
+</linearGradient>
+<linearGradient id="knobprimarybipolarnoon-face1" x1="100.00" y1="17.25" x2="100.00" y2="182.75" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#242424"/>
+</linearGradient>
+<linearGradient id="knobprimarybipolarnoon-face2" x1="100.00" y1="20.95" x2="100.00" y2="179.05" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#979797"/>
+  <stop offset="1" stop-color="#232323"/>
+</linearGradient>
+<linearGradient id="knobprimarybipolarnoon-bevel" x1="100.00" y1="34.60" x2="100.00" y2="63.40" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#040404"/>
+  <stop offset="0.2" stop-color="#1B1B1B"/>
+  <stop offset="0.5" stop-color="#626262"/>
+  <stop offset="0.78" stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#A9A9A9"/>
+</linearGradient>
+  </defs>
+<circle cx="100.00" cy="100.00" r="100" fill="#1D1D1D"/>
+<circle cx="100.00" cy="100.00" r="98.4" fill="#000000"/>
+
+<circle cx="100.00" cy="100.00" r="86.4" fill="#1D1D1D"/>
+<circle cx="100.00" cy="100.00" r="84.9" fill="url(#knobprimarybipolarnoon-face0)"/>
+<circle cx="100.00" cy="100.00" r="82.75" fill="url(#knobprimarybipolarnoon-face1)"/>
+<circle cx="100.00" cy="100.00" r="79.05" fill="url(#knobprimarybipolarnoon-face2)"/>
+<circle cx="100.00" cy="49.00" r="14.4" fill="url(#knobprimarybipolarnoon-bevel)"/>
+<circle cx="100.00" cy="49.00" r="10.25" fill="#000000"/>
+</svg>

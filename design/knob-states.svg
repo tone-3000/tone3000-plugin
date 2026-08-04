@@ -1,0 +1,461 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="900" height="1280" viewBox="0 0 900 1280" xmlns="http://www.w3.org/2000/svg">
+  <!-- Figma-safe: single defs block, unique ids, absolute coords, no nested svg / transforms / gradientTransform -->
+  <defs>
+<linearGradient id="pf0-face0" x1="120.00" y1="172.08" x2="120.00" y2="307.92" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A8A8A8"/>
+  <stop offset="1" stop-color="#3D3D3D"/>
+</linearGradient>
+<linearGradient id="pf0-face1" x1="120.00" y1="173.80" x2="120.00" y2="306.20" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#242424"/>
+</linearGradient>
+<linearGradient id="pf0-face2" x1="120.00" y1="176.76" x2="120.00" y2="303.24" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#979797"/>
+  <stop offset="1" stop-color="#232323"/>
+</linearGradient>
+<linearGradient id="pf0-bevel" x1="91.15" y1="257.33" x2="91.15" y2="280.37" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#040404"/>
+  <stop offset="0.2" stop-color="#1B1B1B"/>
+  <stop offset="0.5" stop-color="#626262"/>
+  <stop offset="0.78" stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#A9A9A9"/>
+</linearGradient>
+<linearGradient id="pf1-face0" x1="330.00" y1="172.08" x2="330.00" y2="307.92" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A8A8A8"/>
+  <stop offset="1" stop-color="#3D3D3D"/>
+</linearGradient>
+<linearGradient id="pf1-face1" x1="330.00" y1="173.80" x2="330.00" y2="306.20" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#242424"/>
+</linearGradient>
+<linearGradient id="pf1-face2" x1="330.00" y1="176.76" x2="330.00" y2="303.24" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#979797"/>
+  <stop offset="1" stop-color="#232323"/>
+</linearGradient>
+<linearGradient id="pf1-bevel" x1="292.31" y1="212.87" x2="292.31" y2="235.91" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#040404"/>
+  <stop offset="0.2" stop-color="#1B1B1B"/>
+  <stop offset="0.5" stop-color="#626262"/>
+  <stop offset="0.78" stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#A9A9A9"/>
+</linearGradient>
+<linearGradient id="pf2-face0" x1="540.00" y1="172.08" x2="540.00" y2="307.92" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A8A8A8"/>
+  <stop offset="1" stop-color="#3D3D3D"/>
+</linearGradient>
+<linearGradient id="pf2-face1" x1="540.00" y1="173.80" x2="540.00" y2="306.20" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#242424"/>
+</linearGradient>
+<linearGradient id="pf2-face2" x1="540.00" y1="176.76" x2="540.00" y2="303.24" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#979797"/>
+  <stop offset="1" stop-color="#232323"/>
+</linearGradient>
+<linearGradient id="pf2-bevel" x1="540.00" y1="187.68" x2="540.00" y2="210.72" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#040404"/>
+  <stop offset="0.2" stop-color="#1B1B1B"/>
+  <stop offset="0.5" stop-color="#626262"/>
+  <stop offset="0.78" stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#A9A9A9"/>
+</linearGradient>
+<linearGradient id="pf3-face0" x1="750.00" y1="172.08" x2="750.00" y2="307.92" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A8A8A8"/>
+  <stop offset="1" stop-color="#3D3D3D"/>
+</linearGradient>
+<linearGradient id="pf3-face1" x1="750.00" y1="173.80" x2="750.00" y2="306.20" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#242424"/>
+</linearGradient>
+<linearGradient id="pf3-face2" x1="750.00" y1="176.76" x2="750.00" y2="303.24" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#979797"/>
+  <stop offset="1" stop-color="#232323"/>
+</linearGradient>
+<linearGradient id="pf3-bevel" x1="778.85" y1="257.33" x2="778.85" y2="280.37" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#040404"/>
+  <stop offset="0.2" stop-color="#1B1B1B"/>
+  <stop offset="0.5" stop-color="#626262"/>
+  <stop offset="0.78" stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#A9A9A9"/>
+</linearGradient>
+<linearGradient id="pb0-face0" x1="120.00" y1="462.08" x2="120.00" y2="597.92" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A8A8A8"/>
+  <stop offset="1" stop-color="#3D3D3D"/>
+</linearGradient>
+<linearGradient id="pb0-face1" x1="120.00" y1="463.80" x2="120.00" y2="596.20" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#242424"/>
+</linearGradient>
+<linearGradient id="pb0-face2" x1="120.00" y1="466.76" x2="120.00" y2="593.24" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#979797"/>
+  <stop offset="1" stop-color="#232323"/>
+</linearGradient>
+<linearGradient id="pb0-bevel" x1="91.15" y1="547.33" x2="91.15" y2="570.37" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#040404"/>
+  <stop offset="0.2" stop-color="#1B1B1B"/>
+  <stop offset="0.5" stop-color="#626262"/>
+  <stop offset="0.78" stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#A9A9A9"/>
+</linearGradient>
+<linearGradient id="pb1-face0" x1="330.00" y1="462.08" x2="330.00" y2="597.92" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A8A8A8"/>
+  <stop offset="1" stop-color="#3D3D3D"/>
+</linearGradient>
+<linearGradient id="pb1-face1" x1="330.00" y1="463.80" x2="330.00" y2="596.20" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#242424"/>
+</linearGradient>
+<linearGradient id="pb1-face2" x1="330.00" y1="466.76" x2="330.00" y2="593.24" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#979797"/>
+  <stop offset="1" stop-color="#232323"/>
+</linearGradient>
+<linearGradient id="pb1-bevel" x1="289.20" y1="518.48" x2="289.20" y2="541.52" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#040404"/>
+  <stop offset="0.2" stop-color="#1B1B1B"/>
+  <stop offset="0.5" stop-color="#626262"/>
+  <stop offset="0.78" stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#A9A9A9"/>
+</linearGradient>
+<linearGradient id="pb2-face0" x1="540.00" y1="462.08" x2="540.00" y2="597.92" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A8A8A8"/>
+  <stop offset="1" stop-color="#3D3D3D"/>
+</linearGradient>
+<linearGradient id="pb2-face1" x1="540.00" y1="463.80" x2="540.00" y2="596.20" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#242424"/>
+</linearGradient>
+<linearGradient id="pb2-face2" x1="540.00" y1="466.76" x2="540.00" y2="593.24" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#979797"/>
+  <stop offset="1" stop-color="#232323"/>
+</linearGradient>
+<linearGradient id="pb2-bevel" x1="540.00" y1="477.68" x2="540.00" y2="500.72" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#040404"/>
+  <stop offset="0.2" stop-color="#1B1B1B"/>
+  <stop offset="0.5" stop-color="#626262"/>
+  <stop offset="0.78" stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#A9A9A9"/>
+</linearGradient>
+<linearGradient id="pb3-face0" x1="750.00" y1="462.08" x2="750.00" y2="597.92" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A8A8A8"/>
+  <stop offset="1" stop-color="#3D3D3D"/>
+</linearGradient>
+<linearGradient id="pb3-face1" x1="750.00" y1="463.80" x2="750.00" y2="596.20" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#242424"/>
+</linearGradient>
+<linearGradient id="pb3-face2" x1="750.00" y1="466.76" x2="750.00" y2="593.24" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#979797"/>
+  <stop offset="1" stop-color="#232323"/>
+</linearGradient>
+<linearGradient id="pb3-bevel" x1="790.80" y1="518.48" x2="790.80" y2="541.52" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#040404"/>
+  <stop offset="0.2" stop-color="#1B1B1B"/>
+  <stop offset="0.5" stop-color="#626262"/>
+  <stop offset="0.78" stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#A9A9A9"/>
+</linearGradient>
+<linearGradient id="sf0-face1" x1="120.00" y1="753.80" x2="120.00" y2="886.20" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#000000"/>
+</linearGradient>
+<linearGradient id="sf0-face2" x1="120.00" y1="756.76" x2="120.00" y2="883.24" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#505050"/>
+  <stop offset="1" stop-color="#000000"/>
+</linearGradient>
+<linearGradient id="sf0-bevel" x1="91.15" y1="837.33" x2="91.15" y2="860.37" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#040404"/>
+  <stop offset="0.2" stop-color="#1B1B1B"/>
+  <stop offset="0.5" stop-color="#626262"/>
+  <stop offset="0.78" stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#A9A9A9"/>
+</linearGradient>
+<linearGradient id="sf1-face1" x1="330.00" y1="753.80" x2="330.00" y2="886.20" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#000000"/>
+</linearGradient>
+<linearGradient id="sf1-face2" x1="330.00" y1="756.76" x2="330.00" y2="883.24" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#505050"/>
+  <stop offset="1" stop-color="#000000"/>
+</linearGradient>
+<linearGradient id="sf1-bevel" x1="292.31" y1="792.87" x2="292.31" y2="815.91" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#040404"/>
+  <stop offset="0.2" stop-color="#1B1B1B"/>
+  <stop offset="0.5" stop-color="#626262"/>
+  <stop offset="0.78" stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#A9A9A9"/>
+</linearGradient>
+<linearGradient id="sf2-face1" x1="540.00" y1="753.80" x2="540.00" y2="886.20" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#000000"/>
+</linearGradient>
+<linearGradient id="sf2-face2" x1="540.00" y1="756.76" x2="540.00" y2="883.24" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#505050"/>
+  <stop offset="1" stop-color="#000000"/>
+</linearGradient>
+<linearGradient id="sf2-bevel" x1="540.00" y1="767.68" x2="540.00" y2="790.72" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#040404"/>
+  <stop offset="0.2" stop-color="#1B1B1B"/>
+  <stop offset="0.5" stop-color="#626262"/>
+  <stop offset="0.78" stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#A9A9A9"/>
+</linearGradient>
+<linearGradient id="sf3-face1" x1="750.00" y1="753.80" x2="750.00" y2="886.20" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#000000"/>
+</linearGradient>
+<linearGradient id="sf3-face2" x1="750.00" y1="756.76" x2="750.00" y2="883.24" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#505050"/>
+  <stop offset="1" stop-color="#000000"/>
+</linearGradient>
+<linearGradient id="sf3-bevel" x1="778.85" y1="837.33" x2="778.85" y2="860.37" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#040404"/>
+  <stop offset="0.2" stop-color="#1B1B1B"/>
+  <stop offset="0.5" stop-color="#626262"/>
+  <stop offset="0.78" stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#A9A9A9"/>
+</linearGradient>
+<linearGradient id="sb0-face1" x1="120.00" y1="1043.80" x2="120.00" y2="1176.20" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#000000"/>
+</linearGradient>
+<linearGradient id="sb0-face2" x1="120.00" y1="1046.76" x2="120.00" y2="1173.24" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#505050"/>
+  <stop offset="1" stop-color="#000000"/>
+</linearGradient>
+<linearGradient id="sb0-bevel" x1="91.15" y1="1127.33" x2="91.15" y2="1150.37" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#040404"/>
+  <stop offset="0.2" stop-color="#1B1B1B"/>
+  <stop offset="0.5" stop-color="#626262"/>
+  <stop offset="0.78" stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#A9A9A9"/>
+</linearGradient>
+<linearGradient id="sb1-face1" x1="330.00" y1="1043.80" x2="330.00" y2="1176.20" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#000000"/>
+</linearGradient>
+<linearGradient id="sb1-face2" x1="330.00" y1="1046.76" x2="330.00" y2="1173.24" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#505050"/>
+  <stop offset="1" stop-color="#000000"/>
+</linearGradient>
+<linearGradient id="sb1-bevel" x1="289.20" y1="1098.48" x2="289.20" y2="1121.52" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#040404"/>
+  <stop offset="0.2" stop-color="#1B1B1B"/>
+  <stop offset="0.5" stop-color="#626262"/>
+  <stop offset="0.78" stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#A9A9A9"/>
+</linearGradient>
+<linearGradient id="sb2-face1" x1="540.00" y1="1043.80" x2="540.00" y2="1176.20" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#000000"/>
+</linearGradient>
+<linearGradient id="sb2-face2" x1="540.00" y1="1046.76" x2="540.00" y2="1173.24" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#505050"/>
+  <stop offset="1" stop-color="#000000"/>
+</linearGradient>
+<linearGradient id="sb2-bevel" x1="540.00" y1="1057.68" x2="540.00" y2="1080.72" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#040404"/>
+  <stop offset="0.2" stop-color="#1B1B1B"/>
+  <stop offset="0.5" stop-color="#626262"/>
+  <stop offset="0.78" stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#A9A9A9"/>
+</linearGradient>
+<linearGradient id="sb3-face1" x1="750.00" y1="1043.80" x2="750.00" y2="1176.20" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#000000"/>
+</linearGradient>
+<linearGradient id="sb3-face2" x1="750.00" y1="1046.76" x2="750.00" y2="1173.24" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#505050"/>
+  <stop offset="1" stop-color="#000000"/>
+</linearGradient>
+<linearGradient id="sb3-bevel" x1="790.80" y1="1098.48" x2="790.80" y2="1121.52" gradientUnits="userSpaceOnUse">
+  <stop stop-color="#040404"/>
+  <stop offset="0.2" stop-color="#1B1B1B"/>
+  <stop offset="0.5" stop-color="#626262"/>
+  <stop offset="0.78" stop-color="#A9A9A9"/>
+  <stop offset="1" stop-color="#A9A9A9"/>
+</linearGradient>
+  </defs>
+  <rect width="900" height="1280" fill="#111111"/>
+  <text x="40" y="48" fill="#ffffff" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="700">Knob states</text>
+  <text x="40" y="72" fill="#8d8d93" font-family="Helvetica, Arial, sans-serif" font-size="13">Primary + secondary × regular + bipolar. Yellow arc fills from the variant zero out to the thumb.</text>
+<text x="40" y="100" fill="#ffff00" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="600">Primary · regular (full)</text>
+<text x="120" y="130" text-anchor="middle" fill="#ffffff" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="600">Min (0)</text>
+<text x="120" y="148" text-anchor="middle" fill="#8d8d93" font-family="Helvetica, Arial, sans-serif" font-size="11">thumb at start · no fill</text>
+<circle cx="120.00" cy="240.00" r="80.00" fill="#1D1D1D"/>
+<circle cx="120.00" cy="240.00" r="78.72" fill="#000000"/>
+
+<circle cx="120.00" cy="240.00" r="69.12" fill="#1D1D1D"/>
+<circle cx="120.00" cy="240.00" r="67.92" fill="url(#pf0-face0)"/>
+<circle cx="120.00" cy="240.00" r="66.20" fill="url(#pf0-face1)"/>
+<circle cx="120.00" cy="240.00" r="63.24" fill="url(#pf0-face2)"/>
+<circle cx="91.15" cy="268.85" r="11.52" fill="url(#pf0-bevel)"/>
+<circle cx="91.15" cy="268.85" r="8.20" fill="#000000"/>
+<text x="330" y="130" text-anchor="middle" fill="#ffffff" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="600">Quarter (0.25)</text>
+<text x="330" y="148" text-anchor="middle" fill="#8d8d93" font-family="Helvetica, Arial, sans-serif" font-size="11">fill start → −67.5°</text>
+<circle cx="330.00" cy="240.00" r="80.00" fill="#1D1D1D"/>
+<circle cx="330.00" cy="240.00" r="78.72" fill="#000000"/>
+<path d="M 278.21 291.79 A 73.25 73.25 0 0 1 262.33 211.97" fill="none" stroke="#FFFF00" stroke-width="8.10"/>
+<circle cx="330.00" cy="240.00" r="69.12" fill="#1D1D1D"/>
+<circle cx="330.00" cy="240.00" r="67.92" fill="url(#pf1-face0)"/>
+<circle cx="330.00" cy="240.00" r="66.20" fill="url(#pf1-face1)"/>
+<circle cx="330.00" cy="240.00" r="63.24" fill="url(#pf1-face2)"/>
+<circle cx="292.31" cy="224.39" r="11.52" fill="url(#pf1-bevel)"/>
+<circle cx="292.31" cy="224.39" r="8.20" fill="#000000"/>
+<text x="540" y="130" text-anchor="middle" fill="#ffffff" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="600">To noon (0.5)</text>
+<text x="540" y="148" text-anchor="middle" fill="#8d8d93" font-family="Helvetica, Arial, sans-serif" font-size="11">fill start → noon</text>
+<circle cx="540.00" cy="240.00" r="80.00" fill="#1D1D1D"/>
+<circle cx="540.00" cy="240.00" r="78.72" fill="#000000"/>
+<path d="M 488.21 291.79 A 73.25 73.25 0 0 1 540.00 166.75" fill="none" stroke="#FFFF00" stroke-width="8.10"/>
+<circle cx="540.00" cy="240.00" r="69.12" fill="#1D1D1D"/>
+<circle cx="540.00" cy="240.00" r="67.92" fill="url(#pf2-face0)"/>
+<circle cx="540.00" cy="240.00" r="66.20" fill="url(#pf2-face1)"/>
+<circle cx="540.00" cy="240.00" r="63.24" fill="url(#pf2-face2)"/>
+<circle cx="540.00" cy="199.20" r="11.52" fill="url(#pf2-bevel)"/>
+<circle cx="540.00" cy="199.20" r="8.20" fill="#000000"/>
+<text x="750" y="130" text-anchor="middle" fill="#ffffff" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="600">Max (1)</text>
+<text x="750" y="148" text-anchor="middle" fill="#8d8d93" font-family="Helvetica, Arial, sans-serif" font-size="11">full 270° fill</text>
+<circle cx="750.00" cy="240.00" r="80.00" fill="#1D1D1D"/>
+<circle cx="750.00" cy="240.00" r="78.72" fill="#000000"/>
+<path d="M 698.21 291.79 A 73.25 73.25 0 1 1 801.79 291.79" fill="none" stroke="#FFFF00" stroke-width="8.10"/>
+<circle cx="750.00" cy="240.00" r="69.12" fill="#1D1D1D"/>
+<circle cx="750.00" cy="240.00" r="67.92" fill="url(#pf3-face0)"/>
+<circle cx="750.00" cy="240.00" r="66.20" fill="url(#pf3-face1)"/>
+<circle cx="750.00" cy="240.00" r="63.24" fill="url(#pf3-face2)"/>
+<circle cx="778.85" cy="268.85" r="11.52" fill="url(#pf3-bevel)"/>
+<circle cx="778.85" cy="268.85" r="8.20" fill="#000000"/>
+<text x="40" y="390" fill="#ffff00" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="600">Primary · bipolar</text>
+<text x="120" y="420" text-anchor="middle" fill="#ffffff" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="600">Hard left (−135°)</text>
+<text x="120" y="438" text-anchor="middle" fill="#8d8d93" font-family="Helvetica, Arial, sans-serif" font-size="11">fill noon → start</text>
+<circle cx="120.00" cy="530.00" r="80.00" fill="#1D1D1D"/>
+<circle cx="120.00" cy="530.00" r="78.72" fill="#000000"/>
+<path d="M 68.21 581.79 A 73.25 73.25 0 0 1 120.00 456.75" fill="none" stroke="#FFFF00" stroke-width="8.10"/>
+<circle cx="120.00" cy="530.00" r="69.12" fill="#1D1D1D"/>
+<circle cx="120.00" cy="530.00" r="67.92" fill="url(#pb0-face0)"/>
+<circle cx="120.00" cy="530.00" r="66.20" fill="url(#pb0-face1)"/>
+<circle cx="120.00" cy="530.00" r="63.24" fill="url(#pb0-face2)"/>
+<circle cx="91.15" cy="558.85" r="11.52" fill="url(#pb0-bevel)"/>
+<circle cx="91.15" cy="558.85" r="8.20" fill="#000000"/>
+<text x="330" y="420" text-anchor="middle" fill="#ffffff" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="600">Left (−90°)</text>
+<text x="330" y="438" text-anchor="middle" fill="#8d8d93" font-family="Helvetica, Arial, sans-serif" font-size="11">fill noon → left</text>
+<circle cx="330.00" cy="530.00" r="80.00" fill="#1D1D1D"/>
+<circle cx="330.00" cy="530.00" r="78.72" fill="#000000"/>
+<path d="M 256.75 530.00 A 73.25 73.25 0 0 1 330.00 456.75" fill="none" stroke="#FFFF00" stroke-width="8.10"/>
+<circle cx="330.00" cy="530.00" r="69.12" fill="#1D1D1D"/>
+<circle cx="330.00" cy="530.00" r="67.92" fill="url(#pb1-face0)"/>
+<circle cx="330.00" cy="530.00" r="66.20" fill="url(#pb1-face1)"/>
+<circle cx="330.00" cy="530.00" r="63.24" fill="url(#pb1-face2)"/>
+<circle cx="289.20" cy="530.00" r="11.52" fill="url(#pb1-bevel)"/>
+<circle cx="289.20" cy="530.00" r="8.20" fill="#000000"/>
+<text x="540" y="420" text-anchor="middle" fill="#ffffff" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="600">Center (0.5)</text>
+<text x="540" y="438" text-anchor="middle" fill="#8d8d93" font-family="Helvetica, Arial, sans-serif" font-size="11">thumb at noon · no fill</text>
+<circle cx="540.00" cy="530.00" r="80.00" fill="#1D1D1D"/>
+<circle cx="540.00" cy="530.00" r="78.72" fill="#000000"/>
+
+<circle cx="540.00" cy="530.00" r="69.12" fill="#1D1D1D"/>
+<circle cx="540.00" cy="530.00" r="67.92" fill="url(#pb2-face0)"/>
+<circle cx="540.00" cy="530.00" r="66.20" fill="url(#pb2-face1)"/>
+<circle cx="540.00" cy="530.00" r="63.24" fill="url(#pb2-face2)"/>
+<circle cx="540.00" cy="489.20" r="11.52" fill="url(#pb2-bevel)"/>
+<circle cx="540.00" cy="489.20" r="8.20" fill="#000000"/>
+<text x="750" y="420" text-anchor="middle" fill="#ffffff" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="600">Right (+90°)</text>
+<text x="750" y="438" text-anchor="middle" fill="#8d8d93" font-family="Helvetica, Arial, sans-serif" font-size="11">fill noon → right</text>
+<circle cx="750.00" cy="530.00" r="80.00" fill="#1D1D1D"/>
+<circle cx="750.00" cy="530.00" r="78.72" fill="#000000"/>
+<path d="M 750.00 456.75 A 73.25 73.25 0 0 1 823.25 530.00" fill="none" stroke="#FFFF00" stroke-width="8.10"/>
+<circle cx="750.00" cy="530.00" r="69.12" fill="#1D1D1D"/>
+<circle cx="750.00" cy="530.00" r="67.92" fill="url(#pb3-face0)"/>
+<circle cx="750.00" cy="530.00" r="66.20" fill="url(#pb3-face1)"/>
+<circle cx="750.00" cy="530.00" r="63.24" fill="url(#pb3-face2)"/>
+<circle cx="790.80" cy="530.00" r="11.52" fill="url(#pb3-bevel)"/>
+<circle cx="790.80" cy="530.00" r="8.20" fill="#000000"/>
+<text x="40" y="680" fill="#ffff00" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="600">Secondary · regular (full)</text>
+<text x="120" y="710" text-anchor="middle" fill="#ffffff" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="600">Min (0)</text>
+<text x="120" y="728" text-anchor="middle" fill="#8d8d93" font-family="Helvetica, Arial, sans-serif" font-size="11">thumb at start · no fill</text>
+<circle cx="120.00" cy="820.00" r="80.00" fill="#1D1D1D"/>
+<circle cx="120.00" cy="820.00" r="78.72" fill="#000000"/>
+
+<circle cx="120.00" cy="820.00" r="69.12" fill="#1D1D1D"/>
+<circle cx="120.00" cy="820.00" r="67.92" fill="#A3A3A3"/>
+<circle cx="120.00" cy="820.00" r="66.20" fill="url(#sf0-face1)"/>
+<circle cx="120.00" cy="820.00" r="63.24" fill="url(#sf0-face2)"/>
+<circle cx="91.15" cy="848.85" r="11.52" fill="url(#sf0-bevel)"/>
+<circle cx="91.15" cy="848.85" r="8.20" fill="#000000"/>
+<text x="330" y="710" text-anchor="middle" fill="#ffffff" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="600">Quarter (0.25)</text>
+<text x="330" y="728" text-anchor="middle" fill="#8d8d93" font-family="Helvetica, Arial, sans-serif" font-size="11">fill start → −67.5°</text>
+<circle cx="330.00" cy="820.00" r="80.00" fill="#1D1D1D"/>
+<circle cx="330.00" cy="820.00" r="78.72" fill="#000000"/>
+<path d="M 278.21 871.79 A 73.25 73.25 0 0 1 262.33 791.97" fill="none" stroke="#FFFF00" stroke-width="8.10"/>
+<circle cx="330.00" cy="820.00" r="69.12" fill="#1D1D1D"/>
+<circle cx="330.00" cy="820.00" r="67.92" fill="#A3A3A3"/>
+<circle cx="330.00" cy="820.00" r="66.20" fill="url(#sf1-face1)"/>
+<circle cx="330.00" cy="820.00" r="63.24" fill="url(#sf1-face2)"/>
+<circle cx="292.31" cy="804.39" r="11.52" fill="url(#sf1-bevel)"/>
+<circle cx="292.31" cy="804.39" r="8.20" fill="#000000"/>
+<text x="540" y="710" text-anchor="middle" fill="#ffffff" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="600">To noon (0.5)</text>
+<text x="540" y="728" text-anchor="middle" fill="#8d8d93" font-family="Helvetica, Arial, sans-serif" font-size="11">fill start → noon</text>
+<circle cx="540.00" cy="820.00" r="80.00" fill="#1D1D1D"/>
+<circle cx="540.00" cy="820.00" r="78.72" fill="#000000"/>
+<path d="M 488.21 871.79 A 73.25 73.25 0 0 1 540.00 746.75" fill="none" stroke="#FFFF00" stroke-width="8.10"/>
+<circle cx="540.00" cy="820.00" r="69.12" fill="#1D1D1D"/>
+<circle cx="540.00" cy="820.00" r="67.92" fill="#A3A3A3"/>
+<circle cx="540.00" cy="820.00" r="66.20" fill="url(#sf2-face1)"/>
+<circle cx="540.00" cy="820.00" r="63.24" fill="url(#sf2-face2)"/>
+<circle cx="540.00" cy="779.20" r="11.52" fill="url(#sf2-bevel)"/>
+<circle cx="540.00" cy="779.20" r="8.20" fill="#000000"/>
+<text x="750" y="710" text-anchor="middle" fill="#ffffff" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="600">Max (1)</text>
+<text x="750" y="728" text-anchor="middle" fill="#8d8d93" font-family="Helvetica, Arial, sans-serif" font-size="11">full 270° fill</text>
+<circle cx="750.00" cy="820.00" r="80.00" fill="#1D1D1D"/>
+<circle cx="750.00" cy="820.00" r="78.72" fill="#000000"/>
+<path d="M 698.21 871.79 A 73.25 73.25 0 1 1 801.79 871.79" fill="none" stroke="#FFFF00" stroke-width="8.10"/>
+<circle cx="750.00" cy="820.00" r="69.12" fill="#1D1D1D"/>
+<circle cx="750.00" cy="820.00" r="67.92" fill="#A3A3A3"/>
+<circle cx="750.00" cy="820.00" r="66.20" fill="url(#sf3-face1)"/>
+<circle cx="750.00" cy="820.00" r="63.24" fill="url(#sf3-face2)"/>
+<circle cx="778.85" cy="848.85" r="11.52" fill="url(#sf3-bevel)"/>
+<circle cx="778.85" cy="848.85" r="8.20" fill="#000000"/>
+<text x="40" y="970" fill="#ffff00" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="600">Secondary · bipolar</text>
+<text x="120" y="1000" text-anchor="middle" fill="#ffffff" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="600">Hard left (−135°)</text>
+<text x="120" y="1018" text-anchor="middle" fill="#8d8d93" font-family="Helvetica, Arial, sans-serif" font-size="11">fill noon → start</text>
+<circle cx="120.00" cy="1110.00" r="80.00" fill="#1D1D1D"/>
+<circle cx="120.00" cy="1110.00" r="78.72" fill="#000000"/>
+<path d="M 68.21 1161.79 A 73.25 73.25 0 0 1 120.00 1036.75" fill="none" stroke="#FFFF00" stroke-width="8.10"/>
+<circle cx="120.00" cy="1110.00" r="69.12" fill="#1D1D1D"/>
+<circle cx="120.00" cy="1110.00" r="67.92" fill="#A3A3A3"/>
+<circle cx="120.00" cy="1110.00" r="66.20" fill="url(#sb0-face1)"/>
+<circle cx="120.00" cy="1110.00" r="63.24" fill="url(#sb0-face2)"/>
+<circle cx="91.15" cy="1138.85" r="11.52" fill="url(#sb0-bevel)"/>
+<circle cx="91.15" cy="1138.85" r="8.20" fill="#000000"/>
+<text x="330" y="1000" text-anchor="middle" fill="#ffffff" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="600">Left (−90°)</text>
+<text x="330" y="1018" text-anchor="middle" fill="#8d8d93" font-family="Helvetica, Arial, sans-serif" font-size="11">fill noon → left</text>
+<circle cx="330.00" cy="1110.00" r="80.00" fill="#1D1D1D"/>
+<circle cx="330.00" cy="1110.00" r="78.72" fill="#000000"/>
+<path d="M 256.75 1110.00 A 73.25 73.25 0 0 1 330.00 1036.75" fill="none" stroke="#FFFF00" stroke-width="8.10"/>
+<circle cx="330.00" cy="1110.00" r="69.12" fill="#1D1D1D"/>
+<circle cx="330.00" cy="1110.00" r="67.92" fill="#A3A3A3"/>
+<circle cx="330.00" cy="1110.00" r="66.20" fill="url(#sb1-face1)"/>
+<circle cx="330.00" cy="1110.00" r="63.24" fill="url(#sb1-face2)"/>
+<circle cx="289.20" cy="1110.00" r="11.52" fill="url(#sb1-bevel)"/>
+<circle cx="289.20" cy="1110.00" r="8.20" fill="#000000"/>
+<text x="540" y="1000" text-anchor="middle" fill="#ffffff" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="600">Center (0.5)</text>
+<text x="540" y="1018" text-anchor="middle" fill="#8d8d93" font-family="Helvetica, Arial, sans-serif" font-size="11">thumb at noon · no fill</text>
+<circle cx="540.00" cy="1110.00" r="80.00" fill="#1D1D1D"/>
+<circle cx="540.00" cy="1110.00" r="78.72" fill="#000000"/>
+
+<circle cx="540.00" cy="1110.00" r="69.12" fill="#1D1D1D"/>
+<circle cx="540.00" cy="1110.00" r="67.92" fill="#A3A3A3"/>
+<circle cx="540.00" cy="1110.00" r="66.20" fill="url(#sb2-face1)"/>
+<circle cx="540.00" cy="1110.00" r="63.24" fill="url(#sb2-face2)"/>
+<circle cx="540.00" cy="1069.20" r="11.52" fill="url(#sb2-bevel)"/>
+<circle cx="540.00" cy="1069.20" r="8.20" fill="#000000"/>
+<text x="750" y="1000" text-anchor="middle" fill="#ffffff" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="600">Right (+90°)</text>
+<text x="750" y="1018" text-anchor="middle" fill="#8d8d93" font-family="Helvetica, Arial, sans-serif" font-size="11">fill noon → right</text>
+<circle cx="750.00" cy="1110.00" r="80.00" fill="#1D1D1D"/>
+<circle cx="750.00" cy="1110.00" r="78.72" fill="#000000"/>
+<path d="M 750.00 1036.75 A 73.25 73.25 0 0 1 823.25 1110.00" fill="none" stroke="#FFFF00" stroke-width="8.10"/>
+<circle cx="750.00" cy="1110.00" r="69.12" fill="#1D1D1D"/>
+<circle cx="750.00" cy="1110.00" r="67.92" fill="#A3A3A3"/>
+<circle cx="750.00" cy="1110.00" r="66.20" fill="url(#sb3-face1)"/>
+<circle cx="750.00" cy="1110.00" r="63.24" fill="url(#sb3-face2)"/>
+<circle cx="790.80" cy="1110.00" r="11.52" fill="url(#sb3-bevel)"/>
+<circle cx="790.80" cy="1110.00" r="8.20" fill="#000000"/>
+</svg>

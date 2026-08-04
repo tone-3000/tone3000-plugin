@@ -1,4 +1,5 @@
-/** Shared meter scale + color ramp for DbMeter and BlockMeter. */
+/** Shared meter scale + color ramp for DbMeter, BlockMeter, and DotMeter.
+ *  Stops are the brand accents in theme.ts (blue → yellow → red). */
 
 export const METER_MIN_DB = -60;
 /** Top of the scale = 0 dBFS: the last dot lights exactly at clipping. */
@@ -10,13 +11,13 @@ export const getGradientColor = (position: number): string => {
   let r: number, g: number, b: number;
 
   if (position <= 0.5) {
-    // Bottom half: blue #0000FF → yellow #FFFF00
+    // Bottom half: BRAND_BLUE #0000FF → BRAND_YELLOW #FFFF00
     const t = position * 2;
     r = Math.round(255 * t);
     g = Math.round(255 * t);
     b = Math.round(255 * (1 - t));
   } else {
-    // Top half: yellow #FFFF00 → red #FF0000
+    // Top half: BRAND_YELLOW #FFFF00 → BRAND_RED #FF0000
     const t = (position - 0.5) * 2;
     r = 255;
     g = Math.round(255 * (1 - t));

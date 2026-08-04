@@ -19,7 +19,7 @@ interface UseT3kSelectOptions {
   /** Called whenever a fresh access token is available (initial + refresh). */
   onAccessTokenUpdated?: (accessToken: string) => void;
   /**
-   * Called when an OAuth callback resolved with tokens but no tone pick —
+   * Called when an OAuth callback resolved with tokens but no tone pick,
    * i.e. the no-prompt login flow finished (or the user closed the Select
    * catalog after signing in). The consumer should open the tone browser.
    */
@@ -64,15 +64,13 @@ function detectInitialCallback(): boolean {
   if (typeof window === 'undefined') return false;
   const params = new URLSearchParams(window.location.search);
   return (
-    params.has('code') ||
-    (params.has('error') && params.has('state')) ||
-    params.has('canceled')
+    params.has('code') || (params.has('error') && params.has('state')) || params.has('canceled')
   );
 }
 
 /**
  * True on the very first render after returning from a *browse-intent* redirect
- * (Browse CTA / + / swap) that did **not** carry a picked tone — i.e. sign-in
+ * (Browse CTA / + / swap) that did **not** carry a picked tone, i.e. sign-in
  * only, catalog closed, or canceled. The consumer seeds `showToneBrowser` from
  * this so the in-plugin browser is already mounted under the busy scrim as the
  * callback resolves, instead of the main chain flashing through first. When a
@@ -88,7 +86,7 @@ export function shouldRestoreToneBrowser(): boolean {
 
 /**
  * Set by native when a webview navigation to tone3000.com failed (offline /
- * site down) and it recovered by reloading the plugin UI — see
+ * site down) and it recovered by reloading the plugin UI; see
  * GuardedWebView::pageLoadHadNetworkError. Detected here so the reload lands
  * on the OAuth error overlay (retry / dismiss) instead of silently on the
  * main screen.
@@ -128,7 +126,7 @@ export const useT3kSelect = ({
 
   const client = useMemo(() => {
     const c = new T3KClient(PUBLISHABLE_KEY, () => {
-      // If the refresh token is rejected we lose access — the user has to
+      // If the refresh token is rejected we lose access; the user has to
       // start from the + again, which relaunches the login flow. Nothing to
       // do automatically here.
       console.warn('TONE3000 session expired; re-auth required.');
@@ -143,9 +141,9 @@ export const useT3kSelect = ({
     async (toneId: string | number) => {
       const tone = await client.getTone(toneId);
       // Only NAM tones use `architecture=2` on list models (v2 weights the plugin
-      // loads). IR and other formats are not NAM architectures — never pass it there.
+      // loads). IR and other formats are not NAM architectures; never pass it there.
       const isNamFormat = tone.format?.toLowerCase() === 'nam';
-      // Just the first model: native only stores/loads the active model — the
+      // Just the first model: native only stores/loads the active model; the
       // detail card's picker pages the full catalog from the API separately.
       const modelsRes = await client.listModels(toneId, {
         pageSize: 1,
@@ -159,7 +157,7 @@ export const useT3kSelect = ({
   );
 
   // Initialise the phase synchronously from the URL so the first render of
-  // the consumer already has the overlay in place — otherwise the main UI
+  // the consumer already has the overlay in place; otherwise the main UI
   // briefly paints before the useEffect below sets 'returning'.
   const [oauthPhase, setOauthPhase] = useState<OAuthPhase>(() => {
     if (detectNavErrorRecovery()) return 'error';
@@ -214,7 +212,7 @@ export const useT3kSelect = ({
           onToneSelected?.(tone, result.tokens.access_token);
         } else if (wantsBrowser) {
           // Login finished (or Select was closed after sign-in) on the way
-          // to browsing tones — open the tone browser.
+          // to browsing tones, so open the tone browser.
           authenticatedListenerRef.current?.();
         }
         setOauthPhase('idle');
@@ -249,7 +247,7 @@ export const useT3kSelect = ({
     // Select is always part of a browse: if the user signs in but closes the
     // catalog without picking, return to the in-plugin tone browser.
     sessionStorage.setItem(LOGIN_INTENT_KEY, 'browse');
-    // Dim the current screen immediately — the redirect takes a beat.
+    // Dim the current screen immediately; the redirect takes a beat.
     setOauthPhase('leaving');
     startSelectFlowRedirect(PUBLISHABLE_KEY, getRedirectUri(), {
       menubar: true,
@@ -263,7 +261,7 @@ export const useT3kSelect = ({
   }, [requireKey]);
 
   /**
-   * Kick off the no-prompt login flow — sign-in only, no tone browsing on
+   * Kick off the no-prompt login flow: sign-in only, no tone browsing on
    * tone3000.com. With `openBrowser` (the + / swap flows) the in-plugin tone
    * browser takes over on return; without it (account-menu sign-in) the user
    * lands straight back on the main screen.
@@ -275,7 +273,7 @@ export const useT3kSelect = ({
       sessionStorage.setItem(LAST_FLOW_KEY, options?.openBrowser ? 'login-browse' : 'login');
       if (options?.openBrowser) sessionStorage.setItem(LOGIN_INTENT_KEY, 'browse');
       else sessionStorage.removeItem(LOGIN_INTENT_KEY);
-      // Dim the current screen immediately — the redirect takes a beat.
+      // Dim the current screen immediately; the redirect takes a beat.
       setOauthPhase('leaving');
       startLoginFlowRedirect(PUBLISHABLE_KEY, getRedirectUri(), { menubar: true }).catch((err) => {
         console.error('Failed to start TONE3000 login flow', err);
@@ -303,7 +301,7 @@ export const useT3kSelect = ({
   );
 
   /**
-   * Restart whichever flow last navigated to tone3000.com — the error
+   * Restart whichever flow last navigated to tone3000.com; this is the error
    * overlay's "Try again". Defaults to Select when nothing is recorded
    * (e.g. sessionStorage was cleared).
    */

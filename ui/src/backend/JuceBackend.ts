@@ -5,6 +5,7 @@ import type {
   ParameterMap,
   SliderParameter,
   ToggleParameter,
+  ComboBoxParameter,
 } from '../types/IAudioBackend';
 
 /** The raw event bus JUCE injects at `window.__JUCE__.backend`. */
@@ -20,12 +21,12 @@ function rawJuceBackend(): RawJuceBackend | undefined {
 
 export class JuceBackend implements IAudioBackend {
   getParameterState<T extends ParameterType>(name: string, type: T): ParameterMap[T] {
-    const config = juceMap[type];
-    if (!config) throw new Error(`Unsupported parameter type: ${type}`);
-    return config.adapt(config.get(name));
+    const adapt = juceMap[type];
+    if (!adapt) throw new Error(`Unsupported parameter type: ${type}`);
+    return adapt(name);
   }
 
-  getPluginFunction(name: string): (...args: any[]) => Promise<any> {
+  getPluginFunction(name: string): (...args: unknown[]) => Promise<unknown> {
     return Juce.getNativeFunction(name);
   }
 
@@ -38,34 +39,24 @@ export class JuceBackend implements IAudioBackend {
   }
 }
 
-type JuceGetterMap = {
-  [K in ParameterType]: {
-    get: (name: string) => any;
-    adapt: (raw: any) => ParameterMap[K];
-  };
-};
-
-const juceMap: JuceGetterMap = {
-  slider: {
-    get: Juce.getSliderState,
-    adapt: adaptSlider,
-  },
-  toggle: {
-    get: Juce.getToggleState,
-    adapt: adaptToggle,
-  },
+// One adapter per parameter type: fetch the JUCE state and wrap it in the
+// backend-neutral parameter interface.
+const juceMap: { [K in ParameterType]: (name: string) => ParameterMap[K] } = {
+  slider: (name) => adaptSlider(Juce.getSliderState(name)),
+  toggle: (name) => adaptToggle(Juce.getToggleState(name)),
+  comboBox: (name) => adaptComboBox(Juce.getComboBoxState(name)),
 };
 
 // Ask the backend relay to (re-)send propertiesChanged + valueChanged for a
 // state. The JUCE frontend emits this once at module load, but that single shot
 // races page load / React mount (notably on Windows WebView2) and the reply is
-// dropped if it lands before a listener is attached — so consumers re-request
+// dropped if it lands before a listener is attached, so consumers re-request
 // after subscribing.
 function requestInitialUpdate(state: { identifier: string }): void {
   rawJuceBackend()?.emitEvent(state.identifier, { eventType: 'requestInitialUpdate' });
 }
 
-type JuceControlState = Juce.SliderState | Juce.ToggleState;
+type JuceControlState = Juce.SliderState | Juce.ToggleState | Juce.ComboBoxState;
 
 // Subscribe to both valueChanged and propertiesChanged: for sliders the
 // normalised value is derived from the range properties, and the two events
@@ -113,5 +104,18 @@ function adaptToggle(toggle: Juce.ToggleState): ToggleParameter {
       removeListener: (id: number) => removeControlListener(toggle, id),
     },
     requestInitialUpdate: () => requestInitialUpdate(toggle),
+  };
+}
+
+function adaptComboBox(comboBox: Juce.ComboBoxState): ComboBoxParameter {
+  return {
+    getValue: () => comboBox.getChoiceIndex(),
+    setValue: (index: number) => comboBox.setChoiceIndex(index),
+    valueChangedEvent: {
+      addListener: (fn: (val: number) => void) =>
+        addControlListener(comboBox, () => fn(comboBox.getChoiceIndex())),
+      removeListener: (id: number) => removeControlListener(comboBox, id),
+    },
+    requestInitialUpdate: () => requestInitialUpdate(comboBox),
   };
 }

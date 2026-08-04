@@ -19,7 +19,7 @@
  * Coalescing: continuous gestures (knob and EQ-dot drags) arrive as dozens of
  * mutations per second. Each passes a stable key ("param:<blockId>:<name>");
  * while the top undo entry carries the same key and keeps being touched
- * within the window, no new entry is pushed — one gesture, one undo step.
+ * within the window, no new entry is pushed: one gesture, one undo step.
  * Structural edits pass an empty key and always push.
  */
 class ChainHistory {
@@ -31,7 +31,7 @@ public:
   bool canRedo() const noexcept { return !redoStack.empty(); }
 
   /** True when this mutation continues the gesture already captured on top of
-      the undo stack — the caller should skip snapshotting entirely. */
+      the undo stack; the caller should skip snapshotting entirely. */
   bool shouldCoalesce(const juce::String& key) {
     if (key.isEmpty() || undoStack.empty() || !redoStack.empty())
       return false;
@@ -70,7 +70,7 @@ public:
     return out;
   }
 
-  /** Drop everything (e.g. after a project/state load — undoing across it
+  /** Drop everything (e.g. after a project/state load; undoing across it
       would resurrect a chain the user never saw in this session). */
   void clear() {
     undoStack.clear();

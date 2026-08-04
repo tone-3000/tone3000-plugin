@@ -31,7 +31,7 @@ export class ErrorBoundary extends React.Component<
     try {
       Juce.getNativeFunction('copyLogs')();
     } catch {
-      // Not running inside the plugin (plain browser dev) — nothing to copy.
+      // Not running inside the plugin (plain browser dev), so nothing to copy.
     }
   };
 

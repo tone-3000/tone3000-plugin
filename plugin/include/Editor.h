@@ -13,6 +13,7 @@
 #include "DarkLookAndFeel.h"
 #include "EditorWebViewSetup.h"
 #include "Processor.h"
+#include "StandaloneAudioSettings.h"
 #include "BinaryData.h"  // Contains embedded Web UI assets (HTML/CSS/JS)
 
 class TONE3000Editor : public juce::AudioProcessorEditor, private juce::Timer {
@@ -24,6 +25,13 @@ public:
   void resized() override;
   void parentHierarchyChanged() override;
 
+  /** Extra height above the fixed plugin UI for chrome strips: the app banner
+      (standalone only) and/or the hint bar. The webview reports the combined
+      height whenever a strip appears/disappears so the window grows instead of
+      squishing the core UI. Works in hosts too: setSize() becomes a host
+      resize request via the plugin wrapper. */
+  void setExtraContentHeight(int pixels);
+
   int getControlParameterIndex(juce::Component&) override {
     return controlParameterIndexReceiver.getControlParameterIndex();
   }
@@ -31,9 +39,44 @@ public:
 private:
   TONE3000Processor& processor;
 
+  // Design-space size of the plugin UI. The window is this times the user's
+  // scale factor: resizable (aspect-locked) from 1x up to kMaxScale. The web
+  // UI observes its actual viewport width and applies a matching CSS zoom
+  // (see useUiScale in the web UI), so native only manages the window box.
+  // The window can additionally grow by the chrome-strip height (see
+  // setExtraContentHeight).
+  static constexpr int kWidth = 1024;
+  // Figma artboard is 600 including a 22px mock OS title bar; JUCE's editor
+  // size is content-only (native title bar is outside setSize), so 578.
+  static constexpr int kBaseHeight = 578;
+  static constexpr double kMaxScale = 2.0;
+  int extraContentHeight = 0;
+  int totalHeight() const { return kBaseHeight + extraContentHeight; }
+
+  // The window width is always the live source of truth for the current
+  // scale (a host-driven resize and our own setSize agree by construction);
+  // resized() below mirrors it into processor.editorScale so it survives
+  // teardown, restored by the next editor's constructor.
+  double currentScale() const { return getWidth() / static_cast<double>(kWidth); }
+  void applyScaledSize(double scale);
+  void updateResizeConstraints();
+
+  // Guards resized() below against persisting a size we didn't choose:
+  // parentHierarchyChanged() reasserts our size after flipping the native
+  // title bar on, which can otherwise relayout (and briefly mis-size) us
+  // first; see its comment. Cleared asynchronously so a same-tick *and* a
+  // deferred cascade from that relayout are both covered.
+  bool restoringSize = false;
+
   // One shared dark theme for JUCE-drawn surfaces (standalone settings dialog
   // etc.); installed as the default LookAndFeel in the editor constructor.
   juce::SharedResourcePointer<DarkLookAndFeel> darkLookAndFeel;
+
+  // Bespoke audio settings bridge, only constructed in the standalone app
+  // (nullptr in hosts, where the DAW owns devices and the System Settings tab
+  // never renders). Device-manager changes are pushed to the webview as
+  // `audioDeviceChanged` events.
+  std::unique_ptr<StandaloneAudioSettings> audioSettings;
 
   //==============================================================================
   // WebView UI
@@ -46,7 +89,7 @@ private:
   void loadMainUrlIfNeeded();
 
   // Chain-change push: a lightweight native timer watches the processor's
-  // revision counter (an atomic read — far cheaper than the webview polling
+  // revision counter (an atomic read, far cheaper than the webview polling
   // across the bridge) and emits a `chainChanged` event when it moves. The
   // UI resyncs on the event and keeps only a slow safety-net poll.
   void timerCallback() override;
@@ -56,11 +99,12 @@ private:
 
   juce::WebSliderRelay inputLevelRelay{"inputLevel"};
   juce::WebSliderRelay outputLevelRelay{"outputLevel"};
-  juce::WebSliderRelay inputBalanceRelay{"inputBalance"};
   juce::WebSliderRelay outputBalanceRelay{"outputBalance"};
   juce::WebToggleButtonRelay spreadEnabledRelay{"spreadEnabled"};
-  juce::WebSliderRelay spreadAmountRelay{"spreadAmount"};
-  juce::WebSliderRelay spreadJitterRelay{"spreadJitter"};
+  juce::WebSliderRelay spreadOffsetRelay{"spreadOffset"};
+  juce::WebSliderRelay spreadWobbleRelay{"spreadWobble"};
+  juce::WebToggleButtonRelay stereoOffsetEnabledRelay{"stereoOffsetEnabled"};
+  juce::WebSliderRelay stereoOffsetTimeRelay{"stereoOffsetTime"};
   juce::WebSliderRelay chainPanLeftRelay{"chainPanLeft"};
   juce::WebSliderRelay chainPanRightRelay{"chainPanRight"};
   juce::WebToggleButtonRelay chainPanLinkedRelay{"chainPanLinked"};
@@ -72,22 +116,26 @@ private:
   juce::WebToggleButtonRelay toneEqEnabledRelay{"toneEqEnabled"};
   juce::WebToggleButtonRelay calibrateInputRelay{"calibrateInput"};
   juce::WebSliderRelay inputCalibrationLevelRelay{"inputCalibrationLevel"};
+  juce::WebToggleButtonRelay osEnabledRelay{"osEnabled"};
+  juce::WebComboBoxRelay osFactorRelay{"osFactor"};
 
   // Attachments
   juce::WebSliderParameterAttachment inputLevelWebAttachment{
       *processor.parameters.getParameter("inputLevel"), inputLevelRelay, nullptr};
   juce::WebSliderParameterAttachment outputLevelWebAttachment{
       *processor.parameters.getParameter("outputLevel"), outputLevelRelay, nullptr};
-  juce::WebSliderParameterAttachment inputBalanceWebAttachment{
-      *processor.parameters.getParameter("inputBalance"), inputBalanceRelay, nullptr};
   juce::WebSliderParameterAttachment outputBalanceWebAttachment{
       *processor.parameters.getParameter("outputBalance"), outputBalanceRelay, nullptr};
   juce::WebToggleButtonParameterAttachment spreadEnabledWebAttachment{
       *processor.parameters.getParameter("spreadEnabled"), spreadEnabledRelay, nullptr};
-  juce::WebSliderParameterAttachment spreadAmountWebAttachment{
-      *processor.parameters.getParameter("spreadAmount"), spreadAmountRelay, nullptr};
-  juce::WebSliderParameterAttachment spreadJitterWebAttachment{
-      *processor.parameters.getParameter("spreadJitter"), spreadJitterRelay, nullptr};
+  juce::WebSliderParameterAttachment spreadOffsetWebAttachment{
+      *processor.parameters.getParameter("spreadOffset"), spreadOffsetRelay, nullptr};
+  juce::WebSliderParameterAttachment spreadWobbleWebAttachment{
+      *processor.parameters.getParameter("spreadWobble"), spreadWobbleRelay, nullptr};
+  juce::WebToggleButtonParameterAttachment stereoOffsetEnabledWebAttachment{
+      *processor.parameters.getParameter("stereoOffsetEnabled"), stereoOffsetEnabledRelay, nullptr};
+  juce::WebSliderParameterAttachment stereoOffsetTimeWebAttachment{
+      *processor.parameters.getParameter("stereoOffsetTime"), stereoOffsetTimeRelay, nullptr};
   juce::WebSliderParameterAttachment chainPanLeftWebAttachment{
       *processor.parameters.getParameter("chainPanLeft"), chainPanLeftRelay, nullptr};
   juce::WebSliderParameterAttachment chainPanRightWebAttachment{
@@ -110,6 +158,10 @@ private:
       *processor.parameters.getParameter("calibrateInput"), calibrateInputRelay, nullptr};
   juce::WebSliderParameterAttachment inputCalibrationLevelWebAttachment{
       *processor.parameters.getParameter("inputCalibrationLevel"), inputCalibrationLevelRelay, nullptr};
+  juce::WebToggleButtonParameterAttachment osEnabledWebAttachment{
+      *processor.parameters.getParameter("osEnabled"), osEnabledRelay, nullptr};
+  juce::WebComboBoxParameterAttachment osFactorWebAttachment{
+      *processor.parameters.getParameter("osFactor"), osFactorRelay, nullptr};
 
   std::optional<juce::WebBrowserComponent::Resource> getResource(const juce::String& url);
   juce::String getMimeForExtension(const juce::String& extension);

@@ -94,7 +94,7 @@ void BlockSpectrum::analyze() {
                          ? juce::jlimit(kMinDb, 0.0f, 20.0f * std::log10(amplitude))
                          : kMinDb;
 
-    // Fast attack, slow release — classic analyzer ballistics at ~30 Hz polling.
+    // Fast attack, slow release: classic analyzer ballistics at ~30 Hz polling.
     float& smoothed = smoothedDb[static_cast<size_t>(i)];
     const float coeff = db > smoothed ? 0.7f : 0.18f;
     smoothed += (db - smoothed) * coeff;
