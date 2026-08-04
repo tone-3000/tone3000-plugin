@@ -1,4 +1,4 @@
-/** Shared meter scale + color ramp for DbMeter and BlockMeter.
+/** Shared meter scale + color ramp for DbMeter, BlockMeter, and DotMeter.
  *  Stops are the brand accents in theme.ts (blue → yellow → red). */
 
 export const METER_MIN_DB = -60;

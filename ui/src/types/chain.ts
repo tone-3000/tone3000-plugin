@@ -211,6 +211,9 @@ export interface ChainState {
   /** Global NAM A2 size (machine-wide user setting; false = lite, true =
       full). Applies to every NAM block — set via `setNamFullSize`. */
   namFullSize: boolean;
+  /** Multi-core stereo (machine-wide user setting). When true, stereo mode
+      processes the two chains on separate CPU cores — set via `setMultiCore`. */
+  multiCore: boolean;
   /** The chain-domain processing rate (fixed 48000 — the whole chain runs at
       48 kHz behind one resampling boundary). The EQ curve math needs it to
       mirror the audio exactly. */

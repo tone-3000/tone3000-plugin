@@ -219,6 +219,7 @@ flowchart LR
 - **Tone stack** — one global Bass/Middle/Treble EQ after the DC blocker.
 - **48 kHz boundary** — the chains are anchored at 48 kHz; a Lanczos resampler wraps them when the host rate differs (bypassed at 48 kHz).
 - **Oversampling** — an Advanced setting runs the whole chain at 2×/4×/8× the 48 kHz base rate (see `plugin/include/ChainOversampler.h`): minimum-phase half-band filters (zero added latency), with NAM models phase-interleaved across N native-rate instances (see `NamEngine.h`) so harmonics land in the widened band instead of folding back as aliasing. IR blocks are the exception: convolution is linear, so each IR convolves at the 48 kHz base rate inside a per-block decimate/interpolate island — IR CPU and sound are identical at every factor.
+- **Multi-core stereo** — an Advanced setting (on by default, machine-wide like the NAM A2 size) processes the two stereo chains concurrently: the Right chain (or, when branched, the branch lane in parallel with the trunk's post-tap remainder) runs on a realtime worker thread (see `plugin/include/LaneWorker.h`) while the audio thread processes the other. The worker joins the device's audio workgroup on macOS (AU/Standalone) so Apple Silicon schedules it with the audio deadline, and the audio thread can always steal the job back and run serially if the worker is unavailable — so the toggle is pure scheduling and the output is bit-identical either way (pinned by `test/src/multicore_tests.cpp`). Mono mode is untouched.
 
 Inside every tone block:
 
@@ -240,7 +241,7 @@ Meters tap the signal after input gain (input meters, pre-gate), after each bloc
 
 ### DSP tests
 
-A GTest suite verifies the chain's DSP invariants. `test/src/dsp_tests.cpp` covers the units — oversampler null/transparency/aliasing behavior, NAM phase-interleaving exactness, IR island equivalence — against the real model and IR assets in `test/files`. `test/src/processor_tests.cpp` drives the full `TONE3000Processor` (compiled headless, straight from `plugin/src`) the way a host would and pins the host-facing contracts: 48 kHz transparency with zero latency, reported PDC matching the measured boundary delay at 44.1/96 kHz, latency stability across oversampling toggles, and parameter state round trips. Run it locally:
+A GTest suite verifies the chain's DSP invariants. `test/src/dsp_tests.cpp` covers the units — oversampler null/transparency/aliasing behavior, NAM phase-interleaving exactness, IR island equivalence — against the real model and IR assets in `test/files`. `test/src/processor_tests.cpp` drives the full `TONE3000Processor` (compiled headless, straight from `plugin/src`) the way a host would and pins the host-facing contracts: 48 kHz transparency with zero latency, reported PDC matching the measured boundary delay at 44.1/96 kHz, latency stability across oversampling toggles, and parameter state round trips. `test/src/multicore_tests.cpp` pins multi-core stereo's contract: the parallel schedule's output is bit-identical to the serial one (independent and branched topologies, across host rates and oversampling factors), the worker survives host lifecycle churn, and it prints a serial-vs-parallel timing line. Run it locally:
 
 ```sh
 ./script/test-dsp.sh                     # build + run everything (~1 s)

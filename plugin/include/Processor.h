@@ -21,6 +21,7 @@
 #include "ChainHistory.h"
 #include "AutoOffset.h"
 #include "ChainOversampler.h"
+#include "LaneWorker.h"
 #include "MidiMapper.h"
 #include "NoiseGate.h"
 #include "Spread.h"
@@ -144,6 +145,18 @@ public:
   // chain revision so the UI resyncs.
   bool getNamFullSize() const { return namFullSize.load(); }
   void setNamFullSize(bool full);
+
+  // ── Multi-core stereo (machine-wide user setting, like the NAM A2 size) ──
+  // When on, stereo mode processes the two chain lanes concurrently: the
+  // Right lane (or the branch lane when branched) runs on the LaneWorker
+  // realtime thread while the audio thread processes the other. Off = the
+  // lanes run sequentially as before. Output is bit-identical either way —
+  // the toggle trades one core's worth of headroom for a second busy core,
+  // so it persists per machine, never with presets/sessions.
+  bool getMultiCoreEnabled() const { return multiCoreEnabled.load(); }
+  // `persist` = false skips the settings-file write (tests toggling the
+  // scheduling path must not touch the user's machine-wide preference).
+  void setMultiCoreEnabled(bool enabled, bool persist = true);
 
   // All meter levels in one call: { input, output, blocks: { id: { in, out } },
   // cpu (0..1 audio-callback load), correlation (-1..1 spread output
@@ -287,6 +300,12 @@ public:
   // macOS: ~/Library/Logs/TONE3000/TONE3000.log, Windows: %APPDATA%/TONE3000/TONE3000.log
   static juce::File getLogFile();
 
+  // Location of the shared machine-wide settings file (NAM A2 size,
+  // multi-core preference). Logged once at startup (see the constructor) so
+  // a "settings don't persist" report can be diagnosed straight from the
+  // log instead of guessed at.
+  static juce::File getSettingsFile();
+
 private:
   // One chain of blocks. Two of these make up `lanes` (declared below).
   using Lane = std::vector<std::unique_ptr<ChainBlock>>;
@@ -392,13 +411,30 @@ private:
   // 1 channel (a single side in stereo mode) or 1-2 channels (mono mode). All per-channel work
   // is keyed on buffer.getNumChannels(). Runs inside the chain domain (48 kHz — see
   // ChainDomain.h). Must be called while holding `chainMutex`.
+  // `dryScratch` is the dry-copy scratch the per-block mix blends against —
+  // per lane (see laneDryScratch) so the two lanes never share mutable state
+  // and can run concurrently.
   // `beginIdx`/`endIdx` bound the block range [beginIdx, endIdx) so the
   // branched routing can split one lane around the tap point; the defaults
   // run the whole lane (endIdx -1 = blocks.size()). Whole-chain context
   // (lastNamIndex) is always computed over the full lane regardless of the
   // range — the range is a routing split, not a different chain.
   void processChainOnBuffer(std::vector<std::unique_ptr<ChainBlock>>& blocks,
-                            juce::AudioBuffer<float>& buffer, int beginIdx = 0, int endIdx = -1);
+                            juce::AudioBuffer<float>& buffer,
+                            juce::AudioBuffer<float>& dryScratch, int beginIdx = 0,
+                            int endIdx = -1);
+
+  // Run two independent chain sections — the `worker*` one on the LaneWorker
+  // thread and the `local*` one on the calling (audio) thread — when this
+  // callback forked (rtParallelLanes); strictly sequentially otherwise. The
+  // sections are lane-disjoint by construction (different Lane, buffer and
+  // scratch), so both schedules produce bit-identical output. Caller holds
+  // chainMutex; the worker inherits that protection because it runs entirely
+  // inside this call.
+  void processLanePair(Lane& workerBlocks, juce::AudioBuffer<float>& workerBuffer,
+                       juce::AudioBuffer<float>& workerScratch, int workerBeginIdx,
+                       Lane& localBlocks, juce::AudioBuffer<float>& localBuffer,
+                       juce::AudioBuffer<float>& localScratch, int localBeginIdx);
 
   // The whole chain stage at the chain rate: lane L (and lane R in stereo
   // mode) over the given channel pointers. Called either directly (48k host)
@@ -606,6 +642,33 @@ private:
   // under chainMutex just before invoking the stage (audio thread only).
   int rtChainChannels = 2;
   bool rtStereoChains = false;
+  // True when this callback's chain stage should fork the two lanes across
+  // cores (see LaneWorker.h): multi-core enabled, worker healthy, stereo
+  // chains active, and both sides of the parallel section actually carry
+  // work. Resolved once per processBlock under chainMutex.
+  bool rtParallelLanes = false;
+
+  // ── Multi-core stereo (see the public getMultiCoreEnabled) ──
+  // The worker thread lives from prepareToPlay to releaseResources
+  // regardless of the setting (a parked thread is ~free); the setting only
+  // gates dispatch, so toggling it is glitch-free and instant.
+  LaneWorker laneWorker;
+  static bool readPersistedMultiCoreEnabled();
+  std::atomic<bool> multiCoreEnabled{readPersistedMultiCoreEnabled()};
+  // Hosts hand the device's os_workgroup here (AU/Standalone on macOS);
+  // forward it so the worker gets scheduled with the audio deadline.
+  void audioWorkgroupContextChanged(const juce::AudioWorkgroup& workgroup) override {
+    laneWorker.setAudioWorkgroup(workgroup);
+  }
+  // Does the lane do any audible processing from `beginIdx` on? Gates the
+  // fork: dispatching an idle lane costs more than running its (empty) loop
+  // inline. A block still gliding through its wet fade counts as work.
+  static bool laneHasWork(const Lane& l, int beginIdx = 0) {
+    for (size_t i = static_cast<size_t>(juce::jmax(0, beginIdx)); i < l.size(); ++i)
+      if (l[i]->type != ChainBlockType::INSERT && l[i]->loaded)
+        return true;
+    return false;
+  }
 
   // TONE3000 OAuth access token (Bearer). Read by `fetchModelFromUrl` from any
   // thread; written by the UI thread via `setAccessToken`.
@@ -705,7 +768,11 @@ private:
   juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>, juce::dsp::IIR::Coefficients<float>>
       trebleFilter;
 
-  juce::AudioBuffer<float> tempDryBuffer;  // chain-domain scratch (sized to chainDomainBlockSize)
+  // Per-lane dry-copy scratch for the block mix stage (chain-domain sized —
+  // see chainDomainBlockSize). One buffer per lane so the stereo lanes own
+  // disjoint scratch and can process concurrently; each stays 2-channel
+  // because mono mode runs a (possibly stereo) buffer through lane 0 alone.
+  std::array<juce::AudioBuffer<float>, kNumLanes> laneDryScratch;
   double hostSampleRate = 48000.0;  // Default, updated dynamically in prepareToPlay
 
   // ── Global NAM A2 size (see setNamFullSize) ──

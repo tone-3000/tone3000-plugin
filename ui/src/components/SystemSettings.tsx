@@ -15,7 +15,8 @@ import {
 } from './controls';
 import { MidiInputsSection } from './MidiInputsSection';
 import { bannerRuleById } from './AppBanner';
-import { getGradientColor } from './meterColor';
+import { DotMeter } from './BlockMeter';
+import { METER_MAX_DB } from './meterColor';
 import { MUTED, SUBTLE } from './theme';
 
 /**
@@ -79,31 +80,8 @@ const deviceOptions = (devices: string[], current: string, noneLabel: string) =>
 //==============================================================================
 // Input channel picker
 
-const METER_LEDS = 18;
-const METER_MIN_DB = -60;
-
-/** Horizontal LED strip in the app's meter language (full ramp always
-    visible dimmed, lit to the level). */
-const ChannelMeter: React.FC<{ db: number }> = ({ db }) => (
-  <span style={{ display: 'flex', gap: '3px', marginLeft: 'auto', flexShrink: 0 }}>
-    {Array.from({ length: METER_LEDS }, (_, i) => {
-      const position = i / (METER_LEDS - 1);
-      const ledDb = METER_MIN_DB + position * -METER_MIN_DB;
-      return (
-        <span
-          key={i}
-          style={{
-            width: '5px',
-            height: '5px',
-            borderRadius: '1.5px',
-            backgroundColor: getGradientColor(position),
-            opacity: db >= ledDb ? 1 : 0.18,
-          }}
-        />
-      );
-    })}
-  </span>
-);
+/** Compact horizontal strip (~8 dots) — same DotMeter as the block rails. */
+const CHANNEL_METER_LENGTH = 100;
 
 const ChannelRow: React.FC<{
   channel: AudioInputChannel;
@@ -151,11 +129,19 @@ const ChannelRow: React.FC<{
         overflow: 'hidden',
         textOverflow: 'ellipsis',
         whiteSpace: 'nowrap',
+        minWidth: 0,
+        flex: 1,
       }}
     >
       {channel.name}
     </span>
-    <ChannelMeter db={db} />
+    {/* Live peak (no latch) — sits inside the row button, so no clip clear. */}
+    <DotMeter
+      db={db}
+      length={CHANNEL_METER_LENGTH}
+      orientation="horizontal"
+      clipped={db >= METER_MAX_DB}
+    />
   </button>
 );
 
@@ -552,7 +538,7 @@ export const SystemSettings: React.FC<SystemSettingsProps> = ({ device }) => {
       )}
 
       {/* MIDI hardware — which devices feed the plugin. What each control
-          does is mapped in Plugin Settings (MIDI Mapping). */}
+          does is mapped in Plugin Settings → MIDI Mapping. */}
       <MidiInputsSection device={device} />
     </>
   );

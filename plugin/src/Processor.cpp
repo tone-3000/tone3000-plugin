@@ -32,6 +32,16 @@ TONE3000Processor::TONE3000Processor()
     juce::Logger::setCurrentLogger(new juce::FileLogger(getLogFile(), "TONE3000 JUCE Log"));
   }
 
+  // One-line snapshot of everything read from the shared machine-wide
+  // settings file at construction, plus the file's own path — the first
+  // thing to check when a "settings/login don't persist" report comes in
+  // (wrong/unwritable path, or the file simply isn't there yet).
+  juce::Logger::writeToLog(
+      "[Processor] Settings file: " + getSettingsFile().getFullPathName() +
+      " (exists=" + juce::String(getSettingsFile().existsAsFile() ? "yes" : "no") +
+      ") | namFullSize=" + juce::String(namFullSize.load() ? "full" : "lite") +
+      " multiCore=" + juce::String(multiCoreEnabled.load() ? "on" : "off"));
+
   resolveParamRefs();
 
   // Oversampling settings apply through a message-thread bounce (see
@@ -227,8 +237,10 @@ void TONE3000Processor::applyOversamplingSettings() {
 
   // The chain-domain scratch grows with the factor; the RT path never
   // resizes it.
-  tempDryBuffer.setSize(2, juce::jmax(1, chainDomainBlockSize()), false, false, true);
-  tempDryBuffer.clear();
+  for (auto& scratch : laneDryScratch) {
+    scratch.setSize(2, juce::jmax(1, chainDomainBlockSize()), false, false, true);
+    scratch.clear();
+  }
 
   for (auto& l : lanes)
     prepareChain(l);
@@ -639,12 +651,19 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   dcBlocker.reset();
 
   // Scratch buffers, sized once here — the RT path never resizes them.
-  // tempDryBuffer lives in the chain domain, where a callback can carry more
-  // frames than the host block (e.g. a 44.1k host upsampled to 48k).
-  tempDryBuffer.setSize(2, chainDomainBlockSize(), false, false, true);
-  tempDryBuffer.clear();
+  // The lane dry scratches live in the chain domain, where a callback can
+  // carry more frames than the host block (e.g. a 44.1k host upsampled to 48k).
+  for (auto& scratch : laneDryScratch) {
+    scratch.setSize(2, chainDomainBlockSize(), false, false, true);
+    scratch.clear();
+  }
   chainScratchChannel.setSize(1, samplesPerBlock, false, false, true);
   chainScratchChannel.clear();
+
+  // (Re)start the lane worker with the new callback geometry. It idles until
+  // a stereo callback actually forks (see rtParallelLanes); starting it here
+  // unconditionally keeps the multi-core toggle a pure dispatch gate.
+  laneWorker.start(sampleRate, samplesPerBlock);
 
   // Apply the actual tone knob gains to the tone stack filters.
   updateEqCoefficients();
@@ -655,6 +674,11 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
 // #################
 void TONE3000Processor::releaseResources() {
   juce::Logger::writeToLog("[Processor] releaseResources() called");
+
+  // The lane worker only lives while the host is running audio callbacks
+  // (prepareToPlay restarts it). Stopping here also guarantees no worker
+  // outlives the buffers/lanes a stale job could reference.
+  laneWorker.stop();
 
   // DO NOT clear chain blocks here! They should persist across bypass/unbypassed states.
   // Chain blocks are managed by the plugin's state system and should only be cleared
@@ -774,7 +798,8 @@ void TONE3000Processor::updateCachedParameters() {
 // mode) or 1-2 channels (mono mode). All per-channel work is keyed on buffer.getNumChannels().
 // Must be called while holding chainMutex.
 void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBlock>>& blocks,
-                                             juce::AudioBuffer<float>& buffer, int beginIdx,
+                                             juce::AudioBuffer<float>& buffer,
+                                             juce::AudioBuffer<float>& dryScratch, int beginIdx,
                                              int endIdx) {
   const int numSamples = buffer.getNumSamples();
   const int numChannels = buffer.getNumChannels();
@@ -826,12 +851,12 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
       continue;
     }
 
-    // Prepare dry copy before processing for mix (reuse temp buffer)
-    jassert(tempDryBuffer.getNumChannels() >= numChannels);
-    jassert(tempDryBuffer.getNumSamples() >= numSamples);
-    tempDryBuffer.copyFrom(0, 0, buffer, 0, 0, numSamples);
+    // Prepare dry copy before processing for mix (reuse the lane's scratch)
+    jassert(dryScratch.getNumChannels() >= numChannels);
+    jassert(dryScratch.getNumSamples() >= numSamples);
+    dryScratch.copyFrom(0, 0, buffer, 0, 0, numSamples);
     if (numChannels > 1) {
-      tempDryBuffer.copyFrom(1, 0, buffer, 1, 0, numSamples);
+      dryScratch.copyFrom(1, 0, buffer, 1, 0, numSamples);
     }
 
     // Per-block input gain (0.5 == unity, ±24 dB), applied after the dry copy
@@ -872,7 +897,7 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
     if (block->type == ChainBlockType::NAM) {
       // NAM Processing (the engine runs at the chain rate — no per-block resampling)
       try {
-        jassert(numSamples <= tempDryBuffer.getNumSamples());
+        jassert(numSamples <= dryScratch.getNumSamples());
 
         if (block->namEngine == nullptr) {
           DBG("Warning: NAM block " << block->id << " has no engine - skipping");
@@ -962,9 +987,9 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
         block->loaded = false;
         block->rtProcessingFailed.store(true);
         bumpChainRevision();  // wake the UI poll so the flag is drained
-        buffer.copyFrom(0, 0, tempDryBuffer, 0, 0, numSamples);
+        buffer.copyFrom(0, 0, dryScratch, 0, 0, numSamples);
         if (numChannels > 1) {
-          buffer.copyFrom(1, 0, tempDryBuffer, 1, 0, numSamples);
+          buffer.copyFrom(1, 0, dryScratch, 1, 0, numSamples);
         }
         continue;
       }
@@ -1034,12 +1059,12 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
       // toggle, add/remove) glides through bypass — see ChainBlock.h.
       const float m = block->mixSmoother.getNextValue() * block->wetFadeGain.getNextValue();
       float wetL = buffer.getWritePointer(0)[i] * g;
-      float dryL = tempDryBuffer.getReadPointer(0)[i];
+      float dryL = dryScratch.getReadPointer(0)[i];
       buffer.getWritePointer(0)[i] = dryL * (1.0f - m) + wetL * m;
       blockOutputPeak = std::max(blockOutputPeak, std::abs(buffer.getWritePointer(0)[i]));
       if (numChannels > 1) {
         float wetR = buffer.getWritePointer(1)[i] * g;
-        float dryR = tempDryBuffer.getReadPointer(1)[i];
+        float dryR = dryScratch.getReadPointer(1)[i];
         buffer.getWritePointer(1)[i] = dryR * (1.0f - m) + wetR * m;
         blockOutputPeak = std::max(blockOutputPeak, std::abs(buffer.getWritePointer(1)[i]));
       }
@@ -1074,6 +1099,47 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
                                   numChannels > 1 ? buffer.getReadPointer(1) : nullptr,
                                   numSamples);
   }
+}
+
+// Fork/join for the stereo lanes (see LaneWorker.h). The job context lives on
+// this stack frame and stays valid until join() returns; the lambda decays to
+// a plain function pointer, so dispatching allocates nothing on the RT path.
+void TONE3000Processor::processLanePair(Lane& workerBlocks,
+                                        juce::AudioBuffer<float>& workerBuffer,
+                                        juce::AudioBuffer<float>& workerScratch,
+                                        int workerBeginIdx, Lane& localBlocks,
+                                        juce::AudioBuffer<float>& localBuffer,
+                                        juce::AudioBuffer<float>& localScratch,
+                                        int localBeginIdx) {
+  if (rtParallelLanes) {
+    struct LaneJob {
+      TONE3000Processor* proc;
+      Lane* blocks;
+      juce::AudioBuffer<float>* buffer;
+      juce::AudioBuffer<float>* scratch;
+      int beginIdx;
+    } job{this, &workerBlocks, &workerBuffer, &workerScratch, workerBeginIdx};
+
+    const bool dispatched = laneWorker.dispatch(
+        [](void* ctx) {
+          auto& j = *static_cast<LaneJob*>(ctx);
+          j.proc->processChainOnBuffer(*j.blocks, *j.buffer, *j.scratch, j.beginIdx);
+        },
+        &job);
+
+    processChainOnBuffer(localBlocks, localBuffer, localScratch, localBeginIdx);
+
+    if (dispatched) {
+      laneWorker.join();
+      return;
+    }
+    // The worker wasn't running after all — finish its section inline.
+    processChainOnBuffer(workerBlocks, workerBuffer, workerScratch, workerBeginIdx);
+    return;
+  }
+
+  processChainOnBuffer(localBlocks, localBuffer, localScratch, localBeginIdx);
+  processChainOnBuffer(workerBlocks, workerBuffer, workerScratch, workerBeginIdx);
 }
 
 // ##############################
@@ -1121,24 +1187,30 @@ void TONE3000Processor::processChainStage(float** inputs, float** outputs, int n
       juce::AudioBuffer<float> branchBuf(branchPtr, 1, numFrames);
 
       auto& trunk = lane(branchSourceSide);
-      processChainOnBuffer(trunk, trunkBuf, 0, rtBranchTapIndex + 1);
+      auto& trunkScratch = laneDryScratch[static_cast<size_t>(laneIndex(branchSourceSide))];
+      auto& branchScratch = laneDryScratch[static_cast<size_t>(laneIndex(branchSide))];
+      // The prefix must complete before the tap copy, so it always runs
+      // serially here; after the copy the trunk remainder and the branch
+      // lane are independent and can fork (branch to the worker).
+      processChainOnBuffer(trunk, trunkBuf, trunkScratch, 0, rtBranchTapIndex + 1);
       std::memcpy(outputs[branchCh], outputs[trunkCh],
                   sizeof(float) * static_cast<size_t>(numFrames));
-      processChainOnBuffer(trunk, trunkBuf, rtBranchTapIndex + 1);
-      processChainOnBuffer(lane(branchSide), branchBuf);
+      processLanePair(lane(branchSide), branchBuf, branchScratch, 0, trunk, trunkBuf,
+                      trunkScratch, rtBranchTapIndex + 1);
     } else {
       // Stereo mode: each channel is an independent mono lane, processed in
-      // place — no split/merge copies needed.
+      // place — no split/merge copies needed. Right lane to the worker (when
+      // this callback forked — see rtParallelLanes), Left on this thread.
       float* left[] = {outputs[0]};
       float* right[] = {outputs[1]};
       juce::AudioBuffer<float> bufferL(left, 1, numFrames);
       juce::AudioBuffer<float> bufferR(right, 1, numFrames);
-      processChainOnBuffer(lane(ChainSide::Left), bufferL);
-      processChainOnBuffer(lane(ChainSide::Right), bufferR);
+      processLanePair(lane(ChainSide::Right), bufferR, laneDryScratch[1], 0,
+                      lane(ChainSide::Left), bufferL, laneDryScratch[0], 0);
     }
   } else {
     juce::AudioBuffer<float> chainBuffer(outputs, rtChainChannels, numFrames);
-    processChainOnBuffer(lane(ChainSide::Left), chainBuffer);
+    processChainOnBuffer(lane(ChainSide::Left), chainBuffer, laneDryScratch[0]);
   }
 }
 
@@ -1251,6 +1323,24 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
 
     rtStereoChains = stereoEnabled.load() && numChannels >= 2;
     rtChainChannels = juce::jmin(numChannels, 2);
+
+    // Fork the lanes across cores only when both sides of the parallel
+    // section carry work — otherwise the handoff costs more than the empty
+    // loop it would hide. For branched routing the parallel section is
+    // trunk-suffix ∥ branch, so the trunk only counts blocks after the tap.
+    rtParallelLanes = false;
+    if (rtStereoChains && multiCoreEnabled.load(std::memory_order_relaxed) &&
+        laneWorker.isRunning()) {
+      if (rtBranchTapIndex >= 0) {
+        const ChainSide branchSide =
+            branchSourceSide == ChainSide::Right ? ChainSide::Left : ChainSide::Right;
+        rtParallelLanes = laneHasWork(lane(branchSourceSide), rtBranchTapIndex + 1) &&
+                          laneHasWork(lane(branchSide));
+      } else {
+        rtParallelLanes =
+            laneHasWork(lane(ChainSide::Left)) && laneHasWork(lane(ChainSide::Right));
+      }
+    }
 
     // Hosts occasionally exceed the block size they promised in prepareToPlay.
     // Feed the chain stage in prepared-size slices so the boundary's internal

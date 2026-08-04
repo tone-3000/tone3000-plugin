@@ -11,7 +11,8 @@ import { MUTED, SUBTLE } from './theme';
  *
  * This section only decides which hardware feeds the plugin: enabled inputs
  * are merged into one stream. What each knob or pedal does is MIDI Mapping,
- * which lives in Plugin Settings because it works in DAW builds too.
+ * which lives on its own Plugin Settings sub-screen because it works in DAW
+ * builds too.
  */
 
 /** Hot-plug detection: the OS doesn't push MIDI device arrivals, so re-pull
@@ -32,7 +33,7 @@ export const MidiInputsSection: React.FC<{ device: AudioDevice }> = ({ device })
   return (
     <FieldRow
       label="MIDI Inputs"
-      help="Enable the devices you want to control the plugin with. Set what each knob or pedal does in Plugin Settings under MIDI Mapping."
+      help="Enable the devices you want to control the plugin with. Set what each knob or pedal does in Plugin Settings → MIDI Mapping."
     >
       <div style={{ border: FIELD_BORDER, borderRadius: '10px', overflow: 'hidden' }}>
         {inputs.length === 0 ? (

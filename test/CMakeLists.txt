@@ -20,6 +20,7 @@ target_sources(DspTests PRIVATE
     src/branch_tests.cpp
     src/dsp_tests.cpp
     src/duplicate_tests.cpp
+    src/multicore_tests.cpp
     src/processor_tests.cpp
     src/spread_tests.cpp
     # Compiled straight from the plugin tree — the tests exercise the real

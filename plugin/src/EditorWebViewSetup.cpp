@@ -259,6 +259,15 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
             editor->processor.setNamFullSize(coerceBool(args[0]));
             return juce::var(true);
           }))
+      .withNativeFunction(
+          // Machine-wide multi-core stereo (true = process the two stereo
+          // chains on separate cores). Applies instantly (pure scheduling —
+          // output is bit-identical) and persists in the shared settings
+          // file; the current value rides getChainState as `multiCore`.
+          "setMultiCore", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
+            editor->processor.setMultiCoreEnabled(coerceBool(args[0]));
+            return juce::var(true);
+          }))
       // --- Per-block params / EQ / spectrum ---------------------------------
       .withNativeFunction(
           // Single entry point for per-block user params:

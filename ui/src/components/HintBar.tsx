@@ -71,8 +71,8 @@ const CpuReadout: React.FC = () => {
  * hint never shifts layout. Like the banner, it grows the window rather than
  * eating into the plugin — Plugin adds HINT_HEIGHT to the window height.
  * The right side carries the machine-wide NAM A2 size toggle and the CPU
- * readout; the × disables hints entirely — the Settings "Hints" toggle
- * brings the bar back.
+ * readout; the × hides the bar entirely — the Settings "Info Bar" toggle
+ * brings it back.
  */
 export const HintBar: React.FC<HintBarProps> = ({ namFullSize, onNamFullSizeChange }) => {
   const enabled = useHintsEnabled();

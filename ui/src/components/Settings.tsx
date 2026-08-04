@@ -28,13 +28,15 @@ const CALIBRATION_DOCS_URL =
   'https://neural-amp-modeler.readthedocs.io/en/latest/tutorials/calibration.html';
 
 /**
- * Settings: full-window takeover, tabbed between Plugin Settings (hints,
- * MIDI mapping, NAM size, normalization, calibration, diagnostics) and
- * System Settings (the bespoke audio device + MIDI hardware panel). The
- * System tab only exists in the standalone app — hosts own devices, sample
- * rate and buffer size arrive as facts from the DAW — and with one tab the
- * tab bar drops away entirely!
+ * Settings: full-window takeover, tabbed between Plugin Settings (info bar,
+ * MIDI / Advanced entry points) and System Settings (the bespoke audio
+ * device + MIDI hardware panel). MIDI Mapping and Advanced are sub-screens
+ * of the plugin tab — the header X steps back. The System tab only exists
+ * in the standalone app — hosts own devices, sample rate and buffer size
+ * arrive as facts from the DAW — and with one tab the tab bar drops away.
  */
+
+type PluginScreen = 'main' | 'midi' | 'advanced';
 
 export type SettingsTab = 'plugin' | 'system';
 
@@ -56,6 +58,10 @@ interface SettingsProps {
   /** Global NAM A2 size (machine-wide; false = lite, true = full). */
   namFullSize: boolean;
   onNamFullSizeChange: (full: boolean) => void;
+  /** Multi-core stereo (machine-wide; processes the two stereo chains on
+      separate CPU cores). */
+  multiCore: boolean;
+  onMultiCoreChange: (enabled: boolean) => void;
 }
 
 // Oversampling rate choices. Values are the osFactor parameter's choice
@@ -66,7 +72,7 @@ const OS_FACTOR_OPTIONS: { value: '0' | '1' | '2'; label: string }[] = [
   { value: '2', label: '8X' },
 ];
 
-// The machine-wide NAM A2 size: one tier for every NAM block. The hint bar
+// The machine-wide NAM A2 size: one tier for every NAM block. The info bar
 // carries a secondary LITE/FULL toggle for the same setting.
 const NAM_A2_SIZE_OPTIONS: { full: boolean; label: string; description: string }[] = [
   { full: false, label: 'A2-Lite', description: 'Sounds great and uses less CPU' },
@@ -130,9 +136,11 @@ export const Settings: React.FC<SettingsProps> = ({
   update,
   namFullSize,
   onNamFullSizeChange,
+  multiCore,
+  onMultiCoreChange,
 }) => {
   const [tab, setTab] = useState<SettingsTab>(standalone ? initialTab : 'plugin');
-  const [screen, setScreen] = useState<'main' | 'advanced'>('main');
+  const [screen, setScreen] = useState<PluginScreen>('main');
 
   const hintsEnabled = useHintsEnabled();
   const blockNormalizeControlEnabled = useBlockNormalizeControlEnabled();
@@ -183,12 +191,15 @@ export const Settings: React.FC<SettingsProps> = ({
     setTimeout(() => setLogStatus(null), 3000);
   }, [revealLogs]);
 
-  // One control: the X steps Advanced back to the main screen, and closes
-  // from there — no separate back button.
+  // One control: the X steps a sub-screen back to main, and closes from
+  // there — no separate back button.
   const handleHeaderClose = useCallback(() => {
-    if (screen === 'advanced') setScreen('main');
+    if (screen !== 'main') setScreen('main');
     else onClose();
   }, [onClose, screen]);
+
+  const headerTitle =
+    screen === 'advanced' ? 'Advanced' : screen === 'midi' ? 'MIDI Mapping' : 'Settings';
 
   const header = (
     <div
@@ -200,7 +211,7 @@ export const Settings: React.FC<SettingsProps> = ({
       }}
     >
       <span style={{ fontSize: '22px', fontWeight: 600, color: '#ffffff' }}>
-        {screen === 'advanced' ? 'Advanced' : 'Settings'}
+        {headerTitle}
       </span>
       <button
         onClick={handleHeaderClose}
@@ -222,15 +233,24 @@ export const Settings: React.FC<SettingsProps> = ({
   const pluginMainScreen = (
     <>
       <ToggleRow
-        label="Hints"
-        description="Shows a help bar under the faceplate describing the control under your pointer, with its shortcuts."
+        label="Info Bar"
+        description="Bar under the faceplate with hover help for controls, the NAM LITE/FULL toggle, and CPU load."
         value={hintsEnabled}
         onChange={setHintsEnabled}
       />
 
       {/* MIDI Learn/mapping — plugin-level (reads the processor's MIDI
           buffer), so it belongs here and works in DAW builds too. */}
-      <MidiMapSettings />
+      <div style={{ marginBottom: '36px' }}>
+        <span style={sectionLabelStyle}>MIDI Mapping</span>
+        <p style={{ ...descriptionStyle, marginBottom: '16px' }}>
+          Control the plugin from pedals and knobs. Mappings are saved with the
+          plugin and work in your DAW too.
+        </p>
+        <button onClick={() => setScreen('midi')} style={ctaButtonStyle}>
+          MIDI Mapping
+        </button>
+      </div>
 
       <div style={{ marginBottom: '36px' }}>
         <span style={sectionLabelStyle}>Advanced</span>
@@ -278,7 +298,7 @@ export const Settings: React.FC<SettingsProps> = ({
         <span style={sectionLabelStyle}>NAM A2 Size</span>
         <p style={{ ...descriptionStyle, marginBottom: '18px' }}>
           One size for every NAM tone on this machine. Also switchable from the LITE/FULL
-          toggle in the hint bar.
+          toggle in the info bar.
         </p>
         {NAM_A2_SIZE_OPTIONS.map((option) => (
           <RadioOption
@@ -407,6 +427,13 @@ export const Settings: React.FC<SettingsProps> = ({
         </div>
       </ToggleRow>
 
+      <ToggleRow
+        label="Multi-Core Stereo"
+        description="In stereo mode, processes the two chains on separate CPU cores for more headroom. Doesn't change the sound."
+        value={multiCore}
+        onChange={onMultiCoreChange}
+      />
+
       <div>
         <span style={sectionLabelStyle}>Diagnostics</span>
         <p style={{ ...descriptionStyle, marginBottom: '16px' }}>
@@ -435,7 +462,14 @@ export const Settings: React.FC<SettingsProps> = ({
     </>
   );
 
-  const pluginTab = screen === 'advanced' ? advancedScreen : pluginMainScreen;
+  const pluginTab =
+    screen === 'advanced' ? (
+      advancedScreen
+    ) : screen === 'midi' ? (
+      <MidiMapSettings />
+    ) : (
+      pluginMainScreen
+    );
 
   return (
     <div
@@ -460,8 +494,8 @@ export const Settings: React.FC<SettingsProps> = ({
         }}
       >
         {header}
-        {/* One tab (hosted) = no tab bar. Advanced hides it too — it's a
-            sub-screen of the plugin tab, and the header X steps back. */}
+        {/* One tab (hosted) = no tab bar. Sub-screens hide it too — they're
+            under the plugin tab, and the header X steps back. */}
         {standalone && screen === 'main' && <TabBar active={tab} onChange={setTab} />}
         {tab === 'system' && standalone && screen === 'main' ? (
           <SystemSettings device={device} />

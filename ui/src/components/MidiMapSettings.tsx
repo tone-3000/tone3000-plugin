@@ -14,14 +14,15 @@ import {
 import { MUTED, SUBTLE, BRAND_YELLOW } from './theme';
 
 /**
- * MIDI Mapping (Plugin Settings tab): control the plugin from pedals and
- * knobs. Lives on this tab — not System Settings — because the map reads the
- * processor's MIDI buffer, so it works identically in DAW builds where the
- * System tab doesn't exist. Mappings serialize with plugin state.
+ * MIDI Mapping sub-screen (Plugin Settings): control the plugin from pedals
+ * and knobs. Opened from the main plugin settings screen — same pattern as
+ * Advanced. Lives under Plugin Settings (not System) because the map reads
+ * the processor's MIDI buffer, so it works identically in DAW builds where
+ * the System tab doesn't exist. Mappings serialize with plugin state.
  *
  * Learn flow: pick a target (or hit re-learn on a row), then move a hardware
  * control; the first CC / note-on wins. The engine owns the armed state —
- * this component just renders it — so learn survives tab switches and
+ * this component just renders it — so learn survives screen switches and
  * completes from the hardware side via the midiMapChanged event.
  *
  * Preset switching needs no mapping: program change n loads the nth preset
@@ -194,10 +195,7 @@ export const MidiMapSettings: React.FC = () => {
     <>
       <style>{`@keyframes t3kMidiListen { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }`}</style>
 
-      <FieldRow
-        label="MIDI Mapping"
-        help="Control the plugin from your pedals and knobs. Mappings are saved with the plugin and work in your DAW too."
-      >
+      <div style={{ marginBottom: '28px' }}>
         <div style={{ border: FIELD_BORDER, borderRadius: '10px', overflow: 'hidden' }}>
           {state.mappings.map((mapping) =>
             mapping.targetId === learnTargetId ? (
@@ -267,7 +265,7 @@ export const MidiMapSettings: React.FC = () => {
           Presets need no mapping: program change messages switch presets in the order shown in
           the preset browser.
         </p>
-      </FieldRow>
+      </div>
 
       <FieldRow label="MIDI Channel" help="Omni listens on every channel.">
         <SelectField

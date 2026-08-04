@@ -239,7 +239,7 @@ export const HELP = {
   // The hint bar itself
   namSize: 'NAM Size: LITE saves CPU · FULL is highest quality. Applies to all NAM tones.',
   cpuLoad: 'CPU: audio engine load.',
-  hideHints: 'Hide Hints: hide this bar. Re-enable in Settings.',
+  hideHints: 'Hide Info Bar: hide this bar. Re-enable in Settings.',
 } as const;
 
 /** Gallery tile: leads with the tone's own name. */

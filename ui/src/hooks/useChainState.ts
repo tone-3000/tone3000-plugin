@@ -28,6 +28,7 @@ const EMPTY_STATE: ChainState = {
   standalone: false,
   inputMode: 'stereo',
   namFullSize: false,
+  multiCore: true,
   sampleRate: 48000,
   chain: [],
 };
@@ -65,6 +66,7 @@ export function useChainState() {
       setStereoMode: backend.getPluginFunction('setStereoMode'),
       setInputMode: backend.getPluginFunction('setInputMode'),
       setNamFullSize: backend.getPluginFunction('setNamFullSize'),
+      setMultiCore: backend.getPluginFunction('setMultiCore'),
       setActiveEditChain: backend.getPluginFunction('setActiveEditChain'),
       swapChains: backend.getPluginFunction('swapChains'),
       setChainBranch: backend.getPluginFunction('setChainBranch'),
@@ -159,6 +161,10 @@ export function useChainState() {
           Retiers every loaded NAM block natively and persists on disk. */
       setNamFullSize: (full: boolean) =>
         run('setNamFullSize', () => native.setNamFullSize(full)),
+      /** Multi-core stereo (machine-wide). Pure scheduling — applies
+          instantly and persists on disk. */
+      setMultiCore: (enabled: boolean) =>
+        run('setMultiCore', () => native.setMultiCore(enabled)),
       setActiveSide: (side: ChainSide) =>
         run('setActiveEditChain', () => native.setActiveEditChain(side)),
       /** Swap the Left and Right chains wholesale (stereo only). Undoable. */
@@ -216,6 +222,7 @@ export function useChainState() {
     stereoInput: state.stereoInput ?? false,
     inputMode: state.inputMode ?? 'stereo',
     namFullSize: state.namFullSize ?? false,
+    multiCore: state.multiCore ?? true,
     standalone: state.standalone ?? false,
     sampleRate: state.sampleRate || 48000,
     refresh,

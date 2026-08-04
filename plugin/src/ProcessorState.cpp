@@ -6,12 +6,13 @@
 
 // ── Machine-wide user settings ──
 // Shared PropertiesFile for preferences that belong to the machine, not the
-// session/preset (currently just the NAM A2 size). Same app-data root as
-// PresetManager: ~/Library/Application Support/TONE3000 on macOS,
+// session/preset (the NAM A2 size and multi-core stereo). Same app-data root
+// as PresetManager: ~/Library/Application Support/TONE3000 on macOS,
 // %APPDATA%/TONE3000 on Windows.
 namespace {
 
 constexpr auto kNamFullSizeKey = "namFullSize";
+constexpr auto kMultiCoreKey = "multiCoreStereo";
 
 juce::PropertiesFile::Options userSettingsOptions() {
   juce::PropertiesFile::Options options;
@@ -24,10 +25,35 @@ juce::PropertiesFile::Options userSettingsOptions() {
 
 }  // namespace
 
+juce::File TONE3000Processor::getSettingsFile() {
+  return userSettingsOptions().getDefaultFile();
+}
+
 bool TONE3000Processor::readPersistedNamFullSize() {
   return juce::PropertiesFile(userSettingsOptions()).getBoolValue(kNamFullSizeKey, false);
 }
 
+bool TONE3000Processor::readPersistedMultiCoreEnabled() {
+  return juce::PropertiesFile(userSettingsOptions()).getBoolValue(kMultiCoreKey, true);
+}
+
+void TONE3000Processor::setMultiCoreEnabled(bool enabled, bool persist) {
+  if (multiCoreEnabled.load() == enabled)
+    return;
+
+  // No fade, no lock: the flag only picks serial vs. parallel scheduling for
+  // the next callback, and both schedules produce bit-identical audio.
+  multiCoreEnabled.store(enabled);
+  if (persist) {
+    juce::PropertiesFile settings(userSettingsOptions());
+    settings.setValue(kMultiCoreKey, enabled);
+    settings.saveIfNeeded();
+  }
+
+  juce::Logger::writeToLog(juce::String("[Processor] Multi-core stereo ") +
+                           (enabled ? "enabled" : "disabled"));
+  bumpChainRevision();
+}
 void TONE3000Processor::setNamFullSize(bool full) {
   if (namFullSize.load() == full)
     return;

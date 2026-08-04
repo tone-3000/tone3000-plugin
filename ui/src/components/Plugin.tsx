@@ -85,6 +85,7 @@ export const Plugin: React.FC = () => {
     stereoInput,
     inputMode,
     namFullSize,
+    multiCore,
     standalone,
     sampleRate,
     refresh,
@@ -689,6 +690,8 @@ export const Plugin: React.FC = () => {
           update={update}
           namFullSize={namFullSize}
           onNamFullSizeChange={actions.setNamFullSize}
+          multiCore={multiCore}
+          onMultiCoreChange={actions.setMultiCore}
         />
       )}
 
