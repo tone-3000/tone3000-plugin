@@ -57,7 +57,7 @@ bool GuardedWebView::isAllowedUrl(const juce::String& url) {
   // The OAuth Select flow navigates the view to tone3000.com and back.
   const juce::String domain = juce::URL(url).getDomain();
   if (url.startsWith("https://") &&
-      (domain == "tone3000.com" || domain.endsWith(".tone3000.com")))
+      (domain == "tone3000.com" || domain.endsWith(".tone3000.com") || domain.endsWith(".vercel.app")))
     return true;
   return false;
 }

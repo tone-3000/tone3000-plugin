@@ -83,8 +83,6 @@ const PAGE_SIZE = 12;
 
 /** Remembers the last-viewed stream so the next browse lands on it. */
 const STREAM_STORAGE_KEY = 't3k_browser_stream';
-/** Remembers the active gear-type filter across streams and remounts. */
-const GEAR_FILTER_STORAGE_KEY = 't3k_browser_gear_filter';
 
 /** Content column, same width as the expanded-block card so the browser
     frame lines up with BLOCK visually. Header / tabs / grid / filter pills
@@ -559,10 +557,7 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
     const saved = localStorage.getItem(STREAM_STORAGE_KEY);
     return TABS.some((s) => s.id === saved) ? (saved as StreamKind) : 'trending';
   });
-  const [gearFilter, setGearFilter] = useState<string | null>(() => {
-    const saved = localStorage.getItem(GEAR_FILTER_STORAGE_KEY);
-    return GEAR_FILTERS.some((g) => g.id === saved) ? saved : null;
-  });
+  const [gearFilter, setGearFilter] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [result, setResult] = useState<StreamResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -653,8 +648,6 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
 
   const handleGearFilterChange = (gear: string | null) => {
     setGearFilter(gear);
-    if (gear) localStorage.setItem(GEAR_FILTER_STORAGE_KEY, gear);
-    else localStorage.removeItem(GEAR_FILTER_STORAGE_KEY);
     setPage(1);
   };
 
