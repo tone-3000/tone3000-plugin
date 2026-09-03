@@ -46,6 +46,49 @@
         }, 4000);
       })();
     </script>
+    <script>
+      // Old WebKit does not carry the subclass prototype through
+      // `class X extends AbortController`: super() hands back a plain
+      // AbortController, so X's own methods are missing from the instance.
+      // dnd-kit's ActivationController extends it, so on macOS 10.15 every
+      // pointerdown on a draggable threw "onEvent is not a function" and
+      // drag-and-drop was dead (#34). Swap in a plain-JS controller that
+      // delegates to the native one, since ordinary classes subclass fine.
+      //
+      // Classic script in its own tag, ES5 syntax: it must run before the
+      // module bundle defines those classes, and a parse error here must not
+      // take the boot watchdog with it.
+      (function () {
+        var Native = window.AbortController;
+        if (!Native || typeof Reflect === 'undefined' || !Reflect.construct) return;
+
+        function subclassKeepsItsPrototype() {
+          try {
+            function Sub() {}
+            Sub.prototype = Object.create(Native.prototype);
+            Sub.prototype.probe = function () { return true; };
+            // What `class Sub extends Native` does when it calls super().
+            return typeof Reflect.construct(Native, [], Sub).probe === 'function';
+          } catch (err) {
+            return false;
+          }
+        }
+
+        if (subclassKeepsItsPrototype()) return;
+
+        function AbortControllerShim() {
+          var inner = new Native();
+          this.signal = inner.signal;
+          this.nativeController = inner;
+        }
+        // On the prototype, not the instance: subclasses call super.abort().
+        AbortControllerShim.prototype.abort = function (reason) {
+          this.nativeController.abort(reason);
+        };
+        window.AbortController = AbortControllerShim;
+        console.warn('[compat] native AbortController is not subclassable; installed shim');
+      })();
+    </script>
   </head>
   <body style="background-color: #000000;">
     <div id="root"></div>
