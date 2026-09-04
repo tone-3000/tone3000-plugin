@@ -101,4 +101,91 @@ Type: files; Name: "{commonappdata}\TONE3000\Presets\Factory\*.t3kpreset"; Compo
 Name: "{autoprograms}\TONE3000"; Filename: "{app}\TONE3000.exe"; Components: standalone
 
 [Run]
+; Install the Microsoft Edge WebView2 Evergreen Runtime when it's missing
+; (typical on Windows 10; Windows 11 ships it). The plugin UI on Windows is
+; a WebView2 view - without the runtime JUCE silently falls back to the old
+; IE control, which can't serve the embedded https://juce.backend/ UI, and
+; every format shows a white screen (issue #54). The ~2 MB Evergreen
+; Bootstrapper is downloaded when the user clicks Install (see [Code]); it
+; then downloads and installs the runtime itself, so this step needs
+; internet access. Setup runs elevated (PrivilegesRequired=admin), so
+; /silent /install performs a per-machine install. Runs before the
+; postinstall launch entry below, so the first launch already has it.
+Filename: "{tmp}\MicrosoftEdgeWebView2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "Installing Microsoft Edge WebView2 Runtime..."; Check: ShouldRunWebView2Bootstrapper
 Filename: "{app}\TONE3000.exe"; Description: "Launch TONE3000"; Components: standalone; Flags: nowait postinstall skipifsilent
+
+[Code]
+// --- WebView2 Evergreen Runtime bootstrap (needs Inno Setup 6.1+) ---------
+//
+// Detection follows Microsoft's distribution guidance: the runtime is
+// installed when EdgeUpdate registers client {F3017226-FE2A-4295-8BDF-
+// 00C3A9A7E4C5} with a non-empty pv value that isn't 0.0.0.0.
+// https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution
+//
+// The bootstrapper is fetched at install time from Microsoft's permalink
+// instead of being bundled: it only gets downloaded on the machines that
+// actually lack the runtime, and bundling wouldn't buy offline installs
+// anyway (the bootstrapper itself downloads the full runtime). No SHA256
+// pin on the download: Microsoft rotates the bootstrapper binary in place.
+var
+  WebView2BootstrapperDownloaded: Boolean;
+  DownloadPage: TDownloadWizardPage;
+
+function WebView2RuntimeMissing: Boolean;
+var
+  Version: String;
+begin
+  // Per-machine install: EdgeUpdate is 32-bit, so on this x64-only installer
+  // the key lives in the WOW6432Node view (HKLM32). Per-user install: HKCU
+  // Software is not WOW-redirected, plain HKCU is correct.
+  Result := True;
+  if RegQueryStringValue(HKLM32, 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+                         'pv', Version) and (Version <> '') and (Version <> '0.0.0.0') then
+    Result := False
+  else if RegQueryStringValue(HKCU, 'Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+                              'pv', Version) and (Version <> '') and (Version <> '0.0.0.0') then
+    Result := False;
+end;
+
+function ShouldRunWebView2Bootstrapper: Boolean;
+begin
+  Result := WebView2BootstrapperDownloaded;
+end;
+
+procedure InitializeWizard;
+begin
+  DownloadPage := CreateDownloadPage('Microsoft Edge WebView2',
+                                     'Setup is downloading the WebView2 Runtime installer. TONE3000 needs it to display its interface.',
+                                     nil);
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := True;
+  // Runs on the Install click (and is still invoked on silent installs,
+  // where Setup simulates the click).
+  if (CurPageID = wpReady) and WebView2RuntimeMissing then
+  begin
+    DownloadPage.Clear;
+    DownloadPage.Add('https://go.microsoft.com/fwlink/p/?LinkId=2124703', 'MicrosoftEdgeWebView2Setup.exe', '');
+    DownloadPage.Show;
+    try
+      try
+        DownloadPage.Download;
+        WebView2BootstrapperDownloaded := True;
+      except
+        if DownloadPage.AbortedByUser then
+          Log('WebView2 bootstrapper download aborted by user.')
+        else
+          Log('WebView2 bootstrapper download failed: ' + GetExceptionMessage);
+        // Don't fail the whole install over this: the plugin files are
+        // still worth installing, and the runtime can be added afterwards.
+        SuppressibleMsgBox('Setup could not download the Microsoft Edge WebView2 Runtime, which TONE3000 needs to display its interface.'
+                           + #13#10#13#10 + 'Please install it later from https://aka.ms/webview2',
+                           mbInformation, MB_OK, IDOK);
+      end;
+    finally
+      DownloadPage.Hide;
+    end;
+  end;
+end;
