@@ -73,6 +73,15 @@ Its lifecycle is self-maintaining:
   stash files unused for a week. Clearing on startup would be wrong:
   instances in other processes may still hold undo history that references
   the files by path.
+- **The name is the address.** A block's `model_url` persists the stash
+  path absolutely, in presets, DAW/app state and undo snapshots. Reads go
+  back through `resolveLocalModelFile`, which falls back to the same file
+  name under the *current* stash root when the stored path is gone. A path
+  this machine wrote always still exists, so desktop loads are untouched; the
+  one desktop case it changes is a preset or state carrying a stash URL from
+  another machine, which now re-stashes locally from the embedded bytes
+  instead of reading the embedded cache alone. It is what keeps iOS working:
+  the app data container's UUID rotates on every reinstall or app update.
 - **Self-healing.** Presets and DAW state embed the model bytes
   (`ModelCache`), so they reopen without the stash, on any machine. When
   such a load hits the embedded cache and the stash copy is missing (GC'd,

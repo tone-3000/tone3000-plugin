@@ -1,5 +1,13 @@
 #include "EditorWebViewSetup.h"
 
+// Everything in this file is AppKit: NSEvent injection, NSTrackingArea hover
+// revival, NSWindow background painting and the WKWebView context-menu guard.
+// None of it exists on iOS (there is no host DAW window to fight with, no
+// hover, no right-click), and EditorWebViewSetup.h only declares these entry
+// points under JUCE_MAC, so on iOS this translation unit is intentionally
+// empty rather than deleted: the macOS path below is byte-identical to before.
+#if JUCE_MAC
+
 #import <AppKit/AppKit.h>
 #import <WebKit/WebKit.h>
 
@@ -231,3 +239,5 @@ void setWebInspectorEnabled(void* nsViewPtr, bool enabled) {
 }
 
 }  // namespace EditorWebViewSetup
+
+#endif  // JUCE_MAC

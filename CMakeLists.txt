@@ -7,7 +7,22 @@ cmake_minimum_required(VERSION 3.22.1)
 # 10.15 covers the Intel slice, the arm64 slice is floored at 11.0 by the
 # toolchain (Apple Silicon minimum). Overridable with
 # -DCMAKE_OSX_DEPLOYMENT_TARGET=... ; harmless on non-Apple platforms.
-if(NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET OR CMAKE_OSX_DEPLOYMENT_TARGET STREQUAL "")
+# iOS builds share CMAKE_OSX_DEPLOYMENT_TARGET with macOS but need an iOS
+# version number, so the 10.15 floor below would be nonsense there. T3K_IOS is
+# the single switch the rest of the build reads; CMAKE_SYSTEM_NAME is set on
+# the command line (-DCMAKE_SYSTEM_NAME=iOS) so it is already visible here,
+# before project().
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(T3K_IOS TRUE)
+endif()
+
+if(T3K_IOS)
+    # iOS 16 is the floor JUCE 9 / WKWebView / AVAudioSession are exercised
+    # against here, and covers every iPad that can run this at all.
+    if(NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET OR CMAKE_OSX_DEPLOYMENT_TARGET STREQUAL "")
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "16.0" CACHE STRING "Minimum iOS version" FORCE)
+    endif()
+elseif(NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET OR CMAKE_OSX_DEPLOYMENT_TARGET STREQUAL "")
     set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum macOS version" FORCE)
 endif()
 
@@ -25,6 +40,16 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
 # C is required since JUCE 9 (lunasvg and other C dependencies).
 project(TONE3000 VERSION ${T3K_VERSION} LANGUAGES C CXX)
 add_compile_options(-fsigned-char)
+
+# A toolchain file sets CMAKE_SYSTEM_NAME too late for the block above (it is
+# only read at project()), so T3K_IOS would stay off, the 10.15 macOS floor
+# would be forced into the cache and the desktop plugin formats would be
+# built for iOS. Fail here with the fix rather than somewhere in the plugin.
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT T3K_IOS)
+    message(FATAL_ERROR "iOS: pass -DCMAKE_SYSTEM_NAME=iOS on the configure command line "
+        "(or use the ios-simulator / ios-device presets); a toolchain file sets it too late "
+        "for the deployment-target floor.")
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs)
@@ -899,4 +924,9 @@ CPMAddPackage(
 enable_testing() # Allow running build tests
 
 add_subdirectory(plugin) # Add plugin project
-add_subdirectory(test)   # DSP test suite (DspTests, see script/test-dsp.sh)
+# The DSP suite is a host-run console binary (it reads test assets off the
+# build machine's disk and is driven by script/test-dsp.sh). Cross-compiling it
+# for iOS produces something that cannot be run, so keep it out of that build.
+if (NOT T3K_IOS)
+    add_subdirectory(test)   # DSP test suite (DspTests, see script/test-dsp.sh)
+endif()

@@ -102,7 +102,8 @@ bool namConfigIsA2(const nlohmann::json& modelJson) {
 // remove, undo across a tone swap) re-reads this copy even after the user's
 // original file moved. Content-addressed names dedupe re-drops of the same
 // file; stale entries age out (see cleanLocalModelStash). Same app-data
-// root as PresetManager.
+// root as PresetManager. Persisted URLs are resolved back to this folder by
+// resolveLocalModelFile, which is what survives the iOS container rotating.
 juce::File localModelsDir() {
   juce::File base = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory);
 #if JUCE_MAC
@@ -244,6 +245,32 @@ juce::var stashLocalFileFromDisk(const juce::File& file, juce::String& error) {
     return {};
   }
   return stashLocalBytes(file.getFileName(), bytes, error);
+}
+
+// A file the OS document picker handed us as a security-scoped URL.
+//
+// iOS is the reason this exists, and iOS is the only caller (see
+// pickLocalToneFile); it is compiled everywhere so the DSP suite, which does
+// not build for iOS, can exercise the same code the iPad runs. Everything the
+// picker returns from the Files app lives outside the app sandbox (an iCloud /
+// file-provider container), and
+// the app is only allowed to touch it through the security scope JUCE's
+// FileChooser opened and stored as a bookmark. Reading the raw path with a
+// FileInputStream, which is what stashLocalFileFromDisk does and what every
+// desktop build correctly does, is refused by the sandbox and surfaces as
+// "Couldn't read the file". juce::URL::createInputStream goes through the
+// bookmark and the scope, so it reads the same bytes the user actually picked.
+juce::var stashLocalFileFromUrl(const juce::URL& url, juce::String& error) {
+  const juce::String filename = TONE3000Processor::localFileNameFromUrl(url);
+  juce::MemoryOutputStream bytes;
+  const auto in = url.createInputStream(
+      juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress));
+  if (in == nullptr || bytes.writeFromInputStream(*in, -1) <= 0) {
+    juce::Logger::writeToLog("[LocalLoad] " + filename + ": Couldn't read the file");
+    error = "Couldn't read the file";
+    return {};
+  }
+  return stashLocalBytes(filename, bytes, error);
 }
 
 // Shared user-facing error result for the local-load entry points.
@@ -405,6 +432,54 @@ juce::var TONE3000Processor::loadLocalTonePath(const juce::File& source,
   return finishLocalToneLoad(title, {model}, {}, 1, targetInsertId);
 }
 
+juce::var TONE3000Processor::loadLocalToneUrls(const juce::Array<juce::URL>& sources,
+                                               const std::string& targetInsertId) {
+  // Multi-select stands in for the folder route on iOS: the document picker
+  // can hand back a folder URL, but a security-scoped directory cannot be
+  // enumerated through juce::URL (there is no listing API behind the
+  // bookmark), so "Load Folder" asks for the files themselves instead. See
+  // pickLocalToneFile. Not gated on JUCE_IOS so the DSP suite can run it;
+  // the editor only reaches it on iOS.
+  if (sources.isEmpty())
+    return localToneError("Load Files", "Nothing to load");
+
+  const juce::String title =
+      sources.size() == 1
+          ? localFileNameFromUrl(sources.getReference(0)).upToLastOccurrenceOf(".", false, false)
+          : juce::String(sources.size()) + " files";
+
+  if (sources.size() > kMaxFolderModels)
+    return localToneError(
+        title, "Too many files (max " + juce::String(kMaxFolderModels) + ")");
+
+  // Natural name order, matching the folder and drop paths, so the model list
+  // is stable regardless of the order the picker reports.
+  juce::Array<juce::URL> picked(sources);
+  std::sort(picked.begin(), picked.end(), [](const juce::URL& a, const juce::URL& b) {
+    return localFileNameFromUrl(a).compareNatural(localFileNameFromUrl(b)) < 0;
+  });
+
+  juce::Array<juce::var> models;
+  juce::String firstError;
+  // No extension check here: stashLocalBytes rejects anything but .nam and
+  // .wav by name before it looks at the bytes, with the same message.
+  for (const auto& url : picked) {
+    juce::String error;
+    const juce::var model = stashLocalFileFromUrl(url, error);
+    if (!model.isObject()) {
+      if (firstError.isEmpty())
+        firstError = error;
+      continue;
+    }
+    models.add(model);
+  }
+
+  if (models.isEmpty())
+    return localToneError(title, firstError.isEmpty() ? "Couldn't read the file" : firstError);
+
+  return finishLocalToneLoad(title, models, firstError, picked.size(), targetInsertId);
+}
+
 juce::var TONE3000Processor::finishLocalToneLoad(const juce::String& title,
                                                  const juce::Array<juce::var>& stashedModels,
                                                  const juce::String& firstError, int fileCount,
@@ -512,13 +587,48 @@ int TONE3000Processor::sweepLeakedIrTempFiles(const juce::File& tempDir) {
   return removed;
 }
 
-void TONE3000Processor::refreshLocalStashCopy(const juce::String& modelUrl,
-                                              const std::vector<uint8_t>& bytes) {
+juce::String TONE3000Processor::localFileNameFromUrl(const juce::URL& url) {
+  // A file:// URL knows its own local file, which carries the decoded name;
+  // anything else only has the escaped path component to unescape.
+  if (url.isLocalFile())
+    return url.getLocalFile().getFileName();
+  return juce::URL::removeEscapeChars(url.getFileName());
+}
+
+juce::File TONE3000Processor::resolveLocalModelFile(const juce::File& stashRoot,
+                                                    const juce::String& modelUrl) {
   const juce::URL url(modelUrl);
   if (!url.isLocalFile())
-    return;
-  const juce::File stash = url.getLocalFile();
-  if (!stash.isAChildOf(localModelsDir()))
+    return {};
+
+  const juce::File stored = url.getLocalFile();
+  if (stored.existsAsFile())
+    return stored;
+
+  // The stored path is gone. On iOS that is the normal case after a
+  // reinstall or an app update: the data container's UUID rotates, so every
+  // absolute path a preset, an undo snapshot or the saved app state baked in
+  // points at a container that no longer exists, and the block came back as
+  // "Download failed / Retry". Stash names are content hashes in one flat
+  // folder, so re-rooting the name is exact, not a guess. On desktop the
+  // root never moves, so a path this machine wrote still exists and comes
+  // back untouched above. The one desktop case this does change is a preset
+  // or saved state carrying a stash URL from another machine or account:
+  // that path is gone here too, and the block now re-roots it into the local
+  // stash (and refreshLocalStashCopy writes the embedded bytes there) instead
+  // of reading from the embedded cache alone. Same bytes, one more file on
+  // disk. Not gated on JUCE_IOS because that case is a repair, not a
+  // regression.
+  const juce::String name = stored.getFileName();
+  if (name.isEmpty() || name == "." || name == "..")
+    return stored;
+  return stashRoot.getChildFile(name);
+}
+
+void TONE3000Processor::refreshLocalStashCopy(const juce::String& modelUrl,
+                                              const std::vector<uint8_t>& bytes) {
+  const juce::File stash = resolveLocalModelFile(localModelsDir(), modelUrl);
+  if (stash == juce::File() || !stash.isAChildOf(localModelsDir()))
     return;
 
   if (stash.existsAsFile()) {
@@ -541,15 +651,18 @@ std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& mo
   // Local-file models (drag-and-drop loads) resolve to their stash copy:
   // no network, no auth. See loadLocalTone.
   if (url.isLocalFile()) {
+    // Through resolveLocalModelFile, not url.getLocalFile(): a path persisted
+    // before an iOS reinstall names a container that is gone.
+    const juce::File stash = resolveLocalModelFile(localModelsDir(), modelUrl);
     juce::MemoryBlock data;
-    if (!url.getLocalFile().loadFileAsData(data) || data.getSize() == 0) {
+    if (!stash.loadFileAsData(data) || data.getSize() == 0) {
       juce::Logger::writeToLog("[ModelLoader] Local model file missing or unreadable: " +
                                modelUrl);
       return {};
     }
     // In use, so keep the GC away (mtime is its liveness signal, see
     // cleanLocalModelStash).
-    url.getLocalFile().setLastModificationTime(juce::Time::getCurrentTime());
+    stash.setLastModificationTime(juce::Time::getCurrentTime());
     const auto* bytes = static_cast<const uint8_t*>(data.getData());
     return std::vector<uint8_t>(bytes, bytes + data.getSize());
   }

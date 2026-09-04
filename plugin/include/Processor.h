@@ -103,6 +103,18 @@ public:
   // folder name. A single file must be .nam or .wav; title is the file
   // name. Same return contract as loadLocalTone.
   juce::var loadLocalTonePath(const juce::File& source, const std::string& targetInsertId = {});
+
+  /** URL sibling of loadLocalTonePath, for the iOS document picker.
+      Files chosen from the Files app live outside the app sandbox and are
+      readable only through the security scope JUCE's FileChooser bookmarked,
+      so the bytes have to come through juce::URL rather than the raw path.
+      Takes 1..N URLs because multi-select stands in for the folder route on
+      iOS (a security-scoped directory cannot be enumerated through
+      juce::URL); see pickLocalToneFile. Same return contract as
+      loadLocalTone. Compiled on every platform so the DSP suite can test it;
+      only the iOS editor calls it. */
+  juce::var loadLocalToneUrls(const juce::Array<juce::URL>& sources,
+                              const std::string& targetInsertId = {});
   // Age out local-model stash files unused for a week (runs once per
   // process, off-thread). Called from the constructor.
   static void cleanLocalModelStash();
@@ -115,6 +127,25 @@ public:
   // over an hour (the age guard protects a concurrent instance's in-flight
   // file). Returns how many files it deleted.
   static int sweepLeakedIrTempFiles(const juce::File& tempDir);
+  // Resolve a persisted local-model `file://` URL to the stash file that
+  // actually holds those bytes, given the current stash root. The URL stored
+  // in a block's tone JSON is absolute, and that JSON is persisted in
+  // presets, DAW/app state and undo snapshots; on iOS the app data
+  // container's UUID rotates on every reinstall or app update, so every one
+  // of those paths goes stale. Stash names are content hashes in a flat
+  // folder, so the file name *is* the stable token: when the stored path no
+  // longer exists, the same name under the current root is the same bytes.
+  // A stored path that does exist is returned untouched, which is every
+  // desktop case (the root never moves there). Empty File for a non-file URL.
+  static juce::File resolveLocalModelFile(const juce::File& stashRoot,
+                                          const juce::String& modelUrl);
+  // The file name a URL names, percent-decoded. juce::URL::getFileName returns
+  // the raw, still-escaped last path component, so a file picked as
+  // "Deluxe Reverb 2.nam" reads back as "Deluxe%20Reverb%202.nam" and would
+  // reach the title, the model name and the stash name in that form. Desktop
+  // derives names from juce::File and never sees escapes; this keeps the URL
+  // path identical.
+  static juce::String localFileNameFromUrl(const juce::URL& url);
   // Replace the tone of an existing block in place. Keeps the block's chain
   // position and user params (enabled/gains/mix); the new tone's first model
   // is queued for background loading.

@@ -14,8 +14,8 @@
  * audio API explains why. This surfaces that state to the settings UI (banner
  * + inline alert) and offers a one-click jump to the OS privacy page.
  *
- * Platform-specific implementations: AudioPermissions.mm (macOS, AVFoundation)
- * and AudioPermissions.cpp (Windows/Linux fallback).
+ * Platform-specific implementations: AudioPermissions.mm (macOS, AVFoundation;
+ * iOS, AVAudioSession) and AudioPermissions.cpp (Windows/Linux fallback).
  */
 namespace AudioPermissions {
 
@@ -36,7 +36,8 @@ MicStatus getMicStatus();
 void requestMicAccess(std::function<void(bool)> onComplete);
 
 /** Open the OS page where the user grants mic access to this app (macOS:
-    Privacy & Security > Microphone). No-op where unsupported. */
+    Privacy & Security > Microphone; iOS: the app's own page in Settings).
+    No-op where unsupported. */
 void openMicSettings();
 
 }  // namespace AudioPermissions

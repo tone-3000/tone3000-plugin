@@ -5,6 +5,8 @@ bin/
 build/
 build-arm64/
 build-x86_64/
+build-ios/
+build-ios-device/
 release-build/
 vs-build/
 output/

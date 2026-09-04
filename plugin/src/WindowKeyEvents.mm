@@ -1,5 +1,20 @@
 #include "EditorWebViewSetup.h"
 
+#if JUCE_IOS
+
+namespace EditorWebViewSetup {
+
+// iOS has no host DAW to hand a transport keypress back to: the Standalone app
+// IS the host, and there is no AppKit event queue or NSResponder chain to post
+// a synthesized Space/Enter into. The UI still calls this (it suppresses the
+// key itself so nothing beeps or scrolls), so keep the symbol and make it a
+// no-op rather than teaching the UI a second platform check.
+void forwardKeyToHost(void*, HostKey) {}
+
+}  // namespace EditorWebViewSetup
+
+#else
+
 #import <AppKit/AppKit.h>
 
 namespace EditorWebViewSetup {
@@ -47,3 +62,5 @@ void forwardKeyToHost(void* nsViewPtr, HostKey key) {
 }
 
 }  // namespace EditorWebViewSetup
+
+#endif  // JUCE_IOS

@@ -251,3 +251,136 @@ TEST(LocalLoadTest, PathRejectsBadInputs) {
   EXPECT_TRUE(firstToneBlock(proc).isVoid());
   dir.deleteRecursively();
 }
+
+// The stash path a block persists as its model_url is absolute, and the tone
+// JSON carrying it lives in presets, DAW/app state and undo snapshots. On iOS
+// the app data container's UUID rotates on every reinstall or app update, so
+// those paths name a container that is gone. Resolution therefore re-roots the
+// (content-hashed) file name under the current stash folder.
+TEST(LocalLoadTest, StashUrlResolvesUnderTheCurrentRoot) {
+  const juce::File tmp = juce::File::getSpecialLocation(juce::File::tempDirectory);
+  const juce::File root = tmp.getChildFile("t3k-stash-" + juce::Uuid().toString());
+  const juce::File live = root.getChildFile("deadbeef-4096.nam");
+  ASSERT_TRUE(root.createDirectory());
+  ASSERT_TRUE(live.replaceWithText("model bytes"));
+
+  // What a preset saved under a previous container holds.
+  const juce::String staleUrl =
+      juce::URL(tmp.getChildFile("Containers")
+                    .getChildFile(juce::Uuid().toString())
+                    .getChildFile("LocalModels")
+                    .getChildFile("deadbeef-4096.nam"))
+          .toString(false);
+  EXPECT_EQ(TONE3000Processor::resolveLocalModelFile(root, staleUrl), live);
+
+  // A path that still resolves comes back untouched: every desktop case.
+  EXPECT_EQ(TONE3000Processor::resolveLocalModelFile(root, juce::URL(live).toString(false)), live);
+
+  // Nothing to re-root for a catalog URL.
+  EXPECT_EQ(TONE3000Processor::resolveLocalModelFile(root, "https://test.invalid/model.nam"),
+            juce::File());
+
+  // Bytes that are gone everywhere still read as missing (the caller reports
+  // the failure), not as some other file.
+  EXPECT_FALSE(
+      TONE3000Processor::resolveLocalModelFile(root, staleUrl.replace("deadbeef", "0badc0de"))
+          .existsAsFile());
+
+  root.deleteRecursively();
+}
+
+// The iOS document picker hands back URLs, whose last path component is
+// percent-escaped. Names must come back exactly as the desktop path derives
+// them from juce::File, or a file called "Deluxe Reverb 2.nam" loads (and
+// stashes, and titles its tile) as "Deluxe%20Reverb%202".
+TEST(LocalLoadTest, UrlFileNameIsPercentDecoded) {
+  const juce::File dir =
+      juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("t3k-name");
+  const juce::File spaced = dir.getChildFile("Deluxe Reverb 2.nam");
+  EXPECT_EQ(TONE3000Processor::localFileNameFromUrl(juce::URL(spaced)), "Deluxe Reverb 2.nam");
+
+  const juce::File accented = dir.getChildFile("Amplificador Válvulas.wav");
+  EXPECT_EQ(TONE3000Processor::localFileNameFromUrl(juce::URL(accented)),
+            juce::String::fromUTF8("Amplificador V\xc3\xa1lvulas.wav"));
+
+  // A non-file URL has no local file to ask, so the escapes come off the path.
+  EXPECT_EQ(TONE3000Processor::localFileNameFromUrl(
+                juce::URL("https://test.invalid/x/Deluxe%20Reverb%202.nam")),
+            "Deluxe Reverb 2.nam");
+}
+
+// The iOS picker path. Compiled on every platform (the DSP suite does not
+// build for iOS), fed file:// URLs here, security-scoped ones on the iPad; the
+// bytes come through juce::URL::createInputStream either way. Multi-select is
+// the folder route on iOS, so it must sort, filter and aggregate errors the
+// way loadLocalTonePath does for a folder.
+TEST(LocalLoadTest, UrlsLoadMultiSelectInNaturalOrderSkippingBadFiles) {
+  const juce::File dir =
+      juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("t3k-url-test");
+  dir.deleteRecursively();
+  ASSERT_TRUE(dir.createDirectory().wasOk());
+  ASSERT_TRUE(testFile("a2-amp-test.nam").copyFileTo(dir.getChildFile("amp 2.nam")));
+  ASSERT_TRUE(testFile("a2-amp-cab-test.nam").copyFileTo(dir.getChildFile("amp 10.nam")));
+  ASSERT_TRUE(testFile("a2-am-test-2.nam").copyFileTo(dir.getChildFile("amp 1.nam")));
+  ASSERT_TRUE(dir.getChildFile("notes.txt").replaceWithText("hi"));
+
+  // Picker order is arbitrary; hand them over scrambled, with a wrong type and
+  // a file that does not exist mixed in.
+  TONE3000Processor proc;
+  const juce::var res = proc.loadLocalToneUrls({
+      juce::URL(dir.getChildFile("amp 10.nam")),
+      juce::URL(dir.getChildFile("notes.txt")),
+      juce::URL(dir.getChildFile("amp 2.nam")),
+      juce::URL(dir.getChildFile("missing.nam")),
+      juce::URL(dir.getChildFile("amp 1.nam")),
+  });
+  EXPECT_TRUE(res["error"].isVoid()) << res["error"].toString().toStdString();
+  ASSERT_TRUE(waitForChainLoaded(proc));
+
+  const juce::var block = firstToneBlock(proc);
+  EXPECT_EQ(block["tone"]["title"].toString(), juce::String("5 files"));
+  EXPECT_EQ(block["tone"]["format"].toString(), juce::String("nam"));
+  ASSERT_EQ(block["tone"]["models"].size(), 3)
+      << "models: " << juce::JSON::toString(block["tone"]["models"]).toStdString();
+  EXPECT_EQ(block["tone"]["models"][0]["name"].toString(), juce::String("amp 1"));
+  EXPECT_EQ(block["tone"]["models"][1]["name"].toString(), juce::String("amp 2"));
+  EXPECT_EQ(block["tone"]["models"][2]["name"].toString(), juce::String("amp 10"));
+
+  dir.deleteRecursively();
+}
+
+TEST(LocalLoadTest, UrlsSingleFileTitlesFromNameAndRejectBadInputs) {
+  TONE3000Processor proc;
+
+  // One file: the title is its name without the extension, as on desktop.
+  juce::var res = proc.loadLocalToneUrls({juce::URL(testFile("a2-amp-test.nam"))});
+  EXPECT_TRUE(res["error"].isVoid()) << res["error"].toString().toStdString();
+  ASSERT_TRUE(waitForChainLoaded(proc));
+  EXPECT_EQ(firstToneBlock(proc)["tone"]["title"].toString(), juce::String("a2-amp-test"));
+
+  TONE3000Processor rejecting;
+  res = rejecting.loadLocalToneUrls({});
+  EXPECT_EQ(res["error"].toString(), juce::String("Nothing to load"));
+
+  res = rejecting.loadLocalToneUrls({juce::URL(juce::File("/nonexistent-t3k/missing.nam"))});
+  EXPECT_EQ(res["error"].toString(), juce::String("Couldn't read the file"));
+
+  const juce::File dir =
+      juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("t3k-url-reject");
+  dir.deleteRecursively();
+  ASSERT_TRUE(dir.createDirectory().wasOk());
+  ASSERT_TRUE(dir.getChildFile("notes.txt").replaceWithText("hi"));
+  res = rejecting.loadLocalToneUrls({juce::URL(dir.getChildFile("notes.txt"))});
+  EXPECT_EQ(res["error"].toString(), juce::String("Only .nam and .wav files are supported"));
+
+  // The folder cap (300 files) applies to a multi-select too. Nothing is read
+  // before the cap fires, so the URLs need not exist.
+  juce::Array<juce::URL> many;
+  for (int i = 0; i < 301; ++i)
+    many.add(juce::URL(dir.getChildFile("amp " + juce::String(i) + ".nam")));
+  res = rejecting.loadLocalToneUrls(many);
+  EXPECT_EQ(res["error"].toString(), juce::String("Too many files (max 300)"));
+
+  EXPECT_TRUE(firstToneBlock(rejecting).isVoid());
+  dir.deleteRecursively();
+}
