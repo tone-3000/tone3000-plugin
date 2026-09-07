@@ -7,6 +7,8 @@ import {
   FolderClosed,
   Search as SearchIcon,
 } from './icons';
+import { LibraryBrowser } from './LibraryBrowser';
+import { BROWSER_TAB_STORAGE_KEY, type BrowserTab } from './browserTabs';
 import type { T3KClient } from '../t3k/tone3000-client';
 import { catalogModelCount, type Tone } from '../types/tone';
 import { formatCount } from '../t3k/formatCount';
@@ -41,6 +43,11 @@ import {
  * around it. An expanded-block-style header (back arrow + "Select Tone" +
  * Browse CTA) stays pinned while the content scrolls beneath it.
  *
+ * The first tab is local: the Library is the user's own folder tree of
+ * tones on disk, so the tones they actually play are one click away
+ * (signed out, offline, no download) instead of a round trip to
+ * tone3000.com. The remaining four tabs are the catalog streams below.
+ *
  * No longer gated by TONE3000 sign-in: Trending is a public (auth-optional)
  * feed, so it's always browsable. The three session-scoped streams (Recently
  * used / Favorites / Created) still need an account; while signed out they
@@ -57,9 +64,11 @@ import {
  * involved for the final load (access token + model download).
  */
 
-type StreamKind = 'trending' | 'downloaded' | 'favorited' | 'created';
+/** The TONE3000 streams; the Library tab is local and never fetches. */
+type StreamKind = Exclude<BrowserTab, 'library'>;
 
-const TABS: { id: StreamKind; label: string; icon?: React.ComponentType<{ size?: number }> }[] = [
+const TABS: { id: BrowserTab; label: string; icon?: React.ComponentType<{ size?: number }> }[] = [
+  { id: 'library', label: 'Library', icon: FolderClosed },
   { id: 'trending', label: 'Trending' },
   { id: 'downloaded', label: 'Recently used' },
   { id: 'favorited', label: 'Favorites', icon: Bookmark },
@@ -67,7 +76,7 @@ const TABS: { id: StreamKind; label: string; icon?: React.ComponentType<{ size?:
 ];
 
 /** Streams that require a signed-in TONE3000 session; Trending is public. */
-const GATED_STREAMS = new Set<StreamKind>(['downloaded', 'favorited', 'created']);
+const GATED_STREAMS = new Set<BrowserTab>(['downloaded', 'favorited', 'created']);
 
 const EMPTY_COPY: Record<StreamKind, string> = {
   trending: 'No trending tones right now. Check back soon.',
@@ -81,9 +90,6 @@ const DISCOVER_MORE_HEADING = 'Discover zillions more tones.';
 
 const PAGE_SIZE = 12;
 
-/** Remembers the last-viewed stream so the next browse lands on it. */
-const STREAM_STORAGE_KEY = 't3k_browser_stream';
-
 /** Content column, same width as the expanded-block card so the browser
     frame lines up with BLOCK visually. Header / tabs / grid / filter pills
     are flush to this edge (like ← BLOCK). */
@@ -94,7 +100,7 @@ const CARD_IMAGE_SIZE = 112;
     (each tab flex:1 with its label centered), white text + a full-tab-width
     underline when active, muted otherwise. Bold on every label (Figma Arial
     Bold) so switching tabs doesn't reflow the segment. */
-const StreamTabs: React.FC<{ active: StreamKind; onChange: (s: StreamKind) => void }> = ({
+const StreamTabs: React.FC<{ active: BrowserTab; onChange: (s: BrowserTab) => void }> = ({
   active,
   onChange,
 }) => (
@@ -523,8 +529,15 @@ interface ToneBrowserProps {
       session-scoped streams (Recently used / Favorites / Created); Trending
       stays open either way. */
   authenticated: boolean;
+  /** Land on this tab instead of the last-viewed one (the library entry
+      points open the browser straight on Library). */
+  initialTab?: BrowserTab;
   /** Resolve + load a picked tone; the parent closes the browser on success. */
   onPickTone: (toneId: number) => Promise<void>;
+  /** Load an entry from the on-disk tone library into the pending target.
+      Resolves to a user-facing error message, or null on success (the
+      parent closes the browser). */
+  onLoadLibraryTone: (itemPath: string) => Promise<string | null>;
   /** Launch the full-catalog Select flow (prompt=select_tone). */
   onBrowseTone3000: () => void;
   /** Run the no-prompt login flow without leaving the browser; fired from
@@ -545,17 +558,21 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
   client,
   authPending = false,
   authenticated,
+  initialTab,
   onPickTone,
+  onLoadLibraryTone,
   onBrowseTone3000,
   onSignIn,
   onClose,
 }) => {
-  // Land on the stream the user was on last time they browsed; default to
-  // the public Trending feed rather than a gated stream that might now be
-  // unreachable (signed out on a fresh session).
-  const [stream, setStream] = useState<StreamKind>(() => {
-    const saved = localStorage.getItem(STREAM_STORAGE_KEY);
-    return TABS.some((s) => s.id === saved) ? (saved as StreamKind) : 'trending';
+  // Land where the caller asked (the library entry points), else on the tab
+  // the user was on last time they browsed; the fallback is the public
+  // Trending feed rather than a gated stream that might now be unreachable
+  // (signed out on a fresh session).
+  const [stream, setStream] = useState<BrowserTab>(() => {
+    if (initialTab) return initialTab;
+    const saved = localStorage.getItem(BROWSER_TAB_STORAGE_KEY);
+    return TABS.some((s) => s.id === saved) ? (saved as BrowserTab) : 'trending';
   });
   const [gearFilter, setGearFilter] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -576,6 +593,14 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
   }, [result]);
 
   useEffect(() => {
+    // The Library tab reads the disk through its own hook; there is no
+    // stream to fetch, and no request to leave in flight behind it.
+    if (stream === 'library') {
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     // Pre-mounted during an OAuth return: the token exchange hasn't finished
     // yet, so we don't yet know whether to render the gated prompt or fetch.
     // Keep showing the loading state; this effect reruns once it clears.
@@ -639,10 +664,10 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
     [onPickTone, pickingId]
   );
 
-  const switchStream = (next: StreamKind) => {
+  const switchStream = (next: BrowserTab) => {
     if (next === stream) return;
     setStream(next);
-    localStorage.setItem(STREAM_STORAGE_KEY, next);
+    localStorage.setItem(BROWSER_TAB_STORAGE_KEY, next);
     setPage(1);
   };
 
@@ -652,6 +677,10 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
   };
 
   const body = (() => {
+    if (stream === 'library') {
+      return <LibraryBrowser onLoad={onLoadLibraryTone} />;
+    }
+
     if (showSignInPrompt) {
       return <SignInPrompt heading={SIGN_IN_HEADING} onSignIn={onSignIn} />;
     }
@@ -740,7 +769,11 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
   // Paginated streams keep the paginator at the end of the scrolled page.
   // Trending is a fixed top-10 feed and is never paginated.
   const showPaginator =
-    !showSignInPrompt && !error && result?.totalPages != null && result.totalPages > 1;
+    stream !== 'library' &&
+    !showSignInPrompt &&
+    !error &&
+    result?.totalPages != null &&
+    result.totalPages > 1;
   // Trending always closes with a path to the rest of the catalog: signed
   // out that's a sign-in nudge (picking a tone needs a session anyway);
   // signed in it's just the persistent Browse CTA again, restated here so
@@ -849,8 +882,8 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
           the faceplate; this pad lives in the scroll content, not the
           shared meter band). */}
       <div style={{ maxWidth: `${COLUMN_MAX_WIDTH}rem`, margin: '0 auto', width: '100%' }}>
-        <div style={{ padding: '20rem 0 24rem' }}>
-          {!showSignInPrompt && (
+        <div style={{ padding: `${stream === 'library' ? 16 : 20}rem 0 24rem` }}>
+          {stream !== 'library' && !showSignInPrompt && (
             <GearFilterRow active={gearFilter} onChange={handleGearFilterChange} />
           )}
 
@@ -862,8 +895,13 @@ export const ToneBrowser: React.FC<ToneBrowserProps> = ({
             </div>
           )}
 
-          {/* Tone grid / empty state / sign-in prompt */}
-          <div style={{ marginTop: '24rem', marginBottom: showPaginator ? '16rem' : 0 }}>
+          {/* Tone grid / library / empty state / sign-in prompt */}
+          <div
+            style={{
+              marginTop: stream === 'library' ? 0 : '24rem',
+              marginBottom: showPaginator ? '16rem' : 0,
+            }}
+          >
             {body}
           </div>
 

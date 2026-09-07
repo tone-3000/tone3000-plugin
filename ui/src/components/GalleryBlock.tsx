@@ -8,6 +8,7 @@ import {
   FolderClosed,
   PlusCircle,
   Power,
+  Save,
   Trash2,
   Upload,
 } from './icons';
@@ -229,6 +230,33 @@ const localLoadMenuItems = (
     },
   ];
 };
+
+/** The tile menus' library rows. The library is the local, always-available
+    counterpart to browsing TONE3000: "From Library" opens the browser on it
+    with this tile as the target, and (on a tone tile) "Save to Library"
+    files the tone playing here so it's one click away next time. */
+const libraryMenuItems = (
+  open: () => void,
+  save: (() => Promise<string>) | null,
+  toast: ReturnType<typeof useToast>
+): TileMenuItem[] => [
+  {
+    label: 'From Library',
+    icon: <FolderClosed size={16} />,
+    help: HELP.fromLibraryTile,
+    onSelect: open,
+  },
+  ...(save
+    ? [
+        {
+          label: 'Save to Library',
+          icon: <Save size={16} />,
+          help: HELP.saveToLibraryTile,
+          onSelect: () => void save().then((message) => toast.show(message)),
+        },
+      ]
+    : []),
+];
 
 /** Interactive wiring for a tile's chrome. */
 interface TileActions {
@@ -533,6 +561,11 @@ export const GalleryBlock: React.FC<GalleryBlockProps> = React.memo(
                 help: HELP.copyBlock,
                 onSelect: () => actions.copyBlock(blockId),
               },
+              ...libraryMenuItems(
+                () => actions.swapFromLibrary(blockId),
+                () => actions.saveToLibrary(blockId),
+                toast
+              ),
               ...localLoadMenuItems(blockId, actions, toast),
             ]}
           />
@@ -685,6 +718,7 @@ export const AddTile: React.FC<AddTileProps> = ({
               disabled: onPaste == null,
               onSelect: () => onPaste?.(),
             },
+            ...libraryMenuItems(() => void actions.addFromLibrary(group, id), null, toast),
             ...localLoadMenuItems(id, actions, toast),
           ]}
         />

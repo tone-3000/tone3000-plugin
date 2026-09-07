@@ -410,6 +410,92 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
           "redoChain", guarded(0, false, [editor](const juce::Array<juce::var>&) {
             return juce::var(editor->processor.redoChain());
           }))
+      // --- Tone library ------------------------------------------------------
+      // The user's own folder tree of local tones
+      // (<app data>/TONE3000/Library). Paths are root-relative, "" is the
+      // root, and native validates every one of them (see
+      // ToneLibrary::resolve) rather than trusting the UI's string.
+      .withNativeFunction(
+          // (folderPath): one folder's contents for the library browser.
+          "listLibrary", guarded(0, juce::var(), [editor](const juce::Array<juce::var>& args) {
+            return editor->processor.listLibrary(args.isEmpty() ? juce::String()
+                                                                : args[0].toString());
+          }))
+      .withNativeFunction(
+          // (itemPath, targetBlockId?): load a library file, or a whole
+          // folder as one multi-model block. Same targeting and the same
+          // { blockId } / { error } contract as a local file drop.
+          "loadLibraryTone", guarded(1, juce::var(), [editor](const juce::Array<juce::var>& args) {
+            const std::string targetBlockId =
+                args.size() >= 2 ? args[1].toString().toStdString() : std::string();
+            return editor->processor.loadLibraryTone(args[0].toString(), targetBlockId);
+          }))
+      .withNativeFunction(
+          // (blockId, folderPath): file a live block's active model into the
+          // library, bytes included, so a downloaded tone stops depending on
+          // tone3000.com. Returns { path, name } or { error }.
+          "saveBlockToLibrary",
+          guarded(1, juce::var(), [editor](const juce::Array<juce::var>& args) {
+            const juce::String folderPath = args.size() >= 2 ? args[1].toString() : juce::String();
+            return editor->processor.saveBlockToLibrary(args[0].toString().toStdString(),
+                                                        folderPath);
+          }))
+      .withNativeFunction(
+          // (folderPath, files): files dropped on the library browser, as the
+          // same [{ name, data }] base64 payload as loadLocalTone.
+          "importFilesToLibrary",
+          guarded(2, juce::var(), [editor](const juce::Array<juce::var>& args) {
+            return editor->processor.importFilesToLibrary(args[0].toString(), args[1]);
+          }))
+      .withNativeFunction(
+          // (folderPath, pickFolder): the browser's Import action. Opens the
+          // OS picker and copies the pick into the library folder on show.
+          // Not `guarded`: the completion resolves from the chooser callback.
+          "importToLibrary",
+          [editor](const juce::Array<juce::var>& args,
+                   juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+            const juce::String folderPath = args.size() >= 1 ? args[0].toString() : juce::String();
+            const bool pickFolder = args.size() >= 2 && coerceBool(args[1]);
+            editor->pickLibraryImport(pickFolder, folderPath, std::move(completion));
+          })
+      .withNativeFunction(
+          // (parentPath, name, unique?): `unique` suffixes a taken name
+          // instead of failing, for drops (which don't get to pick one).
+          "createLibraryFolder",
+          guarded(2, juce::var(), [editor](const juce::Array<juce::var>& args) {
+            const bool unique = args.size() >= 3 && coerceBool(args[2]);
+            return editor->processor.createLibraryFolder(args[0].toString(), args[1].toString(),
+                                                         unique);
+          }))
+      .withNativeFunction(
+          // (itemPath, newName): files keep their extension.
+          "renameLibraryItem",
+          guarded(2, juce::var(), [editor](const juce::Array<juce::var>& args) {
+            return editor->processor.renameLibraryItem(args[0].toString(), args[1].toString());
+          }))
+      .withNativeFunction(
+          // (itemPath, destFolderPath): move a file or folder into another
+          // library folder ("" is the root). A taken name is uniqued, not
+          // overwritten. Returns { path } or { error }.
+          "moveLibraryItem",
+          guarded(2, juce::var(), [editor](const juce::Array<juce::var>& args) {
+            return editor->processor.moveLibraryItem(args[0].toString(), args[1].toString());
+          }))
+      .withNativeFunction(
+          // (itemPath): a file or a whole folder, to the OS trash where there
+          // is one. Blocks already in the chain keep playing.
+          "removeLibraryItem", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
+            return juce::var(editor->processor.removeLibraryItem(args[0].toString()));
+          }))
+      .withNativeFunction(
+          // (folderPath): open the folder in Finder/Explorer, for organizing
+          // the library with the OS instead of the browser's own actions.
+          // Returns the path shown, or "" on failure.
+          "revealLibraryFolder",
+          guarded(0, juce::var(""), [editor](const juce::Array<juce::var>& args) {
+            return juce::var(editor->processor.revealLibraryFolder(
+                args.isEmpty() ? juce::String() : args[0].toString()));
+          }))
       // --- Presets -----------------------------------------------------------
       .withNativeFunction(
           // Fetched on demand (browser open, after mutations); the active

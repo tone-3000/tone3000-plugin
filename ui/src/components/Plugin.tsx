@@ -25,6 +25,8 @@ import { TunerView } from './TunerView';
 import { OAuthOverlay } from './OAuthOverlay';
 import { ConnectionModal } from './ConnectionModal';
 import { ToneBrowser } from './ToneBrowser';
+import type { BrowserTab } from './browserTabs';
+import { readLibraryFolder } from '../hooks/useLibrary';
 import { UpdateNotice } from './UpdateNotice';
 import Settings, { type SettingsTab } from './Settings';
 import { T3K_API } from '../t3k/config';
@@ -42,6 +44,9 @@ export const Plugin: React.FC = () => {
   // redirect without a picked tone (Browse closed/canceled) so the browser
   // is already mounted under the busy scrim; no flash of the main chain.
   const [showToneBrowser, setShowToneBrowser] = useState(shouldRestoreToneBrowser);
+  // Tab the browser opens on, when a flow wants a specific one (the library
+  // entry points). Undefined means "wherever the user was last".
+  const [browserTab, setBrowserTab] = useState<BrowserTab | undefined>(undefined);
   // Block info view fills the center column to the header and faceplate so
   // scroll content isn't stopped by the 24px meter-band pads.
   const [fillToFaceplate, setFillToFaceplate] = useState(false);
@@ -100,6 +105,9 @@ export const Plugin: React.FC = () => {
     error?: string;
     cancelled?: boolean;
   }>('pickLocalToneFile');
+  const saveBlockToLibrary = useNativeFunction<{ path?: string; name?: string; error?: string }>(
+    'saveBlockToLibrary'
+  );
 
   const openSettings = useCallback((tab: SettingsTab) => {
     settingsTabRef.current = tab;
@@ -188,12 +196,20 @@ export const Plugin: React.FC = () => {
   const connectionGate = useConnectionGate();
   const { requireConnection } = connectionGate;
 
+  // Show/hide the browser, optionally landing on a tab (the library flows
+  // ask for 'library'; everything else resumes the last-viewed tab).
+  const showToneBrowserOn = useCallback((show: boolean, tab?: BrowserTab) => {
+    if (show) setBrowserTab(tab);
+    setShowToneBrowser(show);
+  }, []);
+
   // The add/swap browse flows and their pending targets.
   const loadFlow = useToneLoadFlow({
     actions,
     stereoEnabled,
     requireConnection,
-    setShowToneBrowser,
+    isOnline: connectionGate.isOnline,
+    setShowToneBrowser: showToneBrowserOn,
   });
 
   // Loading a preset or resetting to default replaces the chain. Leave any
@@ -330,6 +346,22 @@ export const Plugin: React.FC = () => {
     [pickLocalToneFile, refresh]
   );
 
+  // File a block's tone into the library, where the browser was last left
+  // (its folder is the closest thing to "where the user is filing things").
+  // Works for catalog tones as well as local ones: native writes the model
+  // bytes the block already holds, so nothing is downloaded and the copy
+  // outlives the account. Resolves to the message to flash.
+  const handleSaveToLibrary = useCallback(
+    async (blockId: string): Promise<string> => {
+      const folder = readLibraryFolder();
+      const res = await saveBlockToLibrary(blockId, folder);
+      if (res?.error) return res.error;
+      if (!res?.name) return "Couldn't save to the library";
+      return folder ? `Saved to Library / ${folder}` : 'Saved to Library';
+    },
+    [saveBlockToLibrary]
+  );
+
   // Non-blocking update check (enabled via VITE_T3K_UPDATE_NOTICE); also
   // resolves the running build's version for the Settings footer.
   const { notice: updateNotice, update, localVersion, remindLater } = useUpdateNotice(t3kClient);
@@ -345,6 +377,9 @@ export const Plugin: React.FC = () => {
   const chainActions = useMemo<ChainActions>(
     () => ({
       addModel: loadFlow.handleAddModel,
+      addFromLibrary: loadFlow.handleAddFromLibrary,
+      swapFromLibrary: loadFlow.handleSwapFromLibrary,
+      saveToLibrary: handleSaveToLibrary,
       loadLocalFile: loadFlow.handleDropFile,
       pickLocalFile: handlePickLocalFile,
       removeBlock: actions.removeBlock,
@@ -379,9 +414,12 @@ export const Plugin: React.FC = () => {
       handleLogin,
       handlePickLocalFile,
       handleRetryLoad,
+      handleSaveToLibrary,
       handleShareBlock,
       handleSwitchModel,
+      loadFlow.handleAddFromLibrary,
       loadFlow.handleAddModel,
+      loadFlow.handleSwapFromLibrary,
       loadFlow.handleDropFile,
       loadFlow.handleSwapBlock,
       session.getTone,
@@ -523,7 +561,9 @@ export const Plugin: React.FC = () => {
                   // hold the stream fetch so it doesn't fire unauthenticated.
                   authPending={session.oauthPhase === 'returning'}
                   authenticated={authenticated}
+                  initialTab={browserTab}
                   onPickTone={session.selectToneById}
+                  onLoadLibraryTone={loadFlow.handleLibraryPick}
                   onBrowseTone3000={handleBrowseTone3000}
                   onSignIn={handleBrowserSignIn}
                   onClose={handleBrowserClose}

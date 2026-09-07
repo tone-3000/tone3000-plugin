@@ -151,12 +151,10 @@ bool wavMissingRiffPadByte(const void* data, size_t size) {
 constexpr juce::int64 kMaxLocalFileBytes = 50 * 1024 * 1024;
 constexpr int kMaxFolderModels = 300;
 
-// One local file's bytes: validate and stash a content-addressed copy.
-// Validation happens here, at load time, instead of letting a bad file
-// reach the background loader: its failure surfaces as a retry badge, which
-// is the wrong affordance for a file that can never load. Returns the model
-// object { id, name, model_url } for the synthetic tone, or void with
-// `error` set to a user-facing message.
+// One local file's bytes: validate (see validateLocalModelBytes) and stash
+// a content-addressed copy. Returns the model object
+// { id, name, model_url } for the synthetic tone, or void with `error` set
+// to a user-facing message.
 juce::var stashLocalBytes(const juce::String& filename, juce::MemoryOutputStream& decoded,
                           juce::String& error) {
   auto fail = [&](const juce::String& message) {
@@ -166,35 +164,10 @@ juce::var stashLocalBytes(const juce::String& filename, juce::MemoryOutputStream
   };
 
   const juce::String extension = filename.fromLastOccurrenceOf(".", false, false).toLowerCase();
-  const bool isNam = extension == "nam";
-  if (!isNam && extension != "wav")
-    return fail("Only .nam and .wav files are supported");
-
-  if (isNam) {
-    try {
-      const auto* bytes = static_cast<const char*>(decoded.getData());
-      const nlohmann::json config = nlohmann::json::parse(bytes, bytes + decoded.getDataSize());
-      if (!namConfigIsA2(config))
-        return fail("Only A2 NAM files are supported");
-    } catch (const std::exception&) {
-      return fail("Not a valid NAM file");
-    }
-  } else {
-    // Repair before validating: a WAV missing its final RIFF pad byte would
-    // otherwise be rejected here as unreadable. The repaired bytes are what
-    // get stashed (and content-hashed), so downstream loads read a
-    // spec-compliant file.
-    if (wavMissingRiffPadByte(decoded.getData(), decoded.getDataSize()))
-      decoded.writeByte(0);
-
-    juce::AudioFormatManager formatManager;
-    formatManager.registerBasicFormats();
-    std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(
-        std::make_unique<juce::MemoryInputStream>(decoded.getData(), decoded.getDataSize(),
-                                                  false)));
-    if (reader == nullptr || reader->lengthInSamples <= 0)
-      return fail("Not a valid WAV file");
-  }
+  if (const juce::String problem =
+          TONE3000Processor::validateLocalModelBytes(filename, decoded);
+      problem.isNotEmpty())
+    return fail(problem);
 
   const juce::uint64 hash = fnv1a64(decoded.getData(), decoded.getDataSize());
   const juce::File stash = localModelsDir().getChildFile(
@@ -282,6 +255,44 @@ juce::var localToneError(const juce::String& title, const juce::String& message)
 }
 
 }  // namespace
+
+juce::String TONE3000Processor::validateLocalModelBytes(const juce::String& filename,
+                                                        juce::MemoryOutputStream& bytes) {
+  // Validation happens at load time, before a file is stashed or filed into
+  // the library, instead of letting a bad file reach the background loader:
+  // its failure would surface as a retry badge, the wrong affordance for a
+  // file that can never load.
+  const juce::String extension = filename.fromLastOccurrenceOf(".", false, false).toLowerCase();
+  if (extension == "nam") {
+    try {
+      const auto* data = static_cast<const char*>(bytes.getData());
+      const nlohmann::json config = nlohmann::json::parse(data, data + bytes.getDataSize());
+      if (!namConfigIsA2(config))
+        return "Only A2 NAM files are supported";
+    } catch (const std::exception&) {
+      return "Not a valid NAM file";
+    }
+    return {};
+  }
+
+  if (extension != "wav")
+    return "Only .nam and .wav files are supported";
+
+  // Repair before validating: a WAV missing its final RIFF pad byte would
+  // otherwise be rejected here as unreadable. The repaired bytes are what
+  // the caller goes on to store (and content-hash), so downstream loads
+  // read a spec-compliant file.
+  if (wavMissingRiffPadByte(bytes.getData(), bytes.getDataSize()))
+    bytes.writeByte(0);
+
+  juce::AudioFormatManager formatManager;
+  formatManager.registerBasicFormats();
+  std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(
+      std::make_unique<juce::MemoryInputStream>(bytes.getData(), bytes.getDataSize(), false)));
+  if (reader == nullptr || reader->lengthInSamples <= 0)
+    return "Not a valid WAV file";
+  return {};
+}
 
 float TONE3000Processor::computeIrNormalizationGain(const juce::File& irFile,
                                                     size_t maxIrFileSamples) {

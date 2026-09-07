@@ -5,6 +5,7 @@
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <juce_audio_plugin_client/juce_audio_plugin_client.h>
+#include <functional>
 
 #if JucePlugin_Build_Standalone && ! JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP
 #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
@@ -108,6 +109,19 @@ private:
   // the editor so destroying the editor tears the dialog down with it.
   void pickLocalToneFile(bool pickFolder, const juce::String& targetBlockId,
                          juce::WebBrowserComponent::NativeFunctionCompletion completion);
+  // The same OS picker, filing the pick into the tone library instead of
+  // loading it (the library browser's Import action). `folderPath` is the
+  // library folder the browser is showing.
+  void pickLibraryImport(bool pickFolder, const juce::String& folderPath,
+                         juce::WebBrowserComponent::NativeFunctionCompletion completion);
+  // Shared body of both: one dialog at a time, torn down with the editor,
+  // resolving with `handlePick`'s result or { cancelled: true }. `handlePick`
+  // takes the chooser rather than a juce::File because the two platforms read
+  // it differently (paths on desktop, security-scoped URLs on iOS); it is
+  // only called once the chooser has a non-empty result.
+  void chooseLocalFile(bool pickFolder, const juce::String& dialogTitle,
+                       std::function<juce::var(const juce::FileChooser&)> handlePick,
+                       juce::WebBrowserComponent::NativeFunctionCompletion completion);
   std::unique_ptr<juce::FileChooser> localFileChooser;
 
   // Chain-change push: a lightweight native timer watches the processor's

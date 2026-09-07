@@ -251,10 +251,23 @@ const HELP_DESKTOP = {
 
   // Chain gallery
   addTile:
-    'Add Tone: browse TONE3000 for this slot, or drop a .nam or IR .wav file (or a folder of them). Right-click: paste / load file · drag: move.',
+    'Add Tone: browse TONE3000 for this slot, or drop a .nam or IR .wav file (or a folder of them). Right-click: paste / library / load file · drag: move.',
   closeToneBrowser: 'Close: back to the chain.',
+
+  // Library tab
+  libraryCrumb: 'Library: go back to this folder.',
+  libraryNewFolder: 'New Folder: add a folder to organize your tones.',
+  libraryAdd: 'Add: copy files or a folder from your disk into this library folder.',
+  libraryAddFiles: 'Add Files: copy .nam / .wav files into this library folder.',
+  libraryAddFolder: 'Add Folder: copy a folder of tones into this library folder.',
+  libraryReveal: 'Show Folder: open this library folder in your file browser.',
+  libraryLoadFolder: 'Load Folder: load this folder as one block, one model per file.',
+  libraryRename: 'Rename: edit name. Enter: commit \u00b7 Esc: cancel.',
+  libraryRemove: 'Remove: take this out of the library (moved to the trash).',
   copyBlock: 'Copy: copy this block (tone, model and all settings).',
   pasteBlock: 'Paste: add a copy of the copied block in this slot.',
+  fromLibraryTile: 'From Library: pick a tone from your own library folder. Works offline.',
+  saveToLibraryTile: 'Save to Library: keep this tone in your library folder, ready to reload.',
   loadFileTile: 'Load File: pick a local .nam or IR .wav file to load here. No account needed.',
   loadFolderTile:
     'Load Folder: pick a folder of .nam or .wav files; loads as one multi-model block.',

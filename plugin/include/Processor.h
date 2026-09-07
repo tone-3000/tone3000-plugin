@@ -27,6 +27,7 @@
 #include "Spread.h"
 #include "StereoOffset.h"
 #include "PresetManager.h"
+#include "ToneLibrary.h"
 #include "TunerDetector.h"
 
 class TONE3000Processor;
@@ -118,6 +119,66 @@ public:
       only the iOS editor calls it. */
   juce::var loadLocalToneUrls(const juce::Array<juce::URL>& sources,
                               const std::string& targetInsertId = {});
+  // Validate one local model file's bytes: `.nam` must parse as an A2 NAM
+  // config, `.wav` must open as real audio (repairing a missing RIFF pad
+  // byte in `bytes` first, so the repaired copy is what gets stored).
+  // Returns an empty string when the file is loadable, else a user-facing
+  // message. Shared by the drop/stash path and the library importer, so a
+  // file can never enter the library that the loader would then refuse.
+  static juce::String validateLocalModelBytes(const juce::String& filename,
+                                              juce::MemoryOutputStream& bytes);
+
+  // --- Tone library (ProcessorLibrary.cpp) -------------------------------
+  // The user's own folder tree of local tones under
+  // <app data>/TONE3000/Library (see ToneLibrary). It is a *store*, not a
+  // second loading pipeline: a picked entry's path goes straight to
+  // loadLocalTonePath, so a library tone is the same local block a dropped
+  // file makes. Every path here is root-relative and validated by
+  // ToneLibrary::resolve; "" is the library root.
+  //
+  // One folder's contents for the browser (see ToneLibrary::list).
+  juce::var listLibrary(const juce::String& folderPath) const;
+  // Load a library file, or a whole folder as one multi-model block, into
+  // `targetInsertId` (an insert slot adds, a tone tile swaps in place, an
+  // empty/stale id falls back to the active lane). Returns loadLocalTonePath's
+  // { blockId } / { error }.
+  juce::var loadLibraryTone(const juce::String& itemPath, const std::string& targetInsertId = {});
+  // File a live block's active model into `folderPath`, bytes and all: the
+  // point of the library, since it works for a tone downloaded from
+  // TONE3000 as well as a local one (the block's model cache holds the same
+  // bytes either way). Returns { path, name } or { error }.
+  juce::var saveBlockToLibrary(const std::string& blockId, const juce::String& folderPath);
+  // Copy files dropped on the browser into `folderPath`. Same
+  // [{ name, data }] base64 payload as loadLocalTone (the webview can't
+  // hand over paths), and the same validation, so nothing unloadable lands
+  // in the library. An entry's name may carry a relative subpath, which is
+  // how a dropped folder keeps its shape (see ToneLibrary::write); the UI
+  // sends the tree in batches, so this can be called several times for one
+  // drop. Returns { copied, skipped } or { error }.
+  juce::var importFilesToLibrary(const juce::String& folderPath, const juce::var& files);
+  // Copy a file or folder the user picked in the OS dialog into
+  // `folderPath`. Unlike the drop path these are only checked by extension:
+  // they're read from disk exactly like the files a user files in with
+  // Finder/Explorer, and the loader validates on load. Returns
+  // { path, name, copied } or { error }.
+  juce::var importPathToLibrary(const juce::String& folderPath, const juce::File& source);
+  // `unique` suffixes a taken name rather than failing (the importer's
+  // path; the New Folder action wants the collision reported).
+  juce::var createLibraryFolder(const juce::String& parentPath, const juce::String& name,
+                                bool unique = false);
+  juce::var renameLibraryItem(const juce::String& itemPath, const juce::String& newName);
+  // Move a file or folder into another library folder (see ToneLibrary::move).
+  // Returns { path } or { error }.
+  juce::var moveLibraryItem(const juce::String& itemPath, const juce::String& destFolderPath);
+  bool removeLibraryItem(const juce::String& itemPath);
+  // Open a library folder in the OS file manager (the "organize it yourself"
+  // escape hatch). Returns the folder's path, or "" when it can't be shown.
+  juce::String revealLibraryFolder(const juce::String& folderPath);
+  // Point the library at another root. Tests use it to keep their fixtures
+  // out of the real library; it is also the seam a settings-configurable
+  // library location would sit on.
+  void setLibraryRoot(const juce::File& root) { library = ToneLibrary(root); }
+  juce::File getLibraryRoot() const { return library.rootDir(); }
   // Age out local-model stash files unused for a week (runs once per
   // process, off-thread). Called from the constructor.
   static void cleanLocalModelStash();
@@ -763,6 +824,8 @@ private:
   bool isChainAtDefault() const;
 
   PresetManager presetManager;
+  // The on-disk tone library (message thread only, like presetManager).
+  ToneLibrary library;
   // Shown in the preset pill; guarded by chainMutex (written on the message
   // thread, read by getChainState).
   juce::String activePresetId;
