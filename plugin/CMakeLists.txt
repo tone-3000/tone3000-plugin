@@ -109,8 +109,9 @@ foreach(_nam_tool tools loadmodel benchmodel render benchmodel_bufsize bench_a2_
 endforeach()
 
 # NAM static library - built here (not in submodule) to keep submodule pristine.
-# Must be linked with -force_load/--whole-archive so static factory::Helper
-# initializers (ConvNet, LSTM, WaveNet) are not stripped.
+# Must be linked with -force_load/--whole-archive so the static
+# ConfigParserHelper registrations (WaveNet, LSTM, SlimmableContainer, ...)
+# are not stripped.
 set(NAM_SRC "${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/NAM")
 add_library(NAM STATIC
     ${NAM_SRC}/activations.cpp
@@ -132,6 +133,23 @@ target_include_directories(NAM PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/Dependencies/nlohmann
 )
 target_compile_options(NAM PRIVATE -fPIC)
+# Hidden visibility, matching what JUCE sets on the plugin targets (NAM is a
+# separate target and gets none of that). Left visible, GCC exports the
+# header-inline ConfigParserRegistry singleton as STB_GNU_UNIQUE, which glibc
+# resolves process-wide even across RTLD_LOCAL dlopens: a host with two
+# formats installed (LV2 and VST3, say) shares one registry between both
+# binaries, each still runs its own static parser registrations, and the
+# duplicate-name throw escapes dlopen and aborts the host (issue #59).
+set_target_properties(NAM PROPERTIES
+    C_VISIBILITY_PRESET hidden
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN TRUE)
+# Second guard for the same bug (GCC-only flag; Clang never emits unique
+# symbols). It also keeps the .so dlclose'able: unique symbols pin a loaded
+# library NODELETE.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(NAM PRIVATE -fno-gnu-unique)
+endif()
 # A2 full / A2 lite models use the hand-optimized path when config matches (see NeuralAmpModelerCore).
 target_compile_definitions(NAM PRIVATE NAM_ENABLE_A2_FAST)
 
@@ -320,8 +338,8 @@ target_link_libraries(${PROJECT_NAME}
         juce::juce_audio_processors
         juce::juce_gui_basics
         juce::juce_gui_extra
-        # NAM: force_load/whole-archive so static factory::Helper initializers
-        # (ConvNet, LSTM, WaveNet) are not stripped by the linker
+        # NAM: force_load/whole-archive so the static ConfigParserHelper
+        # registrations are not stripped by the linker
         # PLATFORM_ID is "iOS" (not "Darwin") when cross-compiling for iOS, so
         # both have to be listed or the iOS link drops every model architecture
         # and NAM loads fail with "No config parser registered for ...".
