@@ -979,7 +979,7 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
     double inputDbu = 0.0, outputDbu = 0.0;
     bool enabled = true, normalize = true;
     double slimSize = 0.0;
-    float inputGain = 0.5f, outputGain = 0.5f, mix = 1.0f;
+    float inputGain = 0.5f, outputGain = 0.5f, mix = 1.0f, predelay = 0.0f;
     juce::var eq;
     bool rtFailed = false;
   };
@@ -1047,6 +1047,7 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
         row.inputGain = block->inputGainNormalized;
         row.outputGain = block->outputGainNormalized;
         row.mix = block->mixNormalized;
+        row.predelay = block->predelayNormalized;
         row.eq = block->eq.toVar();
         out.push_back(std::move(row));
       }
@@ -1125,6 +1126,7 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
       params->setProperty("inputGain", row.inputGain);
       params->setProperty("outputGain", row.outputGain);
       params->setProperty("mix", row.mix);
+      params->setProperty("predelay", row.predelay);
       params->setProperty("eq", row.eq);
       item->setProperty("params", juce::var(params.get()));
 
@@ -1473,7 +1475,8 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
     return false;
 
   // Validate before recording history, so failed calls never leave an entry.
-  const bool isContinuous = param == "inputGain" || param == "outputGain" || param == "mix";
+  const bool isContinuous =
+      param == "inputGain" || param == "outputGain" || param == "mix" || param == "predelay";
   const bool isKnown = isContinuous || param == "enabled" || param == "normalize";
   if (!isKnown) {
     DBG("setBlockParam: unknown param: " << param);
@@ -1494,6 +1497,10 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
     block->outputGainNormalized = juce::jlimit(0.0f, 1.0f, static_cast<float>(value));
   } else if (param == "mix") {
     block->mixNormalized = juce::jlimit(0.0f, 1.0f, static_cast<float>(value));
+  } else if (param == "predelay") {
+    block->predelayNormalized = juce::jlimit(0.0f, 1.0f, static_cast<float>(value));
+    block->predelay.setDelayMs(block->predelayNormalized * BlockPredelay::kMaxDelayMs);
+    refreshIrTailLength();
   }
 
   // Continuous drags settle into one bump after the gesture ends; discrete

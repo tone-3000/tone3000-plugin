@@ -131,6 +131,7 @@ juce::ValueTree TONE3000Processor::serializeBlockSettings(const ChainBlock& bloc
   blockState.setProperty("inputGain", block.inputGainNormalized, nullptr);
   blockState.setProperty("outputGain", block.outputGainNormalized, nullptr);
   blockState.setProperty("mix", block.mixNormalized, nullptr);
+  blockState.setProperty("predelay", block.predelayNormalized, nullptr);
 
   if (block.type != ChainBlockType::INSERT) {
     blockState.setProperty("toneId", block.toneId, nullptr);
@@ -148,6 +149,8 @@ void TONE3000Processor::applyBlockSettings(ChainBlock& block, const juce::ValueT
   block.inputGainNormalized = static_cast<float>(blockState.getProperty("inputGain", 0.5f));
   block.outputGainNormalized = static_cast<float>(blockState.getProperty("outputGain", 0.5f));
   block.mixNormalized = static_cast<float>(blockState.getProperty("mix", 1.0f));
+  block.predelayNormalized =
+      juce::jlimit(0.0f, 1.0f, static_cast<float>(blockState.getProperty("predelay", 0.0f)));
 
   // States from before per-block sizes restore as lite (0.0). An engine the
   // restore keeps loaded (see reconcileChainFromTree) retiers in place: the

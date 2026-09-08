@@ -1252,6 +1252,11 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
     // small work buffers), and the swap-fade already has the wet path silent.
     block.irBaseRateIsland.prepare(chainOversampleFactor.load(),
                                    juce::jmax(1, chainBaseBlockSize()));
+    // Same "never seen by prepareChain" reasoning applies to the predelay
+    // ring buffer: it must be sized here too, or a block loaded mid-session
+    // processes with an unprepared (zero-capacity) buffer.
+    block.predelay.prepare(kChainBaseSampleRate,
+                           block.predelayNormalized * BlockPredelay::kMaxDelayMs);
 
     // Fresh blocks (Select-flow loads) default their mix by IR length: long
     // IRs are reverbs/effects meant to be blended (half wet), short cab IRs

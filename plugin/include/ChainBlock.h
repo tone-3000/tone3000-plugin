@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include "BlockEq.h"
+#include "BlockPredelay.h"
 #include "BlockSpectrum.h"
 #include "ChainOversampler.h"
 #include "NamEngine.h"
@@ -170,6 +171,14 @@ struct ChainBlock {
   bool irIsLong{false};
   juce::LinearSmoothedValue<float> irNormalizationSmoother;
   float irNormalizationGainLinear{1.0f};
+
+  // Predelay: delays the wet signal before it enters the convolver (see
+  // BlockPredelay). Runs inside irBaseRateIsland, always at the base rate.
+  // predelayNormalized is the persisted 0..1 knob value (same convention as
+  // mixNormalized/inputGainNormalized); the engine is driven in real ms via
+  // setDelayMs(predelayNormalized * BlockPredelay::kMaxDelayMs).
+  BlockPredelay predelay;
+  float predelayNormalized{0.0f};
 
   // Per-block loudness normalization toggle, NAM only (off = the capture's
   // true level, which is real information; IR normalization is always on
