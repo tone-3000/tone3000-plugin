@@ -103,6 +103,9 @@ export interface BlockParams {
   outputGain: number;
   /** Dry/wet: 0 = dry, 1 = wet. */
   mix: number;
+  /** Normalized 0..1 -> 0-1000ms, delay before the wet signal enters the
+      IR's convolver. IR blocks only; inert for NAM blocks. */
+  predelay: number;
   /** Per-block 6-band EQ. Flat = skipped entirely on the audio thread. */
   eq: BlockEqParams;
 }
@@ -297,7 +300,13 @@ export function isUnchanged(res: ChainStateResponse): res is ChainStateUnchanged
 }
 
 /** Param names accepted by the native `setBlockParam` function. */
-export type BlockParamName = 'enabled' | 'normalize' | 'inputGain' | 'outputGain' | 'mix';
+export type BlockParamName =
+  | 'enabled'
+  | 'normalize'
+  | 'inputGain'
+  | 'outputGain'
+  | 'mix'
+  | 'predelay';
 
 /** Payload of the native `getMeterLevels` function (all values dB, -60 floor).
     Main meters ship as [L, R] pairs; mono sources report L == R. */

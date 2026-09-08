@@ -57,6 +57,10 @@ export const balanceDbScale = linearScale(-12, 12, 'dB', 1);
 /** Gate threshold: normalized spans -100..0 dB. */
 export const gateDbScale = linearScale(-100, 0, 'dB', 0);
 
+/** Per-block IR predelay: normalized 0..1 -> 0-1000ms, applied before the
+    wet signal reaches the convolver (see BlockPredelay.h). */
+export const predelayMsScale = linearScale(0, 1000, 'ms', 0);
+
 /** Faceplate tone stack knobs: 0..10, 5 = flat. */
 export const toneScale = linearScale(0, 10, '', 1);
 

@@ -233,6 +233,7 @@ export const HELP = {
   blockOut: knobHelp('Out', 'block output gain, ±24 dB.'),
   blockOutIr: knobHelp('Out', 'block output gain, ±24 dB (IR pre-trimmed -18 dB).'),
   blockMix: knobHelp('Mix', 'dry/wet blend.'),
+  blockPredelay: knobHelp('Predelay', 'delay before the IR player starts, up to 1s.'),
   blockNormalize: 'Normalize: level this block\u2019s loudness. Off: raw capture level.',
   blockNormalizeOverridden:
     'Normalize: overridden \u2014 calibration hands this model\u2019s true output level to the next NAM block.',

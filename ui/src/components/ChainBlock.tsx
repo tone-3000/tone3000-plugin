@@ -15,7 +15,7 @@ import {
 import { ToneImage } from './GearIcon';
 import { rem } from '../hooks/useUiScale';
 import { KnobControl } from './KnobControl';
-import { gainDbScale } from './knobScale';
+import { gainDbScale, predelayMsScale } from './knobScale';
 import { BusyOverlay, LoadingDots } from './LoadingDots';
 import { ModelSelect } from './ModelSelect';
 import { RetryLoadBadge } from './RetryLoadBadge';
@@ -239,6 +239,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
   const [inputGain, setInputGain] = useState(params.inputGain ?? 0.5);
   const [outputGain, setOutputGain] = useState(params.outputGain ?? 0.5);
   const [mix, setMix] = useState(params.mix ?? 1.0);
+  const [predelay, setPredelay] = useState(params.predelay ?? 0);
   const [isSwitchingModel, setIsSwitchingModel] = useState(false);
   const [showEq, setShowEq] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
@@ -283,6 +284,9 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
   useEffect(() => {
     if (!knobDragRef.current) setMix(params.mix ?? 1.0);
   }, [params.mix]);
+  useEffect(() => {
+    if (!knobDragRef.current) setPredelay(params.predelay ?? 0);
+  }, [params.predelay]);
   useEffect(() => setEqOn(params.eq?.enabled ?? true), [params.eq?.enabled]);
   useEffect(() => setEqPre(params.eq?.pre ?? false), [params.eq?.pre]);
 
@@ -1096,6 +1100,35 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
                       thumb="secondary"
                       defaultValue={defaultMix}
                       help={HELP.blockMix}
+                    />
+                  </div>
+                )}
+
+                {/* Predelay knob: IR blocks only, between Mix and the output rail */}
+                {!showInfo && !isNam && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'flex-end',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <KnobControl
+                      label="Pre"
+                      value={predelay}
+                      onChange={(val) => {
+                        setPredelay(val);
+                        setParam('predelay', val);
+                      }}
+                      onDragStateChange={handleKnobDragState}
+                      size={KNOB_SIZE_SECONDARY}
+                      labelBottom={false}
+                      thumb="secondary"
+                      scale={predelayMsScale}
+                      defaultValue={0}
+                      help={HELP.blockPredelay}
                     />
                   </div>
                 )}
