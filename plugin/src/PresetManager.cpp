@@ -344,7 +344,8 @@ bool PresetManager::deleteCategory(const juce::String& rawName) const {
     return false;
 
   categories.remove(foundIndex);
-  writeCategories(categories);
+  if (!writeCategories(categories))
+    return false;
 
   // If a category has existing presets within it, these presets go to the root "Your presets" instead of being deleted.
   for (const auto& file : userDir.findChildFiles(juce::File::findFiles, false, "*" + juce::String(kFileExtension))) {

@@ -783,18 +783,30 @@ export const PresetBar: React.FC<PresetBarProps> = ({
     [allUserPresets]
   );
 
-  // Root user presets (no category assigned)
-  const rootUserPresets = useMemo(
-    () => nonFavouriteUserPresets.filter((p) => !p.category || p.category.trim() === ''),
-    [nonFavouriteUserPresets]
-  );
-
   // Sorted user categories
   const sortedCategories = useMemo(() => {
     const cats = [...categories];
     cats.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     return cats;
   }, [categories]);
+
+  // Set of known categories for fast case-insensitive lookup
+  const knownCategoriesSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const cat of sortedCategories) {
+      set.add(cat.toLowerCase());
+    }
+    return set;
+  }, [sortedCategories]);
+
+  // Root user presets (no category assigned, or assigned to unknown category)
+  const rootUserPresets = useMemo(
+    () =>
+      nonFavouriteUserPresets.filter(
+        (p) => !p.category || !p.category.trim() || !knownCategoriesSet.has(p.category.trim().toLowerCase())
+      ),
+    [nonFavouriteUserPresets, knownCategoriesSet]
+  );
 
   // Map category to its non-favourite presets
   const presetsByCategory = useMemo(() => {
@@ -932,22 +944,28 @@ export const PresetBar: React.FC<PresetBarProps> = ({
       // CASE E: Dropped onto another preset row
       if (targetPreset && sourcePreset) {
         if (reordering) {
-          const from = presets.findIndex((p) => p.id === sourceId);
-          const to = presets.findIndex((p) => p.id === targetPreset.id);
-          if (from !== -1 && to !== -1 && from !== to) {
+          // Reordering is strictly within the same section (user vs factory)
+          if (sourcePreset.factory !== targetPreset.factory) return;
+
+          const currentList = ordered ?? presets;
+          const section = currentList.filter((p) => p.factory === sourcePreset.factory);
+          const sectionFrom = section.findIndex((p) => p.id === sourceId);
+          const sectionTo = section.findIndex((p) => p.id === targetPreset.id);
+
+          if (sectionFrom !== -1 && sectionTo !== -1 && sectionFrom !== sectionTo) {
             setOrdered((prev) => {
               const list = prev ?? presets;
               const item = list.find((p) => p.id === sourceId);
               if (!item) return prev;
-              const section = list.filter((p) => p.factory === item.factory);
+              const sec = list.filter((p) => p.factory === item.factory);
               const others = list.filter((p) => p.factory !== item.factory);
-              const sectionFrom = section.findIndex((p) => p.id === sourceId);
-              const sectionTo = section.findIndex((p) => p.id === targetPreset.id);
-              if (sectionFrom === -1 || sectionTo === -1) return prev;
-              const moved = arrayMove(section, sectionFrom, sectionTo);
+              const sFrom = sec.findIndex((p) => p.id === sourceId);
+              const sTo = sec.findIndex((p) => p.id === targetPreset.id);
+              if (sFrom === -1 || sTo === -1) return prev;
+              const moved = arrayMove(sec, sFrom, sTo);
               return item.factory ? [...others, ...moved] : [...moved, ...others];
             });
-            onMove(sourceId, to - from);
+            onMove(sourceId, sectionTo - sectionFrom);
           }
           return;
         }
@@ -965,7 +983,7 @@ export const PresetBar: React.FC<PresetBarProps> = ({
         }
       }
     },
-    [presets, selectedIds, reordering, onMove, onMovePresetsToCategory, onSetFavorite, onSetFavorites, toast]
+    [presets, ordered, selectedIds, reordering, onMove, onMovePresetsToCategory, onSetFavorite, onSetFavorites, toast]
   );
 
   const renderRow = (preset: PresetInfo) => {
