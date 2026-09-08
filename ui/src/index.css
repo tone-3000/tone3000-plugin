@@ -264,3 +264,26 @@ input[type='range'].accent-blue::-moz-range-thumb {
 .hide-scrollbar::-webkit-scrollbar {
   display: none; /* Chrome, Safari, Opera */
 }
+
+/* Styled scrollbar for preset list */
+.preset-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+}
+
+.preset-scrollbar::-webkit-scrollbar {
+  width: 6rem;
+}
+
+.preset-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.preset-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.22);
+  border-radius: 4rem;
+}
+
+.preset-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.45);
+}

@@ -44,10 +44,17 @@ juce::var TONE3000Processor::getPresetList() const {
     obj->setProperty("id", info.id);
     obj->setProperty("name", info.name);
     obj->setProperty("factory", info.factory);
+    obj->setProperty("category", info.category);
+    obj->setProperty("favorite", info.favorite);
     presetArray.add(juce::var(obj.get()));
+  }
+  juce::Array<juce::var> categoryArray;
+  for (const auto& cat : presetManager.listCategories()) {
+    categoryArray.add(cat);
   }
   juce::DynamicObject::Ptr root = new juce::DynamicObject();
   root->setProperty("presets", presetArray);
+  root->setProperty("categories", categoryArray);
   return root.get();
 }
 
@@ -257,4 +264,62 @@ bool TONE3000Processor::resetToDefault() {
   juce::Logger::writeToLog("[Presets] Reset to default");
   // No deferred fade release: an empty chain queues no model loads.
   return true;
+}
+
+bool TONE3000Processor::addPresetCategory(const juce::String& name) {
+  return presetManager.addCategory(name);
+}
+
+bool TONE3000Processor::deletePresetCategory(const juce::String& name) {
+  return presetManager.deleteCategory(name);
+}
+
+bool TONE3000Processor::setPresetCategory(const juce::String& id, const juce::String& category) {
+  return presetManager.setPresetCategory(id, category);
+}
+
+bool TONE3000Processor::movePresetsToCategory(const juce::StringArray& ids, const juce::String& category) {
+  return presetManager.movePresetsToCategory(ids, category);
+}
+
+bool TONE3000Processor::setPresetFavorite(const juce::String& id, bool isFavorite) {
+  return presetManager.setPresetFavorite(id, isFavorite);
+}
+
+bool TONE3000Processor::setPresetsFavorite(const juce::StringArray& ids, bool isFavorite) {
+  return presetManager.setPresetsFavorite(ids, isFavorite);
+}
+
+juce::var TONE3000Processor::duplicatePresets(const juce::StringArray& ids) {
+  const auto created = presetManager.duplicatePresets(ids);
+  juce::Array<juce::var> result;
+  for (const auto& info : created) {
+    juce::DynamicObject::Ptr obj = new juce::DynamicObject();
+    obj->setProperty("id", info.id);
+    obj->setProperty("name", info.name);
+    obj->setProperty("category", info.category);
+    obj->setProperty("favorite", info.favorite);
+    obj->setProperty("factory", info.factory);
+    result.add(juce::var(obj.get()));
+  }
+  return result;
+}
+
+bool TONE3000Processor::deletePresets(const juce::StringArray& ids) {
+  bool activeDeleted = false;
+  {
+    juce::ScopedLock lock(chainMutex);
+    for (const auto& id : ids) {
+      if (activePresetId == id) {
+        activePresetId.clear();
+        activePresetName.clear();
+        activeDeleted = true;
+        break;
+      }
+    }
+  }
+  if (activeDeleted)
+    bumpChainRevision();
+
+  return presetManager.removePresets(ids);
 }

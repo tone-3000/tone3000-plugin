@@ -209,4 +209,170 @@ TEST(PresetManagerTest, MoveShiftsByDeltaWithinTheSection) {
   EXPECT_FALSE(mgr.move(d.id, -4));
 }
 
+TEST(PresetManagerTest, CategoryLifecycleAndSorting) {
+  TempPresetDir tmp;
+  PresetManager mgr(tmp.dir);
+
+  EXPECT_TRUE(mgr.addCategory("Rock"));
+  EXPECT_TRUE(mgr.addCategory("ambient"));
+  EXPECT_TRUE(mgr.addCategory("Blues"));
+
+  // Duplicate (case-insensitive) is refused
+  EXPECT_FALSE(mgr.addCategory("rock"));
+  EXPECT_FALSE(mgr.addCategory("ROCK"));
+
+  // Empty or whitespace only is refused
+  EXPECT_FALSE(mgr.addCategory("   "));
+
+  // > 50 characters is refused
+  const juce::String tooLong(std::string(51, 'a'));
+  EXPECT_FALSE(mgr.addCategory(tooLong));
+
+  // 50 characters is allowed
+  const juce::String exactly50(std::string(50, 'b'));
+  EXPECT_TRUE(mgr.addCategory(exactly50));
+
+  // Sorted case-insensitively: ambient, bbbbb..., Blues, Rock
+  const auto categories = mgr.listCategories();
+  ASSERT_EQ(categories.size(), 4);
+  EXPECT_EQ(categories[0], juce::String("ambient"));
+  EXPECT_EQ(categories[1], exactly50);
+  EXPECT_EQ(categories[2], juce::String("Blues"));
+  EXPECT_EQ(categories[3], juce::String("Rock"));
+
+  // Survives fresh PresetManager instance (categories.json)
+  PresetManager fresh(tmp.dir);
+  EXPECT_EQ(fresh.listCategories(), categories);
+}
+
+TEST(PresetManagerTest, CategoryMultiLingualNames) {
+  TempPresetDir tmp;
+  PresetManager mgr(tmp.dir);
+
+  EXPECT_TRUE(mgr.addCategory(juce::CharPointer_UTF8("リード・ギター")));
+  EXPECT_TRUE(mgr.addCategory(juce::CharPointer_UTF8("Café Rock 🎸")));
+  EXPECT_TRUE(mgr.addCategory(juce::CharPointer_UTF8("Schöne Töne")));
+
+  const auto categories = mgr.listCategories();
+  ASSERT_EQ(categories.size(), 3);
+  EXPECT_TRUE(categories.contains(juce::CharPointer_UTF8("リード・ギター")));
+  EXPECT_TRUE(categories.contains(juce::CharPointer_UTF8("Café Rock 🎸")));
+  EXPECT_TRUE(categories.contains(juce::CharPointer_UTF8("Schöne Töne")));
+}
+
+TEST(PresetManagerTest, PresetCategoryAssignmentAndMove) {
+  TempPresetDir tmp;
+  PresetManager mgr(tmp.dir);
+
+  mgr.addCategory("Rock");
+  const auto p1 = mgr.save("Lead 1", makePreset("p1"));
+  const auto p2 = mgr.save("Rhythm 1", makePreset("p2"));
+
+  EXPECT_TRUE(mgr.setPresetCategory(p1.id, "Rock"));
+  EXPECT_TRUE(mgr.setPresetCategory(p2.id, "Rock"));
+
+  auto list = mgr.list();
+  ASSERT_EQ(list.size(), 2u);
+  EXPECT_EQ(list[0].category, juce::String("Rock"));
+  EXPECT_EQ(list[1].category, juce::String("Rock"));
+
+  // Move back to root (empty category)
+  EXPECT_TRUE(mgr.setPresetCategory(p1.id, ""));
+  list = mgr.list();
+  EXPECT_EQ(list[0].category, juce::String(""));
+}
+
+TEST(PresetManagerTest, DeleteCategoryMovesPresetsToRoot) {
+  TempPresetDir tmp;
+  PresetManager mgr(tmp.dir);
+
+  mgr.addCategory("Clean");
+  const auto p1 = mgr.save("Warm Clean", makePreset("p1"));
+  const auto p2 = mgr.save("Bright Clean", makePreset("p2"));
+
+  mgr.setPresetCategory(p1.id, "Clean");
+  mgr.setPresetCategory(p2.id, "Clean");
+
+  // Deleting the category removes the category from the list
+  EXPECT_TRUE(mgr.deleteCategory("Clean"));
+  EXPECT_EQ(mgr.listCategories().size(), 0);
+
+  // But the presets are NOT deleted; their category is reset to root ("")
+  const auto list = mgr.list();
+  ASSERT_EQ(list.size(), 2u);
+  EXPECT_EQ(list[0].category, juce::String(""));
+  EXPECT_EQ(list[1].category, juce::String(""));
+  EXPECT_TRUE(mgr.load(p1.id).isValid());
+  EXPECT_TRUE(mgr.load(p2.id).isValid());
+}
+
+TEST(PresetManagerTest, FavoritesLifecycle) {
+  TempPresetDir tmp;
+  PresetManager mgr(tmp.dir);
+
+  const auto p1 = mgr.save("Fav 1", makePreset("f1"));
+  const auto p2 = mgr.save("Normal 2", makePreset("f2"));
+
+  EXPECT_TRUE(mgr.setPresetFavorite(p1.id, true));
+
+  auto list = mgr.list();
+  ASSERT_EQ(list.size(), 2u);
+  EXPECT_TRUE(list[0].favorite);
+  EXPECT_FALSE(list[1].favorite);
+
+  // Survives fresh PresetManager instance
+  PresetManager fresh(tmp.dir);
+  list = fresh.list();
+  EXPECT_TRUE(list[0].favorite);
+  EXPECT_FALSE(list[1].favorite);
+
+  // Unstarring works
+  EXPECT_TRUE(fresh.setPresetFavorite(p1.id, false));
+  list = fresh.list();
+  EXPECT_FALSE(list[0].favorite);
+
+  // Batch starring and unstarring
+  juce::StringArray both;
+  both.add(p1.id);
+  both.add(p2.id);
+  EXPECT_TRUE(fresh.setPresetsFavorite(both, true));
+  list = fresh.list();
+  EXPECT_TRUE(list[0].favorite);
+  EXPECT_TRUE(list[1].favorite);
+
+  EXPECT_TRUE(fresh.setPresetsFavorite(both, false));
+  list = fresh.list();
+  EXPECT_FALSE(list[0].favorite);
+  EXPECT_FALSE(list[1].favorite);
+}
+
+TEST(PresetManagerTest, DuplicatePresetAndBatch) {
+  TempPresetDir tmp;
+  PresetManager mgr(tmp.dir);
+
+  mgr.addCategory("Metal");
+  const auto orig = mgr.save("Chug", makePreset("metal"));
+  mgr.setPresetCategory(orig.id, "Metal");
+
+  const auto dup = mgr.duplicatePreset(orig.id);
+  ASSERT_TRUE(dup.id.isNotEmpty());
+  EXPECT_NE(dup.id, orig.id);
+  EXPECT_EQ(dup.name, juce::String("Copy-Chug"));
+  EXPECT_EQ(dup.category, juce::String("Metal"));
+
+  const auto list = mgr.list();
+  ASSERT_EQ(list.size(), 2u);
+
+  // Duplicate a copy -> "Copy-Copy-Chug"
+  const auto dup2 = mgr.duplicatePreset(dup.id);
+  EXPECT_EQ(dup2.name, juce::String("Copy-Copy-Chug"));
+
+  // Batch delete
+  juce::StringArray toDelete;
+  toDelete.add(dup.id);
+  toDelete.add(dup2.id);
+  EXPECT_TRUE(mgr.removePresets(toDelete));
+  EXPECT_EQ(mgr.list().size(), 1u);
+}
+
 }  // namespace

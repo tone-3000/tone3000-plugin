@@ -8,6 +8,7 @@ import {
   Bluetooth as LBluetooth,
   Bookmark as LBookmark,
   Check as LCheck,
+  CheckSquare as LCheckSquare,
   ChevronDown as LChevronDown,
   ChevronLeft as LChevronLeft,
   ChevronRight as LChevronRight,
@@ -19,7 +20,10 @@ import {
   Equal as LEqual,
   ExternalLink as LExternalLink,
   File as LFile,
+  Folder as LFolder,
   FolderClosed as LFolderClosed,
+  FolderPlus as LFolderPlus,
+  FolderX as LFolderX,
   Gauge as LGauge,
   GripVertical as LGripVertical,
   Info as LInfo,
@@ -39,6 +43,8 @@ import {
   Settings as LSettings,
   Share as LShare,
   ShieldAlert as LShieldAlert,
+  Square as LSquare,
+  Star as LStar,
   Trash2 as LTrash2,
   Undo2 as LUndo2,
   Upload as LUpload,
@@ -74,6 +80,7 @@ export const ArrowUpDown = scaled(LArrowUpDown, 'ArrowUpDown');
 export const Bluetooth = scaled(LBluetooth, 'Bluetooth');
 export const Bookmark = scaled(LBookmark, 'Bookmark');
 export const Check = scaled(LCheck, 'Check');
+export const CheckSquare = scaled(LCheckSquare, 'CheckSquare');
 export const ChevronDown = scaled(LChevronDown, 'ChevronDown');
 export const ChevronLeft = scaled(LChevronLeft, 'ChevronLeft');
 export const ChevronRight = scaled(LChevronRight, 'ChevronRight');
@@ -85,7 +92,10 @@ export const Download = scaled(LDownload, 'Download');
 export const Equal = scaled(LEqual, 'Equal');
 export const ExternalLink = scaled(LExternalLink, 'ExternalLink');
 export const File = scaled(LFile, 'File');
+export const Folder = scaled(LFolder, 'Folder');
 export const FolderClosed = scaled(LFolderClosed, 'FolderClosed');
+export const FolderPlus = scaled(LFolderPlus, 'FolderPlus');
+export const FolderX = scaled(LFolderX, 'FolderX');
 export const Gauge = scaled(LGauge, 'Gauge');
 export const GripVertical = scaled(LGripVertical, 'GripVertical');
 export const Info = scaled(LInfo, 'Info');
@@ -105,6 +115,8 @@ export const Search = scaled(LSearch, 'Search');
 export const Settings = scaled(LSettings, 'Settings');
 export const Share = scaled(LShare, 'Share');
 export const ShieldAlert = scaled(LShieldAlert, 'ShieldAlert');
+export const Square = scaled(LSquare, 'Square');
+export const Star = scaled(LStar, 'Star');
 export const Trash2 = scaled(LTrash2, 'Trash2');
 export const Undo2 = scaled(LUndo2, 'Undo2');
 export const Upload = scaled(LUpload, 'Upload');

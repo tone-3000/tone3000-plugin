@@ -102,6 +102,7 @@ export const PluginHeader = React.memo(function PluginHeader({
         <PresetBar
           active={activePreset}
           presets={presetStore.presets}
+          categories={presetStore.categories}
           atDefault={atDefault}
           onSave={presetStore.actions.save}
           onLoad={presetStore.actions.load}
@@ -109,6 +110,14 @@ export const PluginHeader = React.memo(function PluginHeader({
           onDelete={presetStore.actions.remove}
           onMove={presetStore.actions.move}
           onReset={onReset}
+          onAddCategory={presetStore.actions.addCategory}
+          onDeleteCategory={presetStore.actions.deleteCategory}
+          onSetCategory={presetStore.actions.setCategory}
+          onMovePresetsToCategory={presetStore.actions.movePresetsToCategory}
+          onSetFavorite={presetStore.actions.setFavorite}
+          onSetFavorites={presetStore.actions.setFavorites}
+          onDuplicatePresets={presetStore.actions.duplicatePresets}
+          onDeletePresets={presetStore.actions.deletePresets}
         />
         <StereoModeToggle stereoEnabled={stereoEnabled} onToggle={onStereoToggle} />
         <IconButton

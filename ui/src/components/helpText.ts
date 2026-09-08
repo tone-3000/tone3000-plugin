@@ -197,10 +197,23 @@ export const HELP = {
   presetRename: 'Rename: edit name. Enter: commit · Esc: cancel.',
   presetDelete: 'Delete: remove this preset.',
   presetReorder: 'Reorder: drag presets into a custom order. Prev/Next and MIDI follow it.',
-  presetDrag: 'Drag: move this preset within its section.',
+  presetDrag: 'Drag: drag this preset into or out of a category, or reorder.',
   presetPcToggle:
     'MIDI PC: show each preset\u2019s program change number. Prev/Next and PC follow the list order.',
   presetPc: 'PC: the MIDI program change number that loads this preset.',
+  presetFavorite: 'Favorite: star this preset to pin it in Favourites.',
+  presetUnfavorite: 'Unfavorite: unstar this preset to remove it from Favourites.',
+  presetSelect: 'Select: choose this preset for bulk actions (move, duplicate, delete).',
+  presetDeselect: 'Deselect: remove this preset from selection.',
+  presetMultiSelectToggle: 'Bulk Actions: toggle multi-selection to move, duplicate, or delete presets in bulk.',
+  presetSelectAll: 'Select All: select all presets.',
+  presetDeselectAll: 'Deselect All: clear selection.',
+  bulkMove: 'Move Presets: move selected presets to another category.',
+  bulkDuplicate: 'Duplicate Presets: make copies of all selected presets.',
+  bulkDelete: 'Delete Presets: permanently delete all selected presets.',
+  categoryCreate: 'Create Category: add a new user preset category.',
+  categoryDelete: 'Delete Category: delete this category (presets return to Your Presets).',
+  categoryToggle: 'Category: click to collapse or expand this category.',
 
   // Chain gallery
   addTile:

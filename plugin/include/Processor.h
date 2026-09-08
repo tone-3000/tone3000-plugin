@@ -384,6 +384,16 @@ public:
   // untouched) when the state is already at default.
   bool resetToDefault();
 
+  // Category and bulk preset operations
+  bool addPresetCategory(const juce::String& name);
+  bool deletePresetCategory(const juce::String& name);
+  bool setPresetCategory(const juce::String& id, const juce::String& category);
+  bool movePresetsToCategory(const juce::StringArray& ids, const juce::String& category);
+  bool setPresetFavorite(const juce::String& id, bool isFavorite);
+  bool setPresetsFavorite(const juce::StringArray& ids, bool isFavorite);
+  juce::var duplicatePresets(const juce::StringArray& ids);
+  bool deletePresets(const juce::StringArray& ids);
+
   // Tuner: enabled by the UI while the tuner screen is visible. Reads the raw
   // (pre-gain, pre-gate) input so gating never starves the pitch detector.
   void setTunerEnabled(bool enabled) { tuner.setEnabled(enabled); }

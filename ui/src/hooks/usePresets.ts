@@ -28,16 +28,29 @@ export function usePresets(onChanged?: () => void) {
       renamePreset: backend.getPluginFunction('renamePreset'),
       deletePreset: backend.getPluginFunction('deletePreset'),
       movePreset: backend.getPluginFunction('movePreset'),
+      addPresetCategory: backend.getPluginFunction('addPresetCategory'),
+      deletePresetCategory: backend.getPluginFunction('deletePresetCategory'),
+      setPresetCategory: backend.getPluginFunction('setPresetCategory'),
+      movePresetsToCategory: backend.getPluginFunction('movePresetsToCategory'),
+      setPresetFavorite: backend.getPluginFunction('setPresetFavorite'),
+      setPresetsFavorite: backend.getPluginFunction('setPresetsFavorite'),
+      duplicatePresets: backend.getPluginFunction('duplicatePresets'),
+      deletePresets: backend.getPluginFunction('deletePresets'),
     }),
     [backend]
   );
 
   const [presets, setPresets] = useState<PresetInfo[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
 
   const refreshList = useCallback(async () => {
     try {
-      const res = (await native.getPresetList()) as { presets?: PresetInfo[] } | null;
+      const res = (await native.getPresetList()) as {
+        presets?: PresetInfo[];
+        categories?: string[];
+      } | null;
       setPresets(res?.presets ?? []);
+      setCategories(res?.categories ?? []);
     } catch (error) {
       console.error('Error loading preset list:', error);
     }
@@ -78,9 +91,33 @@ export function usePresets(onChanged?: () => void) {
           persists and drives prev/next and MIDI program-change numbers. */
       move: (id: string, delta: number) =>
         run<boolean>('movePreset', () => native.movePreset(id, delta)),
+      /** Create a new user category. */
+      addCategory: (name: string) =>
+        run<boolean>('addPresetCategory', () => native.addPresetCategory(name)),
+      /** Delete a user category (presets inside move to root). */
+      deleteCategory: (name: string) =>
+        run<boolean>('deletePresetCategory', () => native.deletePresetCategory(name)),
+      /** Assign a preset to a category (or "" for root). */
+      setCategory: (id: string, category: string) =>
+        run<boolean>('setPresetCategory', () => native.setPresetCategory(id, category)),
+      /** Move multiple presets to a category (or "" for root). */
+      movePresetsToCategory: (ids: string[], category: string) =>
+        run<boolean>('movePresetsToCategory', () => native.movePresetsToCategory(ids, category)),
+      /** Toggle favourite / star status. */
+      setFavorite: (id: string, isFavorite: boolean) =>
+        run<boolean>('setPresetFavorite', () => native.setPresetFavorite(id, isFavorite)),
+      /** Set favourite / star status for multiple presets. */
+      setFavorites: (ids: string[], isFavorite: boolean) =>
+        run<boolean>('setPresetsFavorite', () => native.setPresetsFavorite(ids, isFavorite)),
+      /** Duplicate one or more presets (prepends "Copy-"). */
+      duplicatePresets: (ids: string[]) =>
+        run<PresetInfo[]>('duplicatePresets', () => native.duplicatePresets(ids)),
+      /** Delete multiple presets. */
+      deletePresets: (ids: string[]) =>
+        run<boolean>('deletePresets', () => native.deletePresets(ids)),
     }),
     [native, run]
   );
 
-  return { presets, refreshList, actions };
+  return { presets, categories, refreshList, actions };
 }
