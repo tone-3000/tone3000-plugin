@@ -100,13 +100,6 @@ Simulator build.
   version, so a second upload of one version needs
   `-DT3K_IOS_BUILD_NUMBER=<n>`. Without the setting at all, JUCE uses the
   marketing version as the build number and the second upload always bounces.
-- The **Deploy to TestFlight** workflow
-  (`.github/workflows/deploy-testflight.yml`) does the upload: publishing a
-  GitHub Release builds, signs and uploads, and `workflow_dispatch` runs the
-  same pipeline against any ref. Signing and upload both use an App Store
-  Connect API key from the `builds` environment, so no keychain or stored
-  profile is involved, and the build number is the workflow run number. A
-  repository without those credentials skips the job instead of failing.
 - App Store Connect requires uploads built against a current iOS SDK. A runner
   pinned to an older Xcode builds and signs fine and is then refused at upload,
   which reads as a signing problem and is not one.
