@@ -14,24 +14,50 @@
 
 // IR block sizing constants.
 // TONE3000 IR tones cover two very different species: cab IRs (tens of
-// milliseconds) and convolution-reverb IRs (whole seconds). ONE length
-// cutoff (kShortIrMaxSeconds) classifies every IR as short or long, and
-// that classification drives everything downstream:
-//   short: uniform zero-latency engine, -18 dB output pad, 100% default mix
-//   long:  non-uniform engine,           no output pad,     50% default mix
+// milliseconds of real content) and convolution-reverb/space IRs (up to
+// whole seconds). What species a load *is* comes from its explicit
+// IrCategory (ChainBlock.h) - resolved from catalog `gear` metadata before
+// the download even starts for site-loaded tones - never from raw file
+// length: real catalog content includes cabs manually trimmed to seconds of
+// file length around tens of ms of real signal, so file length can't tell
+// the species apart (that mismatch is TONE3000 issue #89). Category alone
+// drives every audible default (the -18 dB cab pad, default mix; see
+// Processor.cpp / applyPreparedModelToChainBlock). Engine selection is a
+// separate, purely CPU-side decision:
+//   Cab:      always the uniform zero-latency engine, hard-capped to its
+//             first kCabMaxSeconds at load - unconditionally safe, no
+//             length check needed.
+//   IrPlayer: uniform vs. the two-stage non-uniform engine, chosen
+//             adaptively from a load-time RMS scan of where real content
+//             actually ends (estimateIrContentEndSamples below), not raw/
+//             trimmed file length - real IrPlayer content ranges from short
+//             slap-delays to 6-8 s cathedral tails, and a file can carry
+//             seconds of near-silent length either way.
 namespace {
 
 // Hard cap on loaded IR length. Bounds memory and engine-build time for
 // arbitrary downloads while comfortably covering any published reverb IR
-// (the longest cathedral tails run ~8 s).
+// (the longest cathedral tails run ~8 s). IrPlayer only - a known Cab uses
+// kCabMaxSeconds instead, see prepareBlockModelOffThread.
 constexpr double kMaxIrSeconds = 10.0;
 
-// The short/long cutoff: cab IRs top out around 0.5 s, reverbs start well
-// above 1 s; nothing meaningful lives at the boundary. IRs always convolve
-// at the base rate (see ChainBlock::irBaseRateIsland), so the sample
-// threshold is a constant.
-constexpr double kShortIrMaxSeconds = 1.0;
-constexpr int kShortIrMaxBaseSamples = static_cast<int>(kShortIrMaxSeconds * kChainBaseSampleRate);
+// Hard cap for a load already known to be Cab (category resolved from
+// catalog `gear` metadata before the file is even read): real cab IRs top
+// out around 0.5 s, so this is a real truncation - the size limit JUCE's
+// loadImpulseResponse actually reads from file - not just an engine hint,
+// making Cab unconditionally safe regardless of what the source file
+// actually contains.
+constexpr double kCabMaxSeconds = 0.5;
+
+// IrPlayer's uniform/non-uniform engine cutoff, measured against detected
+// content length (see estimateIrContentEndSamples), never raw file length.
+// Slap-delays and short spaces sit well under 1 s, cathedral tails well
+// above it; nothing meaningful lives at the boundary. IRs always convolve at
+// the base rate (see ChainBlock::irBaseRateIsland), so the sample threshold
+// is a constant.
+constexpr double kIrPlayerLongContentSeconds = 1.0;
+constexpr int kIrPlayerLongContentBaseSamples =
+    static_cast<int>(kIrPlayerLongContentSeconds * kChainBaseSampleRate);
 
 // Long IRs use JUCE's two-stage non-uniform engine (still zero latency):
 // the first kIrNonUniformHeadSamples convolve in callback-sized partitions,
@@ -142,6 +168,58 @@ bool wavMissingRiffPadByte(const void* data, size_t size) {
     return false;
   const auto declared = static_cast<juce::uint64>(juce::ByteOrder::littleEndianInt(bytes + 4));
   return declared + 8 == static_cast<juce::uint64>(size) + 1;
+}
+
+// Where an IrPlayer load's real audible content ends, in the buffer's own
+// samples: peak level, then a backward scan over ~2 ms pooled-RMS windows
+// for the last one that clears -60 dB relative to that peak, plus a small
+// margin. Deliberately not a reuse of the (unmerged, feature-branch-only)
+// envelope-shaping code's own content detector - this is a small, fresh
+// implementation for exactly one purpose: engine selection (see the IR
+// block sizing comment above), never the audible pad/mix path.
+int estimateIrContentEndSamples(const juce::AudioBuffer<float>& buffer, double sampleRate) {
+  const int numSamples = buffer.getNumSamples();
+  const int numChannels = buffer.getNumChannels();
+  if (numSamples <= 0 || numChannels <= 0 || sampleRate <= 0.0)
+    return numSamples;
+
+  float peakAbs = 0.0f;
+  for (int ch = 0; ch < numChannels; ++ch) {
+    const float* data = buffer.getReadPointer(ch);
+    for (int i = 0; i < numSamples; ++i)
+      peakAbs = std::max(peakAbs, std::abs(data[i]));
+  }
+  if (peakAbs <= 0.0f)
+    return 0;
+
+  const float threshold = peakAbs * juce::Decibels::decibelsToGain(-60.0f);
+  const int windowSamples = std::max(1, static_cast<int>(std::llround(sampleRate * 0.002)));
+
+  // Scan pooled-RMS windows from the end backward; contentEndSample is the
+  // end of the last (temporally, i.e. first found going backward) window
+  // whose RMS clears the threshold. Silence never clears it, so this
+  // naturally falls through to contentEndSample = 0.
+  int contentEndSample = 0;
+  for (int windowEnd = numSamples; windowEnd > 0; windowEnd -= windowSamples) {
+    const int windowStart = std::max(0, windowEnd - windowSamples);
+    double sumSq = 0.0;
+    int count = 0;
+    for (int ch = 0; ch < numChannels; ++ch) {
+      const float* data = buffer.getReadPointer(ch);
+      for (int i = windowStart; i < windowEnd; ++i) {
+        sumSq += static_cast<double>(data[i]) * data[i];
+        ++count;
+      }
+    }
+    const float windowRms = count > 0 ? static_cast<float>(std::sqrt(sumSq / count)) : 0.0f;
+    if (windowRms > threshold) {
+      contentEndSample = windowEnd;
+      break;
+    }
+  }
+
+  const int margin = std::max(static_cast<int>(std::llround(sampleRate * 0.005)), 1);
+  return std::min(numSamples, contentEndSample + margin);
 }
 
 // Caps for local file loads, mirroring the web UI's drop limits
@@ -755,7 +833,8 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
     ChainBlockType type,
     const std::vector<uint8_t>& modelData,
     const juce::String& filename,
-    double namSlimSize) {
+    double namSlimSize,
+    std::optional<IrCategory> knownCategory) {
   PreparedBlockModel out;
 
   if (modelData.empty()) {
@@ -874,29 +953,51 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
         return out;
       }
 
+      // Category known-Cab up front (site-loaded tones: resolved from
+      // catalog `gear` before the download even started, see loadTone) hard-
+      // caps the read to kCabMaxSeconds - a real truncation, the actual size
+      // limit JUCE reads from file below, unconditionally safe regardless of
+      // what the source file contains. Everything else (IrPlayer, or a
+      // category that isn't known yet - local file loads, pre-migration
+      // saved state) keeps the existing generous safety cap; its engine gets
+      // decided below from real detected content, not this bound.
+      const bool isCabKnown = knownCategory.has_value() && *knownCategory == IrCategory::Cab;
+      const double captureSeconds = isCabKnown ? kCabMaxSeconds : kMaxIrSeconds;
+
       // The load cap is a time bound, not a fixed sample count; truncating
       // a multi-second reverb IR audibly chops its decay. It is passed to
       // JUCE in *file-rate* samples (truncation happens before the convolver
       // resamples to the base rate).
       const double fileSampleRate =
           reader->sampleRate > 0.0 ? reader->sampleRate : kChainBaseSampleRate;
-      const auto maxIrFileSamples = static_cast<size_t>(kMaxIrSeconds * fileSampleRate);
+      const auto maxIrFileSamples = static_cast<size_t>(captureSeconds * fileSampleRate);
       const juce::int64 fileSamplesToLoad = std::min<juce::int64>(
           reader->lengthInSamples, static_cast<juce::int64>(maxIrFileSamples));
       // Upper bound on the engine's kernel length at the base rate; the
       // authoritative (trimmed) length is read back off the built engine
-      // below; a cab IR padded with trailing silence must still classify
-      // as short for the level logic.
+      // below.
       const int irLengthUpperBound = static_cast<int>(std::llround(
           static_cast<double>(fileSamplesToLoad) * kChainBaseSampleRate / fileSampleRate));
       const int irNumChannels = juce::jlimit(1, 2, static_cast<int>(reader->numChannels));
 
-      // Engine by the short/long cutoff. The engine must be constructed
-      // before the trimmed size is known, so this one decision uses the
-      // pre-trim upper bound; a silence-padded cab merely lands on the
-      // non-uniform engine, a CPU choice, not an audible one. All audible
-      // logic (output pad, default mix) uses the trimmed length below.
-      const bool engineLongIr = irLengthUpperBound > kShortIrMaxBaseSamples;
+      // Engine selection: Cab is always uniform, unconditionally (the hard
+      // cap above already bounds it). Everything else reads the capped
+      // region into a buffer and scans it for where real content actually
+      // ends, and picks the engine from *that* - raw/trimmed file length is
+      // exactly as untrustworthy here as it was for the audible pad/mix bug
+      // (a cab manually trimmed to seconds of file length around tens of ms
+      // of real content would otherwise land on the non-uniform engine for
+      // no reason). When the category itself isn't known yet, this same
+      // scan doubles as its one-shot duration guess, applied once the model
+      // lands (see ChainBlock::irCategoryNeedsDurationGuess).
+      bool engineLongIr = false;
+      if (!isCabKnown) {
+        juce::AudioBuffer<float> rawBuffer(irNumChannels, static_cast<int>(fileSamplesToLoad));
+        reader->read(&rawBuffer, 0, static_cast<int>(fileSamplesToLoad), 0, true, true);
+        const int contentEndSamples = estimateIrContentEndSamples(rawBuffer, fileSampleRate);
+        const double contentEndSeconds = contentEndSamples / fileSampleRate;
+        engineLongIr = contentEndSeconds > kIrPlayerLongContentSeconds;
+      }
       auto makeConvolver = [engineLongIr] {
         return engineLongIr ? std::make_unique<juce::dsp::Convolution>(
                                   juce::dsp::Convolution::NonUniform{kIrNonUniformHeadSamples})
@@ -958,21 +1059,22 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
       }
 
       // The engine was built synchronously above, so it can report the real
-      // (trimmed + resampled) kernel length, the basis for the short/long
-      // classification and the host tail report. Fall back to the pre-trim
-      // bound defensively.
+      // (trimmed + resampled) kernel length for the host tail report. Fall
+      // back to the pre-trim bound defensively.
       const int engineIrSamples = out.convolverMono->getCurrentIRSize();
       const int irLengthBaseSamples = engineIrSamples > 0 ? engineIrSamples : irLengthUpperBound;
 
       out.irNumChannels = irNumChannels;
       out.irLengthBaseSamples = irLengthBaseSamples;
-      out.irIsLong = irLengthBaseSamples > kShortIrMaxBaseSamples;
+      out.irIsLong = engineLongIr;  // which engine got built, see above - never re-derived from length
       out.irNormalizationGainLinear = computeIrNormalizationGain(tempFile, maxIrFileSamples);
 
       juce::Logger::writeToLog(
           "[ModelLoader] IR prepared: " + juce::String(irNumChannels) + " ch, " +
-          juce::String(irLengthBaseSamples / kChainBaseSampleRate, 2) + " s (" +
-          (out.irIsLong ? "long" : "short") + ", norm " +
+          juce::String(irLengthBaseSamples / kChainBaseSampleRate, 2) + " s, " +
+          (isCabKnown ? juce::String("cab (capped, uniform engine)")
+                      : juce::String(out.irIsLong ? "non-uniform engine" : "uniform engine")) +
+          ", norm " +
           juce::String(juce::Decibels::gainToDecibels(out.irNormalizationGainLinear), 1) + " dB)");
       out.success = true;
     }
@@ -1227,6 +1329,7 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
     block.irNumChannels = 1;
     block.irLengthBaseSamples = 0;
     block.irIsLong = false;
+    block.irCategoryNeedsDurationGuess = false;  // inert for NAM; don't leave a stale guess armed
 
     // Re-assert the block's A2 size in case it changed while this engine
     // was downloading/preparing (a no-op retier when it didn't).
@@ -1246,6 +1349,16 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
     block.irLengthBaseSamples = prepared.irLengthBaseSamples;
     block.irIsLong = prepared.irIsLong;
 
+    // Category wasn't known at prepare time (local file load; or state
+    // saved before this field existed, see applyBlockSettings) - seed it
+    // once from the same content-detection prepareBlockModelOffThread just
+    // ran for engine selection (prepared.irIsLong), never raw file length.
+    // A real, editable value from here on; never re-derived after this.
+    if (block.irCategoryNeedsDurationGuess) {
+      block.irCategory = block.irIsLong ? IrCategory::IrPlayer : IrCategory::Cab;
+      block.irCategoryNeedsDurationGuess = false;
+    }
+
     // The base-rate island around the convolvers: blocks added mid-session
     // were never seen by prepareChain, so (re)prepare it here with the same
     // capacity/factor arguments as the chain-wide oversampler. Cheap (three
@@ -1253,13 +1366,13 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
     block.irBaseRateIsland.prepare(chainOversampleFactor.load(),
                                    juce::jmax(1, chainBaseBlockSize()));
 
-    // Fresh blocks (Select-flow loads) default their mix by IR length: long
-    // IRs are reverbs/effects meant to be blended (half wet), short cab IRs
-    // replace the signal (fully wet). Length is only known here, after the
-    // download, so loadTone arms this one-shot flag instead of guessing
-    // from tone metadata. Swaps/restores keep the user's mix.
+    // Fresh blocks (Select-flow loads) default their mix by IR category: Cab
+    // replaces the signal (fully wet), IrPlayer is a reverb/effect meant to
+    // be blended (half wet). Category is resolved above (or, for a site-
+    // loaded tone, already known before the download - see loadTone), so
+    // this is safe to apply immediately. Swaps/restores keep the user's mix.
     if (block.applyDefaultMixOnLoad)
-      block.mixNormalized = block.irIsLong ? 0.5f : 1.0f;
+      block.mixNormalized = block.irCategory == IrCategory::Cab ? 1.0f : 0.5f;
 
     block.irNormalizationGainLinear = prepared.irNormalizationGainLinear;
     block.irNormalizationSmoother.reset(chainSampleRate(), 0.05f);
@@ -1291,6 +1404,9 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
   block.outputGainSmoother.reset(chainSampleRate(), 0.05f);
   block.mixSmoother.reset(chainSampleRate(), 0.05f);
   block.mixSmoother.setCurrentAndTargetValue(block.mixNormalized);
+  block.irPadGainSmoother.reset(chainSampleRate(), 0.05f);
+  block.irPadGainSmoother.setCurrentAndTargetValue(
+      block.irCategory == IrCategory::Cab ? juce::Decibels::decibelsToGain(-18.0f) : 1.0f);
 
   // Splice-in fade: the new engine enters from silence instead of jumping
   // in mid-waveform, mirroring how the outgoing one left (see

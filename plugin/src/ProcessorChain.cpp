@@ -65,12 +65,26 @@ struct ParsedTone {
   juce::String modelUrl;
   juce::String modelName;
   ChainBlockType type = ChainBlockType::NAM;
+  // Raw catalog `gear` tag, lowercased ("cab", "space", "outboard", ...; empty
+  // when absent). IR blocks only; see irCategoryFromGear.
+  juce::String gear;
+  // True for a drop-loaded local file tone (see loadLocalTone): no catalog
+  // metadata exists at all, `gear` above is always empty for these.
+  bool local = false;
   // Parsed tone with its models pruned to just the one being loaded; native
   // only ever stores the active model; the catalog stays on the API and the
   // UI pages it in for the picker.
   juce::var toneVar;
   juce::String toneJson;  // `toneVar` re-serialized (what the block persists)
 };
+
+// gear -> IrCategory. `cab` is the catalog's exclusive tag for real cabinet
+// content - nothing else can legitimately mean Cab - so every other tag
+// (space/outboard/experimental/generic ir) and a missing tag both fall
+// through to IrPlayer.
+IrCategory irCategoryFromGear(const juce::String& gear) {
+  return gear == "cab" ? IrCategory::Cab : IrCategory::IrPlayer;
+}
 
 // The engine type a tone requires, from its parsed JSON (`format`, with the
 // legacy `platform` fallback). While a tone swap is in flight the block's own
@@ -121,12 +135,14 @@ ParsedTone parseToneForLoading(const juce::String& toneJsonString) {
   out.modelUrl = firstModel->getProperty("model_url").toString();
   out.modelName = firstModel->getProperty("name").toString();
   out.type = (format == "nam") ? ChainBlockType::NAM : ChainBlockType::IR;
+  out.gear = toneObj->getProperty("gear").toString().toLowerCase();
+  out.local = static_cast<bool>(toneObj->getProperty("local"));
 
   // Store only the model being loaded; native persists just the active
   // model; the catalog stays on the API. Local tones are the exception:
   // their model list *is* the dropped files (no API to page the others back
   // in from), so it stays whole.
-  if (!static_cast<bool>(toneObj->getProperty("local"))) {
+  if (!out.local) {
     juce::Array<juce::var> prunedModels;
     prunedModels.add(modelsVar.getArray()->getReference(0));
     toneObj->setProperty("models", prunedModels);
@@ -282,10 +298,24 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString,
   block->namSlimSize = namSlimSizeDefault.load();
   block->loaded = false;
   block->modelLoading = true;
-  // The right default mix depends on the model itself (long IR = half wet),
-  // which is only known after download; the first successful apply sets it
-  // (see applyPreparedModelToChainBlock).
+  // The right default mix depends on the block's IR category, applied on
+  // first successful apply (see applyPreparedModelToChainBlock).
   block->applyDefaultMixOnLoad = true;
+
+  if (parsed.type == ChainBlockType::IR) {
+    if (parsed.local) {
+      // No catalog `gear` tag exists for a dropped file; seed the category
+      // once the model lands and its real content can be scanned (see
+      // ChainBlock::irCategoryNeedsDurationGuess / applyPreparedModelTo
+      // ChainBlock). A real, editable value from the moment it loads, same
+      // as a site-loaded tone's - just not known yet at this exact instant.
+      block->irCategoryNeedsDurationGuess = true;
+    } else {
+      // Known immediately from catalog metadata, before the download even
+      // starts - no need to wait for the model to arrive.
+      block->irCategory = irCategoryFromGear(parsed.gear);
+    }
+  }
 
   DBG("Created tone block: " << parsed.toneId << " (block: " << blockId << ")");
   DBG("Queueing first model for background loading: " << parsed.modelName);
@@ -798,6 +828,7 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, int fir
       modelName + (type == ChainBlockType::NAM ? ".nam" : ".wav");
 
   double namSlimSize = 0.0;
+  std::optional<IrCategory> knownCategory;
   {
     juce::ScopedLock lock(chainMutex);
     ChainBlock* block = findBlockById(blockId);
@@ -809,9 +840,12 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, int fir
 
     block->modelCache[firstModelId] = modelData;
     namSlimSize = block->namSlimSize;
+    if (type == ChainBlockType::IR && !block->irCategoryNeedsDurationGuess)
+      knownCategory = block->irCategory;
   }
 
-  PreparedBlockModel prepared = prepareBlockModelOffThread(type, modelData, filename, namSlimSize);
+  PreparedBlockModel prepared =
+      prepareBlockModelOffThread(type, modelData, filename, namSlimSize, knownCategory);
   const bool applied = prepared.success;
 
   // A swapped tone's previous engine may still be audibly processing; let
@@ -857,6 +891,7 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
   bool needsFetch = false;
   ChainBlockType blockTypeForPrepare = ChainBlockType::NAM;
   double namSlimSize = 0.0;
+  std::optional<IrCategory> knownCategory;
 
   {
     juce::ScopedLock lock(chainMutex);
@@ -878,6 +913,8 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
     // still processing) while this job builds the new tone's engine.
     blockTypeForPrepare = toneEngineType(block->toneVar, block->type);
     namSlimSize = block->namSlimSize;
+    if (blockTypeForPrepare == ChainBlockType::IR && !block->irCategoryNeedsDurationGuess)
+      knownCategory = block->irCategory;
     auto cacheIt = block->modelCache.find(modelId);
 
     if (cacheIt != block->modelCache.end()) {
@@ -906,8 +943,8 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
   const juce::String filename =
       modelName + (blockTypeForPrepare == ChainBlockType::NAM ? ".nam" : ".wav");
 
-  PreparedBlockModel prepared =
-      prepareBlockModelOffThread(blockTypeForPrepare, modelData, filename, namSlimSize);
+  PreparedBlockModel prepared = prepareBlockModelOffThread(blockTypeForPrepare, modelData, filename,
+                                                           namSlimSize, knownCategory);
   const bool applied = prepared.success;
 
   // The outgoing model keeps processing until this moment; fade it out on
@@ -975,6 +1012,7 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
     int toneId = 0;
     int activeModelId = 0;
     bool loaded = false, loadFailed = false, modelLoading = false, irLong = false;
+    IrCategory irCategory = IrCategory::IrPlayer;
     bool hasInputDbu = false, hasOutputDbu = false;
     double inputDbu = 0.0, outputDbu = 0.0;
     bool enabled = true, normalize = true;
@@ -1026,6 +1064,7 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
         row.loadFailed = block->loadFailed;
         row.modelLoading = block->modelLoading;
         row.irLong = block->type == ChainBlockType::IR && block->irIsLong;
+        row.irCategory = block->irCategory;
         // NAM calibration metadata off the loaded engine, absent when the
         // model carries none. Non-finite values never ship; the JSON bridge
         // can't carry them (and the DSP rejects them too).
@@ -1109,9 +1148,13 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
       item->setProperty("loaded", row.loaded);
       item->setProperty("loadFailed", row.loadFailed);
       item->setProperty("modelLoading", row.modelLoading);
-      // Long (reverb-like) IR: drives the UI's Mix knob default/Alt-click
-      // reset and the Out knob help (long IRs carry no -18 dB pad).
+      // Engine-selection signal only (uniform vs non-uniform convolution);
+      // no audible meaning any more - see irCategory below.
       item->setProperty("irLong", row.irLong);
+      // Explicit IR category ("cab"/"irPlayer"): drives the UI's Mix knob
+      // default/Alt-click reset and the Out knob help (Cab carries the
+      // -18 dB pad, IrPlayer doesn't). See IrCategory in ChainBlock.h.
+      item->setProperty("irCategory", irCategoryToString(row.irCategory));
 
       if (row.hasInputDbu)
         item->setProperty("inputLevelDbu", row.inputDbu);
@@ -1502,6 +1545,32 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
     deferredRevisionBump();
   else
     bumpChainRevision();
+  return true;
+}
+
+bool TONE3000Processor::setBlockIrCategory(const std::string& blockId,
+                                           const juce::String& category) {
+  const IrCategory newCategory = irCategoryFromString(category);
+
+  juce::ScopedLock lock(chainMutex);
+  ChainBlock* block = findBlockById(blockId);
+  if (block == nullptr || block->type != ChainBlockType::IR) {
+    DBG("setBlockIrCategory: not an IR block: " << blockId);
+    return false;
+  }
+  if (block->irCategory == newCategory)
+    return true;
+
+  pushChainHistory();
+  block->irCategory = newCategory;
+  // V1: no memory of a prior per-category mix - switching category always
+  // resets to its fixed default, same as a fresh load (see
+  // applyPreparedModelToChainBlock). Both this and the -18 dB cab pad
+  // (Processor.cpp) are pulled from smoothed values every block, so a live
+  // block glides through the change rather than clicking.
+  block->mixNormalized = newCategory == IrCategory::Cab ? 1.0f : 0.5f;
+
+  bumpChainRevision();
   return true;
 }
 

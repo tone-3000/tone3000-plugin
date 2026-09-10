@@ -179,10 +179,15 @@ export interface ToneBlock {
       the loading overlays (not `loaded`, which stays true mid-switch so the
       old model keeps playing). */
   modelLoading: boolean;
-  /** True for long (reverb-like) IRs, classified natively by kernel length
-      once the model loads. Drives the Mix knob's default (long = 50% wet)
-      and the Out knob help (long IRs carry no -18 dB pad). */
+  /** Engine-selection signal only (uniform vs non-uniform convolution); no
+      audible meaning - see irCategory below. */
   irLong: boolean;
+  /** Explicit IR content category (IR blocks only; meaningless for NAM).
+      'cab' = real cabinet content: -18 dB output pad, 100% default mix.
+      'irPlayer' = anything else (space/reverb/outboard/experimental/generic
+      IR): no pad, 50% default mix. Drives the Mix knob's default/Alt-click
+      reset and the Out knob help. Editable via setBlockIrCategory. */
+  irCategory: 'cab' | 'irPlayer';
   /** NAM calibration metadata (dBu) off the loaded model; absent when the
       model carries none (or nothing is loaded yet). `inputLevelDbu` feeds
       input calibration; `outputLevelDbu` feeds the mid-chain calibrated

@@ -73,6 +73,7 @@ export function useChainState() {
       setStereoMode: backend.getPluginFunction('setStereoMode'),
       setInputMode: backend.getPluginFunction('setInputMode'),
       setBlockSlimSize: backend.getPluginFunction('setBlockSlimSize'),
+      setBlockIrCategory: backend.getPluginFunction('setBlockIrCategory'),
       setNamSlimSizeDefault: backend.getPluginFunction('setNamSlimSizeDefault'),
       setMultiCore: backend.getPluginFunction('setMultiCore'),
       setActiveEditChain: backend.getPluginFunction('setActiveEditChain'),
@@ -203,6 +204,10 @@ export function useChainState() {
           part of the chain state, so it lands in presets and undo. */
       setBlockSlimSize: (blockId: string, slimSize: number) =>
         run<boolean>('setBlockSlimSize', () => native.setBlockSlimSize(blockId, slimSize)),
+      /** Explicit IR content category (see ToneBlock.irCategory); resets Mix
+          (and the -18 dB cab pad) to the new category's fixed default. */
+      setBlockIrCategory: (blockId: string, category: 'cab' | 'irPlayer') =>
+        run<boolean>('setBlockIrCategory', () => native.setBlockIrCategory(blockId, category)),
       /** Default NAM A2 size for newly added blocks (machine-wide; existing
           blocks keep their own size). Persists on disk. */
       setNamSlimSizeDefault: (slimSize: number) =>

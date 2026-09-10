@@ -193,6 +193,31 @@ const BlockSizeControl: React.FC<{
   );
 };
 
+/** IR-only: explicit content category (see ToneBlock.irCategory). Switching
+    resets Mix (and the native -18 dB cab pad) to the new category's fixed
+    default - see setBlockIrCategory. */
+const IrCategoryControl: React.FC<{
+  category: 'cab' | 'irPlayer';
+  onChange: (category: 'cab' | 'irPlayer') => void;
+}> = ({ category, onChange }) => (
+  <div {...helpProps(HELP.blockIrCategory)} style={segmentedGroupStyle()}>
+    {(['cab', 'irPlayer'] as const).map((option) => (
+      <button
+        key={option}
+        type="button"
+        onClick={() => onChange(option)}
+        style={{
+          ...segmentedCellStyle(),
+          color: category === option ? WHITE : MUTED,
+          transition: 'color 0.15s ease',
+        }}
+      >
+        <span className="cap-trim">{option === 'cab' ? 'Cab' : 'IR Player'}</span>
+      </button>
+    ))}
+  </div>
+);
+
 interface ChainBlockProps {
   block: ToneBlock;
   /** Another enabled+loaded NAM after this block in its lane. With input
@@ -236,6 +261,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
   const [enabled, setEnabled] = useState(params.enabled);
   const [normalizeOn, setNormalizeOn] = useState(params.normalize ?? true);
   const [slimFull, setSlimFull] = useState(isSlimSizeFull(params.slimSize ?? SLIM_SIZE_LITE));
+  const [irCategory, setIrCategory] = useState(block.irCategory);
   const [inputGain, setInputGain] = useState(params.inputGain ?? 0.5);
   const [outputGain, setOutputGain] = useState(params.outputGain ?? 0.5);
   const [mix, setMix] = useState(params.mix ?? 1.0);
@@ -274,6 +300,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
     () => setSlimFull(isSlimSizeFull(params.slimSize ?? SLIM_SIZE_LITE)),
     [params.slimSize]
   );
+  useEffect(() => setIrCategory(block.irCategory), [block.irCategory]);
   useEffect(() => {
     if (!knobDragRef.current) setInputGain(params.inputGain ?? 0.5);
   }, [params.inputGain]);
@@ -310,6 +337,18 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
     (full: boolean) => {
       setSlimFull(full);
       actions.setBlockSlimSize(blockId, full ? SLIM_SIZE_FULL : SLIM_SIZE_LITE);
+    },
+    [actions, blockId]
+  );
+
+  const handleSetIrCategory = useCallback(
+    (category: 'cab' | 'irPlayer') => {
+      setIrCategory(category);
+      // Mirrors the native reset (setBlockIrCategory) so Mix doesn't lag a
+      // poll behind; the mix param effect above picks up the converged
+      // value once native's own resync lands.
+      setMix(category === 'cab' ? 1 : 0.5);
+      actions.setBlockIrCategory(blockId, category);
     },
     [actions, blockId]
   );
@@ -529,10 +568,10 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
   const handOffLevelSane =
     block.outputLevelDbu !== undefined && block.outputLevelDbu >= -60 && block.outputLevelDbu <= 60;
   const normalizeOverridden = isNam && calibrateInput && namDownstream && handOffLevelSane;
-  // Long (reverb-like) IRs load half wet by default (native classifies by
-  // kernel length and sets the mix on first load); Alt-click reset on Mix
-  // must agree.
-  const defaultMix = block.irLong ? 0.5 : 1;
+  // Cab loads full wet by default, IrPlayer half wet (native sets the mix on
+  // first load from the block's IR category); Alt-click reset on Mix must
+  // agree.
+  const defaultMix = block.irCategory === 'cab' ? 1 : 0.5;
   // Every NAM block in the chain is A2 (the browser filters the catalog and
   // local drops are validated), so NAM badges always carry the A2 mark.
   const formatBadge = formatLabel(tone.format);
@@ -650,6 +689,10 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
                   interactive={sizeControlEnabled}
                   onChange={handleSetSlimFull}
                 />
+              )}
+
+              {!isNam && (
+                <IrCategoryControl category={irCategory} onChange={handleSetIrCategory} />
               )}
 
               {/* Calibration indicator (not a button): white = the loaded model
@@ -1180,7 +1223,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
                         thumb="secondary"
                         scale={gainDbScale}
                         defaultValue={0.5}
-                        help={isNam || block.irLong ? HELP.blockOut : HELP.blockOutIr}
+                        help={isNam || block.irCategory !== 'cab' ? HELP.blockOut : HELP.blockOutIr}
                       />
                     </div>
                   </div>

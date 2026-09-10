@@ -7,6 +7,7 @@
 #include <atomic>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 #include "NAM/dsp.h"
@@ -235,6 +236,14 @@ public:
   // thread off the lock while the fade holds). Undoable; no-op sets never
   // dip the audio.
   bool setBlockSlimSize(const std::string& blockId, double slimSize);
+
+  // Explicit IR content category (see IrCategory in ChainBlock.h): Cab or
+  // IrPlayer. Not routed through setBlockParam because it resets mix to the
+  // new category's fixed default (V1: no memory of a prior per-category
+  // mix); it does not touch engine selection (irIsLong stays exactly what
+  // load-time measured, fully decoupled from category). IR blocks only;
+  // false for a NAM/insert block or an unknown id.
+  bool setBlockIrCategory(const std::string& blockId, const juce::String& category);
 
   // Default NAM A2 size for newly added blocks (machine-wide user setting,
   // like multi-core), in the same slimmable-size domain. Existing blocks
@@ -492,16 +501,25 @@ private:
     std::unique_ptr<juce::dsp::Convolution> convolverStereo;
     int irNumChannels = 1;
     int irLengthBaseSamples = 0;  // base-rate kernel length (tail reporting)
-    bool irIsLong = false;        // short/long classification (see ChainBlock.h)
+    bool irIsLong = false;        // engine selection only (see ChainBlock.h)
     float irNormalizationGainLinear = 1.0f;
   };
 
   /** CPU/file heavy; call without holding `chainMutex`. NAM engines come out
       at the given slimmable size (the callers read it off the block, so the
       tier selection and prewarm run out here instead of under the apply
-      lock). */
+      lock). `knownCategory` is the block's IR category if already resolved
+      (site-loaded tones know it from `gear` before the download starts, see
+      loadTone) - nullopt when it isn't (local file loads; state saved before
+      this field existed). Known-Cab hard-caps the load to its first 500 ms
+      and always builds the uniform engine, unconditionally, no length check
+      involved; anything else runs an RMS content scan to pick the engine
+      adaptively (and, when the category itself is still unknown, doubles as
+      that category's one-shot duration guess - see
+      ChainBlock::irCategoryNeedsDurationGuess). Ignored for NAM. */
   PreparedBlockModel prepareBlockModelOffThread(ChainBlockType type, const std::vector<uint8_t>& modelData,
-                                                const juce::String& filename, double namSlimSize);
+                                                const juce::String& filename, double namSlimSize,
+                                                std::optional<IrCategory> knownCategory = std::nullopt);
   /** Short path under `chainMutex` only: swaps the new engines onto `block`
       and stamps `newType` (a tone swap may change the block's type; the old
       engine kept processing under the old type until this moment). The
