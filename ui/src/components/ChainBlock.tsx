@@ -3,6 +3,8 @@ import {
   ArrowLeft,
   ArrowLeftRight,
   Bookmark,
+  ChevronLeft,
+  ChevronRight,
   Download,
   Equal,
   FolderClosed,
@@ -207,6 +209,12 @@ interface ChainBlockProps {
   namSlimSizeDefault: number;
   /** Return to the chain gallery (← BLOCK sits above the bordered card). */
   onBack: () => void;
+  /** Step to the previous/next block in this same lane (issue #83), skipping
+      insert slots; false/no-op at the lane's ends (no wraparound). */
+  hasPrev: boolean;
+  onPrev: () => void;
+  hasNext: boolean;
+  onNext: () => void;
   /** Info view fills the center column to the faceplate (Select Tone pattern). */
   onFillToFaceplate?: (fill: boolean) => void;
 }
@@ -220,6 +228,10 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
   sampleRate,
   namSlimSizeDefault,
   onBack,
+  hasPrev,
+  onPrev,
+  hasNext,
+  onNext,
   onFillToFaceplate,
 }) => {
   const { blockId, tone, params } = block;
@@ -509,6 +521,32 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
     }
   };
 
+  // Left/Right steps to the adjacent block (issue #83), ignored while typing
+  // or with a native <select>/editable element focused so it doesn't fight
+  // normal text/option navigation. Scoped to this component's own mount
+  // lifetime, so it's only live while the detail view is actually open.
+  // isSwitchingModel also guards it: switchModel has no cancel handle, so a
+  // step mid-switch is just ignored rather than left to race.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof Element &&
+        e.target.closest('input, textarea, select, [contenteditable]')
+      ) {
+        return;
+      }
+      if (e.key === 'ArrowLeft' && hasPrev && !isSwitchingModel) {
+        e.preventDefault();
+        onPrev();
+      } else if (e.key === 'ArrowRight' && hasNext && !isSwitchingModel) {
+        e.preventDefault();
+        onNext();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [hasPrev, hasNext, isSwitchingModel, onPrev, onNext]);
+
   // A model download/prepare is in flight (switch, swap or first load). The
   // previous model keeps playing during a switch (`loaded` stays true), so
   // loading affordances key off `modelLoading`, not `loaded`.
@@ -570,39 +608,64 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
           padding: showInfo ? '24rem 0' : 0,
         }}
       >
-        {/* ← BLOCK sits above the bordered card (Figma: 16px mono, gap 16). */}
-        <button
-          type="button"
-          onClick={onBack}
-          {...helpProps(HELP.backToChain)}
+        {/* ← BLOCK sits above the bordered card (Figma: 16px mono, gap 16);
+            Prev/Next (issue #83) share the row, right-aligned. */}
+        <div
           style={{
-            alignSelf: 'flex-start',
             display: 'flex',
             alignItems: 'center',
-            gap: '16rem',
+            justifyContent: 'space-between',
             marginBottom: '16rem',
             flexShrink: 0,
-            background: 'transparent',
-            border: 'none',
-            outline: 'none',
-            padding: 0,
-            cursor: 'pointer',
-            color: WHITE,
           }}
         >
-          <ArrowLeft size={16} style={{ display: 'block', flexShrink: 0 }} />
-          <span
+          <button
+            type="button"
+            onClick={onBack}
+            {...helpProps(HELP.backToChain)}
             style={{
-              fontFamily: FONT_MONO,
-              fontSize: '16rem',
-              fontWeight: 400,
-              textTransform: 'uppercase',
-              lineHeight: 1.4,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '16rem',
+              flexShrink: 0,
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              padding: 0,
+              cursor: 'pointer',
+              color: WHITE,
             }}
           >
-            Block
-          </span>
-        </button>
+            <ArrowLeft size={16} style={{ display: 'block', flexShrink: 0 }} />
+            <span
+              style={{
+                fontFamily: FONT_MONO,
+                fontSize: '16rem',
+                fontWeight: 400,
+                textTransform: 'uppercase',
+                lineHeight: 1.4,
+              }}
+            >
+              Block
+            </span>
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8rem' }}>
+            <ChromeIconButton
+              help={HELP.prevBlock}
+              onClick={onPrev}
+              disabled={!hasPrev || isSwitchingModel}
+            >
+              <ChevronLeft />
+            </ChromeIconButton>
+            <ChromeIconButton
+              help={HELP.nextBlock}
+              onClick={onNext}
+              disabled={!hasNext || isSwitchingModel}
+            >
+              <ChevronRight />
+            </ChromeIconButton>
+          </div>
+        </div>
 
         <div
           style={{
@@ -670,6 +733,29 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
                 </span>
               )}
             </div>
+
+            {/* Orientation cue while the EQ view is open (issue #83 follow-up):
+              the EQ body looks identical block to block, and PrevNext swaps
+              which block it's showing without a mount/remount, so without
+              this a step left no visible sign of which block you're now on.
+              The non-EQ body already shows the title prominently, so this
+              only needs to appear here. Reads straight off the `tone` prop,
+              so it updates on every step automatically - no extra state. */}
+            {showEq && (
+              <span
+                style={{
+                  fontSize: '13rem',
+                  color: GRAY,
+                  fontWeight: 400,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  minWidth: 0,
+                }}
+              >
+                {tone.title}
+              </span>
+            )}
 
             {/* Right cluster: EQ submenu (pill when open), info, then share/swap/trash.
               EQ stays rightmost in the submenu so opening grows left only.

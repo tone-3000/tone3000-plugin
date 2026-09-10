@@ -453,6 +453,22 @@ export const ChainView: React.FC<ChainViewProps> = ({
       ? chain
       : (chainRight ?? []);
     const detailIndex = detailLane.findIndex((item) => item.blockId === detailBlock.blockId);
+
+    // Prev/Next (issue #83): step within this same lane only — a branch taps
+    // the signal into the other lane but never reorders or merges the two
+    // arrays, so "next" staying lane-local is correct in stereo too, branched
+    // or not. Skips insert slots (nothing to open there); clamps at the
+    // lane's ends rather than wrapping.
+    const stepBlock = (dir: 1 | -1): ToneBlock | null => {
+      for (let i = detailIndex + dir; i >= 0 && i < detailLane.length; i += dir) {
+        const item = detailLane[i];
+        if (!isInsertSlot(item)) return item;
+      }
+      return null;
+    };
+    const prevBlock = stepBlock(-1);
+    const nextBlock = stepBlock(1);
+
     const namDownstream = detailLane
       .slice(detailIndex + 1)
       .some(
@@ -486,6 +502,10 @@ export const ChainView: React.FC<ChainViewProps> = ({
             pendingScrollTargetRef.current = { kind: 'id', blockId: detailBlock.blockId };
             setDetailBlockId(null);
           }}
+          hasPrev={prevBlock != null}
+          onPrev={() => prevBlock && setDetailBlockId(prevBlock.blockId)}
+          hasNext={nextBlock != null}
+          onNext={() => nextBlock && setDetailBlockId(nextBlock.blockId)}
           onFillToFaceplate={onFillToFaceplate}
         />
       </div>
