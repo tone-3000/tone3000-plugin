@@ -220,18 +220,21 @@ export const IrEnvelopeGraph: React.FC<{
         return { x: (peakX + cutX) / 2, y: endY / 2 };
     }
   };
+  // Value only, no parameter-name prefix (e.g. "-6dB", not "Init -6dB") -
+  // besides being less cluttered, the shorter text also gives the top-edge
+  // clipping fix above more effective margin to work with.
   const readoutLabel = (target: DragTarget): string => {
     switch (target) {
       case 'init':
-        return `Init ${percentScale.format(initLevel)}`;
+        return percentScale.format(initLevel);
       case 'peak':
-        return `Attack ${attackLengthScale.format(attackLength)}`;
+        return attackLengthScale.format(attackLength);
       case 'end':
-        return `Decay ${decayLengthScale.format(decayLength)} · ${percentScale.format(decayLevel)}`;
+        return `${decayLengthScale.format(decayLength)} · ${percentScale.format(decayLevel)}`;
       case 'attack':
-        return `A Curve ${curveScale.format(attackCurve)}`;
+        return curveScale.format(attackCurve);
       case 'decay':
-        return `D Curve ${curveScale.format(decayCurve)}`;
+        return curveScale.format(decayCurve);
     }
   };
 
