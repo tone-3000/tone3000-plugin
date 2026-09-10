@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { getUiScale, rem } from '../hooks/useUiScale';
 import { DragDropProvider } from '@dnd-kit/react';
 import { isSortable } from '@dnd-kit/react/sortable';
@@ -101,6 +101,12 @@ const sensors: Sensors = [
 ];
 
 type Lanes = Record<ChainSide, ChainItem[]>;
+
+/** Scroll-restore target queued for the next return to the gallery: either a
+    blockId (explicit Back — the block still exists, see onBack) or a lane +
+    index (the open block vanished out from under us — trash, undo, redo...
+    see the scroll-restore effect in ChainView). */
+type PendingScroll = { kind: 'id'; blockId: string } | { kind: 'index'; side: ChainSide; index: number };
 
 /** Id of the ⌥-duplicate stand-in: the inert copy of the dragged block that
     holds its home slot while the standard drag machinery runs untouched. */
@@ -324,14 +330,120 @@ export const ChainView: React.FC<ChainViewProps> = ({
   };
 
   // Resolve the detail block across both lanes; it can disappear underneath
-  // us (undo, trash from the detail header), in which case we fall back to
-  // the gallery.
+  // us (undo, trash from the detail header, redo of a delete...), in which
+  // case we fall back to the gallery.
   const detailBlock =
     detailBlockId != null
       ? ([...chain, ...(chainRight ?? [])].find(
           (item): item is ToneBlock => !isInsertSlot(item) && item.blockId === detailBlockId
         ) ?? null)
       : null;
+
+  const stereo = chainRight != null;
+  const tileSize = stereo ? STEREO_TILE_SIZE : TILE_SIZE;
+
+  // Branched layout: the branch lane starts at the trunk's tap gap, so its
+  // row is indented past the whole trunk prefix (matching the signal flow:
+  // its input *is* that prefix's output). Resolved against the optimistic
+  // lane state; a stale tap id (mid-resync after the tapped block moved)
+  // renders as independent lanes until native's cleared state arrives.
+  // Computed here (ahead of the detail-view early return) because the
+  // scroll-restore effect below needs it too, and hooks can't follow a
+  // conditional return.
+  const branchLayout = (() => {
+    if (!stereo || branch == null) return null;
+    const tapIndex = lanes[branch.side].findIndex((i) => i.blockId === branch.afterBlockId);
+    if (tapIndex === -1) return null;
+    return {
+      trunkSide: branch.side,
+      indentPx: (tapIndex + 1) * (tileSize + TILE_GAP),
+      tapGapX: gapCenterX(tapIndex + 1, tileSize),
+    };
+  })();
+
+  // Scroll-restore target queued for the next return to the gallery; consumed
+  // synchronously by the effect below, so no render should ever observe it.
+  const pendingScrollTargetRef = useRef<PendingScroll | null>(null);
+
+  // The open detail block's last-known lane + index, kept fresh on every
+  // render it's still resolvable (a plain ref write during render — cheap,
+  // and there's no cleaner hook for "remember the last real value before a
+  // prop-driven change replaces it"). If the block then vanishes from
+  // underneath us, there's nothing left to look it up by id, so the effect
+  // below falls back to this instead.
+  const lastDetailPositionRef = useRef<{ side: ChainSide; index: number } | null>(null);
+  if (detailBlock != null) {
+    const side = laneOf(detailBlock.blockId);
+    const index =
+      side != null ? lanes[side].findIndex((i) => i.blockId === detailBlock.blockId) : -1;
+    if (side != null && index !== -1) lastDetailPositionRef.current = { side, index };
+  }
+
+  const galleryScrollElRef = useRef<HTMLDivElement | null>(null);
+  const setGalleryScrollEl = useCallback(
+    (el: HTMLDivElement | null) => {
+      wheelScrollRef(el);
+      galleryScrollElRef.current = el;
+    },
+    [wheelScrollRef]
+  );
+
+  // Center the just-closed (or just-vanished) block's tile instead of
+  // leaving the gallery scrolled to wherever a freshly mounted scroller
+  // defaults (issue #82): the gallery's scroll div unmounts while the detail
+  // takeover is open (see useHorizontalWheelScroll), so there's no prior
+  // scrollLeft to restore. Recomputing the tile's position (rather than
+  // replaying a raw offset) also survives the chain reshaping while the
+  // takeover was open (the block moved, or a preceding block was
+  // deleted/inserted).
+  useLayoutEffect(() => {
+    if (detailBlock != null) return;
+
+    // detailBlockId only reaches null a step ahead of us, via onBack itself
+    // (which seeds pendingScrollTargetRef in the same breath it clears this
+    // state). Landing here with detailBlockId still set means the block the
+    // takeover was open on disappeared out from under us instead — trash,
+    // undo, redo, anything native-initiated — so there's no explicit Back to
+    // rely on: fall back to its last known position, and drop the now-
+    // dangling id (otherwise it lingers in state and sessionStorage forever).
+    if (detailBlockId != null) {
+      setDetailBlockId(null);
+      if (lastDetailPositionRef.current != null) {
+        pendingScrollTargetRef.current = { kind: 'index', ...lastDetailPositionRef.current };
+      }
+    }
+
+    const target = pendingScrollTargetRef.current;
+    const el = galleryScrollElRef.current;
+    if (target == null || el == null) return;
+    pendingScrollTargetRef.current = null;
+
+    let side: ChainSide;
+    let index: number;
+    if (target.kind === 'id') {
+      const resolvedSide = laneOf(target.blockId);
+      if (resolvedSide == null) return;
+      side = resolvedSide;
+      index = lanes[resolvedSide].findIndex((i) => i.blockId === target.blockId);
+      if (index === -1) return;
+    } else {
+      side = target.side;
+      // The vacated slot may now be past the end (e.g. the removed block was
+      // the last real one, leaving only trailing insert slots).
+      index = Math.min(target.index, lanes[side].length - 1);
+      if (index < 0) return;
+    }
+
+    const indent =
+      branchLayout != null && side !== branchLayout.trunkSide ? branchLayout.indentPx : 0;
+    const centerDesignPx = EDGE_FADE_WIDTH + indent + index * (tileSize + TILE_GAP) + tileSize / 2;
+    const centerPx = centerDesignPx * getUiScale();
+    const max = el.scrollWidth - el.clientWidth;
+    el.scrollLeft = Math.max(0, Math.min(max, centerPx - el.clientWidth / 2));
+    // laneOf reads the same `lanes` this effect depends on; branchLayout and
+    // tileSize are derived from lanes/branch/chainRight above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailBlock, detailBlockId, lanes, branchLayout, tileSize]);
 
   if (detailBlock) {
     // Another enabled+loaded NAM after this block in its lane. This mirrors the
@@ -341,6 +453,22 @@ export const ChainView: React.FC<ChainViewProps> = ({
       ? chain
       : (chainRight ?? []);
     const detailIndex = detailLane.findIndex((item) => item.blockId === detailBlock.blockId);
+
+    // Prev/Next (issue #83): step within this same lane only — a branch taps
+    // the signal into the other lane but never reorders or merges the two
+    // arrays, so "next" staying lane-local is correct in stereo too, branched
+    // or not. Skips insert slots (nothing to open there); clamps at the
+    // lane's ends rather than wrapping.
+    const stepBlock = (dir: 1 | -1): ToneBlock | null => {
+      for (let i = detailIndex + dir; i >= 0 && i < detailLane.length; i += dir) {
+        const item = detailLane[i];
+        if (!isInsertSlot(item)) return item;
+      }
+      return null;
+    };
+    const prevBlock = stepBlock(-1);
+    const nextBlock = stepBlock(1);
+
     const namDownstream = detailLane
       .slice(detailIndex + 1)
       .some(
@@ -370,31 +498,19 @@ export const ChainView: React.FC<ChainViewProps> = ({
           namDownstream={namDownstream}
           sampleRate={sampleRate}
           namSlimSizeDefault={namSlimSizeDefault}
-          onBack={() => setDetailBlockId(null)}
+          onBack={() => {
+            pendingScrollTargetRef.current = { kind: 'id', blockId: detailBlock.blockId };
+            setDetailBlockId(null);
+          }}
+          hasPrev={prevBlock != null}
+          onPrev={() => prevBlock && setDetailBlockId(prevBlock.blockId)}
+          hasNext={nextBlock != null}
+          onNext={() => nextBlock && setDetailBlockId(nextBlock.blockId)}
           onFillToFaceplate={onFillToFaceplate}
         />
       </div>
     );
   }
-
-  const stereo = chainRight != null;
-  const tileSize = stereo ? STEREO_TILE_SIZE : TILE_SIZE;
-
-  // Branched layout: the branch lane starts at the trunk's tap gap, so its
-  // row is indented past the whole trunk prefix (matching the signal flow:
-  // its input *is* that prefix's output). Resolved against the optimistic
-  // lane state; a stale tap id (mid-resync after the tapped block moved)
-  // renders as independent lanes until native's cleared state arrives.
-  const branchLayout = (() => {
-    if (!stereo || branch == null) return null;
-    const tapIndex = lanes[branch.side].findIndex((i) => i.blockId === branch.afterBlockId);
-    if (tapIndex === -1) return null;
-    return {
-      trunkSide: branch.side,
-      indentPx: (tapIndex + 1) * (tileSize + TILE_GAP),
-      tapGapX: gapCenterX(tapIndex + 1, tileSize),
-    };
-  })();
 
   const lane = (side: ChainSide) => (
     <div
@@ -468,7 +584,7 @@ export const ChainView: React.FC<ChainViewProps> = ({
             </span>
           )}
           <div
-            ref={wheelScrollRef}
+            ref={setGalleryScrollEl}
             className="hide-scrollbar"
             style={{
               flex: 1,
