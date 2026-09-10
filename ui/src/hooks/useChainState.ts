@@ -73,6 +73,7 @@ export function useChainState() {
       setStereoMode: backend.getPluginFunction('setStereoMode'),
       setInputMode: backend.getPluginFunction('setInputMode'),
       setBlockSlimSize: backend.getPluginFunction('setBlockSlimSize'),
+      setBlockIrDecay: backend.getPluginFunction('setBlockIrDecay'),
       setNamSlimSizeDefault: backend.getPluginFunction('setNamSlimSizeDefault'),
       setMultiCore: backend.getPluginFunction('setMultiCore'),
       setActiveEditChain: backend.getPluginFunction('setActiveEditChain'),
@@ -203,6 +204,34 @@ export function useChainState() {
           part of the chain state, so it lands in presets and undo. */
       setBlockSlimSize: (blockId: string, slimSize: number) =>
         run<boolean>('setBlockSlimSize', () => native.setBlockSlimSize(blockId, slimSize)),
+      /** IR envelope: a 2-segment Attack/Decay shape (see BlockParams.
+          initLevel/attackLength/attackCurve/decayLength/decayLevel/
+          decayCurve). Rebuilds the convolver off-thread under a wet-mute
+          fade; the caller debounces drag-rate calls (this isn't
+          fire-and-forget-safe at knob-drag rates the way setBlockParam is -
+          each call queues a real engine rebuild). All six values travel
+          together so a drag on one can't clobber another's in-flight
+          value. */
+      setBlockIrDecay: (
+        blockId: string,
+        initLevelNormalized: number,
+        attackLengthNormalized: number,
+        attackCurveNormalized: number,
+        decayLengthNormalized: number,
+        decayLevelNormalized: number,
+        decayCurveNormalized: number
+      ) =>
+        run<boolean>('setBlockIrDecay', () =>
+          native.setBlockIrDecay(
+            blockId,
+            initLevelNormalized,
+            attackLengthNormalized,
+            attackCurveNormalized,
+            decayLengthNormalized,
+            decayLevelNormalized,
+            decayCurveNormalized
+          )
+        ),
       /** Default NAM A2 size for newly added blocks (machine-wide; existing
           blocks keep their own size). Persists on disk. */
       setNamSlimSizeDefault: (slimSize: number) =>

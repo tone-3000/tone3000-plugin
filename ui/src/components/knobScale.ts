@@ -1,3 +1,5 @@
+import { formatContentLength } from './WaveformDisplay';
+
 /**
  * Display scales for knobs. Every knob's value is normalized (0..1 range,
  * matching APVTS / chain params); a KnobScale maps that to real units for
@@ -60,6 +62,58 @@ export const gateDbScale = linearScale(-100, 0, 'dB', 0);
 /** Per-block IR predelay: normalized 0..1 -> 0-1000ms, applied before the
     wet signal reaches the convolver (see BlockPredelay.h). */
 export const predelayMsScale = linearScale(0, 1000, 'ms', 0);
+
+/** Per-block IR content length: normalized 0..1 against the block's own
+    detected content (BlockParams.length / irContentLengthMs), from a small
+    floor up to the full detected length - mirrors the floor/lerp
+    prepareIrShapeRebuild (ProcessorModelLoader.cpp) uses closely enough for
+    a live readout (exact sample rounding is native's job, not the knob's).
+    Parameterized per block (unlike this file's other scales, the max varies
+    with what's loaded), same shape as sidedMsScale/panScale. `format` reuses
+    WaveformDisplay's formatContentLength so the knob readout and the
+    waveform's own corner label always agree. */
+export const lengthMsScale = (contentLengthMs: number): KnobScale => {
+  const minMs = 5;
+  const maxMs = Math.max(minMs, contentLengthMs);
+  const toDisplay = (n: number) => minMs + n * (maxMs - minMs);
+  const fromDisplay = (d: number) => (maxMs > minMs ? (d - minMs) / (maxMs - minMs) : 0);
+  return {
+    toDisplay,
+    fromDisplay,
+    format: (n) => formatContentLength(toDisplay(n)) ?? '0ms',
+    editText: (n) => toDisplay(n).toFixed(0),
+  };
+};
+
+/** Per-block IR Decay/Attack envelope shape: normalized 0..1, 0.5 (default)
+    is a linear ramp, sweeping toward -1 (log: fast-then-level) below and +1
+    (exp: holds-then-drops) above. Purely a display convention, plain signed
+    number, no unit - the actual power-curve formula (see
+    decayEnvelope.ts's DECAY_CURVE_MAX, mirroring prepareIrShapeRebuild's
+    kCurveMax in ProcessorModelLoader.cpp) operates on the normalized value
+    directly, not on this -1..+1 number. Shared by both the Attack and Decay
+    segments' own Curve knob. */
+export const curveScale: KnobScale = linearScale(-1, 1, '', 2);
+
+/** Per-block IR Attack Length (the envelope's peak position): normalized
+    0..1 against Decay Length's current real-ms value (BlockParams.
+    attackLength is a fraction *of* the total Decay Length sets, not an
+    independent length - totalMs is computed by the caller since it depends
+    on the live Decay Length knob) - mirrors lengthMsScale's own floor/lerp
+    shape and reuses its formatContentLength readout, just against a dynamic
+    (not fixed) max that moves with Decay Length. */
+export const attackLengthMsScale = (totalMs: number): KnobScale => {
+  const minMs = 5;
+  const maxMs = Math.max(minMs, totalMs);
+  const toDisplay = (n: number) => minMs + n * (maxMs - minMs);
+  const fromDisplay = (d: number) => (maxMs > minMs ? (d - minMs) / (maxMs - minMs) : 0);
+  return {
+    toDisplay,
+    fromDisplay,
+    format: (n) => formatContentLength(toDisplay(n)) ?? '0ms',
+    editText: (n) => toDisplay(n).toFixed(0),
+  };
+};
 
 /** Faceplate tone stack knobs: 0..10, 5 = flat. */
 export const toneScale = linearScale(0, 10, '', 1);
