@@ -442,6 +442,7 @@ export const IrEnvelopeGraph: React.FC<{
       onPointerMove={handlePointerMove(target)}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
+      onDoubleClick={() => resetTarget(target)}
     />
   );
 
@@ -452,13 +453,23 @@ export const IrEnvelopeGraph: React.FC<{
   // regardless of the card's actual rendered size.
   const viewBoxWidth = width + EDGE_PAD * 2;
   const viewBoxHeight = height + EDGE_PAD * 2;
-  const readout = readoutTarget && (
+  // Edge avoidance: the default placement offsets the chip above its anchor
+  // (translateY -140%, i.e. the box's own height plus a small gap) - fine
+  // everywhere except near the top of the graph (dragging Init toward unity,
+  // Peak is always here), where that pushes the chip above the card's own
+  // clipped boundary (same class of edge-clipping the points themselves hit
+  // before EDGE_PAD, but this is a plain HTML overlay, not SVG, so the fix
+  // is a flip rather than a viewBox pad). Mirrors typical tooltip
+  // edge-avoidance: flip to sit below instead when there's no room above.
+  const readoutAnchorPoint = readoutTarget ? readoutAnchor(readoutTarget) : null;
+  const readoutNearTop = readoutAnchorPoint !== null && readoutAnchorPoint.y < height * 0.2;
+  const readout = readoutTarget && readoutAnchorPoint && (
     <div
       style={{
         position: 'absolute',
-        left: `${((readoutAnchor(readoutTarget).x + EDGE_PAD) / viewBoxWidth) * 100}%`,
-        top: `${((readoutAnchor(readoutTarget).y + EDGE_PAD) / viewBoxHeight) * 100}%`,
-        transform: 'translate(-50%, -140%)',
+        left: `${((readoutAnchorPoint.x + EDGE_PAD) / viewBoxWidth) * 100}%`,
+        top: `${((readoutAnchorPoint.y + EDGE_PAD) / viewBoxHeight) * 100}%`,
+        transform: `translate(-50%, ${readoutNearTop ? '40%' : '-140%'})`,
         padding: '3rem 6rem',
         borderRadius: '4rem',
         backgroundColor: 'rgba(10, 10, 14, 0.85)',
