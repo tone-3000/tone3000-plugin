@@ -24,6 +24,7 @@
 #include "RtWorkerPool.h"
 #include "MidiMapper.h"
 #include "NoiseGate.h"
+#include "TransposeProcessor.h"
 #include "Spread.h"
 #include "StereoOffset.h"
 #include "PresetManager.h"
@@ -934,6 +935,10 @@ private:
   NoiseGate inputGate;
   bool gateWasEnabled = true;
 
+  // Input-stage pitch shifter (Transpose knob), runs before the modular
+  // NAM/IR chain. See TransposeProcessor.h.
+  TransposeProcessor transposeProcessor;
+
   // Raw APVTS parameter atomics, resolved once in the constructor. The audio
   // thread reads these every block; getRawParameterValue is a string-keyed
   // map lookup and has no business on the RT path.
@@ -972,6 +977,7 @@ private:
     std::atomic<float>* inputCalibrationLevel = nullptr;
     std::atomic<float>* osEnabled = nullptr;
     std::atomic<float>* osFactor = nullptr;
+    std::atomic<float>* transposeSemitones = nullptr;
   } paramRefs;
   void resolveParamRefs();
 
@@ -1021,6 +1027,11 @@ private:
   float cacheTargetLoudness = -18.0f;
   bool cacheCalibrateInput = false;
   float cacheInputCalibrationLevel = 12.0f;
+  int cacheTransposeSemitones = 0;
+  // Latency TransposeProcessor last reported (0 while bypassed at 0
+  // semitones); tracked so processBlock only calls setLatencySamples() on
+  // the bypass<->active edge, not every block. See TransposeProcessor.h.
+  int cacheTransposeLatency = 0;
 
   void updateEqCoefficients();
   void updateCachedParameters();

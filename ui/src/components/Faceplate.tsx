@@ -2,7 +2,7 @@ import React, { useCallback, useRef, useState } from 'react';
 import { rem } from '../hooks/useUiScale';
 import { ChevronDown, Equal, Power } from './icons';
 import { KnobControl } from './KnobControl';
-import { balanceDbScale, gainDbScale, gateDbScale, toneScale } from './knobScale';
+import { balanceDbScale, gainDbScale, gateDbScale, semitoneScale, toneScale } from './knobScale';
 import { SpreadGroup } from './SpreadControls';
 import { AlignGroup } from './AlignControls';
 import { useParameter } from '../hooks/useParameter';
@@ -37,6 +37,10 @@ import {
  * to pick what feeds the chain: both channels, or just L/R mirrored onto
  * both. The mode is chain state (session-persisted, not a preset value;
  * it's I/O routing, not tone).
+ *
+ * Transpose: whole-semitone pitch shift (±12) applied to the raw input,
+ * upstream of the NAM/amp chain (see TransposeProcessor.h). No power switch;
+ * 0 is already a no-op setting, same as Balance's centered default.
  *
  * Output gain: the main level knob plus a small balance knob that trims the
  * two chains (or spread's two channels) against each other (±12 dB
@@ -357,6 +361,10 @@ export const Faceplate = React.memo(function Faceplate({
   onInputModeChange,
 }: FaceplateProps) {
   const [inputLevel, setInputLevel, onInputDrag] = useParameter('inputLevel', 'slider');
+  const [transposeSemitones, setTransposeSemitones, onTransposeDrag] = useParameter(
+    'transposeSemitones',
+    'slider'
+  );
   const [toneBass, setToneBass, onBassDrag] = useParameter('toneBass', 'slider');
   const [toneMid, setToneMid, onMidDrag] = useParameter('toneMid', 'slider');
   const [toneTreble, setToneTreble, onTrebleDrag] = useParameter('toneTreble', 'slider');
@@ -370,9 +378,10 @@ export const Faceplate = React.memo(function Faceplate({
         width: '100%',
         height: `${PLATE_HEIGHT}rem`,
         display: 'flex',
-        // Five peers (Input, Gate, Tone, Spread/Align, Output) share the
-        // plate width. flex-end keeps the secondary Gate on the same label
-        // baseline as the primary knobs (same pattern as Bal next to Output).
+        // Six peers (Input, Transpose, Gate, Tone, Spread/Align, Output) share
+        // the plate width. flex-end keeps the secondary knobs (Transpose,
+        // Gate) on the same label baseline as the primary knobs (same
+        // pattern as Bal next to Output).
         justifyContent: 'space-between',
         alignItems: 'flex-end',
         flexShrink: 0,
@@ -396,6 +405,20 @@ export const Faceplate = React.memo(function Faceplate({
         {stereoInput && (
           <InputModeButton mode={inputMode} branched={branched} onChange={onInputModeChange} />
         )}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end' }}>
+        <KnobControl
+          label="Transpose"
+          value={transposeSemitones}
+          onChange={setTransposeSemitones}
+          size={KNOB_SIZE_SECONDARY}
+          thumb="secondary"
+          scale={semitoneScale}
+          defaultValue={semitoneScale.fromDisplay(0)}
+          help={HELP.transpose}
+          onDragStateChange={onTransposeDrag}
+        />
       </div>
 
       {/* Powered-off sections: knobs + labels dim and go inert (uiOffClass);

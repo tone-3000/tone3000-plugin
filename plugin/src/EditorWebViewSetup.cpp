@@ -136,6 +136,7 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
           juce::URL{"http://localhost:5173/"}.getOrigin())
       .withOptionsFrom(editor->controlParameterIndexReceiver)
       .withOptionsFrom(editor->inputLevelRelay)
+      .withOptionsFrom(editor->transposeSemitonesRelay)
       .withOptionsFrom(editor->outputLevelRelay)
       .withOptionsFrom(editor->outputBalanceRelay)
       .withOptionsFrom(editor->spreadEnabledRelay)

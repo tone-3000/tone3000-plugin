@@ -60,6 +60,21 @@ export const gateDbScale = linearScale(-100, 0, 'dB', 0);
 /** Faceplate tone stack knobs: 0..10, 5 = flat. */
 export const toneScale = linearScale(0, 10, '', 1);
 
+/** Transpose: bipolar whole semitones, -12..+12, 0 = unshifted. Backs an
+    AudioParameterInt (see transposeSemitones in Processor.cpp), so display
+    values are always integers; the sign is spelled out since "0 st" alone
+    reads ambiguous next to "+3 st"/"-3 st". */
+export const semitoneScale: KnobScale = {
+  toDisplay: (n) => Math.round(-12 + n * 24),
+  fromDisplay: (d) => (d + 12) / 24,
+  format: (n) => {
+    const st = Math.round(-12 + n * 24);
+    if (st === 0) return '0 st';
+    return `${st > 0 ? '+' : ''}${st} st`;
+  },
+  editText: (n) => Math.round(-12 + n * 24).toString(),
+};
+
 /** Bipolar one-sided delay: center = 0 ms, ends reach ±maxMs. Display shows
     the magnitude plus the delayed side ("15.0 ms R"). */
 const sidedMsScale = (maxMs: number): KnobScale => {

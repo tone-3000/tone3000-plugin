@@ -144,7 +144,8 @@ export const HELP = {
   outputBalance: knobHelp('Balance', 'level trim between chains, ±12 dB (pre-pan). Center: off.'),
   autoBalance: 'Auto Balance: click, play ~2 s to match chain levels. Click again: cancel.',
 
-  // Faceplate: gate, tone stack, stereo image (spread / align)
+  // Faceplate: transpose, gate, tone stack, stereo image (spread / align)
+  transpose: knobHelp('Transpose', 'input signal transpose amount, ±12 semitones'),
   gate: knobHelp('Gate', 'noise gate threshold, -100 to 0 dB.'),
   gatePower: 'Gate Power: noise gate on/off.',
   toneBass: knobHelp('Bass', 'tone stack lows, 0-10: ±20 dB shelf at 150 Hz.'),

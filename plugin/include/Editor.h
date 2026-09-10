@@ -116,6 +116,7 @@ private:
   juce::WebControlParameterIndexReceiver controlParameterIndexReceiver;
 
   juce::WebSliderRelay inputLevelRelay{"inputLevel"};
+  juce::WebSliderRelay transposeSemitonesRelay{"transposeSemitones"};
   juce::WebSliderRelay outputLevelRelay{"outputLevel"};
   juce::WebSliderRelay outputBalanceRelay{"outputBalance"};
   juce::WebToggleButtonRelay spreadEnabledRelay{"spreadEnabled"};
@@ -153,6 +154,8 @@ private:
   // Attachments
   juce::WebSliderParameterAttachment inputLevelWebAttachment{
       *processor.parameters.getParameter("inputLevel"), inputLevelRelay, nullptr};
+  juce::WebSliderParameterAttachment transposeSemitonesWebAttachment{
+      *processor.parameters.getParameter("transposeSemitones"), transposeSemitonesRelay, nullptr};
   juce::WebSliderParameterAttachment outputLevelWebAttachment{
       *processor.parameters.getParameter("outputLevel"), outputLevelRelay, nullptr};
   juce::WebSliderParameterAttachment outputBalanceWebAttachment{
