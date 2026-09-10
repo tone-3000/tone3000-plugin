@@ -17,13 +17,24 @@ export const DECAY_CURVE_MAX = 6.0;
     snap-to-zero), not this constant's job. */
 export const SILENCE_DB = -100.0;
 
+/** Compresses sensitivity around curveNormalized=0.5 while leaving 0 and 1
+    exactly where they were - must match ProcessorModelLoader.cpp's
+    shapeCurveNormalized exactly (see its own comment for why: a straight
+    linear (c-0.5) made even a small drag off center swing the exponent
+    enough to make the curve sound almost like a step function well before
+    it looked like one on the coarsely-sampled graph). */
+function shapeCurveNormalized(c: number): number {
+  const d = c - 0.5;
+  return Math.sign(d) * Math.pow(Math.abs(2 * d), 3) * 0.5;
+}
+
 /** curveNormalized 0..1 -> the power-curve exponent k. 0.5 -> k=1 (linear
     in dB - constant-ratio/"exponential" decay, already natural-sounding);
     toward 0 shrinks below 1 (even steeper, more front-loaded: fast initial
     drop, long quiet tail); toward 1 grows past 1 (back-loaded: holds near
     the segment's start level, then drops right at the end). */
 export function decayCurveExponent(curveNormalized: number): number {
-  return Math.pow(DECAY_CURVE_MAX, 2 * (curveNormalized - 0.5));
+  return Math.pow(DECAY_CURVE_MAX, 2 * shapeCurveNormalized(curveNormalized));
 }
 
 /** Level (0..1, unipolar attenuation-only; 1.0 = unity/0dB, 0.0 = genuine

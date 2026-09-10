@@ -510,12 +510,32 @@ TONE3000Processor::PreparedIrShapeRebuild TONE3000Processor::prepareIrShapeRebui
   // any k>0, so Curve only ever reshapes the *middle* of its segment - the
   // level knobs land exactly where they say regardless of Curve. kCurveMax
   // is a tunable constant, not a physical law; 6.0 gives real headroom at
-  // the front-loaded extreme without the knob becoming unusably twitchy near
-  // center.
+  // the extremes (front-/back-loaded enough to sound gated), reachable only
+  // at the very ends of the knob's travel.
+  //
+  // curveNormalized isn't fed to the exponent linearly, though - it goes
+  // through shapeCurveNormalized() first. A straight kCurveMax^(2*(c-0.5))
+  // swings k a lot for even a small move off center (dk/dc at c=0.5 is
+  // 2*ln(kCurveMax) =~ 3.6), and because fraction^k is applied against dB's
+  // own huge dynamic range, a "small" k deviation from 1 (say 2) already
+  // looks almost like a step function (91% of the segment's whole dB change
+  // lands in its last 30%) - a small, easy-to-do-by-accident drag produced
+  // an audibly extreme "choke" the on-screen curve (sampled coarsely for
+  // display) didn't visually convey. Cubing (curveNormalized - 0.5) before
+  // exponentiating spreads that sensitivity unevenly across the knob's
+  // travel: the same extremes (k=1/kCurveMax at c=0, k=kCurveMax at c=1)
+  // are still reachable at full throw, but landing any given k in between
+  // now takes roughly double the drag distance it used to near center - see
+  // decayEnvelope.ts's own copy of this shaping, which must stay in sync by
+  // hand (no shared code across the C++/TS boundary).
   constexpr float kCurveMax = 6.0f;
   constexpr float kSilenceDb = -100.0f;
   const auto levelToDb = [](float normalized) {
     return normalized <= 0.0f ? kSilenceDb : kSilenceDb * (1.0f - normalized);
+  };
+  const auto shapeCurveNormalized = [](float c) {
+    const float d = c - 0.5f;
+    return std::copysign(std::pow(std::abs(2.0f * d), 3.0f), d) * 0.5f;
   };
   const float clampedInitLevel = juce::jlimit(0.0f, 1.0f, initLevelNormalized);
   constexpr float attackDb = 0.0f;  // Attack's peak is pinned at unity/0dB
@@ -526,8 +546,8 @@ TONE3000Processor::PreparedIrShapeRebuild TONE3000Processor::prepareIrShapeRebui
   if (targetSamples > 1 && !envelopeIsFlat) {
     const float initDb = levelToDb(clampedInitLevel);
     const float decayDb = levelToDb(clampedDecayLevel);
-    const float kAttack = std::pow(kCurveMax, 2.0f * (clampedAttackCurve - 0.5f));
-    const float kDecay = std::pow(kCurveMax, 2.0f * (clampedDecayCurve - 0.5f));
+    const float kAttack = std::pow(kCurveMax, 2.0f * shapeCurveNormalized(clampedAttackCurve));
+    const float kDecay = std::pow(kCurveMax, 2.0f * shapeCurveNormalized(clampedDecayCurve));
     const int decaySpan = targetSamples - 1 - attackBoundary;
     for (int i = 0; i < targetSamples; ++i) {
       float gain;
