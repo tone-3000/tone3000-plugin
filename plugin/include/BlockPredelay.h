@@ -28,9 +28,10 @@
  * sample — so the delay itself glides continuously and there is no
  * stepping artifact mid-ramp. A large/fast change is still audible as a
  * brief pitch/doppler bend (inherent to any live-changing delay line, not
- * a bug) rather than a click. kRampSeconds (10ms) was picked by ear,
- * A/B-ing fast slider drags and large jumps against the alternative
- * (padding the loaded IR, rejected — see the note above on why).
+ * a bug) rather than a click. kRampSeconds was picked by ear, A/B-ing fast
+ * slider drags and large jumps against the alternative (padding the loaded
+ * IR, rejected — see the note above on why); 10ms proved too short in
+ * practice (audible noise on UI knob drags) and was widened to 300ms.
  *
  * Structural changes (block (re)prepare, state restore) go through
  * prepare()'s initialMs argument and snap directly, no ramp: there is no
@@ -41,7 +42,7 @@ class BlockPredelay {
 public:
   static constexpr float kMaxDelayMs = 1000.0f;
   // Live-change ramp time, picked by ear (see class comment).
-  static constexpr float kRampSeconds = 0.01f;
+  static constexpr float kRampSeconds = 0.3f;
 
   /** Message thread. (Re)allocates the ring buffer for kMaxDelayMs at
       `sampleRate` and snaps directly to `initialMs` (no ramp, no
