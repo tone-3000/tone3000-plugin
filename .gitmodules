@@ -1,6 +1,6 @@
 [submodule "plugin/NeuralAmpModelerCore"]
 	path = plugin/NeuralAmpModelerCore
-	url = https://github.com/sdatkinson/NeuralAmpModelerCore.git
+	url = https://github.com/honkkis/NeuralAmpModelerCore.git
 	branch = main
 [submodule "plugin/AudioDSPTools"]
 	path = plugin/AudioDSPTools

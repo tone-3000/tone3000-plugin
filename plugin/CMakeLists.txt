@@ -123,6 +123,7 @@ add_library(NAM STATIC
     ${NAM_SRC}/ring_buffer.cpp
     ${NAM_SRC}/util.cpp
     ${NAM_SRC}/wavenet/a2_fast.cpp
+    ${NAM_SRC}/wavenet/a2_planar.cpp
     ${NAM_SRC}/wavenet/model.cpp
     ${NAM_SRC}/wavenet/slimmable.cpp
 )
