@@ -7,8 +7,11 @@
  * mismatch here only misdraws a line, it can't affect what's heard.
  */
 
-/** Must match ProcessorModelLoader.cpp's kCurveMax exactly. */
-export const DECAY_CURVE_MAX = 6.0;
+/** Must match ProcessorModelLoader.cpp's kCurveMax exactly (see its own
+    comment for why 4.0, not the original 6.0 - real IR material already
+    carries its own natural decay, and the envelope's dB drop adds to that
+    rather than replacing it). */
+export const DECAY_CURVE_MAX = 4.0;
 
 /** Must match ProcessorModelLoader.cpp's kSilenceDb exactly - the reachable,
     finite floor levelToDb's linear-in-dB mapping uses for 0 < normalized <=

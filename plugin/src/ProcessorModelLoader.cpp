@@ -509,26 +509,38 @@ TONE3000Processor::PreparedIrShapeRebuild TONE3000Processor::prepareIrShapeRebui
   // finish - a back-loaded shape, the inverse. pow(0,k)=0 and pow(1,k)=1 for
   // any k>0, so Curve only ever reshapes the *middle* of its segment - the
   // level knobs land exactly where they say regardless of Curve. kCurveMax
-  // is a tunable constant, not a physical law; 6.0 gives real headroom at
-  // the extremes (front-/back-loaded enough to sound gated), reachable only
-  // at the very ends of the knob's travel.
+  // is a tunable constant, not a physical law - 4.0 is deliberately more
+  // conservative than a first pass at 6.0: real reverb/room IRs already
+  // carry their own natural decay, and the envelope's dB drop *adds* to
+  // that (dB is logarithmic, so multiplying amplitudes is adding dB) rather
+  // than replacing it - even the intentional, full-knob-throw extreme (not
+  // just an accidental small drag - see shapeCurveNormalized below for
+  // that) stacked an already-steep artificial cutoff on top of whatever the
+  // IR's own tail was already doing, and by ear that read as a hard gate
+  // rather than a usable creative curve. At kCurveMax=4.0, full throw's
+  // end-of-segment slope is still 4x steeper than linear (a real, audible
+  // difference) but roughly an order of magnitude less compressed at the
+  // 30%-into-the-segment mark than 6.0 was (0.81% of the total dB change by
+  // then, vs. 0.07%).
   //
   // curveNormalized isn't fed to the exponent linearly, though - it goes
   // through shapeCurveNormalized() first. A straight kCurveMax^(2*(c-0.5))
   // swings k a lot for even a small move off center (dk/dc at c=0.5 is
-  // 2*ln(kCurveMax) =~ 3.6), and because fraction^k is applied against dB's
-  // own huge dynamic range, a "small" k deviation from 1 (say 2) already
-  // looks almost like a step function (91% of the segment's whole dB change
-  // lands in its last 30%) - a small, easy-to-do-by-accident drag produced
-  // an audibly extreme "choke" the on-screen curve (sampled coarsely for
-  // display) didn't visually convey. Cubing (curveNormalized - 0.5) before
-  // exponentiating spreads that sensitivity unevenly across the knob's
-  // travel: the same extremes (k=1/kCurveMax at c=0, k=kCurveMax at c=1)
-  // are still reachable at full throw, but landing any given k in between
-  // now takes roughly double the drag distance it used to near center - see
-  // decayEnvelope.ts's own copy of this shaping, which must stay in sync by
-  // hand (no shared code across the C++/TS boundary).
-  constexpr float kCurveMax = 6.0f;
+  // 2*ln(kCurveMax)), and because fraction^k is applied against dB's own
+  // huge dynamic range, a "small" k deviation from 1 (say 2) already looks
+  // almost like a step function - a small, easy-to-do-by-accident drag
+  // produced an audibly extreme "choke" the on-screen curve (sampled
+  // coarsely for display) didn't visually convey. Cubing
+  // (curveNormalized - 0.5) before exponentiating spreads that sensitivity
+  // unevenly across the knob's travel: the same extremes (k=1/kCurveMax at
+  // c=0, k=kCurveMax at c=1) are still reachable at full throw, but landing
+  // any given k in between now takes meaningfully more drag near center -
+  // see decayEnvelope.ts's own copy of this shaping, which must stay in
+  // sync by hand (no shared code across the C++/TS boundary). This and the
+  // kCurveMax value above are two independent levers - one controls how
+  // much drag reaches a given curve, the other controls how extreme the
+  // curve can get at all - and both needed tuning down after listening.
+  constexpr float kCurveMax = 4.0f;
   constexpr float kSilenceDb = -100.0f;
   const auto levelToDb = [](float normalized) {
     return normalized <= 0.0f ? kSilenceDb : kSilenceDb * (1.0f - normalized);
