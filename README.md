@@ -176,6 +176,14 @@ sudo zypper install libwebkit2gtk-4_1-0   # openSUSE
 The release tarball's `install.sh` checks for these automatically
 (`./install.sh --check` to verify without installing).
 
+Optional: a JACK server. The standalone's Audio Driver picker offers JACK
+next to ALSA (libjack is loaded at runtime; without a server the driver just
+lists no devices). On PipeWire systems (`pipewire-jack`), JACK is the
+recommended driver: the ALSA driver's raw hardware devices ("Direct hardware
+device without any conversions") open the card exclusively, which takes the
+whole interface away from every other app while the standalone runs. The
+JACK driver shares it.
+
 ## Audio processing
 
 The plugin is a JUCE processor running a chain of NAM and IR blocks, anchored

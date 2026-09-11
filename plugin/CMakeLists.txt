@@ -482,6 +482,25 @@ else()
     target_compile_definitions(${PROJECT_NAME} PUBLIC JUCE_USE_CURL=0)
 endif()
 
+# Linux: compile JUCE's JACK backend into the standalone's device-type list
+# (the settings UI grows an "Audio Driver" picker automatically when more
+# than one backend exists). JUCE's ALSA backend opens the selected card
+# directly and exclusively: picking a USB interface's raw device steals the
+# whole card from PipeWire/PulseAudio, killing its other channels for every
+# other app until the audio server recovers (issue #125 - a Scarlett Solo's
+# mic dying system-wide while the app holds the guitar channel). The JACK
+# backend connects as a client instead, so on any PipeWire system
+# (pipewire-jack) or real JACK server the interface stays shared. libjack is
+# dlopened at runtime (libjack.so.0, JackNoStartServer) like curl/WebKit
+# above, so this adds no runtime dependency: without a JACK server the
+# driver just lists no devices. Build hosts need the JACK headers
+# (libjack-jackd2-dev; CI installs it). The JACK client name defaults to
+# JucePlugin_Name ("TONE3000"). Gated on NOT HEADLESS so embedded
+# toolchains don't grow a header dependency.
+if (UNIX AND NOT APPLE AND NOT HEADLESS)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC JUCE_JACK=1)
+endif()
+
 # Linux: stay on the classic core-X11 input path. JUCE 9 rewrote Linux input
 # around XInput2 (per-window XI2 registration, core ButtonPress/Motion events
 # discarded when XI2 >= 2.2 is present, which is every modern system). A missed
