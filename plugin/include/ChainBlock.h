@@ -29,6 +29,29 @@ inline ChainBlockType chainBlockTypeFromString(const juce::String& s) {
   return ChainBlockType::IR;
 }
 
+// Explicit IR content category (IR blocks only). Replaces a duration-derived
+// short/long split as the source of every audible IR default: real catalog
+// content includes cabs manually trimmed to seconds of file length around
+// tens of ms of real signal, and reverb/space IRs genuinely span the same
+// range cab file lengths do, so no length measurement - raw or detected - is
+// a safe stand-in for what the content actually *is*. Cab = real cabinet
+// content: hard-capped to its first 500 ms at load (ProcessorModelLoader.cpp)
+// and always the uniform engine, unconditionally safe regardless of the
+// source file. IrPlayer = everything else (space/reverb/outboard/
+// experimental/generic IR, or unknown): no cap, engine picked adaptively from
+// detected content length (see ChainBlock::irIsLong). See
+// TONE3000Processor::setBlockIrCategory; shipped to the UI as `irCategory`
+// ("cab"/"irPlayer").
+enum class IrCategory { Cab, IrPlayer };
+
+inline juce::String irCategoryToString(IrCategory category) {
+  return category == IrCategory::Cab ? "cab" : "irPlayer";
+}
+
+inline IrCategory irCategoryFromString(const juce::String& s) {
+  return s == "cab" ? IrCategory::Cab : IrCategory::IrPlayer;
+}
+
 // Which chain is being processed/edited in stereo mode.
 enum class ChainSide { Left, Right };
 
@@ -92,10 +115,10 @@ struct ChainBlock {
   bool modelLoading{false};
 
   // One-shot: armed by loadTone (Select-flow) so the block's first
-  // successful load sets the default mix from the actual model (long IR =
-  // half wet, only known once the file arrives). Cleared on first apply;
-  // never set by swaps/switches/restores, which keep the user's mix.
-  // Runtime-only, never persisted.
+  // successful load sets the default mix from its IR category (Cab = 100%
+  // wet, IrPlayer = 50%; see irCategory below and applyPreparedModelToChain
+  // Block). Cleared on first apply; never set by swaps/switches/restores,
+  // which keep the user's mix. Runtime-only, never persisted.
   bool applyDefaultMixOnLoad{false};
 
   // Click-free wet-path fade (audio thread) + swap handshake.
@@ -146,9 +169,10 @@ struct ChainBlock {
   //   every audio channel. Always present for a loaded IR; used as the mono fallback.
   // convolverStereo: IR loaded with Stereo::yes; audio ch0 ⊗ IR ch0, audio ch1 ⊗ IR ch1.
   //   Only created when the IR file actually has >= 2 channels (true stereo IR).
-  // The convolution engine is picked at load time by IR length: cab IRs use
-  // JUCE's uniform zero-latency engine, reverb-length IRs the two-stage
-  // non-uniform engine (also zero latency); see prepareBlockModelOffThread.
+  // The convolution engine is picked at load time by irCategory/irIsLong:
+  // Cab always gets JUCE's uniform zero-latency engine, IrPlayer the
+  // two-stage non-uniform engine (also zero latency) once detected content
+  // runs long; see prepareBlockModelOffThread.
   std::unique_ptr<juce::dsp::Convolution> convolverMono;
   std::unique_ptr<juce::dsp::Convolution> convolverStereo;
   // Convolution always runs at kChainBaseSampleRate: when the chain is
@@ -162,14 +186,38 @@ struct ChainBlock {
   // the built engine). Feeds refreshIrTailLength / getTailLengthSeconds so
   // hosts render real reverb tails.
   int irLengthBaseSamples{0};
-  // The single short/long classification (kernel length vs the cutoff in
-  // ProcessorModelLoader.cpp). Short = cab-like: -18 dB output pad
-  // (spectrally concentrated kernels play back hot at unit energy), 100%
-  // default mix. Long = reverb-like: no pad (diffuse kernels sit at ≈ dry
-  // level at unit energy), 50% default mix. Shipped to the UI as `irLong`.
+  // Engine-selection signal ONLY - purely a CPU/latency-profile decision,
+  // fully decoupled from every audible IR default (those come from
+  // irCategory below). Always false for Cab (unconditionally the uniform
+  // engine, see ProcessorModelLoader.cpp). For IrPlayer, true when a load-
+  // time RMS scan finds real audible content past ~1 s (the two-stage
+  // non-uniform engine pays off there); never derived from raw/trimmed file
+  // length, which is exactly as untrustworthy for this as it once was for
+  // the audible pad/mix bug (files are routinely trimmed/padded well past
+  // their real content). Shipped to the UI as `irLong`.
   bool irIsLong{false};
   juce::LinearSmoothedValue<float> irNormalizationSmoother;
   float irNormalizationGainLinear{1.0f};
+
+  // Explicit IR content category (see IrCategory above): the sole source of
+  // the -18 dB cab pad and this block's default mix (Processor.cpp /
+  // applyPreparedModelToChainBlock). Site-loaded tones resolve it
+  // synchronously from the tone's `gear` metadata (loadTone), before the
+  // download even starts. Persisted; a user edit (setBlockIrCategory) is a
+  // real, permanent setting, never re-derived afterward.
+  IrCategory irCategory{IrCategory::IrPlayer};
+  // One-shot, runtime-only (never persisted): true when this block's
+  // category isn't known yet at load time (local file drops have no `gear`
+  // tag; state saved before this field existed has no persisted value
+  // either) and must be seeded once from the load-time content scan instead
+  // (applyPreparedModelToChainBlock). Never set for swaps/switches, which
+  // keep the block's existing category exactly like they keep its mix.
+  bool irCategoryNeedsDurationGuess{false};
+  // Smoothed -18 dB cab pad (see irOffsetDb in Processor.cpp). Category used
+  // to be fixed at load, so the pad could be a flat per-block multiply; now
+  // setBlockIrCategory can flip it on a live block, so this glides the
+  // change instead of clicking, same as outputGainSmoother/mixSmoother.
+  juce::LinearSmoothedValue<float> irPadGainSmoother{1.0f};
 
   // Per-block loudness normalization toggle, NAM only (off = the capture's
   // true level, which is real information; IR normalization is always on

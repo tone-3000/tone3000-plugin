@@ -239,6 +239,8 @@ export const HELP = {
   blockSize: 'NAM Size: LITE saves CPU · FULL is highest quality. Sets this block only.',
   blockSizeChip:
     'NAM Size: this block\u2019s size differs from your default. To choose per block, enable it in Settings.',
+  blockIrCategory:
+    'Category: Cab \u2014 -18 dB pad, 100% mix by default. IR Player \u2014 no pad, 50% mix by default. Switching resets Mix to that default.',
   blockCalibrated: 'Calibration: active \u2014 levels set from this model\u2019s calibration data.',
   blockUncalibrated: 'Calibration: inactive \u2014 this model has no calibration data.',
   eqToggle: 'EQ: 6-band EQ editor. Outline: EQ shaping the sound.',

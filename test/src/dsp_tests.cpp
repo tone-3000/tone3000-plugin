@@ -449,8 +449,15 @@ TEST(NamEngineAliasingTest, OversamplingReducesRealAmpAliasing) {
 
 // IR convolution (real IR files)
 
-// Loads an IR the way the model loader does: Trim::yes, Normalise::no,
-// engine picked by the same 1 s short/long cutoff, prepared at the base rate.
+// Loads an IR with the same Trim::yes/Normalise::no/base-rate prepare the
+// model loader uses, picking uniform vs non-uniform by raw (post-trim)
+// kernel length. Note: production no longer decides *this* way (see
+// ir_category_tests.cpp) - a known Cab is unconditionally uniform and hard-
+// capped at load, and IrPlayer's engine choice comes from a detected-content
+// scan, not raw length (raw file length is exactly as untrustworthy for
+// engine choice as it once was for the audible pad/mix, TONE3000 issue #89).
+// This only pins JUCE's own Trim::yes/getCurrentIRSize() behavior for the
+// fixtures below, which other tests build on.
 std::unique_ptr<juce::dsp::Convolution> makeConvolver(const juce::File& irFile,
                                                       juce::dsp::Convolution::Stereo stereo,
                                                       int baseBlockSize) {
@@ -474,10 +481,11 @@ std::unique_ptr<juce::dsp::Convolution> makeConvolver(const juce::File& irFile,
   return convolver;
 }
 
-TEST(IrConvolutionTest, CabClassifiesShortReverbsClassifyLong) {
-  // The 1 s cutoff drives the -18 dB cab pad and the default mix; a
-  // misclassification is instantly audible. Kernel lengths are read off the
-  // built engines, post trim + resample, exactly like the loader.
+TEST(IrConvolutionTest, JuceTrimReportsCabShortReverbsLong) {
+  // Sanity check on the fixtures themselves (JUCE's own Trim::yes kernel
+  // size), not production classification - see the comment on makeConvolver
+  // above. Kernel lengths are read off the built engines, post trim +
+  // resample, exactly like the loader.
   auto cab = makeConvolver(testFile("cab-ir-test.wav"), juce::dsp::Convolution::Stereo::no, 512);
   auto reverbMono =
       makeConvolver(testFile("reverb-ir-mono-test.wav"), juce::dsp::Convolution::Stereo::no, 512);

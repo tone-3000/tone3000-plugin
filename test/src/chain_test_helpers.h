@@ -32,8 +32,16 @@ struct ChainTestProcessor : TONE3000Processor {
 
 // An IR block tree in plugin-state shape, with the IR file's bytes embedded
 // as its ModelCache so the background loader never needs the (fake) URL.
+// `irCategory` ("cab"/"irPlayer") persists an explicit category on the tree,
+// exactly like a real save (see ProcessorState.cpp); the default (nullptr)
+// leaves the property unset, so restore falls back to its content-detection
+// duration guess - for the two fixtures every other test file already uses
+// (genuinely short cab content / genuinely long reverb content) that lands
+// on the same category the old raw-length classification did, so existing
+// callers are unaffected.
 inline juce::ValueTree makeIrBlockTree(const juce::String& blockId, int toneId, int modelId,
-                                       const char* fileName = "cab-ir-test.wav") {
+                                       const char* fileName = "cab-ir-test.wav",
+                                       const char* irCategory = nullptr) {
   const juce::String toneJson =
       "{\"id\":" + juce::String(toneId) + ",\"title\":\"Test IR\",\"format\":\"ir\","
       "\"models\":[{\"id\":" + juce::String(modelId) +
@@ -50,6 +58,8 @@ inline juce::ValueTree makeIrBlockTree(const juce::String& blockId, int toneId, 
   block.setProperty("toneId", toneId, nullptr);
   block.setProperty("toneJson", toneJson, nullptr);
   block.setProperty("activeModelId", modelId, nullptr);
+  if (irCategory != nullptr)
+    block.setProperty("irCategory", juce::String(irCategory), nullptr);
 
   juce::MemoryBlock bytes;
   EXPECT_TRUE(testFile(fileName).loadFileAsData(bytes));

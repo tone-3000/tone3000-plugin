@@ -464,10 +464,13 @@ void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& b
     block->inputGainSmoother.reset(chainRate, 0.05f);
     block->outputGainSmoother.reset(chainRate, 0.05f);
     block->mixSmoother.reset(chainRate, 0.05f);
+    block->irPadGainSmoother.reset(chainRate, 0.05f);
     block->namNormalizationSmoother.reset(chainRate, 0.05f);
     block->inputGainSmoother.setCurrentAndTargetValue(1.0f);   // updated on first process
     block->outputGainSmoother.setCurrentAndTargetValue(1.0f);  // updated on first process
     block->mixSmoother.setCurrentAndTargetValue(block->mixNormalized);
+    block->irPadGainSmoother.setCurrentAndTargetValue(
+        block->irCategory == IrCategory::Cab ? juce::Decibels::decibelsToGain(-18.0f) : 1.0f);
     block->namNormalizationSmoother.setCurrentAndTargetValue(1.0f);
     block->wetFadeGain.reset(chainRate, kWetFadeSeconds);
     block->wetFadeGain.setCurrentAndTargetValue(block->enabled ? 1.0f : 0.0f);
@@ -1227,18 +1230,20 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
     // knob is the block's output fader, not a wet trim, so it has to move
     // the dry share of Mix too.
     //
-    // Short (cab-like) IR blocks pad the wet term by a fixed -18 dB: cab
-    // files are peak-normalized to 0 dBFS and spectrally concentrated, far
-    // too hot at unity. The pad stays on the wet term, never the blend; at
-    // mix < 100% the dry share passes at its natural level. Long
-    // (reverb-like) IRs get no pad; unit-energy normalization already puts
-    // them at ≈ dry level (see irIsLong in ChainBlock.h). The UI knob still
-    // reads relative dB (0 at center); the pad is invisible chain gain
-    // staging (see gainDbScale in knobScale.ts). Classified at load, so pad
-    // steps land while the engine-swap fade holds the wet term silent.
+    // Cab IR blocks pad the wet term by a fixed -18 dB: cab files are
+    // peak-normalized to 0 dBFS and spectrally concentrated, far too hot at
+    // unity. The pad stays on the wet term, never the blend; at mix < 100%
+    // the dry share passes at its natural level. IrPlayer gets no pad;
+    // unit-energy normalization already puts it at ≈ dry level (see
+    // IrCategory in ChainBlock.h - never the engine-selection-only
+    // irIsLong). The UI knob still reads relative dB (0 at center); the pad
+    // is invisible chain gain staging (see gainDbScale in knobScale.ts).
+    // Pulled from a smoothed value every block (not just at load), so a
+    // live setBlockIrCategory change glides through it instead of clicking.
     const float irOffsetDb =
-        (block->type == ChainBlockType::IR && !block->irIsLong) ? -18.0f : 0.0f;
-    const float cabPadGain = juce::Decibels::decibelsToGain(irOffsetDb);
+        (block->type == ChainBlockType::IR && block->irCategory == IrCategory::Cab) ? -18.0f
+                                                                                     : 0.0f;
+    block->irPadGainSmoother.setTargetValue(juce::Decibels::decibelsToGain(irOffsetDb));
     const float gainDb = (block->outputGainNormalized - 0.5f) * 48.0f;
     block->outputGainSmoother.setTargetValue(juce::Decibels::decibelsToGain(gainDb));
     block->mixSmoother.setTargetValue(juce::jlimit(0.0f, 1.0f, block->mixNormalized));
@@ -1251,7 +1256,8 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
       // swapWetMuteGain and the cab pad ride the wet term only, pre-mix
       // (engine swaps dip the wet path to silence without exposing the dry
       // input); see ChainBlock.h.
-      const float wetGain = block->swapWetMuteGain.getNextValue() * cabPadGain;
+      const float wetGain =
+          block->swapWetMuteGain.getNextValue() * block->irPadGainSmoother.getNextValue();
       const float outGain = block->outputGainSmoother.getNextValue();
       const float fade = block->wetFadeGain.getNextValue();
       const float m = block->mixSmoother.getNextValue() * fade;
