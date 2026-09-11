@@ -39,11 +39,14 @@ public:
   struct Info {
     juce::String id;
     juce::String name;
+    juce::String category;
+    bool favorite{false};
     bool factory{false};
   };
 
   static constexpr const char* kFileExtension = ".t3kpreset";
   static constexpr const char* kPresetTag = "T3KPreset";
+  static constexpr int kMaxCategoryNameLength = 50;
 
   PresetManager();
 
@@ -76,6 +79,36 @@ public:
       global order can't disagree. Persists the whole current order. */
   bool move(const juce::String& id, int delta) const;
 
+  /** User categories, sorted alphabetically (case-insensitive). */
+  juce::StringArray listCategories() const;
+
+  /** Add a user category (trimmed, non-empty, max 50 chars, case-insensitive unique). */
+  bool addCategory(const juce::String& name) const;
+
+  /** Delete a category. Existing presets in this category are moved to root (""). */
+  bool deleteCategory(const juce::String& name) const;
+
+  /** Assign a user preset to a category (empty string = root "Your Presets"). */
+  bool setPresetCategory(const juce::String& id, const juce::String& category) const;
+
+  /** Move multiple presets to a category. */
+  bool movePresetsToCategory(const juce::StringArray& ids, const juce::String& category) const;
+
+  /** Set favourite / starred status for a preset. */
+  bool setPresetFavorite(const juce::String& id, bool isFavorite) const;
+
+  /** Set favourite / starred status for multiple presets. */
+  bool setPresetsFavorite(const juce::StringArray& ids, bool isFavorite) const;
+
+  /** Duplicate a user preset with "Copy-" prepended to the name. */
+  Info duplicatePreset(const juce::String& id) const;
+
+  /** Duplicate multiple user presets with "Copy-" prepended. */
+  std::vector<Info> duplicatePresets(const juce::StringArray& ids) const;
+
+  /** Delete multiple user presets. */
+  bool removePresets(const juce::StringArray& ids) const;
+
 private:
   juce::File fileForId(const juce::String& id) const;
   static juce::File defaultSystemFactoryDir();
@@ -85,6 +118,14 @@ private:
   juce::File orderFile() const;
   juce::StringArray readOrder() const;
   bool writeOrder(const juce::StringArray& ids) const;
+
+  juce::File categoriesFile() const;
+  juce::StringArray readCategories() const;
+  bool writeCategories(const juce::StringArray& categories) const;
+
+  juce::File favoritesFile() const;
+  juce::StringArray readFavorites() const;
+  bool writeFavorites(const juce::StringArray& ids) const;
 
   juce::File userDir;
   juce::File factoryDir;        // user-local Factory/ (dev drops, Linux install)

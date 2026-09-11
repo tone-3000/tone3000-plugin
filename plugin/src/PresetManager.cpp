@@ -109,6 +109,8 @@ std::vector<PresetManager::Info> PresetManager::list() const {
       Info info;
       info.id = prefix + file.getFileNameWithoutExtension();
       info.name = preset.getProperty("name", file.getFileNameWithoutExtension()).toString();
+      info.category = preset.getProperty("category", "").toString();
+      info.favorite = static_cast<bool>(preset.getProperty("favorite", false));
       info.factory = factory;
       out.push_back(std::move(info));
     }
@@ -157,6 +159,13 @@ std::vector<PresetManager::Info> PresetManager::list() const {
       return rank(a) < rank(b);
     });
   }
+
+  const juce::StringArray favs = readFavorites();
+  for (auto& p : presets) {
+    if (favs.contains(p.id))
+      p.favorite = true;
+  }
+
   return presets;
 }
 
@@ -263,5 +272,223 @@ bool PresetManager::rename(const juce::String& id, const juce::String& newName) 
 bool PresetManager::remove(const juce::String& id) const {
   if (!id.startsWith(kUserPrefix))
     return false;
+  juce::StringArray favs = readFavorites();
+  if (favs.contains(id)) {
+    favs.removeString(id);
+    writeFavorites(favs);
+  }
   return fileForId(id).deleteFile();
+}
+
+juce::File PresetManager::categoriesFile() const {
+  return userDir.getChildFile("categories.json");
+}
+
+juce::StringArray PresetManager::readCategories() const {
+  juce::StringArray out;
+  const auto parsed = juce::JSON::parse(categoriesFile().loadFileAsString());
+  if (const auto* arr = parsed.getArray()) {
+    for (const auto& item : *arr) {
+      const juce::String str = item.toString().trim();
+      if (str.isNotEmpty())
+        out.add(str);
+    }
+  }
+  out.sort(true);
+  return out;
+}
+
+bool PresetManager::writeCategories(const juce::StringArray& categories) const {
+  if (!userDir.createDirectory())
+    return false;
+  juce::Array<juce::var> list;
+  for (const auto& cat : categories)
+    list.add(cat);
+  return categoriesFile().replaceWithText(juce::JSON::toString(juce::var(list)));
+}
+
+juce::StringArray PresetManager::listCategories() const {
+  return readCategories();
+}
+
+bool PresetManager::addCategory(const juce::String& rawName) const {
+  const juce::String name = rawName.trim();
+  if (name.isEmpty() || name.length() > kMaxCategoryNameLength)
+    return false;
+
+  juce::StringArray categories = readCategories();
+  for (const auto& existing : categories) {
+    if (existing.compareIgnoreCase(name) == 0)
+      return false;
+  }
+
+  categories.add(name);
+  categories.sort(true);
+  return writeCategories(categories);
+}
+
+bool PresetManager::deleteCategory(const juce::String& rawName) const {
+  const juce::String name = rawName.trim();
+  if (name.isEmpty())
+    return false;
+
+  juce::StringArray categories = readCategories();
+  int foundIndex = -1;
+  for (int i = 0; i < categories.size(); ++i) {
+    if (categories[i].compareIgnoreCase(name) == 0) {
+      foundIndex = i;
+      break;
+    }
+  }
+  if (foundIndex < 0)
+    return false;
+
+  categories.remove(foundIndex);
+  if (!writeCategories(categories))
+    return false;
+
+  // If a category has existing presets within it, these presets go to the root "Your presets" instead of being deleted.
+  for (const auto& file : userDir.findChildFiles(juce::File::findFiles, false, "*" + juce::String(kFileExtension))) {
+    juce::ValueTree preset = readPresetFile(file);
+    if (!preset.isValid())
+      continue;
+    const juce::String cat = preset.getProperty("category", "").toString();
+    if (cat.compareIgnoreCase(name) == 0) {
+      preset.removeProperty("category", nullptr);
+      writePresetFile(file, preset);
+    }
+  }
+
+  return true;
+}
+
+bool PresetManager::setPresetCategory(const juce::String& id, const juce::String& category) const {
+  if (!id.startsWith(kUserPrefix))
+    return false;
+
+  const juce::File file = fileForId(id);
+  juce::ValueTree preset = readPresetFile(file);
+  if (!preset.isValid())
+    return false;
+
+  const juce::String trimmed = category.trim();
+  if (trimmed.isEmpty())
+    preset.removeProperty("category", nullptr);
+  else
+    preset.setProperty("category", trimmed, nullptr);
+
+  return writePresetFile(file, preset);
+}
+
+bool PresetManager::movePresetsToCategory(const juce::StringArray& ids, const juce::String& category) const {
+  bool anyOk = false;
+  for (const auto& id : ids) {
+    if (setPresetCategory(id, category))
+      anyOk = true;
+  }
+  return anyOk;
+}
+
+juce::File PresetManager::favoritesFile() const {
+  return userDir.getChildFile("favorites.json");
+}
+
+juce::StringArray PresetManager::readFavorites() const {
+  juce::StringArray out;
+  const auto parsed = juce::JSON::parse(favoritesFile().loadFileAsString());
+  if (const auto* arr = parsed.getArray()) {
+    for (const auto& item : *arr) {
+      const juce::String str = item.toString().trim();
+      if (str.isNotEmpty())
+        out.add(str);
+    }
+  }
+  return out;
+}
+
+bool PresetManager::writeFavorites(const juce::StringArray& ids) const {
+  if (!userDir.createDirectory())
+    return false;
+  juce::Array<juce::var> list;
+  for (const auto& id : ids)
+    list.add(id);
+  return favoritesFile().replaceWithText(juce::JSON::toString(juce::var(list)));
+}
+
+bool PresetManager::setPresetFavorite(const juce::String& id, bool isFavorite) const {
+  return setPresetsFavorite(juce::StringArray{id}, isFavorite);
+}
+
+bool PresetManager::setPresetsFavorite(const juce::StringArray& ids, bool isFavorite) const {
+  if (ids.isEmpty())
+    return true;
+
+  juce::StringArray favs = readFavorites();
+  for (const auto& id : ids) {
+    if (isFavorite) {
+      if (!favs.contains(id))
+        favs.add(id);
+    } else {
+      favs.removeString(id);
+    }
+
+    if (id.startsWith(kUserPrefix)) {
+      const juce::File file = fileForId(id);
+      juce::ValueTree preset = readPresetFile(file);
+      if (preset.isValid()) {
+        preset.setProperty("favorite", isFavorite, nullptr);
+        writePresetFile(file, preset);
+      }
+    }
+  }
+  writeFavorites(favs);
+  return true;
+}
+
+PresetManager::Info PresetManager::duplicatePreset(const juce::String& id) const {
+  if (!id.startsWith(kUserPrefix))
+    return {};
+
+  const juce::File srcFile = fileForId(id);
+  juce::ValueTree preset = readPresetFile(srcFile);
+  if (!preset.isValid())
+    return {};
+
+  if (!userDir.createDirectory())
+    return {};
+
+  const juce::String originalName = preset.getProperty("name", "").toString();
+  const juce::String copyName = "Copy-" + originalName;
+  preset.setProperty("name", copyName, nullptr);
+
+  const juce::File dstFile = userDir.getChildFile(juce::Uuid().toString() + kFileExtension);
+  if (!writePresetFile(dstFile, preset))
+    return {};
+
+  Info info;
+  info.id = kUserPrefix + dstFile.getFileNameWithoutExtension();
+  info.name = copyName;
+  info.category = preset.getProperty("category", "").toString();
+  info.favorite = static_cast<bool>(preset.getProperty("favorite", false));
+  info.factory = false;
+  return info;
+}
+
+std::vector<PresetManager::Info> PresetManager::duplicatePresets(const juce::StringArray& ids) const {
+  std::vector<Info> out;
+  for (const auto& id : ids) {
+    const Info dup = duplicatePreset(id);
+    if (dup.id.isNotEmpty())
+      out.push_back(dup);
+  }
+  return out;
+}
+
+bool PresetManager::removePresets(const juce::StringArray& ids) const {
+  bool anyOk = false;
+  for (const auto& id : ids) {
+    if (remove(id))
+      anyOk = true;
+  }
+  return anyOk;
 }

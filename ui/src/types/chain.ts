@@ -205,6 +205,10 @@ export interface PresetInfo {
   name: string;
   /** Bundled TONE3000 preset; read-only (no rename/delete). */
   factory: boolean;
+  /** User-defined category name, or undefined/empty for root "Your Presets". */
+  category?: string;
+  /** Starred / favourite status. */
+  favorite?: boolean;
 }
 
 /** The preset shown in the top-bar pill. */

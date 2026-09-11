@@ -450,6 +450,66 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
           "resetToDefault", guarded(0, false, [editor](const juce::Array<juce::var>&) {
             return juce::var(editor->processor.resetToDefault());
           }))
+      .withNativeFunction(
+          "addPresetCategory", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
+            return juce::var(editor->processor.addPresetCategory(args[0].toString()));
+          }))
+      .withNativeFunction(
+          "deletePresetCategory", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
+            return juce::var(editor->processor.deletePresetCategory(args[0].toString()));
+          }))
+      .withNativeFunction(
+          "setPresetCategory", guarded(2, false, [editor](const juce::Array<juce::var>& args) {
+            return juce::var(editor->processor.setPresetCategory(args[0].toString(), args[1].toString()));
+          }))
+      .withNativeFunction(
+          "movePresetsToCategory", guarded(2, false, [editor](const juce::Array<juce::var>& args) {
+            juce::StringArray ids;
+            if (const auto* arr = args[0].getArray()) {
+              for (const auto& item : *arr)
+                ids.add(item.toString());
+            } else {
+              ids.add(args[0].toString());
+            }
+            return juce::var(editor->processor.movePresetsToCategory(ids, args[1].toString()));
+          }))
+      .withNativeFunction(
+          "setPresetFavorite", guarded(2, false, [editor](const juce::Array<juce::var>& args) {
+            return juce::var(editor->processor.setPresetFavorite(args[0].toString(), static_cast<bool>(args[1])));
+          }))
+      .withNativeFunction(
+          "setPresetsFavorite", guarded(2, false, [editor](const juce::Array<juce::var>& args) {
+            juce::StringArray ids;
+            if (const auto* arr = args[0].getArray()) {
+              for (const auto& item : *arr)
+                ids.add(item.toString());
+            } else {
+              ids.add(args[0].toString());
+            }
+            return juce::var(editor->processor.setPresetsFavorite(ids, static_cast<bool>(args[1])));
+          }))
+      .withNativeFunction(
+          "duplicatePresets", guarded(1, juce::var(), [editor](const juce::Array<juce::var>& args) {
+            juce::StringArray ids;
+            if (const auto* arr = args[0].getArray()) {
+              for (const auto& item : *arr)
+                ids.add(item.toString());
+            } else {
+              ids.add(args[0].toString());
+            }
+            return editor->processor.duplicatePresets(ids);
+          }))
+      .withNativeFunction(
+          "deletePresets", guarded(1, false, [editor](const juce::Array<juce::var>& args) {
+            juce::StringArray ids;
+            if (const auto* arr = args[0].getArray()) {
+              for (const auto& item : *arr)
+                ids.add(item.toString());
+            } else {
+              ids.add(args[0].toString());
+            }
+            return juce::var(editor->processor.deletePresets(ids));
+          }))
       // --- Audio device settings (standalone only) ---------------------------
       // All of these route through the StandaloneAudioSettings controller,
       // which exists only under the standalone holder; in hosts they resolve
