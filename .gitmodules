@@ -1,7 +1,7 @@
 [submodule "plugin/NeuralAmpModelerCore"]
 	path = plugin/NeuralAmpModelerCore
-	url = https://github.com/honkkis/NeuralAmpModelerCore.git
-	branch = main
+	url = https://github.com/rikkus/OptimisationWorkOnNeuralAmpModelerCore.git
+	branch = apple-silicon-a2-planar
 [submodule "plugin/AudioDSPTools"]
 	path = plugin/AudioDSPTools
 	url = https://github.com/sdatkinson/AudioDSPTools.git
