@@ -23,15 +23,14 @@ import { BODY_PADDING } from './chainLayout';
 import { rem } from '../hooks/useUiScale';
 import { EqSliders } from './EqSliders';
 import { SpectrumBackdrop } from './SpectrumBackdrop';
+import { EditableChip } from './EditableChip';
 import { HELP, bandTypeHelp, helpProps, pinHelp, unpinHelp } from './helpText';
 import {
   DISABLED_OPACITY,
   ICON_BOX_RADIUS,
   ICON_SIZE,
   MUTED,
-  FONT_MONO,
   SEGMENTED_TRACK,
-  SUBTLE,
   TEXT_BOX_HEIGHT,
   segmentedCellStyle,
   segmentedGroupStyle,
@@ -94,90 +93,6 @@ const GRID_LABELS: Record<number, string> = {
   2000: '2k',
   5000: '5k',
   10000: '10k',
-};
-
-/** Readout chip that doubles as text entry: click to type, Enter commits,
-    Escape cancels, blur commits (same conventions as the knobs). The value
-    area is a fixed width (sized to the longest possible reading) so the chip
-    never resizes while values change or while editing. */
-const EditableChip: React.FC<{
-  label: string;
-  text: string;
-  /** Prefill for the editor (number only, unit-free where possible). */
-  editText: string;
-  /** Fixed width of the value area in px: the widest reading the chip shows. */
-  valueWidth: number;
-  onCommit: (raw: string) => void;
-  disabled?: boolean;
-  /** One-line hint for the faceplate help readout (see helpText.ts). */
-  help?: string;
-  style?: React.CSSProperties;
-}> = ({ label, text, editText, valueWidth, onCommit, disabled = false, help, style }) => {
-  const [draft, setDraft] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const editing = draft !== null;
-
-  useEffect(() => {
-    if (editing) inputRef.current?.focus();
-  }, [editing]);
-
-  const commit = () => {
-    if (draft !== null && draft.trim() !== '') onCommit(draft);
-    setDraft(null);
-  };
-
-  return (
-    <div
-      {...(help && !disabled ? helpProps(help) : {})}
-      onClick={() => {
-        // Editing starts from an empty box (caret at the left) with the
-        // current value as placeholder; committing empty is a cancel.
-        if (!disabled && !editing) setDraft('');
-      }}
-      style={{ ...style, cursor: disabled || editing ? undefined : 'text' }}
-    >
-      <span style={{ fontSize: '12rem', fontFamily: FONT_MONO, color: SUBTLE }}>{label}</span>
-      {editing ? (
-        <input
-          ref={inputRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            e.stopPropagation();
-            if (e.key === 'Enter') commit();
-            else if (e.key === 'Escape') setDraft(null);
-          }}
-          inputMode="decimal"
-          placeholder={editText}
-          style={{
-            width: `${valueWidth}rem`,
-            background: 'transparent',
-            border: 'none',
-            color: '#ffffff',
-            fontSize: '12rem',
-            fontFamily: FONT_MONO,
-            textAlign: 'left',
-            outline: 'none',
-            padding: 0,
-          }}
-        />
-      ) : (
-        <span
-          style={{
-            width: `${valueWidth}rem`,
-            fontSize: '12rem',
-            fontFamily: FONT_MONO,
-            color: '#ffffff',
-            textAlign: 'left',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {text}
-        </span>
-      )}
-    </div>
-  );
 };
 
 /** Parse a typed frequency: plain Hz ("800") or k-notation ("1.2k"). */

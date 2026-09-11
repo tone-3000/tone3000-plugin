@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowLeftRight,
@@ -13,9 +13,22 @@ import {
   Trash2,
 } from './icons';
 import { ToneImage } from './GearIcon';
+import { WaveformDisplay } from './WaveformDisplay';
+import { IrEnvelopeGraph } from './IrEnvelopeGraph';
+import type { EnvelopePatch } from './IrEnvelopeGraph';
+import { useIrWaveform } from '../hooks/useIrWaveform';
 import { rem } from '../hooks/useUiScale';
 import { KnobControl } from './KnobControl';
-import { gainDbScale } from './knobScale';
+import { EditableChip } from './EditableChip';
+import {
+  gainDbScale,
+  predelayMsScale,
+  lengthMsScale,
+  attackLengthMsScale,
+  curveScale,
+  percentScale,
+} from './knobScale';
+import type { KnobScale } from './knobScale';
 import { BusyOverlay, LoadingDots } from './LoadingDots';
 import { ModelSelect } from './ModelSelect';
 import { RetryLoadBadge } from './RetryLoadBadge';
@@ -50,12 +63,14 @@ import { T3K_API } from '../t3k/config';
 import {
   BORDER,
   GRAY,
+  ICON_BOX_RADIUS,
   ICON_BOX_SIZE,
   ICON_SIZE,
   KNOB_SIZE_SECONDARY,
   FONT_MONO,
   MUTED,
   SEGMENTED_TRACK,
+  TEXT_BOX_HEIGHT,
   WHITE,
   segmentedCellStyle,
   segmentedGroupStyle,
@@ -70,6 +85,48 @@ const IMAGE_SIZE_INFO = 160;
 const RAIL_METER_HEIGHT = 160;
 /** Centers the normalize (=) chrome box on the Out knob. */
 const NORMALIZE_BUTTON_OFFSET = -(KNOB_SIZE_SECONDARY - ICON_BOX_SIZE) / 2;
+// IR blocks (!isNam) add a Delay knob beside In in the Input rail, widening
+// that rail (84rem: In 36 + gap 12 + Delay 36) past the Output rail (36rem:
+// just Out, since the normalize button is NAM-only) - a real ~48rem
+// asymmetry. A compensating spacer was tried in the Output rail to equalize
+// the two rails, but the row's Center column (flex:1) is what actually pays
+// for any width added to a fixed-width sibling: the spacer just shrank the
+// waveform/dropdown by the same 48rem, which cost more than the asymmetry it
+// fixed. True width parity would require *narrowing* the Input rail instead
+// (e.g. stacking Delay under In rather than beside it) - a real layout
+// change to a previously deliberate decision, not something to do as a
+// side effect of a symmetry pass. Left as-is for now.
+/** IR blocks (compact, non-Info view): wide waveform strip, full
+    Center-column width, replacing the square artwork. Sized to 100 (up from
+    an original 60) once the shaping row shrank from knobs to compact
+    EditableChips (see IrEnvelopeGraph.tsx) - that freed enough of the card's
+    fixed body height to make the graph meaningfully more legible without
+    touching BODY_HEIGHT. */
+const IR_WAVEFORM_HEIGHT = 100;
+/** Abstract SVG coordinate width for the strip - NOT a literal CSS pixel
+    width (the wrapper is width: 100%, and WaveformDisplay's viewBox stretches
+    to fit via preserveAspectRatio="none"), just needs to be self-consistent
+    for the mins/maxs/cut/decay math inside it. */
+const IR_WAVEFORM_WIDTH_UNITS = 600;
+
+/** Envelope shaping row's chip style - same track language as BlockEqView's
+    own Freq/Gain/Q chips (SEGMENTED_TRACK pill, TEXT_BOX_HEIGHT tall), just
+    tighter (smaller font, less padding): six chips with longer labels
+    (A Len/A Crv/D Len/D Lvl/D Crv) don't fit the card width at EQ's own
+    3-chip sizing. */
+const ENVELOPE_CHIP_FONT_SIZE = 10;
+const chipStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '4rem',
+  height: `${TEXT_BOX_HEIGHT}rem`,
+  padding: '0 3rem',
+  borderRadius: rem(ICON_BOX_RADIUS),
+  border: 'none',
+  backgroundColor: SEGMENTED_TRACK,
+  boxSizing: 'border-box',
+  whiteSpace: 'nowrap',
+};
 
 /** Downloads / bookmarks / models count with a leading icon (same pattern as ToneBrowser). */
 const CountStat: React.FC<{ icon: React.ReactNode; value: number }> = ({ icon, value }) => (
@@ -239,6 +296,13 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
   const [inputGain, setInputGain] = useState(params.inputGain ?? 0.5);
   const [outputGain, setOutputGain] = useState(params.outputGain ?? 0.5);
   const [mix, setMix] = useState(params.mix ?? 1.0);
+  const [predelay, setPredelay] = useState(params.predelay ?? 0);
+  const [initLevel, setInitLevel] = useState(params.initLevel ?? 1.0);
+  const [attackLength, setAttackLength] = useState(params.attackLength ?? 0.0);
+  const [attackCurve, setAttackCurve] = useState(params.attackCurve ?? 0.5);
+  const [decayLength, setDecayLength] = useState(params.decayLength ?? 1.0);
+  const [decayLevel, setDecayLevel] = useState(params.decayLevel ?? 1.0);
+  const [decayCurve, setDecayCurve] = useState(params.decayCurve ?? 0.5);
   const [isSwitchingModel, setIsSwitchingModel] = useState(false);
   const [showEq, setShowEq] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
@@ -283,6 +347,27 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
   useEffect(() => {
     if (!knobDragRef.current) setMix(params.mix ?? 1.0);
   }, [params.mix]);
+  useEffect(() => {
+    if (!knobDragRef.current) setPredelay(params.predelay ?? 0);
+  }, [params.predelay]);
+  useEffect(() => {
+    if (!knobDragRef.current) setInitLevel(params.initLevel ?? 1.0);
+  }, [params.initLevel]);
+  useEffect(() => {
+    if (!knobDragRef.current) setAttackLength(params.attackLength ?? 0.0);
+  }, [params.attackLength]);
+  useEffect(() => {
+    if (!knobDragRef.current) setAttackCurve(params.attackCurve ?? 0.5);
+  }, [params.attackCurve]);
+  useEffect(() => {
+    if (!knobDragRef.current) setDecayLength(params.decayLength ?? 1.0);
+  }, [params.decayLength]);
+  useEffect(() => {
+    if (!knobDragRef.current) setDecayLevel(params.decayLevel ?? 1.0);
+  }, [params.decayLevel]);
+  useEffect(() => {
+    if (!knobDragRef.current) setDecayCurve(params.decayCurve ?? 0.5);
+  }, [params.decayCurve]);
   useEffect(() => setEqOn(params.eq?.enabled ?? true), [params.eq?.enabled]);
   useEffect(() => setEqPre(params.eq?.pre ?? false), [params.eq?.pre]);
 
@@ -290,6 +375,94 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
     (param: BlockParamName, value: number | boolean) =>
       actions.setBlockParam(blockId, param, value),
     [actions, blockId]
+  );
+
+  // The envelope rebuilds the convolver off-thread (not a real-time
+  // smoother like setBlockParam's continuous params), so it isn't safe to
+  // fire at knob-drag rates - idle-debounced instead: the knobs and the
+  // waveform overlay (both driven by local state) update live on every drag
+  // frame, but the native rebuild only fires once movement pauses. All six
+  // values travel together in one call (like setBlockEqBand's whole-band
+  // updates), so each control's onChange passes its own new value plus the
+  // other five's current local state - a drag on one can't clobber
+  // another's in-flight value.
+  const envelopeCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (envelopeCommitTimerRef.current) clearTimeout(envelopeCommitTimerRef.current);
+    },
+    []
+  );
+  const commitEnvelope = useCallback(
+    (
+      nextInitLevel: number,
+      nextAttackLength: number,
+      nextAttackCurve: number,
+      nextDecayLength: number,
+      nextDecayLevel: number,
+      nextDecayCurve: number
+    ) => {
+      if (envelopeCommitTimerRef.current) clearTimeout(envelopeCommitTimerRef.current);
+      envelopeCommitTimerRef.current = setTimeout(() => {
+        envelopeCommitTimerRef.current = null;
+        actions.setBlockIrDecay(
+          blockId,
+          nextInitLevel,
+          nextAttackLength,
+          nextAttackCurve,
+          nextDecayLength,
+          nextDecayLevel,
+          nextDecayCurve
+        );
+      }, 400);
+    },
+    [actions, blockId]
+  );
+
+  // Graph-driven envelope edit (IrEnvelopeGraph): a patch carries only the
+  // axis/axes the dragged point moves (End moves two at once), merged over
+  // the current local values so a diagonal End drag commits as one call
+  // instead of two racing debounced ones.
+  const updateEnvelope = useCallback(
+    (patch: EnvelopePatch) => {
+      const next = {
+        initLevel: patch.initLevel ?? initLevel,
+        attackLength: patch.attackLength ?? attackLength,
+        attackCurve: patch.attackCurve ?? attackCurve,
+        decayLength: patch.decayLength ?? decayLength,
+        decayLevel: patch.decayLevel ?? decayLevel,
+        decayCurve: patch.decayCurve ?? decayCurve,
+      };
+      if (patch.initLevel !== undefined) setInitLevel(patch.initLevel);
+      if (patch.attackLength !== undefined) setAttackLength(patch.attackLength);
+      if (patch.attackCurve !== undefined) setAttackCurve(patch.attackCurve);
+      if (patch.decayLength !== undefined) setDecayLength(patch.decayLength);
+      if (patch.decayLevel !== undefined) setDecayLevel(patch.decayLevel);
+      if (patch.decayCurve !== undefined) setDecayCurve(patch.decayCurve);
+      commitEnvelope(
+        next.initLevel,
+        next.attackLength,
+        next.attackCurve,
+        next.decayLength,
+        next.decayLevel,
+        next.decayCurve
+      );
+    },
+    [initLevel, attackLength, attackCurve, decayLength, decayLevel, decayCurve, commitEnvelope]
+  );
+
+  // EditableChip commit for one envelope field: parses the typed display
+  // value (ms / % / curve units, matching that chip's own KnobScale) back to
+  // normalized 0..1 and routes it through the same updateEnvelope merge the
+  // graph uses, so a chip edit and a graph drag can never race each other.
+  const commitEnvelopeField = useCallback(
+    (key: keyof EnvelopePatch, scale: KnobScale, raw: string) => {
+      const parsed = Number.parseFloat(raw.replace(',', '.'));
+      if (!Number.isFinite(parsed)) return;
+      const normalized = Math.min(Math.max(scale.fromDisplay(parsed), 0), 1);
+      updateEnvelope({ [key]: normalized });
+    },
+    [updateEnvelope]
   );
 
   const handleToggleEnabled = useCallback(() => {
@@ -515,6 +688,39 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
   const modelBusy = block.modelLoading || (!block.loaded && !block.loadFailed);
 
   const isNam = tone.format?.toLowerCase() === 'nam';
+  // POC: static waveform display replaces the artwork image for IR blocks
+  // only (see WaveformDisplay.tsx). `!isNam` in the gate skips the native
+  // fetch entirely for NAM blocks; falls back to the image while unfetched
+  // (fresh mount, still loading). activeModelId re-triggers the fetch on a
+  // dropdown/arrow model switch; modelLoading closes a real race on top of
+  // that (see useIrWaveform's doc comment).
+  const irWaveform = useIrWaveform(
+    blockId,
+    !isNam && block.loaded,
+    block.activeModelId,
+    block.modelLoading
+  );
+  // Decay Length is the TOTAL truncated length (the real "End" position) -
+  // normalized against *this* block's own detected content, same convention
+  // the old standalone Length knob always used - see knobScale.ts's
+  // lengthMsScale. Attack Length is a fraction *of that total*, not an
+  // independent length, so its own scale's max is Decay Length's current
+  // real-ms value (shrinks/grows live as Decay Length moves).
+  const decayLengthScale = useMemo(
+    () => lengthMsScale(block.irContentLengthMs),
+    [block.irContentLengthMs]
+  );
+  const attackLengthScale = useMemo(
+    () => attackLengthMsScale(decayLengthScale.toDisplay(decayLength)),
+    [decayLengthScale, decayLength]
+  );
+  // Derived for the waveform overlay: cutFraction is where the truncated
+  // content ends - Decay Length IS that fraction of the full content
+  // directly. attackFraction is where the Attack/Decay boundary sits
+  // *within* that truncated window (0..1) - Attack Length IS that fraction
+  // directly, matching envelopeDbAt's own fraction convention.
+  const cutFraction = decayLength;
+  const attackFractionWithinWindow = attackLength;
 
   // Calibration state (the gauge indicator + the normalize override). Only
   // meaningful while the user's input calibration setting is on: the gauge
@@ -815,40 +1021,94 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
               />
             ) : (
               <>
-                {/* Input rail: meter above In knob (Figma: gap 12). */}
+                {/* Input rail: meter above In knob (Figma: gap 12). IR blocks
+                  add a Delay knob alongside In (not below it - see the
+                  nested row) - the meter wrapper is knob-wide and the
+                  column left-aligns, so the meter stays centered over In
+                  specifically regardless of whether Delay widens the row to
+                  its right (same technique as the Output rail's meter
+                  staying pinned to Out despite the normalize button widening
+                  that row to its left, just mirrored to the opposite
+                  edge). */}
                 {!showInfo && (
                   <div
                     style={{
                       display: 'flex',
                       flexDirection: 'column',
-                      alignItems: 'center',
+                      alignItems: 'flex-start',
                       flexShrink: 0,
                       gap: '12rem',
                     }}
                   >
-                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', minHeight: 0 }}>
+                    <div
+                      style={{
+                        flex: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        minHeight: 0,
+                        width: `${KNOB_SIZE_SECONDARY}rem`,
+                      }}
+                    >
                       <BlockMeter meterId={meterId.blockIn(blockId)} length={RAIL_METER_HEIGHT} />
                     </div>
-                    <KnobControl
-                      label="In"
-                      value={inputGain}
-                      onChange={(val) => {
-                        setInputGain(val);
-                        setParam('inputGain', val);
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'flex-end',
+                        gap: '12rem',
                       }}
-                      onDragStateChange={handleKnobDragState}
-                      size={KNOB_SIZE_SECONDARY}
-                      labelBottom={false}
-                      thumb="secondary"
-                      scale={gainDbScale}
-                      defaultValue={0.5}
-                      help={HELP.blockIn}
-                    />
+                    >
+                      <KnobControl
+                        label="In"
+                        value={inputGain}
+                        onChange={(val) => {
+                          setInputGain(val);
+                          setParam('inputGain', val);
+                        }}
+                        onDragStateChange={handleKnobDragState}
+                        size={KNOB_SIZE_SECONDARY}
+                        labelBottom={false}
+                        thumb="secondary"
+                        scale={gainDbScale}
+                        defaultValue={0.5}
+                        help={HELP.blockIn}
+                      />
+                      {/* IR blocks only: predelay before the wet signal
+                        enters the convolver - a real-time DSP stage
+                        (BlockPredelay), not part of the off-thread envelope
+                        rebuild, so it stays a knob here rather than joining
+                        the shaping row's faders. */}
+                      {!isNam && (
+                        <KnobControl
+                          label="Delay"
+                          value={predelay}
+                          onChange={(val) => {
+                            setPredelay(val);
+                            setParam('predelay', val);
+                          }}
+                          onDragStateChange={handleKnobDragState}
+                          size={KNOB_SIZE_SECONDARY}
+                          labelBottom={false}
+                          thumb="secondary"
+                          scale={predelayMsScale}
+                          defaultValue={0}
+                          help={HELP.blockPredelay}
+                        />
+                      )}
+                    </div>
                   </div>
                 )}
 
-                {/* Center: image + tone info on top, model picker spanning full width.
-                  Info view keeps image + meta and drops the picker / knobs. */}
+                {/* Center: NAM blocks and the Info view (either format) keep
+                  the original image + full metadata layout. IR blocks
+                  outside Info view get a reworked, intentionally temporary
+                  v1 layout instead - see IR_WAVEFORM_HEIGHT's comment: a
+                  compact identity row, a wide short waveform strip, and the
+                  Start/End shaping rows, all ABOVE the model picker (which
+                  stays full-width at the bottom either way, matching the
+                  original layout). */}
                 <div
                   style={{
                     flex: 1,
@@ -856,205 +1116,436 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
                     alignSelf: 'stretch',
                     display: 'flex',
                     flexDirection: 'column',
-                    justifyContent: showInfo ? 'flex-start' : 'space-between',
+                    gap: showInfo ? '24rem' : isNam ? '16rem' : '10rem',
+                    justifyContent: 'flex-start',
                   }}
                 >
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'row',
-                      alignItems: showInfo ? 'flex-start' : 'center',
-                      gap: '24rem',
-                      minWidth: 0,
-                    }}
-                  >
-                    {/* Tone image (gear glyph fallback, like the web's ToneCard) */}
-                    <div
-                      style={{
-                        position: 'relative',
-                        width: rem(showInfo ? IMAGE_SIZE_INFO : IMAGE_SIZE),
-                        height: rem(showInfo ? IMAGE_SIZE_INFO : IMAGE_SIZE),
-                        borderRadius: '8rem',
-                        overflow: 'hidden',
-                        flexShrink: 0,
-                      }}
-                    >
-                      <div
-                        style={{
-                          opacity: modelBusy || block.loadFailed ? 0.35 : 1,
-                          transition: 'opacity 0.2s ease',
-                          width: '100%',
-                          height: '100%',
-                        }}
-                      >
-                        <ToneImage
-                          src={tone.images?.[0]}
-                          alt={tone.title}
-                          gear={tone.gear}
-                          local={tone.local}
-                          boxSize={showInfo ? IMAGE_SIZE_INFO : IMAGE_SIZE}
-                        />
-                      </div>
-                      {(modelBusy || block.loadFailed) && (
-                        <div
-                          style={{
-                            position: 'absolute',
-                            inset: 0,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          {block.loadFailed ? (
-                            <RetryLoadBadge onRetry={() => actions.retryLoad(blockId)} />
-                          ) : (
-                            <LoadingDots />
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Tone info: title / gear+badge / counts / creator (Figma gaps).
-                      Info view appends description / makes / tags under this. */}
+                  {showInfo || isNam ? (
                     <div
                       style={{
                         display: 'flex',
-                        flexDirection: 'column',
-                        gap: showInfo ? '24rem' : '16rem',
+                        flexDirection: 'row',
+                        alignItems: showInfo ? 'flex-start' : 'center',
+                        gap: '24rem',
                         minWidth: 0,
-                        flex: 1,
                       }}
                     >
+                      {/* Tone image (gear glyph fallback, like the web's ToneCard) */}
+                      <div
+                        style={{
+                          position: 'relative',
+                          width: rem(showInfo ? IMAGE_SIZE_INFO : IMAGE_SIZE),
+                          height: rem(showInfo ? IMAGE_SIZE_INFO : IMAGE_SIZE),
+                          borderRadius: '8rem',
+                          overflow: 'hidden',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <div
+                          style={{
+                            opacity: modelBusy || block.loadFailed ? 0.35 : 1,
+                            transition: 'opacity 0.2s ease',
+                            width: '100%',
+                            height: '100%',
+                          }}
+                        >
+                          {!isNam && irWaveform ? (
+                            <WaveformDisplay
+                              mins={irWaveform.mins}
+                              maxs={irWaveform.maxs}
+                              width={showInfo ? IMAGE_SIZE_INFO : IMAGE_SIZE}
+                              height={showInfo ? IMAGE_SIZE_INFO : IMAGE_SIZE}
+                              contentLengthMs={block.irContentLengthMs}
+                              cutFraction={cutFraction}
+                              decay={{
+                                initLevel,
+                                attackCurve,
+                                attackFraction: attackFractionWithinWindow,
+                                decayLevel,
+                                decayCurve,
+                              }}
+                            />
+                          ) : (
+                            <ToneImage
+                              src={tone.images?.[0]}
+                              alt={tone.title}
+                              gear={tone.gear}
+                              local={tone.local}
+                              boxSize={showInfo ? IMAGE_SIZE_INFO : IMAGE_SIZE}
+                            />
+                          )}
+                        </div>
+                        {(modelBusy || block.loadFailed) && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              inset: 0,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            {block.loadFailed ? (
+                              <RetryLoadBadge onRetry={() => actions.retryLoad(blockId)} />
+                            ) : (
+                              <LoadingDots />
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Tone info: title / gear+badge / counts / creator (Figma gaps).
+                        Info view appends description / makes / tags under this. */}
                       <div
                         style={{
                           display: 'flex',
                           flexDirection: 'column',
-                          gap: '16rem',
+                          gap: showInfo ? '24rem' : '16rem',
                           minWidth: 0,
+                          flex: 1,
                         }}
                       >
                         <div
                           style={{
                             display: 'flex',
                             flexDirection: 'column',
-                            gap: '8rem',
+                            gap: '16rem',
                             minWidth: 0,
                           }}
                         >
-                          <span
-                            style={{
-                              fontSize: '18rem',
-                              color: WHITE,
-                              fontWeight: 700,
-                              lineHeight: 1.4,
-                              display: '-webkit-box',
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: 'vertical',
-                              overflow: 'hidden',
-                            }}
-                          >
-                            {tone.title}
-                          </span>
-
                           <div
                             style={{
                               display: 'flex',
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              gap: '16rem',
+                              flexDirection: 'column',
+                              gap: '8rem',
+                              minWidth: 0,
                             }}
                           >
-                            {tone.gear && (
-                              <span style={{ fontSize: '14rem', color: MUTED, fontWeight: 400 }}>
-                                {gearLabel(tone.gear)}
-                              </span>
-                            )}
-                            {formatBadge && <FormatBadge label={formatBadge} a2={isNam} />}
-                          </div>
-                        </div>
-
-                        {!isLocal && (
-                          <div
-                            style={{
-                              display: 'flex',
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              gap: '24rem',
-                            }}
-                          >
-                            <CountStat
-                              icon={<Download size={16} />}
-                              value={tone.downloads_count ?? 0}
-                            />
-                            <BookmarkStat
-                              value={favoritesCount}
-                              favorited={favorited}
-                              onToggle={
-                                actions.authenticated
-                                  ? () => void handleToggleFavorite()
-                                  : undefined
-                              }
-                            />
-                            <CountStat icon={<FolderClosed size={16} />} value={modelsTotal ?? 0} />
-                          </div>
-                        )}
-
-                        {tone.user && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12rem' }}>
-                            <div
+                            <span
                               style={{
-                                width: '32rem',
-                                height: '32rem',
-                                borderRadius: '50%',
+                                fontSize: '18rem',
+                                color: WHITE,
+                                fontWeight: 700,
+                                lineHeight: 1.4,
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
                                 overflow: 'hidden',
-                                flexShrink: 0,
                               }}
                             >
-                              <AvatarImage
-                                src={tone.user.avatar_url}
-                                alt={tone.user.username}
-                                size={32}
-                              />
-                            </div>
-                            <span style={{ fontSize: '14rem', color: GRAY, fontWeight: 400 }}>
-                              {tone.user.username}
-                              {tone.published_at && (
-                                <span style={{ color: MUTED }}>
-                                  {' '}
-                                  · {timeAgoShort(tone.published_at)}
+                              {tone.title}
+                            </span>
+
+                            <div
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: '16rem',
+                              }}
+                            >
+                              {tone.gear && (
+                                <span style={{ fontSize: '14rem', color: MUTED, fontWeight: 400 }}>
+                                  {gearLabel(tone.gear)}
                                 </span>
                               )}
+                              {formatBadge && <FormatBadge label={formatBadge} a2={isNam} />}
+                            </div>
+                          </div>
+
+                          {!isLocal && (
+                            <div
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: '24rem',
+                              }}
+                            >
+                              <CountStat
+                                icon={<Download size={16} />}
+                                value={tone.downloads_count ?? 0}
+                              />
+                              <BookmarkStat
+                                value={favoritesCount}
+                                favorited={favorited}
+                                onToggle={
+                                  actions.authenticated
+                                    ? () => void handleToggleFavorite()
+                                    : undefined
+                                }
+                              />
+                              <CountStat
+                                icon={<FolderClosed size={16} />}
+                                value={modelsTotal ?? 0}
+                              />
+                            </div>
+                          )}
+
+                          {tone.user && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12rem' }}>
+                              <div
+                                style={{
+                                  width: '32rem',
+                                  height: '32rem',
+                                  borderRadius: '50%',
+                                  overflow: 'hidden',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                <AvatarImage
+                                  src={tone.user.avatar_url}
+                                  alt={tone.user.username}
+                                  size={32}
+                                />
+                              </div>
+                              <span style={{ fontSize: '14rem', color: GRAY, fontWeight: 400 }}>
+                                {tone.user.username}
+                                {tone.published_at && (
+                                  <span style={{ color: MUTED }}>
+                                    {' '}
+                                    · {timeAgoShort(tone.published_at)}
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {showInfo && (
+                          <BlockInfoPanel
+                            loading={infoLoading}
+                            error={infoError}
+                            onRetry={() => void fetchInfo(tone.id)}
+                            authenticated={actions.authenticated}
+                            onLogin={actions.login}
+                            tone={infoTone}
+                            pageUrl={tonePageUrl}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Compact identity row: title + format badge only.
+                        Stats/creator are dropped here for vertical room (this
+                        is a deliberately temporary v1 layout - see
+                        IR_WAVEFORM_HEIGHT's comment); they're still reachable
+                        via the Info panel. */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '4rem',
+                          minWidth: 0,
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: '16rem',
+                            color: WHITE,
+                            fontWeight: 700,
+                            lineHeight: 1.3,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                        >
+                          {tone.title}
+                        </span>
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: '12rem',
+                          }}
+                        >
+                          {tone.gear && (
+                            <span style={{ fontSize: '13rem', color: MUTED, fontWeight: 400 }}>
+                              {gearLabel(tone.gear)}
                             </span>
+                          )}
+                          {formatBadge && <FormatBadge label={formatBadge} a2={isNam} />}
+                        </div>
+                      </div>
+
+                      {/* Waveform: full Center-column width, short strip -
+                        the shape the future drag-to-shape v2 surface wants,
+                        and what frees the vertical room for the rows below. */}
+                      <div
+                        style={{
+                          position: 'relative',
+                          width: '100%',
+                          height: rem(IR_WAVEFORM_HEIGHT),
+                          borderRadius: '8rem',
+                          overflow: 'hidden',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <div
+                          style={{
+                            opacity: modelBusy || block.loadFailed ? 0.35 : 1,
+                            transition: 'opacity 0.2s ease',
+                            width: '100%',
+                            height: '100%',
+                          }}
+                        >
+                          {irWaveform ? (
+                            <IrEnvelopeGraph
+                              mins={irWaveform.mins}
+                              maxs={irWaveform.maxs}
+                              width={IR_WAVEFORM_WIDTH_UNITS}
+                              height={IR_WAVEFORM_HEIGHT}
+                              contentLengthMs={block.irContentLengthMs}
+                              initLevel={initLevel}
+                              attackLength={attackLength}
+                              attackCurve={attackCurve}
+                              decayLength={decayLength}
+                              decayLevel={decayLevel}
+                              decayCurve={decayCurve}
+                              attackLengthScale={attackLengthScale}
+                              decayLengthScale={decayLengthScale}
+                              predelay={predelay}
+                              onChange={updateEnvelope}
+                              onDragStateChange={handleKnobDragState}
+                            />
+                          ) : (
+                            <div
+                              style={{
+                                width: '100%',
+                                height: '100%',
+                                backgroundColor: SEGMENTED_TRACK,
+                                borderRadius: '8rem',
+                              }}
+                            />
+                          )}
+                        </div>
+                        {(modelBusy || block.loadFailed) && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              inset: 0,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            {block.loadFailed ? (
+                              <RetryLoadBadge onRetry={() => actions.retryLoad(blockId)} />
+                            ) : (
+                              <LoadingDots />
+                            )}
                           </div>
                         )}
                       </div>
 
-                      {showInfo && (
-                        <BlockInfoPanel
-                          loading={infoLoading}
-                          error={infoError}
-                          onRetry={() => void fetchInfo(tone.id)}
-                          authenticated={actions.authenticated}
-                          onLogin={actions.login}
-                          tone={infoTone}
-                          pageUrl={tonePageUrl}
+                      {/* Shaping row: Init/Attack (Length/Curve)/Decay
+                        (Length/Level/Curve) as precision-entry chips (same
+                        EditableChip pattern as the EQ's Freq/Gain/Q row) -
+                        the graph above is the by-ear control now, this row
+                        is for landing an exact value pointer-dragging can't
+                        reliably hit. Predelay stays a knob in the Input rail
+                        (it's a real-time DSP stage, not part of this
+                        off-thread envelope rebuild). Idle-debounced (see
+                        commitEnvelope) - chip commits and graph drags both
+                        route through updateEnvelope, so they can't race. */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '6rem',
+                        }}
+                      >
+                        <EditableChip
+                          label="Init"
+                          text={percentScale.format(initLevel)}
+                          editText={percentScale.editText(initLevel)}
+                          valueWidth={32}
+                          fontSize={ENVELOPE_CHIP_FONT_SIZE}
+                          onCommit={(raw) => commitEnvelopeField('initLevel', percentScale, raw)}
+                          help={HELP.blockInitLevel}
+                          style={chipStyle}
                         />
-                      )}
-                    </div>
-                  </div>
+                        <EditableChip
+                          label="A Len"
+                          text={attackLengthScale.format(attackLength)}
+                          editText={attackLengthScale.editText(attackLength)}
+                          valueWidth={38}
+                          fontSize={ENVELOPE_CHIP_FONT_SIZE}
+                          onCommit={(raw) =>
+                            commitEnvelopeField('attackLength', attackLengthScale, raw)
+                          }
+                          help={HELP.blockAttackLength}
+                          style={chipStyle}
+                        />
+                        <EditableChip
+                          label="A Crv"
+                          text={curveScale.format(attackCurve)}
+                          editText={curveScale.editText(attackCurve)}
+                          valueWidth={32}
+                          fontSize={ENVELOPE_CHIP_FONT_SIZE}
+                          onCommit={(raw) => commitEnvelopeField('attackCurve', curveScale, raw)}
+                          help={HELP.blockAttackCurve}
+                          style={chipStyle}
+                        />
+                        <EditableChip
+                          label="D Len"
+                          text={decayLengthScale.format(decayLength)}
+                          editText={decayLengthScale.editText(decayLength)}
+                          valueWidth={38}
+                          fontSize={ENVELOPE_CHIP_FONT_SIZE}
+                          onCommit={(raw) =>
+                            commitEnvelopeField('decayLength', decayLengthScale, raw)
+                          }
+                          help={HELP.blockDecayLength}
+                          style={chipStyle}
+                        />
+                        <EditableChip
+                          label="D Lvl"
+                          text={percentScale.format(decayLevel)}
+                          editText={percentScale.editText(decayLevel)}
+                          valueWidth={32}
+                          fontSize={ENVELOPE_CHIP_FONT_SIZE}
+                          onCommit={(raw) => commitEnvelopeField('decayLevel', percentScale, raw)}
+                          help={HELP.blockDecayLevel}
+                          style={chipStyle}
+                        />
+                        <EditableChip
+                          label="D Crv"
+                          text={curveScale.format(decayCurve)}
+                          editText={curveScale.editText(decayCurve)}
+                          valueWidth={32}
+                          fontSize={ENVELOPE_CHIP_FONT_SIZE}
+                          onCommit={(raw) => commitEnvelopeField('decayCurve', curveScale, raw)}
+                          help={HELP.blockDecayCurve}
+                          style={chipStyle}
+                        />
+                      </div>
+                    </>
+                  )}
 
-                  {/* Switching catalog models re-downloads through native with
-                  a Bearer token, so the picker is inert while signed out.
-                  The wrapper carries the cursor + hint, as the select itself
-                  is pointer-events: none when disabled. Local switches read
-                  the stash: no auth, and the picker always shows (the
-                  dropped file names are the block's provenance). */}
+                  {/* Model picker: full width, below everything - matches the
+                    original layout. marginTop: auto absorbs the Center
+                    column's leftover height (identity/waveform/shaping-row
+                    don't fill the fixed body height on their own) so this
+                    stays bottom-aligned with the In/Delay/Mix/Out rails'
+                    knobs instead of floating above them. Switching catalog
+                    models re-downloads through native with a Bearer token,
+                    so the picker is inert while signed out - the wrapper
+                    carries the cursor + hint, as the select itself is
+                    pointer-events: none when disabled. Local switches read
+                    the stash: no auth, and the picker always shows (the
+                    dropped file names are the block's provenance). */}
                   {!showInfo && (
                     <div
                       {...(!isLocal && !actions.authenticated
                         ? helpProps(HELP.modelSelectSignedOut)
                         : {})}
                       style={{
+                        marginTop: 'auto',
                         cursor: isLocal || actions.authenticated ? 'default' : 'not-allowed',
                       }}
                     >
@@ -1131,7 +1622,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
                         display: 'flex',
                         flexDirection: 'row',
                         alignItems: 'flex-end',
-                        gap: '10rem',
+                        gap: '12rem',
                       }}
                     >
                       {isNam && showNormalizeControl && (

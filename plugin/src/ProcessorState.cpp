@@ -131,6 +131,13 @@ juce::ValueTree TONE3000Processor::serializeBlockSettings(const ChainBlock& bloc
   blockState.setProperty("inputGain", block.inputGainNormalized, nullptr);
   blockState.setProperty("outputGain", block.outputGainNormalized, nullptr);
   blockState.setProperty("mix", block.mixNormalized, nullptr);
+  blockState.setProperty("predelay", block.predelayNormalized, nullptr);
+  blockState.setProperty("initLevel", block.initLevelNormalized, nullptr);
+  blockState.setProperty("attackLength", block.attackLengthNormalized, nullptr);
+  blockState.setProperty("attackCurve", block.attackCurveNormalized, nullptr);
+  blockState.setProperty("decayLength", block.decayLengthNormalized, nullptr);
+  blockState.setProperty("decayLevel", block.decayLevelNormalized, nullptr);
+  blockState.setProperty("decayCurve", block.decayCurveNormalized, nullptr);
 
   if (block.type != ChainBlockType::INSERT) {
     blockState.setProperty("toneId", block.toneId, nullptr);
@@ -148,6 +155,20 @@ void TONE3000Processor::applyBlockSettings(ChainBlock& block, const juce::ValueT
   block.inputGainNormalized = static_cast<float>(blockState.getProperty("inputGain", 0.5f));
   block.outputGainNormalized = static_cast<float>(blockState.getProperty("outputGain", 0.5f));
   block.mixNormalized = static_cast<float>(blockState.getProperty("mix", 1.0f));
+  block.predelayNormalized =
+      juce::jlimit(0.0f, 1.0f, static_cast<float>(blockState.getProperty("predelay", 0.0f)));
+  block.initLevelNormalized =
+      juce::jlimit(0.0f, 1.0f, static_cast<float>(blockState.getProperty("initLevel", 1.0f)));
+  block.attackLengthNormalized = juce::jlimit(
+      0.0f, 1.0f, static_cast<float>(blockState.getProperty("attackLength", 0.0f)));
+  block.attackCurveNormalized = juce::jlimit(
+      0.0f, 1.0f, static_cast<float>(blockState.getProperty("attackCurve", 0.5f)));
+  block.decayLengthNormalized = juce::jlimit(
+      0.0f, 1.0f, static_cast<float>(blockState.getProperty("decayLength", 1.0f)));
+  block.decayLevelNormalized = juce::jlimit(
+      0.0f, 1.0f, static_cast<float>(blockState.getProperty("decayLevel", 1.0f)));
+  block.decayCurveNormalized = juce::jlimit(
+      0.0f, 1.0f, static_cast<float>(blockState.getProperty("decayCurve", 0.5f)));
 
   // States from before per-block sizes restore as lite (0.0). An engine the
   // restore keeps loaded (see reconcileChainFromTree) retiers in place: the

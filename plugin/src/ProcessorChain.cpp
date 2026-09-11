@@ -975,11 +975,15 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
     int toneId = 0;
     int activeModelId = 0;
     bool loaded = false, loadFailed = false, modelLoading = false, irLong = false;
+    double irContentLengthMs = 0.0;
     bool hasInputDbu = false, hasOutputDbu = false;
     double inputDbu = 0.0, outputDbu = 0.0;
     bool enabled = true, normalize = true;
     double slimSize = 0.0;
-    float inputGain = 0.5f, outputGain = 0.5f, mix = 1.0f;
+    float inputGain = 0.5f, outputGain = 0.5f, mix = 1.0f, predelay = 0.0f;
+    float initLevel = 1.0f;
+    float attackLength = 0.0f, attackCurve = 0.5f;
+    float decayLength = 1.0f, decayLevel = 1.0f, decayCurve = 0.5f;
     juce::var eq;
     bool rtFailed = false;
   };
@@ -1026,6 +1030,9 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
         row.loadFailed = block->loadFailed;
         row.modelLoading = block->modelLoading;
         row.irLong = block->type == ChainBlockType::IR && block->irIsLong;
+        if (block->type == ChainBlockType::IR && block->irRawSampleRate > 0.0)
+          row.irContentLengthMs =
+              block->irContentLengthSamples / block->irRawSampleRate * 1000.0;
         // NAM calibration metadata off the loaded engine, absent when the
         // model carries none. Non-finite values never ship; the JSON bridge
         // can't carry them (and the DSP rejects them too).
@@ -1047,6 +1054,13 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
         row.inputGain = block->inputGainNormalized;
         row.outputGain = block->outputGainNormalized;
         row.mix = block->mixNormalized;
+        row.predelay = block->predelayNormalized;
+        row.initLevel = block->initLevelNormalized;
+        row.attackLength = block->attackLengthNormalized;
+        row.attackCurve = block->attackCurveNormalized;
+        row.decayLength = block->decayLengthNormalized;
+        row.decayLevel = block->decayLevelNormalized;
+        row.decayCurve = block->decayCurveNormalized;
         row.eq = block->eq.toVar();
         out.push_back(std::move(row));
       }
@@ -1112,6 +1126,10 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
       // Long (reverb-like) IR: drives the UI's Mix knob default/Alt-click
       // reset and the Out knob help (long IRs carry no -18 dB pad).
       item->setProperty("irLong", row.irLong);
+      // Detected content length (ms), same window computeIrWaveformPeaks
+      // trims the waveform display to - single source of truth. 0 for NAM
+      // blocks and IR blocks not yet loaded.
+      item->setProperty("irContentLengthMs", row.irContentLengthMs);
 
       if (row.hasInputDbu)
         item->setProperty("inputLevelDbu", row.inputDbu);
@@ -1125,6 +1143,13 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
       params->setProperty("inputGain", row.inputGain);
       params->setProperty("outputGain", row.outputGain);
       params->setProperty("mix", row.mix);
+      params->setProperty("predelay", row.predelay);
+      params->setProperty("initLevel", row.initLevel);
+      params->setProperty("attackLength", row.attackLength);
+      params->setProperty("attackCurve", row.attackCurve);
+      params->setProperty("decayLength", row.decayLength);
+      params->setProperty("decayLevel", row.decayLevel);
+      params->setProperty("decayCurve", row.decayCurve);
       params->setProperty("eq", row.eq);
       item->setProperty("params", juce::var(params.get()));
 
@@ -1473,7 +1498,8 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
     return false;
 
   // Validate before recording history, so failed calls never leave an entry.
-  const bool isContinuous = param == "inputGain" || param == "outputGain" || param == "mix";
+  const bool isContinuous =
+      param == "inputGain" || param == "outputGain" || param == "mix" || param == "predelay";
   const bool isKnown = isContinuous || param == "enabled" || param == "normalize";
   if (!isKnown) {
     DBG("setBlockParam: unknown param: " << param);
@@ -1494,6 +1520,10 @@ bool TONE3000Processor::setBlockParam(const std::string& blockId, const juce::St
     block->outputGainNormalized = juce::jlimit(0.0f, 1.0f, static_cast<float>(value));
   } else if (param == "mix") {
     block->mixNormalized = juce::jlimit(0.0f, 1.0f, static_cast<float>(value));
+  } else if (param == "predelay") {
+    block->predelayNormalized = juce::jlimit(0.0f, 1.0f, static_cast<float>(value));
+    block->predelay.setDelayMs(block->predelayNormalized * BlockPredelay::kMaxDelayMs);
+    refreshIrTailLength();
   }
 
   // Continuous drags settle into one bump after the gesture ends; discrete
@@ -1544,6 +1574,186 @@ bool TONE3000Processor::setBlockSlimSize(const std::string& blockId, double slim
 
   bumpChainRevision();
   return true;
+}
+
+namespace {
+// Shared by setBlockIrDecay: bumps the block's shaping generation and queues
+// the rebuild job. Caller must already hold chainMutex.
+void queueIrShapeRebuild(TONE3000Processor& processor, ChainBlock& block,
+                         juce::ThreadPool& loadingThreadPool) {
+  const int generation = ++block.irShapingGeneration;
+  const std::string blockId = block.id;
+
+  struct RebuildIrShapeJob : public juce::ThreadPoolJob {
+    TONE3000Processor& processor;
+    std::string blockId;
+    int targetGeneration;
+
+    RebuildIrShapeJob(TONE3000Processor& p, const std::string& bid, int generation)
+        : ThreadPoolJob("Rebuild IR Shape"), processor(p), blockId(bid),
+          targetGeneration(generation) {}
+
+    JobStatus runJob() override {
+      processor.rebuildIrShapeInBackground(blockId, targetGeneration);
+      return jobHasFinished;
+    }
+  };
+  loadingThreadPool.addJob(new RebuildIrShapeJob(processor, blockId, generation), true);
+}
+}  // namespace
+
+bool TONE3000Processor::setBlockIrDecay(const std::string& blockId, double initLevelNormalized,
+                                        double attackLengthNormalized,
+                                        double attackCurveNormalized,
+                                        double decayLengthNormalized,
+                                        double decayLevelNormalized,
+                                        double decayCurveNormalized) {
+  const float clampedInitLevel = juce::jlimit(0.0f, 1.0f, static_cast<float>(initLevelNormalized));
+  const float clampedAttackLength =
+      juce::jlimit(0.0f, 1.0f, static_cast<float>(attackLengthNormalized));
+  const float clampedAttackCurve =
+      juce::jlimit(0.0f, 1.0f, static_cast<float>(attackCurveNormalized));
+  const float clampedDecayLength =
+      juce::jlimit(0.0f, 1.0f, static_cast<float>(decayLengthNormalized));
+  const float clampedDecayLevel =
+      juce::jlimit(0.0f, 1.0f, static_cast<float>(decayLevelNormalized));
+  const float clampedDecayCurve =
+      juce::jlimit(0.0f, 1.0f, static_cast<float>(decayCurveNormalized));
+
+  juce::ScopedLock lock(chainMutex);
+  ChainBlock* block = findBlockById(blockId);
+  if (block == nullptr || block->type != ChainBlockType::IR || !block->loaded) {
+    juce::Logger::writeToLog("setBlockIrDecay: not a loaded IR block: " + juce::String(blockId));
+    return false;
+  }
+  if (block->initLevelNormalized == clampedInitLevel &&
+      block->attackLengthNormalized == clampedAttackLength &&
+      block->attackCurveNormalized == clampedAttackCurve &&
+      block->decayLengthNormalized == clampedDecayLength &&
+      block->decayLevelNormalized == clampedDecayLevel &&
+      block->decayCurveNormalized == clampedDecayCurve)
+    return true;
+
+  // Coalesced like a knob drag (see setBlockParam's continuous params): the
+  // persisted values update immediately (undo/redo, presets, duplication all
+  // see them right away), the audible rebuild trails behind on the loader
+  // pool. All six arrive together (like setBlockEqBand's whole-band
+  // updates) so a drag on one can't clobber another's in-flight value.
+  pushChainHistory("param:" + juce::String(blockId) + ":decay");
+  block->initLevelNormalized = clampedInitLevel;
+  block->attackLengthNormalized = clampedAttackLength;
+  block->attackCurveNormalized = clampedAttackCurve;
+  block->decayLengthNormalized = clampedDecayLength;
+  block->decayLevelNormalized = clampedDecayLevel;
+  block->decayCurveNormalized = clampedDecayCurve;
+  deferredRevisionBump();
+  queueIrShapeRebuild(*this, *block, loadingThreadPool);
+  return true;
+}
+
+void TONE3000Processor::rebuildIrShapeInBackground(const std::string& blockId,
+                                                    int targetGeneration) {
+  juce::AudioBuffer<float> rawCopy;
+  double rawSampleRate = 0.0;
+  int origContentLengthSamples = 0;
+  int irNumChannels = 1;
+  bool engineLongIr = false;
+  float initLevelNormalized = 1.0f;
+  float attackLengthNormalized = 0.0f;
+  float attackCurveNormalized = 0.5f;
+  float decayLengthNormalized = 1.0f;
+  float decayLevelNormalized = 1.0f;
+  float decayCurveNormalized = 0.5f;
+
+  {
+    juce::ScopedLock lock(chainMutex);
+    ChainBlock* block = findBlockById(blockId);
+    if (block == nullptr || block->type != ChainBlockType::IR ||
+        block->irRawSamples.getNumSamples() <= 0) {
+      juce::Logger::writeToLog("[Background] IR shape rebuild dropped, block not found/not IR: " +
+                               juce::String(blockId));
+      return;
+    }
+    if (block->irShapingGeneration.load() != targetGeneration) {
+      // A newer drag/undo/redo already retargeted this block; that request
+      // owns it now (either already running or about to be queued).
+      juce::Logger::writeToLog("[Background] IR shape rebuild for " + juce::String(blockId) +
+                               " superseded before it started");
+      return;
+    }
+    rawCopy = block->irRawSamples;  // copy: irRawSamples must stay the untouched original
+    rawSampleRate = block->irRawSampleRate;
+    origContentLengthSamples = block->irContentLengthSamples;
+    irNumChannels = block->irNumChannels;
+    engineLongIr = block->irIsLong;  // frozen classification, never re-decided here
+    initLevelNormalized = block->initLevelNormalized;
+    attackLengthNormalized = block->attackLengthNormalized;
+    attackCurveNormalized = block->attackCurveNormalized;
+    decayLengthNormalized = block->decayLengthNormalized;
+    decayLevelNormalized = block->decayLevelNormalized;
+    decayCurveNormalized = block->decayCurveNormalized;
+  }
+
+  PreparedIrShapeRebuild prepared = prepareIrShapeRebuild(
+      rawCopy, rawSampleRate, origContentLengthSamples, irNumChannels, engineLongIr,
+      initLevelNormalized, attackLengthNormalized, attackCurveNormalized, decayLengthNormalized,
+      decayLevelNormalized, decayCurveNormalized);
+
+  // The outgoing engine keeps processing until this moment; fade it out on
+  // the audio thread first. Same shape as an engine swap (see ChainBlock.h):
+  // the wet path mutes in place, the dry share of the user's mix never gets
+  // exposed.
+  requestSwapFadeAndWait(blockId, /*muteWetOnly=*/true);
+
+  {
+    juce::ScopedLock lock(chainMutex);
+    ChainBlock* block = findBlockById(blockId);
+    if (block == nullptr) {
+      juce::Logger::writeToLog("[Background] Block removed during IR shape rebuild: " +
+                               juce::String(blockId));
+      return;
+    }
+
+    // Whatever the outcome below, this rebuild attempt is over: clear the
+    // fade flags unconditionally, before branching - mirrors
+    // applyPreparedModelToChainBlock exactly. This clear must happen on
+    // every path, success included, or swapFadePending/swapMuteWet stay
+    // stuck true and the wet term is pinned silent forever (see
+    // ChainBlock.h's swapWetMuteGain).
+    block->swapFadePending.store(false);
+    block->swapFadeDone.store(false);
+    block->swapMuteWet.store(false);
+
+    if (block->irShapingGeneration.load() != targetGeneration) {
+      // Superseded while this rebuild was running; the newer job's own
+      // requestSwapFadeAndWait re-arms the fade flags for its own attempt.
+      juce::Logger::writeToLog("[Background] IR shape rebuild for " + juce::String(blockId) +
+                               " superseded before it finished");
+      return;
+    }
+    if (!prepared.success) {
+      juce::Logger::writeToLog("[Background] IR shape rebuild failed for " +
+                               juce::String(blockId));
+      return;
+    }
+
+    std::swap(block->convolverMono, prepared.convolverMono);
+    std::swap(block->convolverStereo, prepared.convolverStereo);
+    block->irLengthBaseSamples = prepared.irLengthBaseSamples;
+    // Deliberately untouched: irIsLong, irRawSamples, irRawSampleRate,
+    // irContentLengthSamples, irWaveformPeaks, irNumChannels - the waveform
+    // display's fixed window and the block's output-pad/default-mix
+    // classification never move because of a Length or Decay edit.
+
+    refreshIrTailLength();  // irLengthBaseSamples changed; same call predelay makes
+    bumpChainRevision();
+    juce::Logger::writeToLog("[Background] IR shape rebuild applied for " +
+                             juce::String(blockId) + ": " +
+                             juce::String(prepared.irLengthBaseSamples / kChainBaseSampleRate, 2) +
+                             " s");
+  }
+  // `prepared` now holds the block's *previous* engines; destroyed here,
+  // after the lock (convolution teardown is too heavy to hold it).
 }
 
 bool TONE3000Processor::toggleBlockPower(int position, bool rightLane) {
@@ -1657,6 +1867,26 @@ juce::var TONE3000Processor::getBlockSpectrum(const std::string& blockId) {
     return {};
 
   return block->spectrum.getSpectrum();
+}
+
+juce::var TONE3000Processor::getIrWaveform(const std::string& blockId) {
+  juce::ScopedLock lock(chainMutex);
+  ChainBlock* block = findBlockById(blockId);
+  if (block == nullptr || block->type != ChainBlockType::IR || block->irWaveformPeaks.empty())
+    return {};
+
+  juce::Array<juce::var> mins, maxs;
+  mins.ensureStorageAllocated(static_cast<int>(block->irWaveformPeaks.size()));
+  maxs.ensureStorageAllocated(static_cast<int>(block->irWaveformPeaks.size()));
+  for (const auto& [mn, mx] : block->irWaveformPeaks) {
+    mins.add(mn);
+    maxs.add(mx);
+  }
+
+  juce::DynamicObject::Ptr obj = new juce::DynamicObject();
+  obj->setProperty("mins", mins);
+  obj->setProperty("maxs", maxs);
+  return juce::var(obj.get());
 }
 
 void TONE3000Processor::disableAllBlockSpectrums() {

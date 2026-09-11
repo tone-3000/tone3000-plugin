@@ -5,8 +5,10 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 #include "BlockEq.h"
+#include "BlockPredelay.h"
 #include "BlockSpectrum.h"
 #include "ChainOversampler.h"
 #include "NamEngine.h"
@@ -170,6 +172,82 @@ struct ChainBlock {
   bool irIsLong{false};
   juce::LinearSmoothedValue<float> irNormalizationSmoother;
   float irNormalizationGainLinear{1.0f};
+
+  // Untouched, file-rate copy of the loaded IR (source of truth for the
+  // waveform display and future Length/Decay/Curve editing) plus a
+  // downsampled { min, max } per column for that display. Runtime-only:
+  // never persisted, rebuilt from the cached model bytes on restore the
+  // same way convolverMono itself is. Cleared when the block's IR is
+  // swapped/removed (see ProcessorModelLoader.cpp's apply step).
+  juce::AudioBuffer<float> irRawSamples;
+  double irRawSampleRate{0.0};
+  // Detected end of audible content within irRawSamples (file-rate samples):
+  // -60 dB relative to peak, scanned backward in ~2ms pooled-RMS windows,
+  // plus a margin (see computeIrContentLengthSamples). Single source of
+  // truth for the waveform display's auto-fit trim and the length label -
+  // shipped to the UI as irContentLengthMs (ms, at irRawSampleRate).
+  int irContentLengthSamples{0};
+  std::vector<std::pair<float, float>> irWaveformPeaks;
+
+  // Predelay: delays the wet signal before it enters the convolver (see
+  // BlockPredelay). Runs inside irBaseRateIsland, always at the base rate.
+  // predelayNormalized is the persisted 0..1 knob value (same convention as
+  // mixNormalized/inputGainNormalized); the engine is driven in real ms via
+  // setDelayMs(predelayNormalized * BlockPredelay::kMaxDelayMs).
+  BlockPredelay predelay;
+  float predelayNormalized{0.0f};
+
+  // IR envelope: a 2-segment Attack/Decay shape (Space Designer-style) over
+  // the loaded IR, truncating it (+ short fade-out) and applying a gain
+  // envelope in one pass - see TONE3000Processor::prepareIrShapeRebuild for
+  // the exact formula. Rebuilds the convolver engine off-thread rather than
+  // processing in real time (see rebuildIrShapeInBackground) - unlike
+  // Predelay, this edits what the convolver *is*, not a real-time DSP stage.
+  //
+  // Init Level is the level at sample 0 (the origin point, not part of
+  // either segment). The Attack segment runs from there up to unity/0dB -
+  // pinned, not a knob: standard AD-envelope semantics (Attack always
+  // reaches full level; only Decay's target level is adjustable) - then the
+  // Decay segment continues from that peak to the truncated content's end
+  // (Decay Length, Decay Level). Both adjustable levels are unipolar
+  // attenuation-only (0..1, 1.0 = unity/0dB, 0.0 = genuine silence - see
+  // prepareIrShapeRebuild's levelToDb for why that needs a small
+  // float-safety floor internally but still lands on exact silence at the
+  // sample the knob targets). Each segment has its own continuous curve
+  // control (0.5 default = linear-in-dB/"exponential", sweeping
+  // steeper-front-loaded below and back-loaded above - same kCurveMax
+  // power-curve formula Length+Decay used before this became two segments).
+  //
+  // Length semantics: decayLengthNormalized is the TOTAL truncated length -
+  // the real "End" position, exactly the old standalone Length knob's own
+  // convention: a fraction of the block's full frozen detected content
+  // (irContentLengthSamples, load-time). attackLengthNormalized is NOT an
+  // independent segment length - it's a fraction *of that total*, marking
+  // where the peak (the Attack/Decay boundary) sits within it, so it's
+  // naturally bounded to [0, the total] by construction (a fraction of a
+  // fraction), no separate clamp/edge-case needed, and dragging Attack
+  // Length alone can never change the total window length - only Decay
+  // Length does that. Defaults (attackLength 0.0, decayLength 1.0, every
+  // level 1.0) reconstruct the pre-segment behavior exactly: no attack ramp,
+  // decay spans the full content, flat/unity envelope - a genuine no-op,
+  // matching the old lengthNormalized=1.0/level=unity defaults.
+  // irIsLong/irNumChannels and irRawSamples/irContentLengthSamples/
+  // irWaveformPeaks never change from an envelope edit - only the live
+  // convolverMono/convolverStereo and irLengthBaseSamples do; the waveform
+  // display's fixed window and the -18dB cab pad / default mix stay exactly
+  // what they were at load.
+  float initLevelNormalized{1.0f};
+  float attackLengthNormalized{0.0f};
+  float attackCurveNormalized{0.5f};
+  float decayLengthNormalized{1.0f};
+  float decayLevelNormalized{1.0f};
+  float decayCurveNormalized{0.5f};
+
+  // Bumped by setBlockIrDecay, captured by rebuildIrShapeInBackground's
+  // caller as the generation it's targeting: a "latest wins" supersede
+  // guard, since a rebuild must read *all seven* shaping params fresh off
+  // the block rather than trusting a single stashed target value.
+  std::atomic<int> irShapingGeneration{0};
 
   // Per-block loudness normalization toggle, NAM only (off = the capture's
   // true level, which is real information; IR normalization is always on

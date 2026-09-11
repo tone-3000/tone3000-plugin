@@ -209,7 +209,8 @@ export const HELP = {
   copyBlock: 'Copy: copy this block (tone, model and all settings).',
   pasteBlock: 'Paste: add a copy of the copied block in this slot.',
   loadFileTile: 'Load File: pick a local .nam or IR .wav file to load here. No account needed.',
-  loadFolderTile: 'Load Folder: pick a folder of .nam or .wav files; loads as one multi-model block.',
+  loadFolderTile:
+    'Load Folder: pick a folder of .nam or .wav files; loads as one multi-model block.',
   blockPower: 'Power: bypass this block.',
   retryLoad: 'Retry: re-download this model.',
   swapTone: 'Swap: replace this tone, keeping its slot.',
@@ -233,6 +234,44 @@ export const HELP = {
   blockOut: knobHelp('Out', 'block output gain, ±24 dB.'),
   blockOutIr: knobHelp('Out', 'block output gain, ±24 dB (IR pre-trimmed -18 dB).'),
   blockMix: knobHelp('Mix', 'dry/wet blend.'),
+  blockPredelay: knobHelp('Delay', 'delay before the IR player starts, up to 1s.'),
+  // IR shaping row: a 2-segment Attack/Decay envelope (Space Designer-style)
+  // over the truncated content. Decay Length sets the TOTAL trimmed length
+  // (the real "End" position); Attack Length is a position *within* that
+  // total marking the envelope's peak, not an independent length. Init
+  // Level is the level at the very start (not part of either segment);
+  // Attack ramps from there up to unity/0dB (its peak is pinned, not
+  // adjustable) at that position; Decay continues from the peak to the
+  // trimmed end. Levels are 0-100% attenuation-only (100% = unity, 0% =
+  // genuine silence).
+  blockInitLevel: knobHelp('Init', 'level at the very start of the IR. 100%: no change.'),
+  blockAttackLength: knobHelp(
+    'Attack',
+    'position of the envelope’s peak within the trimmed length.'
+  ),
+  blockAttackCurve: knobHelp(
+    'Attack Curve',
+    'Attack segment’s envelope shape, front-loaded to back-loaded. Center: linear.'
+  ),
+  blockDecayLength: knobHelp('Decay', 'trims the IR’s tail - the envelope’s total length.'),
+  blockDecayLevel: knobHelp('Decay Level', 'level at the IR’s trimmed end. 100%: no change.'),
+  blockDecayCurve: knobHelp(
+    'Decay Curve',
+    'Decay segment’s envelope shape, front-loaded to back-loaded. Center: linear.'
+  ),
+  // Envelope graph (IrEnvelopeGraph.tsx): the same six values as the chips
+  // above, shaped directly on the waveform instead of typed in.
+  envelopeInitPoint: `Init: drag to set level at the IR\u2019s start. ${shift(
+    'drag'
+  )}: fine \u00b7 ${alt('click')} / double-click: reset.`,
+  envelopePeakPoint: `Attack: drag to set the envelope\u2019s peak position. ${shift(
+    'drag'
+  )}: fine \u00b7 ${alt('click')} / double-click: reset.`,
+  envelopeEndPoint: `Decay: drag to set trim length + end level. ${shift(
+    'drag'
+  )}: fine \u00b7 ${alt('click')} / double-click: reset.`,
+  envelopeAttackCurve: `Attack Curve: drag the line to bow the rise. ${shift('drag')}: fine.`,
+  envelopeDecayCurve: `Decay Curve: drag the line to bow the fall. ${shift('drag')}: fine.`,
   blockNormalize: 'Normalize: level this block\u2019s loudness. Off: raw capture level.',
   blockNormalizeOverridden:
     'Normalize: overridden \u2014 calibration hands this model\u2019s true output level to the next NAM block.',

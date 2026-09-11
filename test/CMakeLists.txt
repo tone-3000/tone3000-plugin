@@ -22,11 +22,14 @@ target_sources(DspTests PRIVATE
     src/dsp_tests.cpp
     src/duplicate_tests.cpp
     src/eq_post_routing_tests.cpp
+    src/ir_content_length_tests.cpp
+    src/ir_decay_tests.cpp
     src/ir_temp_file_tests.cpp
     src/local_load_tests.cpp
     src/midi_map_tests.cpp
     src/multicore_tests.cpp
     src/outgain_tests.cpp
+    src/predelay_tests.cpp
     src/preset_tests.cpp
     src/processor_tests.cpp
     src/spread_tests.cpp
@@ -40,6 +43,7 @@ target_sources(DspTests PRIVATE
     # compiles the processor exactly like the headless plugin build.
     ../plugin/src/AutoOffset.cpp
     ../plugin/src/BlockEq.cpp
+    ../plugin/src/BlockPredelay.cpp
     ../plugin/src/BlockSpectrum.cpp
     ../plugin/src/MidiMapper.cpp
     ../plugin/src/NamEngine.cpp

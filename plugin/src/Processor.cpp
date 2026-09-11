@@ -454,9 +454,15 @@ void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& b
     // Every IR block keeps its base-rate island in step with the live factor
     // (bypass at ×1). Prepared even while unloaded; a later engine apply
     // re-prepares anyway, this just keeps the invariant simple.
-    if (block->type == ChainBlockType::IR)
+    if (block->type == ChainBlockType::IR) {
       block->irBaseRateIsland.prepare(chainOversampleFactor.load(),
                                       juce::jmax(1, chainBaseBlockSize()));
+      // Always at the base rate (see BlockPredelay), and snapped to the
+      // stored value, not ramped: a host resample/oversampling re-prepare
+      // has no live signal continuity to protect.
+      block->predelay.prepare(kChainBaseSampleRate,
+                              block->predelayNormalized * BlockPredelay::kMaxDelayMs);
+    }
 
     // Initialize per-block smoothers (input gain, output gain, mix, NAM
     // normalization). The RT path only ever calls setTargetValue on these;
@@ -483,12 +489,18 @@ void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& b
 // See the declaration. Both lanes are scanned regardless of stereo mode:
 // counting a disabled right lane's IR is a harmless over-report, and it means
 // stereo toggles can never truncate a host's tail rendering mid-session.
+// Predelay pushes an IR's audible tail out in time (silence, then the IR),
+// so it counts toward the reported length too, or hosts would truncate a
+// predelayed reverb tail's rendering early.
 void TONE3000Processor::refreshIrTailLength() {
   int maxSamples = 0;
   for (const auto& l : lanes)
     for (const auto& b : l)
-      if (b->type == ChainBlockType::IR && b->convolverMono != nullptr)
-        maxSamples = std::max(maxSamples, b->irLengthBaseSamples);
+      if (b->type == ChainBlockType::IR && b->convolverMono != nullptr) {
+        const int predelaySamples = static_cast<int>(std::llround(
+            b->predelayNormalized * BlockPredelay::kMaxDelayMs * 0.001 * kChainBaseSampleRate));
+        maxSamples = std::max(maxSamples, b->irLengthBaseSamples + predelaySamples);
+      }
   irTailBaseSamples.store(maxSamples);
 }
 
@@ -1190,7 +1202,15 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
         // sound bit-identical to the non-oversampled chain.
         block->irBaseRateIsland.processBaseRateIsland(
             buffer.getArrayOfWritePointers(), numChannels, numSamples,
-            [&convolver, numChannels](float* const* baseChannels, int baseFrames) {
+            [&convolver, &predelay = block->predelay,
+             numChannels](float* const* baseChannels, int baseFrames) {
+              // Predelay runs on the wet signal here, right before the
+              // convolver, always at the base rate the island already
+              // decimated to (see BlockPredelay for why it lives here
+              // rather than padding the loaded IR itself).
+              juce::AudioBuffer<float> baseBuffer(baseChannels, numChannels, baseFrames);
+              predelay.process(baseBuffer);
+
               juce::dsp::AudioBlock<float> irBlock(baseChannels, static_cast<size_t>(numChannels),
                                                    static_cast<size_t>(baseFrames));
               convolver.process(juce::dsp::ProcessContextReplacing<float>(irBlock));

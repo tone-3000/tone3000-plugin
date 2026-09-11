@@ -365,6 +365,7 @@ export const Plugin: React.FC = () => {
       refreshToneMetadata: actions.refreshToneMetadata,
       setBlockParam: actions.setBlockParam,
       setBlockSlimSize: actions.setBlockSlimSize,
+      setBlockIrDecay: actions.setBlockIrDecay,
       setBlockEqBand: actions.setBlockEqBand,
       setBlockEqEnabled: actions.setBlockEqEnabled,
       setBlockEqPre: actions.setBlockEqPre,

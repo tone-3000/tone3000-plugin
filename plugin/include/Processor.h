@@ -8,6 +8,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 #include "NAM/dsp.h"
 #include "NAM/get_dsp.h"
@@ -205,8 +206,15 @@ public:
   void loadToneInBackground(const std::string& blockId, int firstModelId,
                             const juce::String& modelUrl, const juce::String& modelName,
                             ChainBlockType type);
-  void switchModelInBackground(const std::string& blockId, int modelId, 
+  void switchModelInBackground(const std::string& blockId, int modelId,
                                const juce::String& modelUrl, const juce::String& modelName);
+  // Rebuilds an already-loaded IR block's convolver(s) to reflect its
+  // current envelope knob values (see setBlockIrDecay). `targetGeneration`
+  // is the ChainBlock::irShapingGeneration this job was queued for; it reads
+  // all seven shaping params fresh off the block rather than trusting a
+  // single stashed target. No fetch/prepare-from-file: works entirely from
+  // the block's own ChainBlock::irRawSamples, already in memory.
+  void rebuildIrShapeInBackground(const std::string& blockId, int targetGeneration);
 
   // Chain state for the UI. `knownRevision` is the last revision the caller
   // saw (-1 for "give me everything"); when the chain hasn't changed since,
@@ -235,6 +243,43 @@ public:
   // thread off the lock while the fade holds). Undoable; no-op sets never
   // dip the audio.
   bool setBlockSlimSize(const std::string& blockId, double slimSize);
+
+  // Per-block IR envelope: a 2-segment Attack/Decay shape (Space
+  // Designer-style) over the block's frozen, load-time detected content
+  // (ChainBlock::irContentLengthSamples). Not routed through setBlockParam:
+  // unlike its continuous params (real-time smoothers), this edits what the
+  // convolver *is* - a fresh engine is built off-thread from the block's
+  // already-loaded raw samples (rebuildIrShapeInBackground) and spliced in
+  // with the same wet-mute fade an engine swap uses, never touching
+  // irIsLong/irRawSamples/irWaveformPeaks (the waveform display's fixed
+  // window and the -18dB cab pad / default mix stay exactly what they were
+  // at load).
+  //
+  // `initLevelNormalized` is the level at sample 0 (the origin, not part of
+  // either segment). `attackLengthNormalized`/`attackCurveNormalized`
+  // define the Attack segment (0 -> unity/0dB - Attack's peak is pinned at
+  // unity, not adjustable: standard AD-envelope semantics);
+  // `decayLengthNormalized`/`decayLevelNormalized`/`decayCurveNormalized`
+  // continue from that peak to the truncated content's end. Both adjustable
+  // levels are normalized 0..1, unipolar attenuation-only (1.0 = unity/0dB,
+  // 0.0 = genuine silence - see prepareIrShapeRebuild's levelToDb). Every
+  // curve is normalized 0..1, 0.5 = linear-in-dB ("exponential" decay,
+  // already natural-sounding), below that even steeper/more front-loaded,
+  // above that back-loaded (holds, then drops) - see prepareIrShapeRebuild's
+  // exact formula. `decayLengthNormalized` is the TOTAL truncated length - a
+  // fraction of the full detected content, the real "End" position;
+  // `attackLengthNormalized` is a fraction *of that total*, marking where
+  // the peak sits within it - naturally bounded to [0, the total] by
+  // construction, no clamp/edge-case needed, and dragging Attack Length
+  // alone can never change the total window length. Undoable, coalesced
+  // like a knob drag (bumps ChainBlock::irShapingGeneration and queues
+  // rebuildIrShapeInBackground, which reads all six fresh); every value
+  // arrives together in one call, like setBlockEqBand's whole-band updates,
+  // so a drag on one knob can't clobber the others' in-flight values.
+  bool setBlockIrDecay(const std::string& blockId, double initLevelNormalized,
+                       double attackLengthNormalized, double attackCurveNormalized,
+                       double decayLengthNormalized, double decayLevelNormalized,
+                       double decayCurveNormalized);
 
   // Default NAM A2 size for newly added blocks (machine-wide user setting,
   // like multi-core), in the same slimmable-size domain. Existing blocks
@@ -286,6 +331,13 @@ public:
   juce::var getBlockSpectrum(const std::string& blockId);
   // Editor teardown: the webview can't send per-block disables while dying.
   void disableAllBlockSpectrums();
+
+  // Static IR waveform for the block card display (IR blocks only): downsampled
+  // { mins: number[], maxs: number[] } peaks per column (see
+  // ChainBlock::irWaveformPeaks). Fetched once when a block finishes loading,
+  // not part of the polled getChainState payload (the data is static per
+  // load). Returns a void var when the block isn't a loaded IR.
+  juce::var getIrWaveform(const std::string& blockId);
 
   // Stereo mode: two independent Left/Right chains.
   void setStereoMode(bool enabled);
@@ -438,10 +490,32 @@ private:
   using Lane = std::vector<std::unique_ptr<ChainBlock>>;
 
   // Helper methods
-  // Attenuation-only unit-energy gain for an IR file, matched to what the
-  // convolver actually runs (rate-corrected, same length cap). `maxIrFileSamples`
-  // is in the file's own sample rate, like the cap passed to loadImpulseResponse.
-  float computeIrNormalizationGain(const juce::File& irFile, size_t maxIrFileSamples);
+  // Attenuation-only unit-energy gain for an IR's raw samples, matched to
+  // what the convolver actually runs (rate-corrected). Takes the already-read
+  // buffer (see prepareBlockModelOffThread) rather than reopening the file:
+  // one read serves normalization, the display waveform, and the stored
+  // ChainBlock::irRawSamples copy.
+  static float computeIrNormalizationGain(const juce::AudioBuffer<float>& samples,
+                                          double fileSampleRate);
+  // Where the IR's audible content ends: -60 dB relative to peak, scanned
+  // backward in ~2ms pooled-RMS windows, plus a margin (5ms floor or 10% of
+  // the detected content, whichever is larger). Single source of truth for
+  // both the waveform display's auto-fit trim and the length label -
+  // computed once at load, in file-rate samples.
+  static int computeIrContentLengthSamples(const juce::AudioBuffer<float>& samples,
+                                           double sampleRate);
+  // Downsampled { min, max } per column across the first `contentLengthSamples`
+  // of the buffer (all channels combined, mono-ish display, not a true stereo
+  // waveform) - the source data for the block card's static waveform view.
+  static std::vector<std::pair<float, float>> computeIrWaveformPeaks(
+      const juce::AudioBuffer<float>& samples, int numColumns, int contentLengthSamples);
+  // Runs silence through a freshly loaded+prepared convolver until its
+  // internal ~50ms install crossfade has provably elapsed, so it goes live
+  // deterministically full-wet instead of splicing in a live dry-to-wet
+  // fade (see the call sites: the initial IR load, and
+  // rebuildIrShapeInBackground's in-place rebuild).
+  static void elapseConvolverInstallFade(juce::dsp::Convolution& convolver,
+                                         const juce::dsp::ProcessSpec& spec);
   juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
   
   // Tone loading helpers
@@ -494,6 +568,15 @@ private:
     int irLengthBaseSamples = 0;  // base-rate kernel length (tail reporting)
     bool irIsLong = false;        // short/long classification (see ChainBlock.h)
     float irNormalizationGainLinear = 1.0f;
+    // Untouched, file-rate copy: source of truth for the waveform display
+    // and Length/Decay editing. Runtime-only (see ChainBlock).
+    juce::AudioBuffer<float> irRawSamples;
+    double irRawSampleRate = 0.0;
+    // Detected end of audible content (file-rate samples), from
+    // computeIrContentLengthSamples; see ChainBlock::irContentLengthSamples.
+    int irContentLengthSamples = 0;
+    // Downsampled { min, max } per column for the static waveform display.
+    std::vector<std::pair<float, float>> irWaveformPeaks;
   };
 
   /** CPU/file heavy; call without holding `chainMutex`. NAM engines come out
@@ -502,6 +585,43 @@ private:
       lock). */
   PreparedBlockModel prepareBlockModelOffThread(ChainBlockType type, const std::vector<uint8_t>& modelData,
                                                 const juce::String& filename, double namSlimSize);
+
+  struct PreparedIrShapeRebuild {
+    bool success = false;
+    std::unique_ptr<juce::dsp::Convolution> convolverMono;
+    std::unique_ptr<juce::dsp::Convolution> convolverStereo;
+    int irLengthBaseSamples = 0;  // base-rate kernel length (tail reporting)
+  };
+
+  /** CPU heavy (builds fresh convolver engine(s)); call without holding
+      `chainMutex`. Truncates `rawSamples` to `decayLengthNormalized`'s
+      fraction of `origContentLengthSamples` (the block's frozen, load-time
+      detected length - never re-measured here; this is the TOTAL truncated
+      length, the real "End" position), with `attackLengthNormalized`
+      marking where the Attack/Decay boundary sits *within* that total (a
+      fraction of it, not an independent length - so it can never push the
+      total past what Decay Length set), applies the 2-segment Attack/Decay
+      gain envelope (`initLevelNormalized` at sample
+      0, unity/0dB at the Attack/Decay boundary - Attack's peak is pinned,
+      not adjustable - `decayLevelNormalized` at the truncated end, each
+      segment's own `attackCurveNormalized`/`decayCurveNormalized`
+      power-curve shape - see the .cpp for the exact formula) over the
+      truncated content, then a short fade-out over the cut point (always,
+      regardless of the envelope - the click-free guarantee shouldn't
+      depend on where Decay Level happens to land), and builds engine(s) of
+      the given (frozen) short/long shape. No file/network I/O: `rawSamples`
+      is the block's own already-loaded ChainBlock::irRawSamples, just a
+      copy so the caller's original stays untouched. */
+  PreparedIrShapeRebuild prepareIrShapeRebuild(const juce::AudioBuffer<float>& rawSamples,
+                                               double rawSampleRate, int origContentLengthSamples,
+                                               int irNumChannels, bool engineLongIr,
+                                               float initLevelNormalized,
+                                               float attackLengthNormalized,
+                                               float attackCurveNormalized,
+                                               float decayLengthNormalized,
+                                               float decayLevelNormalized,
+                                               float decayCurveNormalized);
+
   /** Short path under `chainMutex` only: swaps the new engines onto `block`
       and stamps `newType` (a tone swap may change the block's type; the old
       engine kept processing under the old type until this moment). The

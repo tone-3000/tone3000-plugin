@@ -41,6 +41,12 @@ constexpr int kShortIrMaxBaseSamples = static_cast<int>(kShortIrMaxSeconds * kCh
 // reverb head size.
 constexpr int kIrNonUniformHeadSamples = 8192;
 
+// Downsampled columns computed for the block card's static waveform display
+// (see ChainBlock::irWaveformPeaks). Comfortably above the card's actual
+// pixel width (192px design box) so higher UI scale/DPI doesn't look blocky;
+// cheap to compute either way (one-time, loader thread).
+constexpr int kIrWaveformColumns = 256;
+
 // NAM phase-interleaved oversampling eligibility (see NamEngine.h).
 // Phase interleaving is exact only for architectures whose temporal structure
 // is pure (dilated) convolution: splitting the oversampled stream into factor
@@ -283,27 +289,17 @@ juce::var localToneError(const juce::String& title, const juce::String& message)
 
 }  // namespace
 
-float TONE3000Processor::computeIrNormalizationGain(const juce::File& irFile,
-                                                    size_t maxIrFileSamples) {
-  juce::AudioFormatManager formatManager;
-  formatManager.registerBasicFormats();
-  std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(irFile));
-
-  if (!reader || reader->lengthInSamples <= 0 || reader->numChannels <= 0) {
+float TONE3000Processor::computeIrNormalizationGain(const juce::AudioBuffer<float>& samples,
+                                                    double fileSampleRate) {
+  if (samples.getNumSamples() <= 0 || samples.getNumChannels() <= 0) {
     return 1.0f;
   }
 
-  const juce::int64 totalSamples =
-      std::min<juce::int64>(reader->lengthInSamples, static_cast<juce::int64>(maxIrFileSamples));
-  juce::AudioBuffer<float> tmp(static_cast<int>(reader->numChannels),
-                               static_cast<int>(totalSamples));
-  reader->read(&tmp, 0, static_cast<int>(totalSamples), 0, true, true);
-
   double sumSquares = 0.0;
   juce::int64 count = 0;
-  for (int ch = 0; ch < tmp.getNumChannels(); ++ch) {
-    const float* data = tmp.getReadPointer(ch);
-    for (int i = 0; i < tmp.getNumSamples(); ++i) {
+  for (int ch = 0; ch < samples.getNumChannels(); ++ch) {
+    const float* data = samples.getReadPointer(ch);
+    for (int i = 0; i < samples.getNumSamples(); ++i) {
       const float sample = data[i];
       sumSquares += static_cast<double>(sample) * static_cast<double>(sample);
       ++count;
@@ -321,8 +317,7 @@ float TONE3000Processor::computeIrNormalizationGain(const juce::File& irFile,
   // fileRate/baseRate. Fold that in so the gain matches what the engine
   // actually convolves regardless of the file's sample rate (a no-op for
   // 48 kHz files).
-  const double rateScale =
-      reader->sampleRate > 0.0 ? reader->sampleRate / kChainBaseSampleRate : 1.0;
+  const double rateScale = fileSampleRate > 0.0 ? fileSampleRate / kChainBaseSampleRate : 1.0;
   const double l2norm = std::sqrt(sumSquares * rateScale);
   if (!std::isfinite(l2norm) || l2norm <= 0.0) {
     return 1.0f;
@@ -339,6 +334,317 @@ float TONE3000Processor::computeIrNormalizationGain(const juce::File& irFile,
       juce::jlimit(juce::Decibels::decibelsToGain(-48.0), 1.0, linear);
 
   return static_cast<float>(linearClamped);
+}
+
+void TONE3000Processor::elapseConvolverInstallFade(juce::dsp::Convolution& convolver,
+                                                    const juce::dsp::ProcessSpec& spec) {
+  const int chunk = static_cast<int>(spec.maximumBlockSize);
+  juce::AudioBuffer<float> silence(static_cast<int>(spec.numChannels), chunk);
+  silence.clear();
+  // 3x JUCE's 0.05s install fade: margin over exactness, it's cheap.
+  const int warmupSamples = static_cast<int>(kChainBaseSampleRate * 0.15);
+  for (int done = 0; done < warmupSamples; done += chunk) {
+    juce::dsp::AudioBlock<float> blockRef(silence);
+    convolver.process(juce::dsp::ProcessContextReplacing<float>(blockRef));
+  }
+}
+
+int TONE3000Processor::computeIrContentLengthSamples(const juce::AudioBuffer<float>& samples,
+                                                      double sampleRate) {
+  const int numSamples = samples.getNumSamples();
+  const int numChannels = samples.getNumChannels();
+  if (numSamples <= 0 || numChannels <= 0 || sampleRate <= 0.0)
+    return numSamples;
+
+  float peakAbs = 0.0f;
+  for (int ch = 0; ch < numChannels; ++ch) {
+    const float* data = samples.getReadPointer(ch);
+    for (int i = 0; i < numSamples; ++i)
+      peakAbs = std::max(peakAbs, std::abs(data[i]));
+  }
+  const float threshold = peakAbs * juce::Decibels::decibelsToGain(-60.0f);
+  const int windowSamples = std::max(1, static_cast<int>(std::llround(sampleRate * 0.002)));
+
+  // Scan pooled-RMS windows from the end backward; contentEndSample is the
+  // end of the last (temporally, i.e. first found going backward) window
+  // whose RMS clears the threshold. Silence (or a peak of exactly zero)
+  // never clears it, so this naturally falls through to contentEndSample=0.
+  int contentEndSample = 0;
+  for (int windowEnd = numSamples; windowEnd > 0; windowEnd -= windowSamples) {
+    const int windowStart = std::max(0, windowEnd - windowSamples);
+    double sumSq = 0.0;
+    int count = 0;
+    for (int ch = 0; ch < numChannels; ++ch) {
+      const float* data = samples.getReadPointer(ch);
+      for (int i = windowStart; i < windowEnd; ++i) {
+        sumSq += static_cast<double>(data[i]) * data[i];
+        ++count;
+      }
+    }
+    const float windowRms = count > 0 ? static_cast<float>(std::sqrt(sumSq / count)) : 0.0f;
+    if (windowRms > threshold) {
+      contentEndSample = windowEnd;
+      break;
+    }
+  }
+
+  const int margin =
+      std::max(static_cast<int>(std::llround(sampleRate * 0.005)),
+               static_cast<int>(contentEndSample * 0.1));
+  return std::min(numSamples, contentEndSample + margin);
+}
+
+std::vector<std::pair<float, float>> TONE3000Processor::computeIrWaveformPeaks(
+    const juce::AudioBuffer<float>& samples, int numColumns, int contentLengthSamples) {
+  std::vector<std::pair<float, float>> peaks(
+      static_cast<size_t>(std::max(0, numColumns)), {0.0f, 0.0f});
+  const int numSamples = std::min(samples.getNumSamples(), std::max(0, contentLengthSamples));
+  const int numChannels = samples.getNumChannels();
+  if (numSamples <= 0 || numChannels <= 0 || numColumns <= 0) {
+    return peaks;
+  }
+
+  // All channels combined into one mono-ish envelope (a true stereo display
+  // is more than this static POC needs); each column covers an even slice of
+  // the buffer regardless of numColumns vs numSamples.
+  for (int col = 0; col < numColumns; ++col) {
+    const juce::int64 begin = (static_cast<juce::int64>(col) * numSamples) / numColumns;
+    const juce::int64 end = std::max<juce::int64>(
+        begin + 1, (static_cast<juce::int64>(col + 1) * numSamples) / numColumns);
+    float mn = 0.0f, mx = 0.0f;
+    for (int ch = 0; ch < numChannels; ++ch) {
+      const float* data = samples.getReadPointer(ch);
+      for (juce::int64 i = begin; i < end && i < numSamples; ++i) {
+        mn = std::min(mn, data[i]);
+        mx = std::max(mx, data[i]);
+      }
+    }
+    peaks[static_cast<size_t>(col)] = {mn, mx};
+  }
+  return peaks;
+}
+
+TONE3000Processor::PreparedIrShapeRebuild TONE3000Processor::prepareIrShapeRebuild(
+    const juce::AudioBuffer<float>& rawSamples, double rawSampleRate, int origContentLengthSamples,
+    int irNumChannels, bool engineLongIr, float initLevelNormalized,
+    float attackLengthNormalized, float attackCurveNormalized, float decayLengthNormalized,
+    float decayLevelNormalized, float decayCurveNormalized) {
+  PreparedIrShapeRebuild out;
+  const int numRawSamples = rawSamples.getNumSamples();
+  if (numRawSamples <= 0 || rawSampleRate <= 0.0 || irNumChannels <= 0)
+    return out;
+
+  // Decay Length is the TOTAL truncated length - the real "End" position,
+  // exactly the old standalone Length knob's own convention: a fraction 0..1
+  // of the block's frozen, load-time detected content (never re-measured
+  // here), floored so an extreme drag never collapses to a degenerate/empty
+  // kernel. Attack Length is NOT an independent segment length - it's a
+  // fraction 0..1 *of that total*, marking where the peak (the Attack/Decay
+  // boundary) sits within it. That makes it naturally bounded to
+  // [0, targetSamples] by construction (a fraction of a fraction), no
+  // separate clamp/remainder bookkeeping needed, and - unlike the earlier
+  // "Attack is independent, Decay is whatever's left" model - dragging
+  // Attack Length alone can never change the total window length; only
+  // Decay Length does that.
+  const int minSamples = std::max(1, static_cast<int>(std::llround(rawSampleRate * 0.005)));
+  const int maxContentSamples =
+      std::min(numRawSamples, std::max(minSamples, origContentLengthSamples));
+  const int targetSamples = juce::jlimit(
+      minSamples, maxContentSamples,
+      static_cast<int>(std::llround(juce::jmap(juce::jlimit(0.0f, 1.0f, decayLengthNormalized),
+                                                0.0f, 1.0f, static_cast<float>(minSamples),
+                                                static_cast<float>(maxContentSamples)))));
+  const int attackBoundary = juce::jlimit(
+      0, targetSamples,
+      static_cast<int>(std::llround(juce::jlimit(0.0f, 1.0f, attackLengthNormalized) *
+                                     static_cast<float>(targetSamples))));
+
+  juce::AudioBuffer<float> trimmed(irNumChannels, targetSamples);
+  for (int ch = 0; ch < irNumChannels; ++ch)
+    trimmed.copyFrom(ch, 0, rawSamples, ch, 0, targetSamples);
+
+  // Envelope: Init Level (sample 0) ramps through the Attack segment to
+  // unity/0dB (Attack's peak is pinned, not adjustable - standard
+  // AD-envelope semantics: Attack always reaches full level), then through
+  // the Decay segment to Decay Level (the truncated content's last sample) -
+  // applied before the declick fade below so the fade's own tiny dip always
+  // lands on top of whatever the envelope left there.
+  //
+  // Both adjustable levels are unipolar attenuation-only: 0..1, 1.0 =
+  // unity/0dB, 0.0 = genuine silence. levelToDb is linear-in-dB (kSilenceDb
+  // at normalized=0, 0dB at normalized=1) - matching every other gain knob
+  // in this codebase (gainDbScale, gateDbScale, ...), so knob travel feels
+  // proportional across the whole range. A true logarithmic (20*log10(n))
+  // mapping was tried first, treating the knob's own 0..1 as if it directly
+  // were linear amplitude - but that compresses almost the entire dB range
+  // into the last sliver of travel near normalized=0 (e.g. 90% of the knob's
+  // travel, from 100% down to 10%, only covers the top 20 of 100dB; the
+  // remaining 80dB gets crammed into the last 10%), making the knob feel
+  // like it does nothing for most of its travel then cliff-dives to silent.
+  // Linear-in-dB fixes that without giving up genuine silence at the true
+  // bottom: kSilenceDb (-100dB) is a *reachable, finite* floor for the
+  // smooth part of the curve (0 < normalized <= 1), but the explicit
+  // snap-to-exact-zero below (at the precise sample a 0% level targets)
+  // handles the literal normalized=0 case separately and exactly - that
+  // discrete case is what actually guarantees true silence, not this
+  // formula's shape, so making this part linear doesn't compromise it.
+  //
+  // Each segment warps its own interpolation fraction through a power curve
+  // applied in *dB*, not linear amplitude: dB(fraction) = fromDb + (toDb -
+  // fromDb) * fraction^k, where k = kCurveMax^(2*(curveNormalized - 0.5)).
+  // This has to be the dB domain, not amplitude: true exponential decay
+  // (steep initial drop, decelerating into a long quiet tail - how real
+  // acoustic/reverb decay behaves) *is* linear-in-dB (constant ratio per
+  // sample); warping linear amplitude instead can't produce that shape at
+  // any k, and doesn't match the waveform overlay's own dB-mapped Y-axis
+  // either.
+  //
+  // Normalized 0.5 -> k=1 -> dB(fraction) is linear in fraction: constant-
+  // ratio decay, i.e. natural/"exponential" decay already, as the default.
+  // Toward 0.0, k shrinks below 1: fraction^k rises fast then levels off, so
+  // dB reaches the target almost immediately and holds there - an even
+  // steeper, more front-loaded shape. Toward 1.0, k grows past 1: fraction^k
+  // stays near 0 for most of the range then rushes to 1 at the very end, so
+  // dB holds near the segment's start level and only drops right at the
+  // finish - a back-loaded shape, the inverse. pow(0,k)=0 and pow(1,k)=1 for
+  // any k>0, so Curve only ever reshapes the *middle* of its segment - the
+  // level knobs land exactly where they say regardless of Curve. kCurveMax
+  // is a tunable constant, not a physical law - 4.0 is deliberately more
+  // conservative than a first pass at 6.0: real reverb/room IRs already
+  // carry their own natural decay, and the envelope's dB drop *adds* to
+  // that (dB is logarithmic, so multiplying amplitudes is adding dB) rather
+  // than replacing it - even the intentional, full-knob-throw extreme (not
+  // just an accidental small drag - see shapeCurveNormalized below for
+  // that) stacked an already-steep artificial cutoff on top of whatever the
+  // IR's own tail was already doing, and by ear that read as a hard gate
+  // rather than a usable creative curve. At kCurveMax=4.0, full throw's
+  // end-of-segment slope is still 4x steeper than linear (a real, audible
+  // difference) but roughly an order of magnitude less compressed at the
+  // 30%-into-the-segment mark than 6.0 was (0.81% of the total dB change by
+  // then, vs. 0.07%).
+  //
+  // curveNormalized isn't fed to the exponent linearly, though - it goes
+  // through shapeCurveNormalized() first. A straight kCurveMax^(2*(c-0.5))
+  // swings k a lot for even a small move off center (dk/dc at c=0.5 is
+  // 2*ln(kCurveMax)), and because fraction^k is applied against dB's own
+  // huge dynamic range, a "small" k deviation from 1 (say 2) already looks
+  // almost like a step function - a small, easy-to-do-by-accident drag
+  // produced an audibly extreme "choke" the on-screen curve (sampled
+  // coarsely for display) didn't visually convey. Cubing
+  // (curveNormalized - 0.5) before exponentiating spreads that sensitivity
+  // unevenly across the knob's travel: the same extremes (k=1/kCurveMax at
+  // c=0, k=kCurveMax at c=1) are still reachable at full throw, but landing
+  // any given k in between now takes meaningfully more drag near center -
+  // see decayEnvelope.ts's own copy of this shaping, which must stay in
+  // sync by hand (no shared code across the C++/TS boundary). This and the
+  // kCurveMax value above are two independent levers - one controls how
+  // much drag reaches a given curve, the other controls how extreme the
+  // curve can get at all - and both needed tuning down after listening.
+  constexpr float kCurveMax = 4.0f;
+  constexpr float kSilenceDb = -100.0f;
+  const auto levelToDb = [](float normalized) {
+    return normalized <= 0.0f ? kSilenceDb : kSilenceDb * (1.0f - normalized);
+  };
+  const auto shapeCurveNormalized = [](float c) {
+    const float d = c - 0.5f;
+    return std::copysign(std::pow(std::abs(2.0f * d), 3.0f), d) * 0.5f;
+  };
+  const float clampedInitLevel = juce::jlimit(0.0f, 1.0f, initLevelNormalized);
+  constexpr float attackDb = 0.0f;  // Attack's peak is pinned at unity/0dB
+  const float clampedDecayLevel = juce::jlimit(0.0f, 1.0f, decayLevelNormalized);
+  const float clampedAttackCurve = juce::jlimit(0.0f, 1.0f, attackCurveNormalized);
+  const float clampedDecayCurve = juce::jlimit(0.0f, 1.0f, decayCurveNormalized);
+  const bool envelopeIsFlat = clampedInitLevel == 1.0f && clampedDecayLevel == 1.0f;
+  if (targetSamples > 1 && !envelopeIsFlat) {
+    const float initDb = levelToDb(clampedInitLevel);
+    const float decayDb = levelToDb(clampedDecayLevel);
+    const float kAttack = std::pow(kCurveMax, 2.0f * shapeCurveNormalized(clampedAttackCurve));
+    const float kDecay = std::pow(kCurveMax, 2.0f * shapeCurveNormalized(clampedDecayCurve));
+    const int decaySpan = targetSamples - 1 - attackBoundary;
+    for (int i = 0; i < targetSamples; ++i) {
+      float gain;
+      if (i < attackBoundary) {
+        const float fraction = attackBoundary > 1
+                                    ? static_cast<float>(i) / static_cast<float>(attackBoundary - 1)
+                                    : 1.0f;
+        const float db = initDb + (attackDb - initDb) * std::pow(fraction, kAttack);
+        gain = juce::Decibels::decibelsToGain(db);
+      } else {
+        const float fraction =
+            decaySpan > 0 ? static_cast<float>(i - attackBoundary) / static_cast<float>(decaySpan)
+                          : 1.0f;
+        const float db = attackDb + (decayDb - attackDb) * std::pow(fraction, kDecay);
+        gain = juce::Decibels::decibelsToGain(db);
+      }
+      // True 0% must be genuine silence at the exact sample a level knob
+      // targets, not just very quiet - levelToDb's kSilenceDb floor above is
+      // only a numerical-safety approximation of that.
+      if (i == 0 && clampedInitLevel <= 0.0f)
+        gain = 0.0f;
+      else if (i == targetSamples - 1 && clampedDecayLevel <= 0.0f)
+        gain = 0.0f;
+      for (int ch = 0; ch < irNumChannels; ++ch)
+        trimmed.getWritePointer(ch)[i] *= gain;
+    }
+  }
+
+  // Short fade-out over the cut point so truncating mid-waveform doesn't
+  // ring: ~10ms, capped at a third of the trimmed length so a very short
+  // trim isn't all fade. Unconditional - the click-free guarantee shouldn't
+  // depend on where Decay Level happens to land.
+  const int fadeSamples =
+      std::min(targetSamples / 3, static_cast<int>(std::llround(rawSampleRate * 0.010)));
+  if (fadeSamples > 0) {
+    for (int i = 0; i < fadeSamples; ++i) {
+      const int sampleIndex = targetSamples - fadeSamples + i;
+      const float gain = 1.0f - static_cast<float>(i + 1) / static_cast<float>(fadeSamples);
+      for (int ch = 0; ch < irNumChannels; ++ch)
+        trimmed.getWritePointer(ch)[sampleIndex] *= gain;
+    }
+  }
+
+  // Same engine shape the block was originally classified/built as (frozen,
+  // like the short/long classification itself - a Length edit never changes
+  // either), not re-decided from the (now shorter) trimmed length.
+  auto makeConvolver = [engineLongIr] {
+    return engineLongIr ? std::make_unique<juce::dsp::Convolution>(
+                              juce::dsp::Convolution::NonUniform{kIrNonUniformHeadSamples})
+                        : std::make_unique<juce::dsp::Convolution>();
+  };
+  juce::dsp::ProcessSpec spec{kChainBaseSampleRate, static_cast<juce::uint32>(chainBaseBlockSize()),
+                              2};
+
+  // fixNumChannels (juce_Convolution.cpp) reduces to 1/2 channels internally
+  // per the Stereo flag, so the same 2-channel trimmed buffer works for both
+  // calls - just a fresh copy each time since loadImpulseResponse consumes
+  // its buffer by move.
+  auto convolverMono = makeConvolver();
+  convolverMono->loadImpulseResponse(juce::AudioBuffer<float>(trimmed), rawSampleRate,
+                                     juce::dsp::Convolution::Stereo::no,
+                                     juce::dsp::Convolution::Trim::no,
+                                     juce::dsp::Convolution::Normalise::no);
+  convolverMono->prepare(spec);
+  elapseConvolverInstallFade(*convolverMono, spec);
+  out.convolverMono = std::move(convolverMono);
+
+  if (irNumChannels > 1) {
+    auto convolverStereo = makeConvolver();
+    convolverStereo->loadImpulseResponse(std::move(trimmed), rawSampleRate,
+                                         juce::dsp::Convolution::Stereo::yes,
+                                         juce::dsp::Convolution::Trim::no,
+                                         juce::dsp::Convolution::Normalise::no);
+    convolverStereo->prepare(spec);
+    elapseConvolverInstallFade(*convolverStereo, spec);
+    out.convolverStereo = std::move(convolverStereo);
+  }
+
+  const int engineSize = out.convolverMono->getCurrentIRSize();
+  out.irLengthBaseSamples =
+      engineSize > 0 ? engineSize
+                     : static_cast<int>(std::llround(static_cast<double>(targetSamples) *
+                                                     kChainBaseSampleRate / rawSampleRate));
+  out.success = true;
+  return out;
 }
 
 juce::var TONE3000Processor::loadLocalTone(const juce::String& title, const juce::var& files,
@@ -924,18 +1230,9 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
       // block's own fade-in ends. So after prepare(), run silence through
       // the convolver until that window has provably elapsed: the install
       // and its crossfade happen here on the loader thread, and the engine
-      // goes live deterministically full-wet with silent state.
-      auto elapseConvolverInstallFade = [&spec](juce::dsp::Convolution& convolver) {
-        const int chunk = static_cast<int>(spec.maximumBlockSize);
-        juce::AudioBuffer<float> silence(static_cast<int>(spec.numChannels), chunk);
-        silence.clear();
-        // 3× JUCE's 0.05 s install fade: margin over exactness, it's cheap.
-        const int warmupSamples = static_cast<int>(kChainBaseSampleRate * 0.15);
-        for (int done = 0; done < warmupSamples; done += chunk) {
-          juce::dsp::AudioBlock<float> blockRef(silence);
-          convolver.process(juce::dsp::ProcessContextReplacing<float>(blockRef));
-        }
-      };
+      // goes live deterministically full-wet with silent state. (Shared with
+      // rebuildIrShapeInBackground's in-place rebuild - same requirement,
+      // same fix.)
 
       // Mono fallback convolver: IR channel 0 applied to every audio channel.
       auto convolverMono = makeConvolver();
@@ -943,7 +1240,7 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
                                          juce::dsp::Convolution::Trim::yes, maxIrFileSamples,
                                          juce::dsp::Convolution::Normalise::no);
       convolverMono->prepare(spec);
-      elapseConvolverInstallFade(*convolverMono);
+      elapseConvolverInstallFade(*convolverMono, spec);
       out.convolverMono = std::move(convolverMono);
 
       // True-stereo convolver: only meaningful when the file actually has 2 channels.
@@ -953,7 +1250,7 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
                                              juce::dsp::Convolution::Trim::yes, maxIrFileSamples,
                                              juce::dsp::Convolution::Normalise::no);
         convolverStereo->prepare(spec);
-        elapseConvolverInstallFade(*convolverStereo);
+        elapseConvolverInstallFade(*convolverStereo, spec);
         out.convolverStereo = std::move(convolverStereo);
       }
 
@@ -967,7 +1264,32 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
       out.irNumChannels = irNumChannels;
       out.irLengthBaseSamples = irLengthBaseSamples;
       out.irIsLong = irLengthBaseSamples > kShortIrMaxBaseSamples;
-      out.irNormalizationGainLinear = computeIrNormalizationGain(tempFile, maxIrFileSamples);
+
+      // Read the file once, into the buffer kept as the source of truth for
+      // future editing: normalization gain and the display waveform both
+      // derive from it, rather than each reopening the file (computeIr
+      // NormalizationGain used to do exactly that on its own).
+      {
+        juce::AudioFormatManager irFormatManager;
+        irFormatManager.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> irReader(
+            irFormatManager.createReaderFor(tempFile));
+        if (irReader && irReader->lengthInSamples > 0 && irReader->numChannels > 0) {
+          const juce::int64 samplesToRead = std::min<juce::int64>(
+              irReader->lengthInSamples, static_cast<juce::int64>(maxIrFileSamples));
+          out.irRawSamples.setSize(static_cast<int>(irReader->numChannels),
+                                   static_cast<int>(samplesToRead));
+          irReader->read(&out.irRawSamples, 0, static_cast<int>(samplesToRead), 0, true, true);
+          out.irRawSampleRate =
+              irReader->sampleRate > 0.0 ? irReader->sampleRate : kChainBaseSampleRate;
+        }
+      }
+      out.irNormalizationGainLinear =
+          computeIrNormalizationGain(out.irRawSamples, out.irRawSampleRate);
+      out.irContentLengthSamples =
+          computeIrContentLengthSamples(out.irRawSamples, out.irRawSampleRate);
+      out.irWaveformPeaks = computeIrWaveformPeaks(out.irRawSamples, kIrWaveformColumns,
+                                                    out.irContentLengthSamples);
 
       juce::Logger::writeToLog(
           "[ModelLoader] IR prepared: " + juce::String(irNumChannels) + " ch, " +
@@ -1227,6 +1549,16 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
     block.irNumChannels = 1;
     block.irLengthBaseSamples = 0;
     block.irIsLong = false;
+    block.irRawSamples.setSize(0, 0);
+    block.irRawSampleRate = 0.0;
+    block.irContentLengthSamples = 0;
+    block.irWaveformPeaks.clear();
+    block.initLevelNormalized = 1.0f;
+    block.attackLengthNormalized = 0.0f;
+    block.attackCurveNormalized = 0.5f;
+    block.decayLengthNormalized = 1.0f;
+    block.decayLevelNormalized = 1.0f;
+    block.decayCurveNormalized = 0.5f;
 
     // Re-assert the block's A2 size in case it changed while this engine
     // was downloading/preparing (a no-op retier when it didn't).
@@ -1245,6 +1577,10 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
     block.irNumChannels = prepared.irNumChannels;
     block.irLengthBaseSamples = prepared.irLengthBaseSamples;
     block.irIsLong = prepared.irIsLong;
+    block.irRawSamples = std::move(prepared.irRawSamples);
+    block.irRawSampleRate = prepared.irRawSampleRate;
+    block.irContentLengthSamples = prepared.irContentLengthSamples;
+    block.irWaveformPeaks = std::move(prepared.irWaveformPeaks);
 
     // The base-rate island around the convolvers: blocks added mid-session
     // were never seen by prepareChain, so (re)prepare it here with the same
@@ -1252,14 +1588,38 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
     // small work buffers), and the swap-fade already has the wet path silent.
     block.irBaseRateIsland.prepare(chainOversampleFactor.load(),
                                    juce::jmax(1, chainBaseBlockSize()));
+    // Same "never seen by prepareChain" reasoning applies to the predelay
+    // ring buffer: it must be sized here too, or a block loaded mid-session
+    // processes with an unprepared (zero-capacity) buffer.
+    block.predelay.prepare(kChainBaseSampleRate,
+                           block.predelayNormalized * BlockPredelay::kMaxDelayMs);
 
     // Fresh blocks (Select-flow loads) default their mix by IR length: long
     // IRs are reverbs/effects meant to be blended (half wet), short cab IRs
     // replace the signal (fully wet). Length is only known here, after the
     // download, so loadTone arms this one-shot flag instead of guessing
-    // from tone metadata. Swaps/restores keep the user's mix.
-    if (block.applyDefaultMixOnLoad)
+    // from tone metadata. Swaps/restores keep the user's mix - and, the same
+    // way, keep the user's envelope shaping rather than starting the new
+    // content untouched.
+    if (block.applyDefaultMixOnLoad) {
       block.mixNormalized = block.irIsLong ? 0.5f : 1.0f;
+      block.initLevelNormalized = 1.0f;
+      block.attackLengthNormalized = 0.0f;
+      block.attackCurveNormalized = 0.5f;
+      block.decayLengthNormalized = 1.0f;
+      block.decayLevelNormalized = 1.0f;
+      block.decayCurveNormalized = 0.5f;
+    } else if (block.attackLengthNormalized != 0.0f || block.decayLengthNormalized != 1.0f ||
+               block.initLevelNormalized != 1.0f || block.decayLevelNormalized != 1.0f) {
+      // A prior envelope shape survives the swap/restore as persisted
+      // values, but the engine just built above is always full-length and
+      // flat (prepareBlockModelOffThread doesn't know about it) - queue a
+      // rebuild to reapply it, exactly like a live envelope edit would.
+      const int generation = ++block.irShapingGeneration;
+      loadingThreadPool.addJob(std::function<void()>([this, blockId = block.id, generation]() {
+        rebuildIrShapeInBackground(blockId, generation);
+      }));
+    }
 
     block.irNormalizationGainLinear = prepared.irNormalizationGainLinear;
     block.irNormalizationSmoother.reset(chainSampleRate(), 0.05f);

@@ -355,6 +355,29 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
                 args[0].toString().toStdString(), coerceDouble(args[1])));
           }))
       .withNativeFunction(
+          // (blockId, initLevelNormalized, attackLengthNormalized,
+          // attackCurveNormalized, decayLengthNormalized,
+          // decayLevelNormalized, decayCurveNormalized): the IR's 2-segment
+          // Attack/Decay envelope. Attack's peak is pinned at unity/0dB
+          // (standard AD-envelope semantics), not settable. Init/Decay
+          // Level are each 0..1, unipolar attenuation-only (1.0 = unity,
+          // 0.0 = genuine silence); every curve is 0..1, 0.5 = linear,
+          // sweeping front-loaded below / back-loaded above. Decay Length is
+          // the TOTAL truncated length (a fraction of the block's full
+          // detected content, the real "End" position); Attack Length is a
+          // fraction of that total, marking where the peak sits within it.
+          // Not a
+          // setBlockParam param because it rebuilds the convolver engine
+          // off-thread rather than driving a real-time smoother; rides
+          // getChainState as params.initLevel/attackLength/attackCurve/
+          // decayLength/decayLevel/decayCurve.
+          "setBlockIrDecay", guarded(7, false, [editor](const juce::Array<juce::var>& args) {
+            return juce::var(editor->processor.setBlockIrDecay(
+                args[0].toString().toStdString(), coerceDouble(args[1]), coerceDouble(args[2]),
+                coerceDouble(args[3]), coerceDouble(args[4]), coerceDouble(args[5]),
+                coerceDouble(args[6])));
+          }))
+      .withNativeFunction(
           // (blockId, bandIndex, { type, freqHz, gainDb, q }). Whole-band
           // updates keep drags atomic and give undo/redo a clean unit later.
           "setBlockEqBand", guarded(3, false, [editor](const juce::Array<juce::var>& args) {
@@ -392,6 +415,13 @@ juce::WebBrowserComponent::Options buildMainWebViewOptions(TONE3000Editor* edito
           // Polled ~30 Hz by an open EQ view. Returns 64 log-spaced dB bins.
           "getBlockSpectrum", guarded(1, juce::var(), [editor](const juce::Array<juce::var>& args) {
             return editor->processor.getBlockSpectrum(args[0].toString().toStdString());
+          }))
+      .withNativeFunction(
+          // Fetched once when an IR block finishes loading (static per
+          // load, not part of getChainState's polled payload). Returns
+          // { mins: number[], maxs: number[] } or null.
+          "getIrWaveform", guarded(1, juce::var(), [editor](const juce::Array<juce::var>& args) {
+            return editor->processor.getIrWaveform(args[0].toString().toStdString());
           }))
       // --- Chain state / history --------------------------------------------
       .withNativeFunction(
