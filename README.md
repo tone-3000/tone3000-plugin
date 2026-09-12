@@ -34,10 +34,12 @@ NAM processing comes from **NeuralAmpModelerCore** (in-tree), resampling from
 - [CMake](https://cmake.org/download/) 3.22+ and Git
 - Node.js and npm (the React UI is built after CMake has fetched JUCE)
 - **JUCE** is fetched automatically by CMake into `libs/`; no manual install
-- **Windows only:** [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)
-  runtime (`script/install-webview2.ps1` installs it). That is the native
-  browser the plugin UI runs in on Windows, not the TypeScript package
-  used to compile the UI.
+- **Windows only:** the Microsoft.Web.WebView2 SDK NuGet package
+  (`script/install-webview2.ps1` installs it), needed at build time to
+  statically link the WebView2 loader. At run time the plugin UI needs the
+  [WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/):
+  Windows 11 ships it, dev machines get it with Edge, and the release
+  installer bootstraps it when missing (typically clean Windows 10).
 
 ## Quick start
 
@@ -160,9 +162,11 @@ land in `build/plugin/TONE3000_artefacts/<config>/<format>/`.
 
 ## Linux runtime dependencies
 
-Windows links WebView2 statically and macOS uses the OS WKWebView, but the
-Linux build renders its UI in the system WebKitGTK, loaded dynamically at
-runtime. If it's missing, the plugin window is a black screen.
+Windows statically links only the WebView2 loader (the Evergreen Runtime is
+a system component; the installer bootstraps it when missing) and macOS uses
+the OS WKWebView, but the Linux build renders its UI in the system WebKitGTK,
+loaded dynamically at runtime. If it's missing, the plugin window is a black
+screen.
 
 Required: WebKitGTK 4.1 (or 4.0), GTK3, ALSA, FreeType.
 
