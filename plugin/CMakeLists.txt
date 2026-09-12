@@ -102,7 +102,7 @@ endif()
 # compile with MSVC (GCC/Clang-only flags, M_PI, POSIX dlfcn.h in run_tests),
 # and each one recompiles all NAM sources, wasting CI time. Keep them out of
 # the default build; build explicitly if needed: cmake --build build --target benchmodel
-foreach(_nam_tool tools loadmodel benchmodel render benchmodel_bufsize bench_a2_fast run_tests)
+foreach(_nam_tool tools loadmodel benchmodel render benchmodel_bufsize bench_a2_fast bench_a2_planar bench_linear run_tests)
     if(TARGET ${_nam_tool})
         set_target_properties(${_nam_tool} PROPERTIES EXCLUDE_FROM_ALL TRUE)
     endif()
@@ -119,10 +119,14 @@ add_library(NAM STATIC
     ${NAM_SRC}/convnet.cpp
     ${NAM_SRC}/dsp.cpp
     ${NAM_SRC}/get_dsp.cpp
+    ${NAM_SRC}/linear.cpp
     ${NAM_SRC}/lstm.cpp
+    ${NAM_SRC}/nam_file.cpp
     ${NAM_SRC}/ring_buffer.cpp
+    ${NAM_SRC}/sequential.cpp
     ${NAM_SRC}/util.cpp
     ${NAM_SRC}/wavenet/a2_fast.cpp
+    ${NAM_SRC}/wavenet/a2_planar.cpp
     ${NAM_SRC}/wavenet/model.cpp
     ${NAM_SRC}/wavenet/slimmable.cpp
 )
