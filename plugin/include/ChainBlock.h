@@ -74,6 +74,25 @@ struct ChainBlock {
   // Model cache: stores downloaded model data by model ID
   std::map<int, std::vector<uint8_t>> modelCache;
 
+  // True when the block's stored tone can still name this model: it is the
+  // active model, or the toneVar models array lists it (local tones keep
+  // their full list; catalog tones collapse to the active model on every
+  // switch, see switchModel). This is the persistence boundary for
+  // modelCache: saves embed bytes and restores re-seed them only for
+  // referenced models (serializeChainToTree / reconcileChainFromTree).
+  // Anything else in the cache is an in-memory audition convenience;
+  // persisting those bytes is what bloated DAW projects by hundreds of MB
+  // (issue #127).
+  bool referencesModel(int modelId) const {
+    if (modelId == activeModelId)
+      return true;
+    if (const auto* models = toneVar["models"].getArray())
+      for (const auto& model : *models)
+        if (static_cast<int>(model["id"]) == modelId)
+          return true;
+    return false;
+  }
+
   // State flags
   bool loaded;   // True when active model is loaded and ready
   bool enabled;  // True when block is enabled in processing chain
