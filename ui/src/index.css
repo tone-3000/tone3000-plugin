@@ -48,11 +48,15 @@ textarea,
 }
 
 /* No ghost-image dragging of artwork/icons (also prevents drag-initiated
-   navigation attempts). */
+   navigation attempts). No iOS touch callout either: pressing and holding
+   artwork raised WKWebView's own image sheet (Copy / Save to Photos), which
+   preempted the tile's long-press menu and cancelled the pointer stream
+   under it. */
 img,
 svg {
   -webkit-user-drag: none;
   user-drag: none;
+  -webkit-touch-callout: none;
 }
 
 #root {
@@ -263,4 +267,112 @@ input[type='range'].accent-blue::-moz-range-thumb {
 
 .hide-scrollbar::-webkit-scrollbar {
   display: none; /* Chrome, Safari, Opera */
+}
+
+/* iOS: the document itself never scrolls.
+
+   `100vh` is not the viewport here. This WKWebView lays out in a 1366x999
+   box while `100vh` / `100dvh` / `innerHeight` / `visualViewport.height` all
+   report 1024, the screen height: measured on the iPad Pro 12.9 Simulator,
+   documentElement.clientHeight was 999 against a scrollHeight of 1024. So
+   `#root { height: 100vh }` built a root 25 px taller than the box that holds
+   it, html and body kept `overflow: visible`, and the whole document became
+   scrollable by exactly that 25 px. Every screen inherited it: a vertical
+   swipe anywhere shifted the entire UI, header and faceplate included.
+
+   `overscroll-behavior: none` above did not stop it, and could not: it
+   suppresses rubber-band on a scroll that has nowhere to go, and this scroll
+   had somewhere to go.
+
+   `height: 100%` chains from the initial containing block, i.e. the 999 the
+   engine actually laid out, so the root ends flush with the viewport, and
+   `overflow: hidden` on both html and body makes a document scroll
+   impossible rather than merely unnecessary. Inner containers (the Select
+   Tone results, Settings, the preset list, the lane) keep their own
+   scrollers and are untouched. */
+html.t3k-ios,
+html.t3k-ios body {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* The design box centers in the leftover height instead of leaving all the
+   slack at the bottom. #root is top-anchored on desktop only because the
+   window height transiently disagrees with the design box while a chrome
+   strip toggles (see the #root rule above); the iOS window never resizes,
+   so that transient cannot happen here. */
+html.t3k-ios #root {
+  height: 100%;
+  justify-content: center;
+}
+
+/* Touch hit floor. The class is set on <html> only when the primary pointer
+   is coarse (see useUiScale), so every rule below is inert on desktop.
+
+   Apple's 44 pt minimum applies to the *hit* area, not the glyph, so rather
+   than redraw the chrome bigger on touch devices each control gets an
+   invisible expander centred on itself. `max(100%, 44px)` never shrinks a
+   control that is already larger, and the expander is out of flow, so no
+   layout anywhere changes: only what a finger can land on.
+
+   `px`, not `rem`, is deliberate: the page is served at initial-scale=1, so
+   one CSS px is one point, while a rem is one design px and would have to be
+   divided by the live UI scale to mean anything here.
+
+   Where the design packs controls closer than 44 pt the expanders overlap.
+   That is the accepted trade in every native toolkit that does this: a tap in
+   the gap picks the nearer of two controls instead of missing both. A control
+   that paints later still wins the overlap, so a small button inside a larger
+   one keeps its own taps. */
+html.t3k-touch button,
+html.t3k-touch [role='button'],
+html.t3k-touch [role='switch'],
+html.t3k-touch [role='tab'],
+html.t3k-touch [role='radio'],
+html.t3k-touch a[href],
+html.t3k-touch .knob {
+  position: relative;
+}
+
+html.t3k-touch button::after,
+html.t3k-touch [role='button']::after,
+html.t3k-touch [role='switch']::after,
+html.t3k-touch [role='tab']::after,
+html.t3k-touch [role='radio']::after,
+html.t3k-touch a[href]::after,
+html.t3k-touch .knob::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: max(100%, 44px);
+  height: max(100%, 44px);
+  /* Nothing to see: this is a hit area, not a highlight. */
+  pointer-events: auto;
+}
+
+/* dnd-kit stamps role="button" on a draggable surface that is not already a
+   <button> (a chain tile), which pulled it into the rule above. The expander
+   is a *pseudo-element of the tile*, so it paints over the tile's own chrome
+   and takes every tap: the block would not open and power / ... / swap /
+   trash were dead, while press-and-hold, which only needs pointer events on
+   the tile, still worked. A tile is 249 px, far past 44, so the expander was
+   never adding reach there anyway. Scoped by the pair of attributes so a
+   drag handle that really is a <button> (the preset rows' grip, 14 px) keeps
+   its expander: dnd-kit adds `role` only when the activator is not a button,
+   and `aria-roledescription` on every activator. */
+html.t3k-touch [role='button'][aria-roledescription='draggable']::after {
+  content: none;
+}
+
+/* Text fields cannot carry a pseudo-element, so the field itself has to grow,
+   which does change layout. It is therefore opt-in: standalone rows (preset
+   name, save name, preset search, MIDI CC) take the class, while the inline
+   editors that live inside a fixed chrome slot (a knob's label slot, an EQ
+   band chip) deliberately do not - there a 44 px box would spill out of the
+   slot it is centred in. Those are reached from a control that already meets
+   the floor. */
+html.t3k-touch .t3k-touch-field {
+  min-height: 44px;
 }

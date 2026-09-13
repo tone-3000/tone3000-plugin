@@ -43,8 +43,10 @@ juce::var makeModelVar(int modelId, const juce::String& name) {
   return juce::var(obj);
 }
 
-// Appends `fileName`'s bytes to the block tree's ModelCache under `modelId`,
-// so a later switchModel to that id is a pure cached load.
+// Appends `fileName`'s bytes to the block tree's ModelCache under `modelId`
+// and names the model in the block's toneJson (restores only seed cached
+// bytes the tone still references, see state_cache_tests.cpp), so a later
+// switchModel to that id is a pure cached load.
 void cacheExtraModel(juce::ValueTree& block, int modelId, const char* fileName) {
   juce::MemoryBlock bytes;
   ASSERT_TRUE(testFile(fileName).loadFileAsData(bytes));
@@ -52,6 +54,16 @@ void cacheExtraModel(juce::ValueTree& block, int modelId, const char* fileName) 
   cached.setProperty("modelId", modelId, nullptr);
   cached.setProperty("data", juce::var(bytes), nullptr);
   block.getChildWithName("ModelCache").appendChild(cached, nullptr);
+
+  juce::var tone = juce::JSON::parse(block.getProperty("toneJson").toString());
+  auto* models = tone["models"].getArray();
+  ASSERT_NE(models, nullptr);
+  auto* model = new juce::DynamicObject();
+  model->setProperty("id", modelId);
+  model->setProperty("name", "cached-" + juce::String(modelId));
+  model->setProperty("model_url", "https://test.invalid/cached-" + juce::String(modelId) + ".wav");
+  models->add(juce::var(model));
+  block.setProperty("toneJson", juce::JSON::toString(tone), nullptr);
 }
 
 // The state of blockId's tone entry in getChainState, or a void var.

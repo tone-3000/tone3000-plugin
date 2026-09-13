@@ -200,6 +200,7 @@ const LearningRow: React.FC<{
       Listening…
     </span>
     <input
+      className="t3k-touch-field"
       value={ccDraft}
       onChange={(e) => onCcDraftChange(e.target.value.replace(/\D/g, '').slice(0, 3))}
       onKeyDown={(e) => {

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, FolderClosed } from './icons';
 import { useDismissable } from '../hooks/useDismissable';
 import { LoadingDots } from './LoadingDots';
@@ -44,9 +44,21 @@ export const ModelSelect: React.FC<ModelSelectProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const activeOptionRef = useRef<HTMLDivElement | null>(null);
 
   const currentIndex = options.findIndex((opt) => opt.id === value);
   const selectedOption = options[currentIndex];
+
+  // Land on the loaded item instead of the top of the list (issue #85) - in
+  // a tone pack with dozens/hundreds of files, always opening at the top
+  // means scrolling to find where you already are. Keyed on `options` too,
+  // not just `isOpen`: the catalog fetch (see ChainBlock.tsx's
+  // handleModelsOpen) resolves *after* the dropdown opens, so the first
+  // render only has the stored single-item fallback - this re-fires once
+  // the real list lands and the active row actually exists to scroll to.
+  useEffect(() => {
+    if (isOpen) activeOptionRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [isOpen, options]);
 
   const handlePrev = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -216,6 +228,7 @@ export const ModelSelect: React.FC<ModelSelectProps> = ({
           {options.map((option, index) => (
             <div
               key={option.id}
+              ref={option.id === value ? activeOptionRef : undefined}
               onClick={() => handleSelect(option.id)}
               style={{
                 padding: '12rem 16rem',

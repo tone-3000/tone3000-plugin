@@ -41,3 +41,42 @@ export const TYPE_GLYPHS: Record<EqBandType, string> = {
   lowcut: 'M1 13 C4 13 5 3 9 3 L15 3',
   highcut: 'M1 3 L7 3 C11 3 12 13 15 13',
 };
+
+/** Touch double tap window and slop, same as KnobControl's recognizer. */
+const DOUBLE_TAP_MS = 300;
+const DOUBLE_TAP_SLOP_PX = 24;
+
+/**
+ * Pointer-stream double tap for the touch resets (fader caps and curve
+ * dots). Detected from pointerdown pairs, not `dblclick`, which WKWebView
+ * ties to its own double-tap handling. Keyed by band index so both taps
+ * must land on the same control.
+ */
+export const createDoubleTapDetector = () => {
+  let last: { key: number; at: number; x: number; y: number } | null = null;
+  return {
+    /** Feed each touch pointerdown; true when it completes a double tap. */
+    tap: (key: number, e: { timeStamp: number; clientX: number; clientY: number }): boolean => {
+      const prev = last;
+      const isDouble =
+        prev !== null &&
+        prev.key === key &&
+        e.timeStamp - prev.at < DOUBLE_TAP_MS &&
+        Math.abs(e.clientX - prev.x) < DOUBLE_TAP_SLOP_PX &&
+        Math.abs(e.clientY - prev.y) < DOUBLE_TAP_SLOP_PX;
+      // A third tap starts a fresh pair, it is not another reset.
+      last = isDouble ? null : { key, at: e.timeStamp, x: e.clientX, y: e.clientY };
+      return isDouble;
+    },
+    /** Feed touch pointermoves: a press that travels is a drag, not the
+        first half of a double tap, so its candidate is withdrawn. */
+    move: (e: { clientX: number; clientY: number }): void => {
+      if (
+        last !== null &&
+        (Math.abs(e.clientX - last.x) > DOUBLE_TAP_SLOP_PX ||
+          Math.abs(e.clientY - last.y) > DOUBLE_TAP_SLOP_PX)
+      )
+        last = null;
+    },
+  };
+};

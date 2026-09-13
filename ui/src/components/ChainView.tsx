@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getUiScale, rem } from '../hooks/useUiScale';
 import { DragDropProvider } from '@dnd-kit/react';
 import { isSortable } from '@dnd-kit/react/sortable';
@@ -51,6 +51,14 @@ import { isInsertSlot } from '../types/chain';
  * Cleared from Plugin on preset load so a remount lands on the gallery.
  */
 export const DETAIL_BLOCK_STORAGE_KEY = 't3k.detailBlockId';
+
+/**
+ * Gallery scroll offset in design px, persisted for the same reason: the
+ * scroller unmounts under the detail takeover, the tone browser, and the
+ * tuner, and coming back should land where the user left off (issue #82).
+ * Cleared from Plugin on preset load so a new chain starts at the left edge.
+ */
+export const CHAIN_SCROLL_STORAGE_KEY = 't3k.chainScroll';
 
 interface ChainViewProps {
   /** Left lane (the only lane in mono mode). */
@@ -119,6 +127,30 @@ export const ChainView: React.FC<ChainViewProps> = ({
 }) => {
   const actions = useChainActions();
   const wheelScrollRef = useHorizontalWheelScroll<HTMLDivElement>();
+  // One callback ref wires the scroller: it restores the saved offset before
+  // first paint, persists it as the user scrolls, and attaches the wheel
+  // hook's panning. The hook returns a cleanup (and once a ref callback
+  // returns a cleanup React never calls it with null), so it must be
+  // forwarded here, not swallowed: StrictMode's dev double-attach would
+  // stack a second wheel listener.
+  const galleryScrollRef = useCallback(
+    (el: HTMLDivElement) => {
+      // Stored in design px so a window rescale between visits lands in the
+      // same place; an offset past the end (the chain shrank) clamps on
+      // assignment.
+      const saved = Number(sessionStorage.getItem(CHAIN_SCROLL_STORAGE_KEY));
+      if (saved > 0) el.scrollLeft = saved * getUiScale();
+      const save = () =>
+        sessionStorage.setItem(CHAIN_SCROLL_STORAGE_KEY, String(el.scrollLeft / getUiScale()));
+      el.addEventListener('scroll', save, { passive: true });
+      const wheelCleanup = wheelScrollRef(el);
+      return () => {
+        el.removeEventListener('scroll', save);
+        if (typeof wheelCleanup === 'function') wheelCleanup();
+      };
+    },
+    [wheelScrollRef]
+  );
   // Persisted so the detail takeover survives this component unmounting: a
   // swap from the detail view opens the tone browser (which replaces the whole
   // chain view, and may bounce through the tone3000.com OAuth redirect). The
@@ -333,6 +365,12 @@ export const ChainView: React.FC<ChainViewProps> = ({
         ) ?? null)
       : null;
 
+  // Drop an id whose block vanished: left alone it lingers in state and
+  // sessionStorage and could reopen a dead detail view later.
+  useEffect(() => {
+    if (detailBlockId != null && detailBlock == null) setDetailBlockId(null);
+  }, [detailBlockId, detailBlock]);
+
   if (detailBlock) {
     // Another enabled+loaded NAM after this block in its lane. This mirrors the
     // DSP's lastNamIndex scan (Processor.cpp): with calibration on, such a
@@ -468,7 +506,7 @@ export const ChainView: React.FC<ChainViewProps> = ({
             </span>
           )}
           <div
-            ref={wheelScrollRef}
+            ref={galleryScrollRef}
             className="hide-scrollbar"
             style={{
               flex: 1,

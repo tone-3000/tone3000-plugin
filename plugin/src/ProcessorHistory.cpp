@@ -62,28 +62,49 @@ void TONE3000Processor::queueActiveModelLoad(ChainBlock& block) {
   }
 
   juce::var modelsVar = toneObj->getProperty("models");
-  if (!modelsVar.isArray()) {
-    bail("stored tone JSON has no models array");
-    return;
+  if (modelsVar.isArray()) {
+    for (const auto& modelVar : *modelsVar.getArray()) {
+      juce::DynamicObject* modelObj = modelVar.getDynamicObject();
+      if (modelObj == nullptr ||
+          static_cast<int>(modelObj->getProperty("id")) != block.activeModelId)
+        continue;
+
+      const juce::String modelUrl = modelObj->getProperty("model_url").toString();
+      const juce::String modelName = modelObj->getProperty("name").toString();
+
+      // switchModelInBackground prefers the block's in-memory model cache and
+      // only hits the network when the bytes are gone: ideal for undo/redo.
+      loadingThreadPool.addJob(std::function<void()>(
+          [this, blockId = block.id, modelId = block.activeModelId, modelUrl, modelName]() {
+            switchModelInBackground(blockId, modelId, modelUrl, modelName);
+          }));
+      return;
+    }
   }
 
-  for (const auto& modelVar : *modelsVar.getArray()) {
-    juce::DynamicObject* modelObj = modelVar.getDynamicObject();
-    if (modelObj == nullptr || static_cast<int>(modelObj->getProperty("id")) != block.activeModelId)
-      continue;
-
-    const juce::String modelUrl = modelObj->getProperty("model_url").toString();
-    const juce::String modelName = modelObj->getProperty("name").toString();
-
-    // switchModelInBackground prefers the block's in-memory model cache and
-    // only hits the network when the bytes are gone: ideal for undo/redo.
+  // The stored tone can't name the active model (no models array, or its
+  // entry is gone: states written by older builds could drift toneJson and
+  // activeModelId apart). When the state carried the bytes, load straight
+  // from the cache instead of stranding the block on a retry that can never
+  // resolve (issue #127 logs show exactly this: "not in stored tone JSON"
+  // bails on blocks whose bytes sat in the embedded cache). No URL to pass;
+  // a cache miss inside the job fails into the same retry UI as the bail.
+  if (block.modelCache.count(block.activeModelId) != 0) {
+    juce::Logger::writeToLog("[ModelLoader] Active model " + juce::String(block.activeModelId) +
+                             " missing from stored tone JSON; loading from cached bytes (block " +
+                             juce::String(block.id) + ")");
     loadingThreadPool.addJob(std::function<void()>(
-        [this, blockId = block.id, modelId = block.activeModelId, modelUrl, modelName]() {
-          switchModelInBackground(blockId, modelId, modelUrl, modelName);
+        [this, blockId = block.id, modelId = block.activeModelId]() {
+          switchModelInBackground(blockId, modelId, juce::String(),
+                                  "model " + juce::String(modelId));
         }));
     return;
   }
 
+  if (!modelsVar.isArray()) {
+    bail("stored tone JSON has no models array");
+    return;
+  }
   bail("active model " + juce::String(block.activeModelId) + " not in stored tone JSON");
 }
 
@@ -146,15 +167,23 @@ void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState
       block->loaded = false;
       block->loadFailed = false;  // fresh load queued below, back to loading UI
       block->modelLoading = true;
-      // Project files and presets embed model bytes; seed the in-memory cache
-      // with *all* of them so offline model switching keeps working and a
-      // later save doesn't silently drop the non-active models. Undo
-      // snapshots are settings-only (no ModelCache child), so this is a
-      // no-op there.
+      // Project files and presets embed model bytes; seed the in-memory
+      // cache with the ones the block's tone still references (the active
+      // model, plus a local tone's full stored list) so those load and
+      // switch offline. Anything else is audition dead weight from states
+      // written by builds that persisted the whole cache (issue #127):
+      // unreachable through the stored tone, so seeding it would only
+      // balloon RAM and ride every later save. Skipping it here is what
+      // slims an already-bloated project on its next save. Undo snapshots
+      // are settings-only (no ModelCache child), so this is a no-op there.
+      // (toneJson/activeModelId were applied above, so referencesModel
+      // judges against exactly what this restore is installing.)
       const juce::ValueTree cacheState = blockState.getChildWithName("ModelCache");
       for (int j = 0; j < cacheState.getNumChildren(); ++j) {
         const juce::ValueTree cachedModel = cacheState.getChild(j);
         const int modelId = cachedModel.getProperty("modelId");
+        if (!block->referencesModel(modelId))
+          continue;
         if (block->modelCache.find(modelId) != block->modelCache.end())
           continue;
         const juce::var dataVar = cachedModel.getProperty("data");

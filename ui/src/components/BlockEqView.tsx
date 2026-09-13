@@ -15,6 +15,7 @@ import {
   GRAPH_W,
   TYPE_GLYPHS,
   clamp,
+  createDoubleTapDetector,
   gainToY,
   hasGain,
   yToGain,
@@ -243,8 +244,9 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
     };
   }, []);
 
-  /** Alt/Option-click reset: neutralize the band's effect (gain or Q) while
-      keeping its frequency, matching the knobs' Alt-click convention. */
+  /** Alt/Option-click (touch: double tap) reset: neutralize the band's
+      effect (gain or Q) while keeping its frequency, matching the knobs'
+      reset convention. */
   const resetBand = useCallback(
     (index: number) => {
       const band = bands[index];
@@ -257,10 +259,17 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
     [bands, updateBand]
   );
 
+  const [doubleTap] = useState(createDoubleTapDetector);
+
   const handleDotPointerDown = useCallback(
     (index: number) => (e: React.PointerEvent<SVGCircleElement>) => {
       e.preventDefault();
       setSelected(index);
+      // Touch: second tap of a double tap resets, and ends the gesture there.
+      if (e.pointerType === 'touch' && doubleTap.tap(index, e)) {
+        resetBand(index);
+        return;
+      }
       if (e.altKey) {
         resetBand(index);
         return;
@@ -272,13 +281,14 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
       const { x, y } = graphPointFromEvent(e);
       dragStateRef.current = { index, lastX: x, lastY: y };
     },
-    [graphPointFromEvent, resetBand]
+    [doubleTap, graphPointFromEvent, resetBand]
   );
 
   // Delta-based dragging (not absolute pointer position) so Shift = 8x finer
   // control works and can toggle mid-drag without the dot jumping.
   const handleDotPointerMove = useCallback(
     (index: number) => (e: React.PointerEvent<SVGCircleElement>) => {
+      if (e.pointerType === 'touch') doubleTap.move(e);
       const drag = dragStateRef.current;
       if (!draggingRef.current || drag?.index !== index) return;
       const { x, y } = graphPointFromEvent(e);
@@ -305,7 +315,7 @@ export const BlockEqView: React.FC<BlockEqViewProps> = ({
         updateBand(index, { freqHz, q });
       }
     },
-    [bands, graphPointFromEvent, updateBand]
+    [bands, doubleTap, graphPointFromEvent, updateBand]
   );
 
   const handleDotPointerUp = useCallback(() => {

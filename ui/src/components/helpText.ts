@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { IS_COARSE_POINTER } from '../hooks/useUiScale';
 
 /**
  * Central help system: every control publishes a one-line hint here while
@@ -60,16 +61,44 @@ const installDelegation = () => {
     emit();
   };
 
+  // Touch engines replay a mouse event pair (mouseover, mousemove,
+  // mousedown, mouseup, click) after a tap, aimed at the element just
+  // tapped. The replay lands *after* pointerup, so it would restore the hint
+  // the release below has just cleared: the bar kept captioning the last
+  // thing touched, exactly the behaviour the release is there to remove.
+  // Ignoring it for a beat is narrower than dropping `mouseover` on touch
+  // devices, which would also kill the genuine hover an iPad trackpad
+  // produces.
+  const MOUSE_REPLAY_MS = 700;
+  let lastTouchRelease = -Infinity;
+
   const resolve = (e: Event) => {
+    if (e.type === 'mouseover' && performance.now() - lastTouchRelease < MOUSE_REPLAY_MS) return;
     const el = e.target instanceof Element ? e.target.closest(`[${HELP_ATTR}]`) : null;
     update(el?.getAttribute(HELP_ATTR) ?? null);
   };
 
   document.addEventListener('mouseover', resolve);
   // Touch-only devices never hover, so pressing a control is the hint
-  // trigger there (harmless for mouse users; press implies hover). The
-  // hint stays up after the tap until the next press lands elsewhere.
+  // trigger there (harmless for mouse users; press implies hover).
   document.addEventListener('pointerdown', resolve);
+  // A touch press is the hover equivalent, so the release is the un-hover:
+  // the bar shows the control's help for exactly as long as the finger is
+  // down, then clears. Leaving stale help pinned to the last thing tapped
+  // was the desktop behaviour of a stationary mouse, which on touch just
+  // reads as a wrong caption. Mouse and pen releases are ignored, so
+  // desktop hover is untouched.
+  //
+  // On `window` in the capture phase: a control that took pointer capture
+  // (knobs, the tile lift) retargets its release, and a bubbling document
+  // listener can miss it entirely.
+  const releaseTouch = (e: PointerEvent) => {
+    if (e.pointerType !== 'touch') return;
+    lastTouchRelease = performance.now();
+    update(null);
+  };
+  window.addEventListener('pointerup', releaseTouch, true);
+  window.addEventListener('pointercancel', releaseTouch, true);
   // Pointer left the window entirely.
   document.addEventListener('mouseout', (e) => {
     if (e.relatedTarget === null) update(null);
@@ -131,12 +160,23 @@ const chord = (macGlyph: string, name: string) => (gesture: string) =>
 const shift = chord('\u21e7', 'Shift');
 const alt = chord('\u2325', 'Alt');
 
-/** Shared legend for every KnobControl (they all support these gestures). */
-const KNOB_KEYS = `${shift('drag')}: fine · double-click: type · ${alt('click')}: reset`;
+/** Shared legend for every KnobControl (they all support these gestures).
+    Touch has no modifier keys and no separate click button, so it gets the
+    gestures it actually has (see KnobControl). */
+const KNOB_KEYS = IS_COARSE_POINTER
+  ? 'drag up or down: adjust · double tap: reset · tap the name: type'
+  : `${shift('drag')}: fine · double-click: type · ${alt('click')}: reset`;
 
 export const knobHelp = (name: string, desc: string) => `${name}: ${desc} ${KNOB_KEYS}`;
 
-export const HELP = {
+/**
+ * Desktop copy. Touch devices re-word it through `touchify` below rather
+ * than branching every line: only the entries whose *gesture* differs
+ * (knobs, EQ faders and dots) are branched by hand, and everything else
+ * differs only in the noun for "press this", which one pass can do without
+ * letting the two wordings drift apart.
+ */
+const HELP_DESKTOP = {
   // Faceplate: gains
   inputLevel: knobHelp('Input', 'chain input level, ±24 dB.'),
   inputMode: 'Input Mode: source channels. Stereo: both · L/R: one. Click: choose.',
@@ -162,7 +202,12 @@ export const HELP = {
   spreadCrossoverPower: 'Crossover Power: off doubles the full band (lows lose mono safety).',
   spreadDiffuse: 'Diffuse Power: phase-decorrelates the lagged side. Off: a pure delay.',
   spreadAdvert: 'Spread: mono-to-stereo double via a wobbling short lag. Click: enable.',
-  spreadPower: 'Spread Power: spread off; collapses its controls. Right-click: advanced.',
+  // On touch the advanced deck answers a hold on the Offset knob only (see
+  // SpreadControls / AlignControls), so the power rows drop the tail that
+  // touchify would otherwise turn into a false "touch and hold" promise.
+  spreadPower: IS_COARSE_POINTER
+    ? 'Spread Power: spread off; collapses its controls.'
+    : 'Spread Power: spread off; collapses its controls. Right-click: advanced.',
   imageCorrelation: 'Mono safety: dim: safe · yellow: caution · red: cancellation on mono sum.',
   spreadMonoOutput:
     'Spread: unavailable, the output is mono (mono track or one-channel output device).',
@@ -176,7 +221,9 @@ export const HELP = {
   alignCrossoverPower: 'Crossover Power: on keeps lows out of the delay and diffusion.',
   alignDiffuse: 'Diffuse Power: phase-decorrelates the delayed chain for width.',
   alignAdvert: 'Align: corrective chain time alignment. Click: enable.',
-  alignPower: 'Align Power: align off; collapses its controls. Right-click: advanced.',
+  alignPower: IS_COARSE_POINTER
+    ? 'Align Power: align off; collapses its controls.'
+    : 'Align Power: align off; collapses its controls. Right-click: advanced.',
   autoAlign:
     'Auto Align: a ½ s internal sweep time-aligns the chains and fixes inverted polarity. Click again: cancel.',
 
@@ -210,7 +257,8 @@ export const HELP = {
   copyBlock: 'Copy: copy this block (tone, model and all settings).',
   pasteBlock: 'Paste: add a copy of the copied block in this slot.',
   loadFileTile: 'Load File: pick a local .nam or IR .wav file to load here. No account needed.',
-  loadFolderTile: 'Load Folder: pick a folder of .nam or .wav files; loads as one multi-model block.',
+  loadFolderTile:
+    'Load Folder: pick a folder of .nam or .wav files; loads as one multi-model block.',
   blockPower: 'Power: bypass this block.',
   retryLoad: 'Retry: re-download this model.',
   swapTone: 'Swap: replace this tone, keeping its slot.',
@@ -258,17 +306,19 @@ export const HELP = {
   backToChain: 'Back: chain overview.',
 
   // EQ editor
-  eqFader: `Band Fader: gain, ±15 dB. ${shift('drag')}: fine · double-click / ${alt(
-    'click'
-  )}: reset.`,
+  eqFader: IS_COARSE_POINTER
+    ? 'Band Fader: gain, ±15 dB. drag: adjust · double tap: reset.'
+    : `Band Fader: gain, ±15 dB. ${shift('drag')}: fine · double-click / ${alt('click')}: reset.`,
   eqFaderPass: 'Pass Band: no gain. Shape it in Curve view.',
-  eqDot: `Band Dot: drag: freq + gain · scroll: Q · ${shift('drag')}: fine · ${alt(
-    'click'
-  )}: reset.`,
+  eqDot: IS_COARSE_POINTER
+    ? 'Band Dot: drag: freq + gain · double tap: reset. Q: use the Q chip.'
+    : `Band Dot: drag: freq + gain · scroll: Q · ${shift('drag')}: fine · ${alt('click')}: reset.`,
   eqFreqChip:
     'Freq: click to type (\u201c800\u201d, \u201c1.2k\u201d). Enter: commit · Esc: cancel.',
   eqGainChip: 'Gain: click to type, ±15 dB. Enter: commit · Esc: cancel.',
-  eqQChip: `Q: scroll the graph (${shift('scroll')}: fine) or click to type.`,
+  eqQChip: IS_COARSE_POINTER
+    ? 'Q: tap to type. Enter: commit · Esc: cancel.'
+    : `Q: scroll the graph (${shift('scroll')}: fine) or click to type.`,
 
   // Meters
   clipDot: 'Clip: latches on clipping. Click: clear.',
@@ -278,9 +328,39 @@ export const HELP = {
   hideHints: 'Hide Info Bar: hide this bar. Re-enable in Settings.',
 } as const;
 
+/**
+ * Desktop pointer vocabulary rewritten for touch. `Right-click` first, since
+ * it contains `click`; everything a right-click reaches (context menus, the
+ * advanced Spread/Align decks) answers a touch and hold on a touch screen.
+ */
+const TOUCH_WORDING: readonly (readonly [RegExp, string])[] = [
+  [/Right-click/g, 'Touch and hold'],
+  [/right-click/g, 'touch and hold'],
+  [/Click/g, 'Tap'],
+  [/click/g, 'tap'],
+];
+
+const touchify = (copy: Record<string, string>): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(copy).map(([key, text]) => [
+      key,
+      TOUCH_WORDING.reduce(
+        (acc, [pattern, replacement]) => acc.replace(pattern, replacement),
+        text
+      ),
+    ])
+  );
+
+export const HELP = (IS_COARSE_POINTER ? touchify(HELP_DESKTOP) : HELP_DESKTOP) as Record<
+  keyof typeof HELP_DESKTOP,
+  string
+>;
+
 /** Gallery tile: leads with the tone's own name. */
 export const toneTileHelp = (title: string) =>
-  `${title}. Click: open · drag: reorder · ${alt('drag')}: duplicate · right-click: copy / load file.`;
+  IS_COARSE_POINTER
+    ? `${title}. Tap: open · drag: reorder · touch and hold: menu.`
+    : `${title}. Click: open · drag: reorder · ${alt('drag')}: duplicate · right-click: copy / load file.`;
 
 /** Curve-type selector buttons in the EQ editor. */
 export const bandTypeHelp = (label: string) => `${label}: band curve shape.`;

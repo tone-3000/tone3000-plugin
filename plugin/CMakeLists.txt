@@ -109,8 +109,9 @@ foreach(_nam_tool tools loadmodel benchmodel render benchmodel_bufsize bench_a2_
 endforeach()
 
 # NAM static library - built here (not in submodule) to keep submodule pristine.
-# Must be linked with -force_load/--whole-archive so static factory::Helper
-# initializers (ConvNet, LSTM, WaveNet) are not stripped.
+# Must be linked with -force_load/--whole-archive so the static
+# ConfigParserHelper registrations (WaveNet, LSTM, SlimmableContainer, ...)
+# are not stripped.
 set(NAM_SRC "${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/NAM")
 add_library(NAM STATIC
     ${NAM_SRC}/activations.cpp
@@ -132,6 +133,23 @@ target_include_directories(NAM PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/Dependencies/nlohmann
 )
 target_compile_options(NAM PRIVATE -fPIC)
+# Hidden visibility, matching what JUCE sets on the plugin targets (NAM is a
+# separate target and gets none of that). Left visible, GCC exports the
+# header-inline ConfigParserRegistry singleton as STB_GNU_UNIQUE, which glibc
+# resolves process-wide even across RTLD_LOCAL dlopens: a host with two
+# formats installed (LV2 and VST3, say) shares one registry between both
+# binaries, each still runs its own static parser registrations, and the
+# duplicate-name throw escapes dlopen and aborts the host (issue #59).
+set_target_properties(NAM PROPERTIES
+    C_VISIBILITY_PRESET hidden
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN TRUE)
+# Second guard for the same bug (GCC-only flag; Clang never emits unique
+# symbols). It also keeps the .so dlclose'able: unique symbols pin a loaded
+# library NODELETE.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(NAM PRIVATE -fno-gnu-unique)
+endif()
 # A2 full / A2 lite models use the hand-optimized path when config matches (see NeuralAmpModelerCore).
 target_compile_definitions(NAM PRIVATE NAM_ENABLE_A2_FAST)
 
@@ -402,8 +420,8 @@ target_link_libraries(${PROJECT_NAME}
         juce::juce_audio_processors
         juce::juce_gui_basics
         juce::juce_gui_extra
-        # NAM: force_load/whole-archive so static factory::Helper initializers
-        # (ConvNet, LSTM, WaveNet) are not stripped by the linker
+        # NAM: force_load/whole-archive so the static ConfigParserHelper
+        # registrations are not stripped by the linker
         # PLATFORM_ID is "iOS" (not "Darwin") when cross-compiling for iOS, so
         # both have to be listed or the iOS link drops every model architecture
         # and NAM loads fail with "No config parser registered for ...".
@@ -481,6 +499,25 @@ if (UNIX AND NOT APPLE)
     )
 else()
     target_compile_definitions(${PROJECT_NAME} PUBLIC JUCE_USE_CURL=0)
+endif()
+
+# Linux: compile JUCE's JACK backend into the standalone's device-type list
+# (the settings UI grows an "Audio Driver" picker automatically when more
+# than one backend exists). JUCE's ALSA backend opens the selected card
+# directly and exclusively: picking a USB interface's raw device steals the
+# whole card from PipeWire/PulseAudio, killing its other channels for every
+# other app until the audio server recovers (issue #125 - a Scarlett Solo's
+# mic dying system-wide while the app holds the guitar channel). The JACK
+# backend connects as a client instead, so on any PipeWire system
+# (pipewire-jack) or real JACK server the interface stays shared. libjack is
+# dlopened at runtime (libjack.so.0, JackNoStartServer) like curl/WebKit
+# above, so this adds no runtime dependency: without a JACK server the
+# driver just lists no devices. Build hosts need the JACK headers
+# (libjack-jackd2-dev; CI installs it). The JACK client name defaults to
+# JucePlugin_Name ("TONE3000"). Gated on NOT HEADLESS so embedded
+# toolchains don't grow a header dependency.
+if (UNIX AND NOT APPLE AND NOT HEADLESS)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC JUCE_JACK=1)
 endif()
 
 # Linux: stay on the classic core-X11 input path. JUCE 9 rewrote Linux input

@@ -19,6 +19,7 @@ import { arrayMove } from '@dnd-kit/helpers';
 import type { DragEndEvent } from '@dnd-kit/react';
 import type { ActivePreset, PresetInfo } from '../types/chain';
 import { useDismissable } from '../hooks/useDismissable';
+import { IS_COARSE_POINTER } from '../hooks/useUiScale';
 import { useToast } from './Toast';
 import { HELP, helpProps } from './helpText';
 import { BORDER, FONT_MONO, GRAY, SEGMENTED_TRACK } from './theme';
@@ -149,6 +150,7 @@ const PresetRow: React.FC<PresetRowProps> = ({
       </span>
       {isRenaming ? (
         <input
+          className="t3k-touch-field"
           autoFocus
           value={renameValue}
           onChange={(e) => onRenameChange(e.target.value)}
@@ -466,6 +468,11 @@ export const PresetBar: React.FC<PresetBarProps> = ({
             // names ellipsize. Full pill height is the click target.
             width: '150rem',
             height: '100%',
+            // Touch: the chevrons' 44 pt hit areas are wider than the chevrons
+            // and reach a few points into this button. Raising the name above
+            // them keeps the whole name tappable and leaves the chevrons the
+            // room *outside* the pill, where nothing else competes.
+            ...(IS_COARSE_POINTER ? { position: 'relative' as const, zIndex: 1 } : {}),
             lineHeight: '36rem',
             textAlign: 'center',
             overflow: 'hidden',
@@ -508,6 +515,7 @@ export const PresetBar: React.FC<PresetBarProps> = ({
             Save Preset
           </div>
           <input
+            className="t3k-touch-field"
             autoFocus
             value={saveName}
             onChange={(e) => setSaveName(e.target.value)}
@@ -561,6 +569,7 @@ export const PresetBar: React.FC<PresetBarProps> = ({
                 }}
               />
               <input
+                className="t3k-touch-field"
                 autoFocus
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}

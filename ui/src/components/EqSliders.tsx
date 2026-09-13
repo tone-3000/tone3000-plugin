@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { EqBand } from '../types/chain';
 import { EQ_MAX_ABS_GAIN_DB, EQ_NUM_BANDS } from '../types/chain';
 import { formatFreq } from './eqMath';
-import { clamp, hasGain, TYPE_GLYPHS } from './eqShared';
+import { clamp, createDoubleTapDetector, hasGain, TYPE_GLYPHS } from './eqShared';
 import { BODY_PADDING } from './chainLayout';
 import { HELP, helpProps, pinHelp, unpinHelp } from './helpText';
 import { getUiScale } from '../hooks/useUiScale';
@@ -16,7 +16,7 @@ import { DISABLED_OPACITY } from './theme';
  * Interaction conventions (mirroring KnobControl):
  * - Shift+drag = 8x finer control (delta-based, so it can toggle mid-drag).
  * - Alt/Option-click or double-click a fader resets its gain to 0 (the
- *   mixer-fader convention).
+ *   mixer-fader convention); on touch the same reset is a double tap.
  * - While dragging, the band's frequency label swaps to a live dB readout
  *   and lingers briefly after release.
  */
@@ -56,6 +56,7 @@ export const EqSliders: React.FC<EqSlidersProps> = ({
 }) => {
   const draggingIndexRef = useRef<number | null>(null);
   const lastYRef = useRef(0);
+  const [doubleTap] = useState(createDoubleTapDetector);
   // Which band's label shows the dB readout (dragging, or lingering).
   const [readoutIndex, setReadoutIndex] = useState<number | null>(null);
   const holdTimerRef = useRef<number | null>(null);
@@ -87,6 +88,12 @@ export const EqSliders: React.FC<EqSlidersProps> = ({
   const handlePointerDown = (index: number) => (e: React.PointerEvent<HTMLDivElement>) => {
     if (!hasGain(bands[index].type)) return;
     e.preventDefault();
+    // Touch: second tap of a double tap resets, and ends the gesture there
+    // so the grab-jump of a fresh drag doesn't move it straight back off 0.
+    if (e.pointerType === 'touch' && doubleTap.tap(index, e)) {
+      onGainChange(index, 0);
+      return;
+    }
     if (e.altKey) {
       onGainChange(index, 0);
       return;
@@ -105,6 +112,7 @@ export const EqSliders: React.FC<EqSlidersProps> = ({
   };
 
   const handlePointerMove = (index: number) => (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'touch') doubleTap.move(e);
     if (draggingIndexRef.current !== index) return;
     const dY = e.clientY - lastYRef.current;
     lastYRef.current = e.clientY;

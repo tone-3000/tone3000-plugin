@@ -175,6 +175,17 @@ void TONE3000Processor::serializeChainToTree(
     if (includeModelData && block->type != ChainBlockType::INSERT) {
       juce::ValueTree cacheState("ModelCache");
       for (const auto& [modelId, modelData] : block->modelCache) {
+        // Only models the block's tone still references are persisted: the
+        // active model (what the project needs to reopen offline) and, for
+        // local tones, the rest of their stored model list. Auditioned
+        // catalog models accumulate in the in-memory cache (switchModel
+        // collapses toneJson to the active model but never evicts the old
+        // bytes); persisting them wrote 50-224 MB states nothing could ever
+        // read again, which hosts then multiplied across autosaves and
+        // backups (issue #127).
+        if (!block->referencesModel(modelId))
+          continue;
+
         juce::ValueTree cachedModel("CachedModel");
         cachedModel.setProperty("modelId", modelId, nullptr);
 
@@ -212,8 +223,9 @@ void TONE3000Processor::getStateInformation(juce::MemoryBlock& destData) {
     juce::ScopedLock lock(chainMutex);
     state.setProperty("activePresetId", activePresetId, nullptr);
     state.setProperty("activePresetName", activePresetName, nullptr);
-    // The same ChainSnapshot tree that undo and presets use, with model bytes
-    // embedded so the project reopens offline.
+    // The same ChainSnapshot tree that undo and presets use, with the
+    // referenced models' bytes embedded so the project reopens offline
+    // (see serializeChainToTree for what qualifies).
     state.appendChild(captureChainSnapshot(true), nullptr);
   }
 

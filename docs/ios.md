@@ -1,8 +1,11 @@
 # iOS (iPad) build
 
-Standalone-only iPad build of the plugin: the same C++ and the same React
-UI, with every platform difference behind `#if JUCE_IOS`. Desktop behaviour
-is unchanged. AUv3 is out of scope; iPhone is untested.
+Standalone-only iPad port of the plugin: the same C++ and the same React UI,
+with every difference gated. `#if JUCE_IOS` covers the C++. The UI gates on
+three levels (see Touch adaptation below): `IS_IOS` / `html.t3k-ios` for the
+app shell, `IS_COARSE_POINTER` / `html.t3k-touch` for touch-first ergonomics
+on any device, and each event's own `pointerType` for behaviors. Desktop
+behaviour is unchanged. AUv3 is out of scope; iPhone is untested.
 
 Deployment target iOS 16. Landscape only.
 
@@ -117,11 +120,96 @@ Simulator build.
   pinned to an older Xcode builds and signs fine and is then refused at upload,
   which reads as a signing problem and is not one.
 
+## Touch adaptation
+
+The adaptation is deliberately minimal: the desktop UI at the desktop aspect,
+letterboxed and vertically centered, with only the touch-ups a finger needs.
+Three gates, from narrowest reach to widest:
+
+- `IS_IOS` / `html.t3k-ios`: the app shell only. The document-scroll fix and
+  the vertical centering (both in `index.css`), and the long-press
+  recognizers that stand in for `contextmenu`, which WKWebView never fires
+  for a touch hold (`useTileMenu` in GalleryBlock, `useTouchHold`). Every
+  other engine fires the native event and takes the desktop `onContextMenu`
+  path.
+- `IS_COARSE_POINTER` / `html.t3k-touch` (`pointer: coarse`, see useUiScale):
+  static ergonomics for any touch-first device, iPad or Android or Windows
+  tablet. The 44 pt hit floor, the touch-field growth, the touch help copy,
+  and render-time nudges that follow them.
+- `pointerType === 'touch'` per event: behaviors (the knob double tap and
+  label tap, the help-bar release). A hybrid device gets touch behavior from
+  its touchscreen and desktop behavior from its mouse.
+
+| gesture | result |
+| ------- | ------ |
+| tap a tile | open the block |
+| drag a tile | reorder (the same distance rule as desktop) |
+| hold a tile 500 ms | tile menu, while the finger is still down |
+| hold the Spread / Align Offset knob | the advanced deck (desktop: right-click the group) |
+| press a control | its help in the info bar; release clears it |
+| drag a knob up or down | adjust |
+| double tap a knob, EQ fader or EQ dot | reset to default |
+| tap a knob's label | type the value |
+
+The tile face claims the gesture for dragging (`touch-action: none`, as on
+desktop), so lanes scroll from the space around the tiles, not across them.
+The info bar teaches each control's touch gestures: the help copy branches on
+`IS_COARSE_POINTER` in helpText.ts.
+
+Every touch target meets 44 pt through one rule in `index.css` under
+`html.t3k-touch`: an invisible `::after` at `max(100%, 44px)`, centred and out
+of flow, so no layout changes.
+
+Local import is desktop's two rows, **Load File** and **Load Folder**, in the
+tile menus. On iOS the folder row opens the platform's multi-select file
+picker instead (see Known gaps).
+
+## Touch verification
+
+An earlier, larger revision of this branch was driven end to end on the iPad
+Simulator and on an iPad Pro (presets, tuner, undo/redo, mono/stereo, EQ,
+Spread/Align decks, block swap/remove, keyboard avoidance). After the
+slim-down the Simulator build was smoke-checked; the gesture set above needs
+one hardware pass: long-press menu, drag reorder, knob double tap and label
+tap, the centered layout, and no document scroll.
+
 ## Platform notes worth knowing
 
 - **Picker results must be read through security-scoped URLs.** A file chosen
   outside the app container is unreadable through its raw path. A test with
   the file *inside* the container passes and proves nothing.
+- **WebKit replays a mouse event pair after every touch**, aimed at the
+  element just tapped and landing after `pointerup`. Anything that clears
+  state on release has to ignore that replay (see helpText.ts).
+- **A control that takes pointer capture retargets its release**, so a release
+  that must be seen regardless is watched on `window` in the capture phase.
+- **Pressing and holding an `<img>` raises WKWebView's own image callout**
+  (Copy / Save to Photos) and cancels the pointer stream under it, which
+  silently killed the tiles' long-press menu on any tile with artwork.
+  `-webkit-touch-callout: none` on img/svg (index.css) suppresses it.
+- **`env(safe-area-inset-*)` is 0 on all sides** here: the WKWebView is
+  already inset (1366x999 in a 1024 pt screen), so the faceplate clears the
+  home indicator without the page doing anything.
+- **`100vh` is not the viewport, and the document scrolled because of it.**
+  An unwanted vertical scroll that hurt navigation was reported. It was
+  real and it was global. This WKWebView lays out in a 1366x999 box, but
+  `100vh`, `100dvh`, `innerHeight` and `visualViewport.height` all report 1024,
+  the screen height: measured in the running app,
+  `documentElement.clientHeight` was 999 against a `scrollHeight` of 1024. So
+  `#root { height: 100vh }` built a root 25 px taller than the box holding it,
+  html and body kept `overflow: visible`, and the whole document became
+  scrollable by exactly that 25 px, on every screen: a vertical swipe anywhere
+  shifted the entire UI, header and faceplate included. `overscroll-behavior:
+  none` did not stop it and could not, because it only suppresses rubber-band
+  on a scroll with nowhere to go and this scroll had somewhere to go. The fix
+  is `height: 100%` (which chains from the initial containing block, i.e. the
+  999 the engine actually laid out) plus `overflow: hidden` on html and body,
+  so a document scroll is impossible rather than merely unnecessary. Inner
+  containers keep their own scrollers and are not affected. Verified on the
+  Simulator with a vertical swipe on the chain, BLOCK, SELECT TONE with
+  results, Settings and the Tuner: `scrollHeight` now equals `clientHeight`
+  at 999, zero document scroll events fired on any screen, and the Select
+  Tone and Settings lists still scroll on their own.
 - **The app data container's UUID rotates on every reinstall and every app
   update.** Any absolute path the plugin persisted then names a directory
   that no longer exists, and the only path it persists is a local model's
@@ -179,12 +267,29 @@ Simulator build.
 
 ## Known gaps
 
-- The UI is the desktop UI. It renders and is usable, but it is not yet
-  adapted for touch: hit targets, gestures and the "On this iPad" local
-  browsing section are a separate change.
-- Load Folder is a multi-select on iOS: a security-scoped *directory* cannot
-  be enumerated, so the picker returns files instead.
+- There is no true folder import on iOS: a security-scoped *directory* cannot
+  be enumerated, so **Load Folder** opens the platform's multi-select file
+  picker instead. Several files still land as one multi-model block, and
+  native titles a single pick from the file's name, so both desktop outcomes
+  are reachable; only the row's wording is approximate on iOS.
+- The double-tap knob reset and the label tap into the type-in editor are
+  proved in a browser against the same bundle, not on a device: two taps
+  cannot be driven inside 300 ms through the Simulator automation bridge.
 - Dragging a `.nam` from Files onto a tile is untested. The receiving code is
   the same HTML5 drop path the desktop uses, and the app does window alongside
   Files, but the drag could not be driven from the automation.
+- No haptics: the iPad has no Taptic Engine, so
+  `UIImpactFeedbackGenerator` does nothing there and the tile lift and drop
+  are silent.
 - AUv3 is not built. Only the Standalone app exists on iOS.
+
+## Desktop CI evidence
+
+Nothing on this branch reaches a desktop build. There is no C++ and no
+CMake here: the `window.__T3K_PLATFORM__` flag the UI reads already lives in
+main (PR 111), so this diff is TypeScript and CSS gated as described under
+Touch adaptation. `IS_IOS` / `html.t3k-ios` is false and absent in every
+desktop build; `IS_COARSE_POINTER` / `html.t3k-touch` engages only where the
+primary pointer is coarse, which on a desktop means a touch-first machine
+like a Windows tablet, and that is the intent. The shared `ui` bundle builds,
+lints, type-checks and tests clean.

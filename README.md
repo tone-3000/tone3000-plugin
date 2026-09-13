@@ -34,10 +34,12 @@ NAM processing comes from **NeuralAmpModelerCore** (in-tree), resampling from
 - [CMake](https://cmake.org/download/) 3.22+ and Git
 - Node.js and npm (the React UI is built after CMake has fetched JUCE)
 - **JUCE** is fetched automatically by CMake into `libs/`; no manual install
-- **Windows only:** [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)
-  runtime (`script/install-webview2.ps1` installs it). That is the native
-  browser the plugin UI runs in on Windows, not the TypeScript package
-  used to compile the UI.
+- **Windows only:** the Microsoft.Web.WebView2 SDK NuGet package
+  (`script/install-webview2.ps1` installs it), needed at build time to
+  statically link the WebView2 loader. At run time the plugin UI needs the
+  [WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/):
+  Windows 11 ships it, dev machines get it with Edge, and the release
+  installer bootstraps it when missing (typically clean Windows 10).
 
 ## Quick start
 
@@ -160,9 +162,11 @@ land in `build/plugin/TONE3000_artefacts/<config>/<format>/`.
 
 ## Linux runtime dependencies
 
-Windows links WebView2 statically and macOS uses the OS WKWebView, but the
-Linux build renders its UI in the system WebKitGTK, loaded dynamically at
-runtime. If it's missing, the plugin window is a black screen.
+Windows statically links only the WebView2 loader (the Evergreen Runtime is
+a system component; the installer bootstraps it when missing) and macOS uses
+the OS WKWebView, but the Linux build renders its UI in the system WebKitGTK,
+loaded dynamically at runtime. If it's missing, the plugin window is a black
+screen.
 
 Required: WebKitGTK 4.1 (or 4.0), GTK3, ALSA, FreeType.
 
@@ -175,6 +179,14 @@ sudo zypper install libwebkit2gtk-4_1-0   # openSUSE
 
 The release tarball's `install.sh` checks for these automatically
 (`./install.sh --check` to verify without installing).
+
+Optional: a JACK server. The standalone's Audio Driver picker offers JACK
+next to ALSA (libjack is loaded at runtime; without a server the driver just
+lists no devices). On PipeWire systems (`pipewire-jack`), JACK is the
+recommended driver: the ALSA driver's raw hardware devices ("Direct hardware
+device without any conversions") open the card exclusively, which takes the
+whole interface away from every other app while the standalone runs. The
+JACK driver shares it.
 
 ## Audio processing
 

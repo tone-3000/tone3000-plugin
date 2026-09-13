@@ -54,6 +54,14 @@ endif()
 set(CMAKE_CXX_STANDARD 20)
 set(LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs)
 
+# Windows: link the MSVC runtime statically (/MT). The plugin formats load
+# into host processes we don't control and the installer ships no vc_redist,
+# so a dynamically linked runtime fails on any machine without the VC++
+# Redistributable installed ("MSVCP140.dll was not found", #129). Set before
+# the CPM packages so every target in the tree links the same runtime;
+# ignored on non-MSVC platforms.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
 # Download CPM package manager
 include(cmake/cpm.cmake) 
 
@@ -918,7 +926,6 @@ CPMAddPackage(
     SOURCE_DIR ${LIB_DIR}/googletest
     OPTIONS
         "INSTALL_GTEST OFF"
-        "gtest_force_shared_crt ON"
 )
 
 enable_testing() # Allow running build tests

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { KnobHeadless } from 'react-knob-headless';
 import { KnobInner } from './KnobInner';
 import type { KnobThumb, KnobVariant } from './KnobInner';
@@ -20,6 +20,16 @@ import { getUiScale, rem } from '../hooks/useUiScale';
  * No scroll-wheel support on purpose: knobs sit inside the horizontally
  * scrolling chain view, and hijacking wheel events there hurts more than it
  * helps.
+ *
+ * On a touch screen the two mouse-only gestures are replaced rather than
+ * dropped:
+ * - Double tap resets to the default (there is no Alt key). Detected from
+ *   the pointer stream, not from `dblclick`, which WKWebView ties to its
+ *   own double-tap handling.
+ * - Tapping the label under the knob opens the type-in editor (double tap
+ *   is taken by the reset).
+ * Both key off the gesture's own pointerType, so a mouse keeps desktop
+ * behavior even on a hybrid device.
  */
 interface KnobControlProps {
   label: string;
@@ -85,6 +95,11 @@ const roundKnobValue = (x: number, snapCenter: boolean, fine: boolean) => {
 
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 
+/** Touch double tap: the usual recognizer window, and a slop wide enough
+    for two taps by the same finger without being a drag. */
+const DOUBLE_TAP_MS = 300;
+const DOUBLE_TAP_SLOP_PX = 24;
+
 export const KnobControl: React.FC<KnobControlProps> = ({
   label,
   value,
@@ -120,6 +135,15 @@ export const KnobControl: React.FC<KnobControlProps> = ({
   const emittedRef = useRef(value);
   const lastYRef = useRef(0);
   const fineRef = useRef(false);
+  // Touch double-tap recognizer state (time + position of the previous tap).
+  const lastTapRef = useRef<{ at: number; x: number; y: number } | null>(null);
+  // Where the current press went down, so a gesture that turns into a drag
+  // can withdraw its tap candidate (see handleDragPointerMove).
+  const pressOriginRef = useRef<{ x: number; y: number } | null>(null);
+  // Pointer type of the last press anywhere in the control, recorded in the
+  // capture phase. The dblclick guard and the label tap read it to tell a
+  // finger from a mouse.
+  const lastPointerTypeRef = useRef('');
 
   const [dragging, setDragging] = useState(false);
   const [fine, setFine] = useState(false);
@@ -200,6 +224,19 @@ export const KnobControl: React.FC<KnobControlProps> = ({
     };
     const handleDragPointerMove = (e: PointerEvent) => {
       if (!draggingRef.current) return;
+      // A press that travels is a drag, not the first half of a double tap.
+      // Without this, dragging a knob and then tapping it inside the
+      // recognizer window read as a pair and threw the drag away: the knob
+      // snapped back to its default the moment you touched it again.
+      const origin = pressOriginRef.current;
+      if (
+        origin !== null &&
+        (Math.abs(e.clientX - origin.x) > DOUBLE_TAP_SLOP_PX ||
+          Math.abs(e.clientY - origin.y) > DOUBLE_TAP_SLOP_PX)
+      ) {
+        pressOriginRef.current = null;
+        lastTapRef.current = null;
+      }
       const shift = e.shiftKey || e.getModifierState?.('Shift');
       if (shift !== fineRef.current) setFineMode(shift);
       // clientY is real px; divide by the UI scale so sensitivity stays
@@ -213,29 +250,51 @@ export const KnobControl: React.FC<KnobControlProps> = ({
       lastYRef.current = e.clientY;
     };
 
+    const resetToDefault = () => {
+      const fallback = defaultValueRef.current;
+      if (fallback === undefined) return false;
+      onChangeRef.current(fallback);
+      onResetRef.current?.();
+      liveRef.current = fallback;
+      emittedRef.current = fallback;
+      setLiveValue(fallback);
+      return true;
+    };
+
     const handlePointerDown = (e: PointerEvent) => {
       if (e.button !== 0 && e.pointerType === 'mouse') return;
       // Own the gesture so react-knob-headless's useDrag (value + thisDelta)
       // never starts; that path is what fought the native echo.
       e.stopPropagation();
       knobElement.focus();
+
+      // Touch: second tap of a double tap resets, and ends the gesture there.
+      // Engaging the drag as well would let the few pixels of finger travel
+      // between the two taps move the value straight back off the default.
+      if (e.pointerType === 'touch') {
+        const previous = lastTapRef.current;
+        const isDoubleTap =
+          previous !== null &&
+          e.timeStamp - previous.at < DOUBLE_TAP_MS &&
+          Math.abs(e.clientX - previous.x) < DOUBLE_TAP_SLOP_PX &&
+          Math.abs(e.clientY - previous.y) < DOUBLE_TAP_SLOP_PX;
+        lastTapRef.current = isDoubleTap
+          ? null // a third tap starts a fresh pair, it is not another reset
+          : { at: e.timeStamp, x: e.clientX, y: e.clientY };
+        if (isDoubleTap && resetToDefault()) return;
+      }
       // Alt/Option-click: reset to default. The drag still engages beneath,
       // which is harmless: releasing without moving stays at the default.
       // onReset runs after so owners can restore sibling defaults (e.g. the
       // Spread/Align advanced deck) in the same gesture.
-      if (e.altKey && defaultValueRef.current !== undefined) {
-        onChangeRef.current(defaultValueRef.current);
-        onResetRef.current?.();
-        liveRef.current = defaultValueRef.current;
-        emittedRef.current = defaultValueRef.current;
-        setLiveValue(defaultValueRef.current);
-      } else {
+      if (!(e.altKey && resetToDefault())) {
         liveRef.current = valueRef.current;
         emittedRef.current = valueRef.current;
         setLiveValue(valueRef.current);
       }
 
       draggingRef.current = true;
+      pressOriginRef.current = { x: e.clientX, y: e.clientY };
       lastYRef.current = e.clientY;
       setFineMode(e.shiftKey || e.getModifierState?.('Shift'));
       setDragging(true);
@@ -261,6 +320,7 @@ export const KnobControl: React.FC<KnobControlProps> = ({
     const handlePointerUp = () => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
+      pressOriginRef.current = null;
       setDragging(false);
       setFineMode(false);
       window.removeEventListener('keydown', handleShift);
@@ -320,7 +380,10 @@ export const KnobControl: React.FC<KnobControlProps> = ({
     setEditText(scale.editText(shownValue));
   }, [scale, shownValue]);
 
-  useEffect(() => {
+  // Layout effect so the focus lands in the same call stack as the tap or
+  // double-click that opened the editor; WKWebView only raises the on-screen
+  // keyboard for focus inside a user gesture.
+  useLayoutEffect(() => {
     if (editing) {
       inputRef.current?.focus();
       inputRef.current?.select();
@@ -403,6 +466,7 @@ export const KnobControl: React.FC<KnobControlProps> = ({
   return (
     <div
       {...(help ? helpProps(help) : {})}
+      onPointerDownCapture={(e) => (lastPointerTypeRef.current = e.pointerType)}
       style={{
         display: 'flex',
         flexDirection: labelBottom ? 'column' : 'column-reverse',
@@ -424,7 +488,11 @@ export const KnobControl: React.FC<KnobControlProps> = ({
         valueRawRoundFn={(x) => roundKnobValue(x, variant === 'bipolar', fine)}
         valueRawDisplayFn={(x) => scale.format(x)}
         onValueRawChange={() => {}}
-        onDoubleClick={openEditor}
+        // A touch double tap resets (see handlePointerDown); the dblclick
+        // some engines synthesize for it must not also open the editor.
+        onDoubleClick={() => {
+          if (lastPointerTypeRef.current !== 'touch') openEditor();
+        }}
         className="knob"
         style={{
           width: rem(size),
@@ -441,6 +509,11 @@ export const KnobControl: React.FC<KnobControlProps> = ({
       </KnobHeadless>
 
       <div
+        // Touch route into the type-in editor: tap the label. Desktop keeps
+        // the double-click on the knob face and ignores clicks here.
+        onClick={() => {
+          if (lastPointerTypeRef.current === 'touch' && !editing) openEditor();
+        }}
         style={{
           width: rem(size),
           height: rem(slotHeight),

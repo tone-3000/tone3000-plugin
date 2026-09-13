@@ -12,7 +12,7 @@ import { useToneLoadFlow } from '../hooks/useToneLoadFlow';
 import { useUpdateNotice } from '../hooks/useUpdateNotice';
 import { useUiScale, DESIGN_WIDTH, DESIGN_HEIGHT } from '../hooks/useUiScale';
 import { shouldRestoreToneBrowser } from '../hooks/useT3kSelect';
-import { ChainView, DETAIL_BLOCK_STORAGE_KEY } from './ChainView';
+import { CHAIN_SCROLL_STORAGE_KEY, ChainView, DETAIL_BLOCK_STORAGE_KEY } from './ChainView';
 import { Faceplate, PLATE_HEIGHT } from './Faceplate';
 import { HintBar, HINT_HEIGHT } from './HintBar';
 import { ToastProvider } from './Toast';
@@ -208,6 +208,7 @@ export const Plugin: React.FC = () => {
           setShowToneBrowser(false);
         }
         sessionStorage.removeItem(DETAIL_BLOCK_STORAGE_KEY);
+        sessionStorage.removeItem(CHAIN_SCROLL_STORAGE_KEY);
         setReturnToGallery((n) => n + 1);
         return fn(...args);
       },

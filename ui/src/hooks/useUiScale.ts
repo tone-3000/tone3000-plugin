@@ -28,11 +28,24 @@ let pendingTimer: number | undefined;
 export const IS_IOS =
   (window as unknown as { __T3K_PLATFORM__?: string }).__T3K_PLATFORM__ === 'ios';
 
-// Stylesheet hook for the iOS-only rules in index.css (the 44 pt touch floor
-// and the safe-area padding). Set here rather than in a component so it is on
-// the element before the first paint, and set only on iOS, so every other
-// build's <html> carries no extra class.
+// Stylesheet hook for the iOS-only rules in index.css (the document-scroll
+// fix and the vertical centering). Set here rather than in a component so it
+// is on the element before the first paint, and set only on iOS, so every
+// other build's <html> carries no extra class.
 if (IS_IOS && typeof document !== 'undefined') document.documentElement.classList.add('t3k-ios');
+
+/**
+ * True when the primary pointer is a finger (iPad, Android and Windows
+ * tablets). Gates the static touch ergonomics: the 44 pt hit floor and the
+ * touch-field growth in index.css (via the t3k-touch class below), the touch
+ * help copy, and render-time nudges that follow them. Behaviors gate on each
+ * event's own pointerType instead, so a hybrid device gets touch behavior
+ * from its touchscreen and desktop behavior from its mouse.
+ */
+export const IS_COARSE_POINTER = window.matchMedia('(pointer: coarse)').matches;
+
+if (IS_COARSE_POINTER && typeof document !== 'undefined')
+  document.documentElement.classList.add('t3k-touch');
 
 /** Largest scale at which a 1024 x designHeight box fits the viewport. The
  * floor covers 0-sized viewports during boot/teardown: pointer math divides
