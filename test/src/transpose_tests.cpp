@@ -43,9 +43,8 @@ TEST(TransposeProcessorTest, ActiveReportsPositiveLatencyAndBypassReturnsToZero)
 
   tp.setSemitones(3);
   const int active = tp.getLatencySamples();
-  // ~20ms analysis window at kFs; loose bounds since the exact STFT latency
-  // formula (inputLatency() + outputLatency()) is a library implementation
-  // detail, not something this test should pin exactly.
+  // Loose bounds since the exact STFT latency formula is a library
+  // implementation detail, not something this test should pin exactly.
   EXPECT_GT(active, static_cast<int>(kFs * 0.005)) << "> 5ms";
   EXPECT_LT(active, static_cast<int>(kFs * 0.1)) << "< 100ms";
 
@@ -165,7 +164,7 @@ namespace {
 // fixed shift and confirms energy has moved to the expected frequency
 // rather than staying at the original - the actual pitch-shifting contract,
 // not just "doesn't crash". Discards the first second (engine settle +
-// latency) before measuring, well past the ~20ms window.
+// latency) before measuring, well past the analysis window.
 void expectPitchShiftedTo(int semitones, double inFreq, double expectedFreq) {
   TransposeProcessor tp;
   tp.prepare(kFs, 1, kBlock);

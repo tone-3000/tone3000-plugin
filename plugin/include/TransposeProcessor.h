@@ -11,14 +11,24 @@
  * input/output sample counts, so the stretch ratio stays fixed at 1.0 and
  * only setSemitones() changes the pitch.
  *
- * Latency and window size: presetDefault()/presetCheaper() (the library's
- * built-in presets) pick ~120 ms analysis windows, tuned for offline/
- * non-monitored use - far too much added latency for a guitarist monitoring
- * themselves live through an amp sim. Instead this wraps configure()
- * directly with a ~20 ms window (kWindowMs below), which keeps the same 4x
- * STFT overlap presetDefault() uses (quality first, per the brief - dial
- * back the overlap, not the window, if profiling says the engine is too
- * expensive).
+ * Window size (kWindowMs): a phase vocoder's analysis window sets both pitch
+ * stability (needs to span a few cycles of the lowest fundamental, ~12ms for
+ * a guitar's low E) and frequency resolution (bin width = sampleRate /
+ * blockSamples), which chords need enough of to keep closely-spaced
+ * simultaneous fundamentals from blurring together in the engine's
+ * peak-picking (findPeaks() in signalsmith-stretch.h). 80ms is the shortest
+ * window that holds chords without warbling, found by manual bisection
+ * (40-75ms all warbled on chords; 85-120ms are no cleaner, just more
+ * latency). kOverlap is a separate, unrelated knob (STFT hop size / CPU
+ * cost, not latency or frequency resolution) - see presetDefault()'s own 4x
+ * overlap, matched here.
+ *
+ * TODO: 80ms is this algorithm's floor for chord quality - a single global
+ * STFT window can't decouple "chord-safe frequency resolution" from
+ * "low latency". If ~80ms proves too much for live monitoring, the next step
+ * is a multi-resolution STFT (short windows for high frequencies, long for
+ * low) rather than retuning this window further; tracked as a follow-up
+ * feature, not a bug in this version.
  *
  * No formant preservation: this version of Signalsmith Stretch has no
  * formant API (setFormantFactor/setFormantSemitones from the original brief
@@ -32,7 +42,7 @@
  * literal test (see ProcessorTest.EmptyChainAt48kIsTransparentWithZeroLatency
  * in processor_tests.cpp), and an unconditionally-running phase vocoder
  * would break that even with the transpose factor at 1.0 (FFT round-trip
- * noise floor, plus a fixed ~20 ms of reported latency on every chain).
+ * noise floor, plus a fixed ~kWindowMs of reported latency on every chain).
  *
  * The cost of bypassing is a latency/timing discontinuity right at the
  * knob's 0 <-> nonzero boundary: engaging goes from 0 added latency to
@@ -129,8 +139,9 @@ public:
   }
 
 private:
-  // ~20 ms window, same 4x overlap as the library's own presetDefault().
-  static constexpr double kWindowMs = 20.0;
+  // See the class comment for why 80ms (chord frequency resolution vs
+  // latency) and why kOverlap is unrelated to both.
+  static constexpr double kWindowMs = 80.0;
   static constexpr double kOverlap = 4.0;
 
   signalsmith::stretch::SignalsmithStretch<float> stretch;

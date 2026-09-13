@@ -1656,7 +1656,7 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   transposeProcessor.setSemitones(cacheTransposeSemitones);
   transposeProcessor.process(buffer);
   // TransposeProcessor is bypassed (0 added latency) at 0 semitones and
-  // active (~20ms) otherwise, so crossing that boundary changes this
+  // active (~80ms) otherwise, so crossing that boundary changes this
   // processor's total reported latency mid-session - re-report it to the
   // host so PDC stays correct. setLatencySamples() is safe to call from the
   // audio thread (it just stores the value and posts a change notification);
