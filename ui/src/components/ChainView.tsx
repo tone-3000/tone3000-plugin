@@ -18,6 +18,7 @@ import {
   GalleryLane,
   LANE_GAP,
   STEREO_TILE_SIZE,
+  fitTileSize,
   StereoPanRail,
   TILE_GAP,
   TILE_SIZE,
@@ -127,6 +128,11 @@ export const ChainView: React.FC<ChainViewProps> = ({
 }) => {
   const actions = useChainActions();
   const wheelScrollRef = useHorizontalWheelScroll<HTMLDivElement>();
+  // The scroller's width in design px, for fit-to-width tiles (see
+  // fitTileSize). Measured, not derived from the design box: DAW hosts and
+  // the standalone resize the editor, and the meters beside the lane take
+  // a fixed share.
+  const [scrollerWidth, setScrollerWidth] = useState(0);
   // One callback ref wires the scroller: it restores the saved offset before
   // first paint, persists it as the user scrolls, and attaches the wheel
   // hook's panning. The hook returns a cleanup (and once a ref callback
@@ -143,9 +149,12 @@ export const ChainView: React.FC<ChainViewProps> = ({
       const save = () =>
         sessionStorage.setItem(CHAIN_SCROLL_STORAGE_KEY, String(el.scrollLeft / getUiScale()));
       el.addEventListener('scroll', save, { passive: true });
+      const resize = new ResizeObserver(() => setScrollerWidth(el.clientWidth / getUiScale()));
+      resize.observe(el);
       const wheelCleanup = wheelScrollRef(el);
       return () => {
         el.removeEventListener('scroll', save);
+        resize.disconnect();
         if (typeof wheelCleanup === 'function') wheelCleanup();
       };
     },
@@ -416,7 +425,21 @@ export const ChainView: React.FC<ChainViewProps> = ({
   }
 
   const stereo = chainRight != null;
-  const tileSize = stereo ? STEREO_TILE_SIZE : TILE_SIZE;
+  // Slots the widest row needs: a branched lane is indented past the
+  // trunk's tap, so its tiles count from there. Native lengths, not the
+  // optimistic lanes: a drag's stand-in or cross-lane reflow must not
+  // resize every tile mid-gesture.
+  const branchIndent =
+    stereo && branch != null
+      ? (branch.side === 'left' ? chain : (chainRight ?? [])).findIndex(
+          (i) => i.blockId === branch.afterBlockId
+        ) + 1
+      : 0;
+  const slotsAcross = Math.max(
+    chain.length + (branch?.side === 'right' ? branchIndent : 0),
+    (chainRight?.length ?? 0) + (branch?.side === 'left' ? branchIndent : 0)
+  );
+  const tileSize = fitTileSize(stereo ? STEREO_TILE_SIZE : TILE_SIZE, slotsAcross, scrollerWidth);
 
   // Branched layout: the branch lane starts at the trunk's tap gap, so its
   // row is indented past the whole trunk prefix (matching the signal flow:
@@ -471,7 +494,7 @@ export const ChainView: React.FC<ChainViewProps> = ({
         padding: '0 24rem',
       }}
     >
-      {stereo && <StereoPanRail monoSum={monoSum} />}
+      {stereo && <StereoPanRail monoSum={monoSum} tileSize={tileSize} />}
       <DragDropProvider
         sensors={sensors}
         onDragStart={handleDragStart}
