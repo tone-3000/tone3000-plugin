@@ -147,6 +147,7 @@ private:
   juce::WebToggleButtonRelay toneEqEnabledRelay{"toneEqEnabled"};
   juce::WebToggleButtonRelay calibrateInputRelay{"calibrateInput"};
   juce::WebSliderRelay inputCalibrationLevelRelay{"inputCalibrationLevel"};
+  juce::WebSliderRelay targetLoudnessRelay{"targetLoudness"};
   juce::WebToggleButtonRelay osEnabledRelay{"osEnabled"};
   juce::WebComboBoxRelay osFactorRelay{"osFactor"};
 
@@ -221,6 +222,8 @@ private:
       *processor.parameters.getParameter("calibrateInput"), calibrateInputRelay, nullptr};
   juce::WebSliderParameterAttachment inputCalibrationLevelWebAttachment{
       *processor.parameters.getParameter("inputCalibrationLevel"), inputCalibrationLevelRelay, nullptr};
+  juce::WebSliderParameterAttachment targetLoudnessWebAttachment{
+      *processor.parameters.getParameter("targetLoudness"), targetLoudnessRelay, nullptr};
   juce::WebToggleButtonParameterAttachment osEnabledWebAttachment{
       *processor.parameters.getParameter("osEnabled"), osEnabledRelay, nullptr};
   juce::WebComboBoxParameterAttachment osFactorWebAttachment{

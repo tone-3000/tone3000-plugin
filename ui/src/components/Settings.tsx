@@ -24,6 +24,7 @@ import {
 } from './theme';
 import {
   FIELD_BORDER,
+  FieldRow,
   RadioOption,
   SECTION_GAP,
   SelectField,
@@ -200,6 +201,8 @@ export const Settings: React.FC<SettingsProps> = ({
     'slider'
   );
 
+  const [loudnessNormalized, setLoudnessNormalized] = useParameter('targetLoudness', 'slider');
+
   const [osEnabled, setOsEnabled] = useParameter('osEnabled', 'toggle');
   const [osFactorIndex, setOsFactorIndex] = useParameter('osFactor', 'comboBox');
 
@@ -221,6 +224,22 @@ export const Settings: React.FC<SettingsProps> = ({
       if (!Number.isNaN(parsed)) setDbuValue(parsed);
     }
     setDbuDraft(null);
+  };
+
+  // Same normalized<->display dance for the loudness target, whose native
+  // range is -60..0 dB.
+  const loudnessValue = loudnessNormalized * 60 - 60;
+  const setLoudnessValue = (value: number) => {
+    const normalized = (value + 60) / 60;
+    setLoudnessNormalized(Math.max(0, Math.min(1, normalized)));
+  };
+  const [loudnessDraft, setLoudnessDraft] = useState<string | null>(null);
+  const commitLoudnessDraft = () => {
+    if (loudnessDraft !== null) {
+      const parsed = parseFloat(loudnessDraft);
+      if (!Number.isNaN(parsed)) setLoudnessValue(parsed);
+    }
+    setLoudnessDraft(null);
   };
 
   // Diagnostics: forward the on-disk log so users can share it for debugging.
@@ -291,6 +310,17 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const pluginTab = (
     <>
+      {/* Kill the webkit number-input chrome (spinners, focus ring) for every
+          number field in this tab. */}
+      <style>
+        {`.settings-number-input::-webkit-outer-spin-button,
+          .settings-number-input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+          }
+          .settings-number-input:focus { outline: none; }`}
+      </style>
+
       <ToggleRow
         label="Info Bar"
         description="Strip under the faceplate with hover tips and CPU load."
@@ -401,15 +431,6 @@ export const Settings: React.FC<SettingsProps> = ({
       >
         {calibrationEnabled && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16rem' }}>
-            {/* Kill the webkit number-input chrome (spinners, focus ring). */}
-            <style>
-              {`.settings-number-input::-webkit-outer-spin-button,
-                .settings-number-input::-webkit-inner-spin-button {
-                  -webkit-appearance: none;
-                  margin: 0;
-                }
-                .settings-number-input:focus { outline: none; }`}
-            </style>
             <div style={{ position: 'relative', width: '100%' }}>
               <input
                 type="number"
@@ -474,7 +495,7 @@ export const Settings: React.FC<SettingsProps> = ({
             >
               <Info size={20} style={{ flexShrink: 0, color: WHITE }} aria-hidden />
               <span>
-                Captures that include calibration data show a{' '}
+                Every NAM block carries a{' '}
                 <Gauge
                   size={12}
                   style={{
@@ -485,7 +506,9 @@ export const Settings: React.FC<SettingsProps> = ({
                   }}
                   aria-label="gauge"
                 />{' '}
-                icon on their block and it’s enabled by default.
+                icon: white when the capture includes calibration data, gray when it doesn’t.
+                Calibration does nothing for a gray block — that capture never recorded the level it
+                was played at.
               </span>
             </p>
             <p style={{ ...descriptionStyle, margin: 0 }}>
@@ -495,6 +518,57 @@ export const Settings: React.FC<SettingsProps> = ({
           </div>
         )}
       </ToggleRow>
+
+      <FieldRow
+        label="Normalization Target"
+        help="The loudness every normalized block is brought to. Raise it if the app is too quiet before you reach for the Output knob: normalization sits after the model, so it adds level without driving the captures harder."
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16rem' }}>
+          <div style={{ position: 'relative', width: '100%' }}>
+            <input
+              type="number"
+              className="settings-number-input"
+              value={loudnessDraft ?? loudnessValue.toFixed(1)}
+              onFocus={() => setLoudnessDraft(loudnessValue.toFixed(1))}
+              onChange={(e) => setLoudnessDraft(e.target.value)}
+              onBlur={commitLoudnessDraft}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+              }}
+              step="0.1"
+              min="-60"
+              max="0"
+              placeholder="Value"
+              style={{
+                ...outlinedFieldStyle,
+                width: '100%',
+                padding: '12rem 52rem 12rem 16rem',
+                appearance: 'none',
+                WebkitAppearance: 'none',
+              }}
+            />
+            <span
+              style={{
+                position: 'absolute',
+                right: '16rem',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: GRAY,
+                fontSize: '14rem',
+                fontWeight: 700,
+                pointerEvents: 'none',
+              }}
+            >
+              dB
+            </span>
+          </div>
+          <p style={{ ...descriptionStyle, margin: 0 }}>
+            Default -18 dB, which leaves headroom for a DAW track fader. A block is moved at most 12
+            dB from its capture&rsquo;s own measured loudness, so an unusually quiet or loud capture
+            may not reach the target.
+          </p>
+        </div>
+      </FieldRow>
 
       <ToggleRow
         label="Oversampling"

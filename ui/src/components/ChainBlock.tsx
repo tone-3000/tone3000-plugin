@@ -516,15 +516,22 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
 
   const isNam = tone.format?.toLowerCase() === 'nam';
 
-  // Calibration state (the gauge indicator + the normalize override). Only
-  // meaningful while the user's input calibration setting is on: the gauge
-  // then reads white when the loaded model carries calibration data and gray
-  // when it doesn't. The overridden check mirrors the DSP's calibrated
-  // hand-off condition exactly (Processor.cpp): calibration on, sane
+  // Calibration state (the gauge indicator + the normalize override). The
+  // gauge reads white when the loaded model carries calibration data and gray
+  // when it doesn't. It is NOT gated on the calibration setting: whether a
+  // capture recorded the level it was played at is a fact about the capture,
+  // and it is exactly what a user needs to know *before* deciding to turn
+  // calibration on. Gating it on the setting made the one capture that can't
+  // benefit indistinguishable from the one that can.
+  // The overridden check does stay gated: it mirrors the DSP's calibrated
+  // hand-off condition exactly (Processor.cpp) — calibration on, sane
   // output_level_dbu metadata, and another NAM downstream. The last NAM
   // stays on normalization, so its control never reads overridden.
+  // Held back while the model is still loading: the metadata only arrives with
+  // the loaded engine, so showing the indicator earlier would read "no
+  // calibration data" on every block for the length of the load.
   const [calibrateInput] = useParameter('calibrateInput', 'toggle');
-  const showCalibration = isNam && calibrateInput;
+  const showCalibration = isNam && !modelBusy;
   const calibrationActive = block.inputLevelDbu !== undefined;
   const handOffLevelSane =
     block.outputLevelDbu !== undefined && block.outputLevelDbu >= -60 && block.outputLevelDbu <= 60;
@@ -653,11 +660,19 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
               )}
 
               {/* Calibration indicator (not a button): white = the loaded model
-                carries calibration data, gray = it doesn't. Hidden entirely
-                while the calibration setting is off. */}
+                carries calibration data, gray = it doesn't. Shown on every NAM
+                block, whether or not calibration is switched on. */}
               {showCalibration && (
                 <span
-                  {...helpProps(calibrationActive ? HELP.blockCalibrated : HELP.blockUncalibrated)}
+                  {...helpProps(
+                    calibrationActive
+                      ? `${HELP.blockCalibrated} Captured at ${block.inputLevelDbu!.toFixed(1)} dBu${
+                          block.outputLevelDbu !== undefined
+                            ? `, out ${block.outputLevelDbu.toFixed(1)} dBu`
+                            : ''
+                        }.`
+                      : HELP.blockUncalibrated
+                  )}
                   style={{
                     width: `${ICON_BOX_SIZE}rem`,
                     height: `${ICON_BOX_SIZE}rem`,
