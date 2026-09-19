@@ -1,5 +1,5 @@
 import React from 'react';
-import { GRAY, SURFACE } from './theme';
+import { GRAY, SURFACE, WHITE } from './theme';
 import { rem } from '../hooks/useUiScale';
 
 /**
@@ -248,27 +248,6 @@ const Experimental = ({ size = 40, color = GRAY }: Props) => (
   </svg>
 );
 
-/** Local-file fallback (drag-and-drop .nam / IR): no catalog artwork or gear
-    id. Stroke is authored on a 64 viewBox so it scales with `size`. */
-const FileIcon = ({ size = 64, color = GRAY }: Props) => (
-  <svg viewBox="0 0 64 64" fill="none" aria-label="File" style={svgStyle(size)}>
-    <path
-      d="M20 52C18.9391 52 17.9217 51.5786 17.1716 50.8284C16.4214 50.0783 16 49.0609 16 48V16C16 14.9391 16.4214 13.9217 17.1716 13.1716C17.9217 12.4214 18.9391 12 20 12H36C36.6331 11.999 37.2602 12.1232 37.8451 12.3655C38.43 12.6079 38.9611 12.9635 39.408 13.412L46.584 20.588C47.0337 21.035 47.3903 21.5667 47.6334 22.1523C47.8764 22.738 48.001 23.3659 48 24V48C48 49.0609 47.5786 50.0783 46.8284 50.8284C46.0783 51.5786 45.0609 52 44 52H20Z"
-      stroke={color}
-      strokeWidth="4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <path
-      d="M36 12V22C36 22.5304 36.2107 23.0391 36.5858 23.4142C36.9609 23.7893 37.4696 24 38 24H48"
-      stroke={color}
-      strokeWidth="4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-);
-
 const Ir = ({ size = 40, color = GRAY }: Props) => (
   <svg viewBox="0 0 40 40" fill="none" aria-label="Impulse Response" style={svgStyle(size)}>
     <path
@@ -333,38 +312,85 @@ export const GearImageFallback: React.FC<{
 /**
  * Tone artwork with recovery: renders the image URL when present and swaps in
  * the gear-glyph fallback if it's missing or the network fetch fails (offline
- * / tone3000.com down). Local-file blocks (drag-and-drop loads) show a file
- * glyph instead: there is no artwork and no gear id to fall back to.
- * Fills its parent like a plain cover <img>.
+ * / tone3000.com down). Local-file blocks (drag-and-drop loads) show the
+ * tone's name and a NAM/IR tag instead: there is no artwork and no gear id to
+ * fall back to. Fills its parent like a plain cover <img>.
  */
 export const ToneImage: React.FC<{
   src: string | undefined;
   alt: string;
   gear?: string;
   local?: boolean;
+  /** "nam" or "ir"; tags a local tone's tile, which has no artwork to
+      identify it with. Ignored for catalog tones. */
+  format?: string;
   boxSize: number;
   /** Override the fallback glyph size (defaults to ~40% of `boxSize`). */
   iconSize?: number;
   draggable?: boolean;
-}> = ({ src, alt, gear, local, boxSize, iconSize, draggable }) => {
+}> = ({ src, alt, gear, local, format, boxSize, iconSize, draggable }) => {
   const [failed, setFailed] = React.useState(false);
   // A new URL (tone swap/model switch) gets a fresh chance to load.
   React.useEffect(() => setFailed(false), [src]);
-  const glyphSize = iconSize ?? Math.round(boxSize * 0.4);
 
   if (local) {
+    // A local tone is a file on disk, not a catalog record: finishLocalToneLoad
+    // builds it with no `images`, so there is never artwork to show here. A
+    // glyph made every local tile identical — and the tile carries the title
+    // nowhere else (it lives in the tooltip alone), so the name is the only
+    // thing that can tell two filed captures apart.
+    const nameSize = Math.max(11, Math.round(boxSize * 0.085));
+    const tagSize = Math.max(9, Math.round(boxSize * 0.055));
     return (
       <div
         style={{
           width: '100%',
           height: '100%',
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
+          gap: rem(Math.round(nameSize * 0.45)),
           backgroundColor: SURFACE,
+          // Keeps text off the edge at every tile size, and clear of the
+          // quick-actions chrome that fades in over the top strip.
+          padding: rem(Math.round(boxSize * 0.1)),
+          boxSizing: 'border-box',
+          overflow: 'hidden',
         }}
       >
-        <FileIcon size={glyphSize} color={GRAY} />
+        {format !== undefined && format !== '' && (
+          <span
+            style={{
+              fontSize: rem(tagSize),
+              fontWeight: 600,
+              letterSpacing: rem(Math.max(0.5, tagSize * 0.08)),
+              color: GRAY,
+              textTransform: 'uppercase',
+              flexShrink: 0,
+            }}
+          >
+            {format.toLowerCase() === 'ir' ? 'IR' : 'NAM'}
+          </span>
+        )}
+        <span
+          style={{
+            fontSize: rem(nameSize),
+            fontWeight: 500,
+            lineHeight: 1.25,
+            color: WHITE,
+            textAlign: 'center',
+            // Capture filenames run long and often have no spaces to break
+            // on, so they must wrap mid-word rather than overflow the tile.
+            overflowWrap: 'anywhere',
+            display: '-webkit-box',
+            WebkitBoxOrient: 'vertical',
+            WebkitLineClamp: 3,
+            overflow: 'hidden',
+          }}
+        >
+          {alt}
+        </span>
       </div>
     );
   }

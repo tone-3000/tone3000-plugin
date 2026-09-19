@@ -321,6 +321,7 @@ const TileSurface: React.FC<{
               alt={tone.title}
               gear={tone.gear}
               local={tone.local}
+              format={tone.format}
               boxSize={size}
               iconSize={64}
               draggable={false}

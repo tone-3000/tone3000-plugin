@@ -892,6 +892,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
                           alt={tone.title}
                           gear={tone.gear}
                           local={tone.local}
+                          format={tone.format}
                           boxSize={showInfo ? IMAGE_SIZE_INFO : IMAGE_SIZE}
                         />
                       </div>
