@@ -18,6 +18,12 @@ install, load tones, and use it.
   `.wav`, or a folder of them onto a **+** slot, or right-click a tile and
   pick **Load File / Load Folder**; no account needed. Design notes in
   [`plugin/docs/local-models.md`](plugin/docs/local-models.md).
+- **Keep a library of your own tones.** Save a loaded tone into
+  `<app data>/TONE3000/Library` from the tile menu, drop files on the
+  browser's **Library** tab, or organize the folder yourself in
+  Finder/Explorer. It's the browser's first tab, works signed out and
+  offline, and a folder loads as one multi-model block. Design notes in
+  [`plugin/docs/library.md`](plugin/docs/library.md).
 - **Build a signal chain.** Multiple NAM and IR blocks, per-block EQ and
   gain/mix, drag to reorder, dual chains in stereo mode with branching,
   undo/redo, and presets.

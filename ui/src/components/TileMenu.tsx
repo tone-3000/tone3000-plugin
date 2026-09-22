@@ -30,7 +30,9 @@ export interface TileMenuAnchor {
   clientY: number;
 }
 
-const MENU_WIDTH = 148;
+/** Floor for the panel; it grows to fit its longest row (see `width`
+    below), so a label never squeezes anything out. */
+const MENU_MIN_WIDTH = 148;
 const PANEL_PADDING = 6;
 /** Visual-px nudge so the panel's top-left sits clearly past the cursor tip. */
 const CURSOR_OFFSET = 6;
@@ -68,7 +70,12 @@ export const TileMenu: React.FC<{
         position: 'fixed',
         left: anchor.clientX + CURSOR_OFFSET,
         top: anchor.clientY + CURSOR_OFFSET,
-        width: `${MENU_WIDTH}rem`,
+        // max-content, not a fixed width: rows are nowrap, and in a fixed
+        // panel a label longer than the box shrinks the row's icon away
+        // instead of overflowing (flex items shrink, text nodes don't).
+        width: 'max-content',
+        minWidth: `${MENU_MIN_WIDTH}rem`,
+        maxWidth: '260rem',
         backgroundColor: '#141416',
         border: BORDER,
         borderRadius: '14rem',
@@ -108,7 +115,7 @@ export const TileMenu: React.FC<{
             boxSizing: 'border-box',
           }}
         >
-          {item.icon}
+          <span style={{ display: 'flex', flexShrink: 0 }}>{item.icon}</span>
           {item.label}
         </button>
       ))}

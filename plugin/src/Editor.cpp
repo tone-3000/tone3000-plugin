@@ -302,6 +302,51 @@ void TONE3000Editor::loadMainUrlIfNeeded() {
 void TONE3000Editor::pickLocalToneFile(
     bool pickFolder, const juce::String& targetBlockId,
     juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+  chooseLocalFile(
+      pickFolder,
+#if JUCE_IOS
+      pickFolder ? "Load Files" : "Load File",
+#else
+      pickFolder ? "Load Folder" : "Load File",
+#endif
+      [this, target = targetBlockId.toStdString()](const juce::FileChooser& chooser) {
+#if JUCE_IOS
+        return processor.loadLocalToneUrls(chooser.getURLResults(), target);
+#else
+        return processor.loadLocalTonePath(chooser.getResults().getReference(0), target);
+#endif
+      },
+      std::move(completion));
+}
+
+void TONE3000Editor::pickLibraryImport(
+    bool pickFolder, const juce::String& folderPath,
+    juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+#if JUCE_IOS
+  // The library copies from a path on disk, and everything the iOS document
+  // picker returns is a security-scoped URL outside the sandbox (see
+  // pickLocalToneFile). Importing those would need the URL read path the
+  // loader uses, which the library store does not have yet, so say so rather
+  // than open a dialog whose result cannot be filed. The UI hides the action
+  // on iOS; this is the guard behind it.
+  juce::ignoreUnused(pickFolder, folderPath);
+  juce::DynamicObject::Ptr result = new juce::DynamicObject();
+  result->setProperty("error", "Adding files to the library is not supported on iOS yet.");
+  completion(juce::var(result.get()));
+#else
+  chooseLocalFile(
+      pickFolder, pickFolder ? "Add Folder to Library" : "Add File to Library",
+      [this, folder = folderPath](const juce::FileChooser& chooser) {
+        return processor.importPathToLibrary(folder, chooser.getResults().getReference(0));
+      },
+      std::move(completion));
+#endif
+}
+
+void TONE3000Editor::chooseLocalFile(
+    bool pickFolder, const juce::String& dialogTitle,
+    std::function<juce::var(const juce::FileChooser&)> handlePick,
+    juce::WebBrowserComponent::NativeFunctionCompletion completion) {
   auto cancelled = [] {
     juce::DynamicObject::Ptr result = new juce::DynamicObject();
     result->setProperty("cancelled", true);
@@ -322,16 +367,15 @@ void TONE3000Editor::pickLocalToneFile(
   // folder would be an unreadable handle. Multi-select is the equivalent the
   // platform does support, so "Load Folder" asks for the files themselves and
   // the same many-models-at-once path runs on the result.
-  localFileChooser = std::make_unique<juce::FileChooser>(
-      pickFolder ? "Load Files" : "Load File", juce::File{}, juce::String("*.nam;*.wav"));
+  localFileChooser = std::make_unique<juce::FileChooser>(dialogTitle, juce::File{},
+                                                         juce::String("*.nam;*.wav"));
 
   const int flags = juce::FileBrowserComponent::openMode |
                     juce::FileBrowserComponent::canSelectFiles |
                     (pickFolder ? juce::FileBrowserComponent::canSelectMultipleItems : 0);
 #else
   localFileChooser = std::make_unique<juce::FileChooser>(
-      pickFolder ? "Load Folder" : "Load File", juce::File{},
-      pickFolder ? juce::String("*") : juce::String("*.nam;*.wav"));
+      dialogTitle, juce::File{}, pickFolder ? juce::String("*") : juce::String("*.nam;*.wav"));
 
   const int flags = juce::FileBrowserComponent::openMode |
                     (pickFolder ? juce::FileBrowserComponent::canSelectDirectories
@@ -344,7 +388,7 @@ void TONE3000Editor::pickLocalToneFile(
   // platform that still delivers the callback mid-teardown.
   juce::Component::SafePointer<TONE3000Editor> self(this);
   localFileChooser->launchAsync(
-      flags, [self, cancelled, target = targetBlockId.toStdString(),
+      flags, [self, cancelled, handlePick = std::move(handlePick),
               completion = std::move(completion)](const juce::FileChooser& chooser) {
         if (self == nullptr)
           return;
@@ -354,28 +398,25 @@ void TONE3000Editor::pickLocalToneFile(
             self->localFileChooser.reset();
         });
 
+        // Which result list means "the user picked something" is itself
+        // platform specific, so the emptiness check splits the same way
+        // `handlePick` does. On iOS that list is getURLResults(), not
+        // getResults(): JUCE's own FileChooser docs say to use the URL form on
+        // mobile, and here it is load bearing rather than stylistic. The
+        // picker's files live outside the app sandbox and are only readable
+        // through the security scope JUCE bookmarked; getResults() flattens
+        // them to raw paths that the sandbox then refuses to open ("Couldn't
+        // read the file"), which is exactly what a file picked from Files on a
+        // device did before this.
 #if JUCE_IOS
-        // getURLResults(), not getResults(): JUCE's own FileChooser docs say
-        // to use the URL form on mobile, and here it is load bearing rather
-        // than stylistic. The picker's files live outside the app sandbox and
-        // are only readable through the security scope JUCE bookmarked;
-        // getResults() flattens them to raw paths that the sandbox then
-        // refuses to open ("Couldn't read the file"), which is exactly what a
-        // file picked from Files on a device did before this.
-        const auto results = chooser.getURLResults();
-        if (results.isEmpty()) {
-          completion(cancelled());
-          return;
-        }
-        completion(self->processor.loadLocalToneUrls(results, target));
+        if (chooser.getURLResults().isEmpty()) {
 #else
-        const auto results = chooser.getResults();
-        if (results.isEmpty()) {
+        if (chooser.getResults().isEmpty()) {
+#endif
           completion(cancelled());
           return;
         }
-        completion(self->processor.loadLocalTonePath(results.getReference(0), target));
-#endif
+        completion(handlePick(chooser));
       });
 }
 

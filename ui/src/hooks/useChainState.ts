@@ -55,6 +55,7 @@ export function useChainState() {
       getChainState: backend.getPluginFunction('getChainState'),
       loadTone: backend.getPluginFunction('loadTone'),
       loadLocalTone: backend.getPluginFunction('loadLocalTone'),
+      loadLibraryTone: backend.getPluginFunction('loadLibraryTone'),
       swapTone: backend.getPluginFunction('swapTone'),
       refreshToneMetadata: backend.getPluginFunction('refreshToneMetadata'),
       switchModel: backend.getPluginFunction('switchModel'),
@@ -154,6 +155,18 @@ export function useChainState() {
         );
         if (res?.blockId) return null;
         return res?.error ?? "Couldn't load the file";
+      },
+      /** Load an entry from the tone library: a file, or a whole folder as
+          one multi-model block. Native resolves the (root-relative) path and
+          then runs the same pipeline as a local file load, so the block is
+          identical to a dropped one. Same targeting and return contract as
+          loadLocalTone. */
+      loadLibraryTone: async (itemPath: string, targetBlockId: string) => {
+        const res = await run<{ blockId?: string; error?: string } | null>('loadLibraryTone', () =>
+          native.loadLibraryTone(itemPath, targetBlockId)
+        );
+        if (res?.blockId) return null;
+        return res?.error ?? "Couldn't load that tone";
       },
       /** Replace an existing block's tone in place (keeps position + params). */
       swapTone: (blockId: string, toneJson: string) =>

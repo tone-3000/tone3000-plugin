@@ -88,6 +88,10 @@ export type ConnectionProblem = 'offline' | 'insecure';
  * a throttled background probe verifies HTTPS to TONE3000 on the side;
  * nothing ever waits on a probe.
  *
+ * `isOnline` is the same instant OS check, for the callers that have
+ * something better to do offline than open a modal (the + button falls back
+ * to the on-disk tone library; see useToneLoadFlow).
+ *
  * The insecure modal is diagnostic, not a gate: it appears only after two
  * consecutive network-layer failures while the OS still reports a
  * connection, by which point the triggering action has already failed on its
@@ -165,5 +169,5 @@ export function useConnectionGate() {
     setProblem(null);
   }, []);
 
-  return { requireConnection, problem, retry, dismiss };
+  return { requireConnection, isOnline: checkInternet, problem, retry, dismiss };
 }

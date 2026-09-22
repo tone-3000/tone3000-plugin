@@ -15,6 +15,17 @@ import type { Model, Tone } from '../types/tone';
 export interface ChainActions {
   /** Launch the Select flow, adding into the clicked insert slot. */
   addModel: (side: ChainSide, insertBlockId: string) => void;
+  /** Open the browser on the Library tab, adding the picked tone into this
+      insert slot. The local counterpart to `addModel`: no account, no
+      download, and the fallback `addModel` itself takes when the OS reports
+      no network. */
+  addFromLibrary: (side: ChainSide, insertBlockId: string) => void;
+  /** Same, replacing this block's tone in place (the local `swapBlock`). */
+  swapFromLibrary: (blockId: string) => void;
+  /** File this block's tone into the library, in the folder the browser was
+      last left in. Works for catalog tones too: native writes the model
+      bytes the block already holds. Resolves to the message to flash. */
+  saveToLibrary: (blockId: string) => Promise<string>;
   /** Load a drop on a tile: a .nam / .wav file (NAM must be A2), or a folder
       of them (one block, one model per file). An insert slot adds; an
       existing tone tile swaps in place. Resolves to a user-facing error
