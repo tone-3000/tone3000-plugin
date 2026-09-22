@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSortable } from '@dnd-kit/react/sortable';
 import {
   ArrowLeftRight,
+  ChevronLeft,
+  ChevronRight,
   ClipboardPaste,
   Copy,
   File,
@@ -17,14 +19,16 @@ import { LoadingDots } from './LoadingDots';
 import { RetryLoadBadge } from './RetryLoadBadge';
 import { meterId } from '../hooks/useMeters';
 import { useChainActions } from '../hooks/useChainActions';
+import { useToneModels } from '../hooks/useToneModels';
 import { HELP, helpProps, toneTileHelp } from './helpText';
 import type { ChainSide, ToneBlock } from '../types/chain';
+import { modelStep } from '../types/tone';
 import { ChromeIconButton } from './ChromeIconButton';
 import { TileMenu } from './TileMenu';
 import type { TileMenuAnchor, TileMenuItem } from './TileMenu';
 import type { ChainActions } from '../hooks/useChainActions';
 import { useToast } from './Toast';
-import { GRAY, ICON_SIZE, SURFACE, SURFACE_RAISED } from './theme';
+import { GRAY, ICON_SIZE, SURFACE, SURFACE_RAISED, WHITE } from './theme';
 import { IS_IOS } from '../hooks/useUiScale';
 
 /**
@@ -238,6 +242,22 @@ interface TileActions {
   onRemove: (e: React.MouseEvent) => void;
   /** Retry a failed model download (shown when block.loadFailed). */
   onRetryLoad: () => void;
+  /** Pointer entered the tile: the moment a catalog tone loads its model list. */
+  onHover: () => void;
+}
+
+/** What the tile's model arrows need. Absent while the tone has a single
+    model or its list isn't known yet, so no arrows are drawn for it. */
+interface TileModelNav {
+  /** Where the active model sits in the tone's list, e.g. "3/8". */
+  position: string;
+  hasPrev: boolean;
+  hasNext: boolean;
+  /** A switch call is in flight (the tile's own `busy` covers the download
+      that follows it). */
+  switching: boolean;
+  onPrev: (e: React.MouseEvent) => void;
+  onNext: (e: React.MouseEvent) => void;
 }
 
 /**
@@ -253,7 +273,8 @@ const TileSurface: React.FC<{
   /** OS file drag is hovering this tile (upload icon + dashed green border). */
   dropArmed: boolean;
   actions: TileActions;
-}> = ({ block, size, enabled, dragging, dropArmed, actions }) => {
+  modelNav?: TileModelNav;
+}> = ({ block, size, enabled, dragging, dropArmed, actions, modelNav }) => {
   const { blockId, tone } = block;
 
   // A model download/prepare is in flight: `modelLoading` covers switches
@@ -278,6 +299,7 @@ const TileSurface: React.FC<{
         // dies across drag re-renders. The traveling tile pins it visible.
         className={dragging ? 'gallery-tile tile-chrome-visible' : 'gallery-tile'}
         onClick={actions.onOpen}
+        onMouseEnter={actions.onHover}
         {...helpProps(toneTileHelp(tone.title))}
         style={{
           width: `${size}rem`,
@@ -321,6 +343,7 @@ const TileSurface: React.FC<{
               alt={tone.title}
               gear={tone.gear}
               local={tone.local}
+              format={tone.format}
               boxSize={size}
               iconSize={64}
               draggable={false}
@@ -414,6 +437,59 @@ const TileSurface: React.FC<{
           </div>
         )}
 
+        {/* Model arrows (hover-revealed, like the action bar): step through the
+            tone's models without opening the card. Centered along the bottom
+            edge, clear of the level LED in the corner. */}
+        {!dropArmed && modelNav && (
+          <div
+            className="tile-chrome"
+            // A disabled arrow may let its click through to the tile, which
+            // would open the card; the whole pill swallows clicks instead.
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'absolute',
+              left: '50%',
+              bottom: '8rem',
+              transform: 'translateX(-50%)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '2rem',
+              padding: '2rem',
+              borderRadius: '12rem',
+              background: 'rgba(0, 0, 0, 0.35)',
+            }}
+          >
+            <ChromeIconButton
+              help={HELP.prevModel}
+              onClick={modelNav.onPrev}
+              onMouseDown={preventFocus}
+              disabled={!modelNav.hasPrev || modelNav.switching || busy}
+            >
+              <ChevronLeft size={ICON_SIZE} />
+            </ChromeIconButton>
+            <span
+              style={{
+                minWidth: '44rem',
+                textAlign: 'center',
+                fontSize: '12rem',
+                fontVariantNumeric: 'tabular-nums',
+                color: WHITE,
+                userSelect: 'none',
+              }}
+            >
+              {modelNav.position}
+            </span>
+            <ChromeIconButton
+              help={HELP.nextModel}
+              onClick={modelNav.onNext}
+              onMouseDown={preventFocus}
+              disabled={!modelNav.hasNext || modelNav.switching || busy}
+            >
+              <ChevronRight size={ICON_SIZE} />
+            </ChromeIconButton>
+          </div>
+        )}
+
         {/* Clip latch lives outside the overflow:hidden face so it stacks
             above the inset glow; red dot only while clipped. */}
       </div>
@@ -460,6 +536,25 @@ export const GalleryBlock: React.FC<GalleryBlockProps> = React.memo(
 
     const { ref, isDragging } = useSortable({ id: blockId, index, group });
 
+    // Lazy: a catalog tone's model list is fetched on first hover, so idle
+    // tiles cost no requests (a local tone already carries its own).
+    const models = useToneModels(block, { eager: false });
+    const step = modelStep(models.options, block.activeModelId);
+    const stepTo = (target: { id: number } | undefined) => (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (target) void models.select(target.id);
+    };
+    const modelNav: TileModelNav | undefined = step
+      ? {
+          position: `${step.index + 1}/${step.count}`,
+          hasPrev: step.prev !== undefined,
+          hasNext: step.next !== undefined,
+          switching: models.switching,
+          onPrev: stepTo(step.prev),
+          onNext: stepTo(step.next),
+        }
+      : undefined;
+
     const handleTogglePower = useCallback(
       (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -505,7 +600,9 @@ export const GalleryBlock: React.FC<GalleryBlockProps> = React.memo(
           enabled={enabled}
           dragging={isDragging}
           dropArmed={dropArmed}
+          modelNav={modelNav}
           actions={{
+            onHover: models.load,
             onOpen: (e) => {
               if (shouldIgnoreClick(e)) return;
               onOpen(blockId);

@@ -80,6 +80,20 @@ export function catalogModelCount(tone: {
     : (tone.models_count ?? 0);
 }
 
+/** Where `activeModelId` sits in a tone's model list, with the models either
+    side of it: what the gallery tile's arrows step through. Null when there
+    is nothing to step through: fewer than two models, or an active model the
+    list doesn't contain (stepping from index -1 would offer the first model
+    as "next"). */
+export function modelStep<T extends { id: number }>(
+  models: readonly T[],
+  activeModelId: number
+): { index: number; count: number; prev: T | undefined; next: T | undefined } | null {
+  const index = models.findIndex((m) => m.id === activeModelId);
+  if (models.length < 2 || index < 0) return null;
+  return { index, count: models.length, prev: models[index - 1], next: models[index + 1] };
+}
+
 export interface T3kDownloadEvent {
   type: 't3k.download.tone';
   tone: Tone;

@@ -25,9 +25,10 @@ import type { EqViewMode } from './BlockEqView';
 import { BlockInfoPanel } from './BlockInfoPanel';
 import { meterId } from '../hooks/useMeters';
 import { useChainActions } from '../hooks/useChainActions';
+import { useToneModels } from '../hooks/useToneModels';
 import { useParameter } from '../hooks/useParameter';
 import type { BlockParamName, ToneBlock } from '../types/chain';
-import { catalogModelCount, type Model, type Tone } from '../types/tone';
+import { catalogModelCount, type Tone } from '../types/tone';
 import { isEqFlat, isSlimSizeFull, SLIM_SIZE_FULL, SLIM_SIZE_LITE } from '../types/chain';
 import {
   CARD_WIDTH,
@@ -239,7 +240,6 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
   const [inputGain, setInputGain] = useState(params.inputGain ?? 0.5);
   const [outputGain, setOutputGain] = useState(params.outputGain ?? 0.5);
   const [mix, setMix] = useState(params.mix ?? 1.0);
-  const [isSwitchingModel, setIsSwitchingModel] = useState(false);
   const [showEq, setShowEq] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [infoTone, setInfoTone] = useState<Tone | null>(null);
@@ -442,72 +442,18 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
     return () => onFillToFaceplate?.(false);
   }, [showInfo, onFillToFaceplate]);
 
-  // Native persists only the block's *active* model; the full catalog (tones
-  // max out at 300 models) is fetched client-side in one call per tone.
-  // Signed out the picker is disabled (and the API needs the token anyway).
-  const [models, setModels] = useState<Model[]>([]);
-  const [modelsLoading, setModelsLoading] = useState(false);
-
-  // Same stale guard as fetchInfo: only the newest request may touch state
-  // (retries reuse this fetch, so a flag can't cover it).
-  const modelsFetchSeq = useRef(0);
-  const fetchModels = useCallback(async () => {
-    if (isLocal || !actions.authenticated) return;
-    const seq = ++modelsFetchSeq.current;
-    setModelsLoading(true);
-    try {
-      const list = await actions.listToneModels(tone.id, tone.format);
-      if (seq === modelsFetchSeq.current) setModels(list);
-    } catch (err) {
-      // No error UI: the picker keeps the stored model, and opening it
-      // retries (handleModelsOpen), so a transient failure never sticks.
-      console.error('Failed to load models', err);
-    } finally {
-      if (seq === modelsFetchSeq.current) setModelsLoading(false);
-    }
-  }, [actions, isLocal, tone.format, tone.id]);
-
-  // Fetch on mount, tone change, and auth arrival (`actions` carries
-  // `authenticated`, so logging in re-runs this with the guard now open).
-  useEffect(() => {
-    setModels([]);
-    void fetchModels();
-    return () => {
-      // Reading the counter's latest value here is the point (bumping it
-      // orphans whatever fetch is in flight), not a stale-closure bug.
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      modelsFetchSeq.current++;
-    };
-  }, [fetchModels]);
-
-  // A failed fetch leaves the catalog at just the stored model; opening the
-  // picker retries so the card never strands on "1/N". No-op once loaded.
-  const handleModelsOpen = useCallback(() => {
-    if (!modelsLoading && models.length === 0) void fetchModels();
-  }, [fetchModels, models.length, modelsLoading]);
-
-  // Local tones own their model list; catalog tones show the full catalog
-  // once loaded, just the active model until then.
-  const modelOptions = isLocal ? tone.models : models.length ? models : tone.models;
-
-  const handleModelSelect = async (id: string) => {
-    if (isSwitchingModel) return;
-    const newModelId = parseInt(id, 10);
-    if (isNaN(newModelId) || newModelId === block.activeModelId) return;
-
-    // Native only stores the active model, so the switch call carries the
-    // model object: from the fetched catalog, or the local tone's own list
-    // (whose entries ship their stash model_url).
-    const model = (isLocal ? tone.models : models).find((m) => m.id === newModelId);
-    if (!model?.model_url) return;
-
-    setIsSwitchingModel(true);
-    try {
-      await actions.switchModel(blockId, newModelId, { ...model, model_url: model.model_url });
-    } finally {
-      setIsSwitchingModel(false);
-    }
-  };
+  // The picker's models and the switch between them (shared with the tile's
+  // arrows; see useToneModels). The card is only mounted while open, so it
+  // fetches the catalog straight away. Signed out the picker is disabled (and
+  // the API needs the token anyway). Opening it retries a failed fetch, so
+  // the card never strands on "1/N".
+  const {
+    options: modelOptions,
+    loading: modelsLoading,
+    load: handleModelsOpen,
+    select: selectModel,
+  } = useToneModels(block, { eager: true });
+  const handleModelSelect = (id: string) => selectModel(parseInt(id, 10));
 
   // A model download/prepare is in flight (switch, swap or first load). The
   // previous model keeps playing during a switch (`loaded` stays true), so
@@ -892,6 +838,7 @@ export const ChainBlock: React.FC<ChainBlockProps> = ({
                           alt={tone.title}
                           gear={tone.gear}
                           local={tone.local}
+                          format={tone.format}
                           boxSize={showInfo ? IMAGE_SIZE_INFO : IMAGE_SIZE}
                         />
                       </div>

@@ -261,6 +261,8 @@ const HELP_DESKTOP = {
   blockPower: 'Power: bypass this block.',
   retryLoad: 'Retry: re-download this model.',
   swapTone: 'Swap: replace this tone, keeping its slot.',
+  prevModel: 'Previous model: switch this tone to the model before it.',
+  nextModel: 'Next model: switch this tone to the model after it.',
   removeBlock: 'Remove: delete this block.',
   panLeft: knobHelp('Pan L', 'Left chain, hard left ↔ center.'),
   panRight: knobHelp('Pan R', 'Right chain, center ↔ hard right.'),
