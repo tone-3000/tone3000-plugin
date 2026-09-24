@@ -38,6 +38,10 @@ export const TILE_SIZE = 224;
 export const STEREO_TILE_SIZE = 160;
 /** Gap between tiles: the visible run of each connector line. */
 export const TILE_GAP = 24;
+/** Floor for fit-to-width shrinking (see fitTileSize): below this the
+    artwork stops reading and the hover chrome (power, swap, trash) no
+    longer fits a tile's top strip. */
+export const MIN_TILE_SIZE = 128;
 /** Vertical gap between the two stereo lanes. */
 export const LANE_GAP = 24;
 /** Gutter inside the scroll area; tiles fade out under it while scrolling. */
@@ -66,6 +70,22 @@ export const BRANCH_CIRCLE_SIZE = ICON_BOX_SIZE / 2;
 
 /** X center of the connector gap *before* the tile at `index` (i.e. gap g
     sits between tiles g-1 and g), in lane-content coordinates. */
+/**
+ * Tile edge that lets `slots` tiles sit side by side in a scroller
+ * `scrollerWidth` design px wide (edge insets and gaps included), capped at
+ * `baseSize` and floored at MIN_TILE_SIZE. At the full 224 px only three
+ * tiles fit the plugin's width, so a 5-6 block rig lived behind a hidden
+ * scrollbar and a wheel-only pan (issue #84); shrinking the row until it
+ * fits keeps the whole chain in view, and the ordinary scroll takes over
+ * only past the floor. 0 width (not measured yet) keeps the base size, so
+ * the first paint never flashes a wrong size.
+ */
+export const fitTileSize = (baseSize: number, slots: number, scrollerWidth: number): number => {
+  if (scrollerWidth <= 0 || slots <= 0) return baseSize;
+  const usable = scrollerWidth - 2 * EDGE_FADE_WIDTH - (slots - 1) * TILE_GAP;
+  return Math.max(MIN_TILE_SIZE, Math.min(baseSize, Math.floor(usable / slots)));
+};
+
 export const gapCenterX = (gapIndex: number, tileSize: number) =>
   gapIndex * (tileSize + TILE_GAP) - TILE_GAP / 2;
 
@@ -346,7 +366,10 @@ const PanRailChips: React.FC<{
  * buttons for a MONO chip that says why. Solo and polarity stay live: they
  * act on the chains inside the sum.
  */
-export const StereoPanRail: React.FC<{ monoSum: boolean }> = ({ monoSum }) => {
+export const StereoPanRail: React.FC<{ monoSum: boolean; tileSize: number }> = ({
+  monoSum,
+  tileSize,
+}) => {
   const { swapChains } = useChainActions();
   const [panLeft, setPanLeft, onPanLeftDrag] = useParameter('chainPanLeft', 'slider');
   const [panRight, setPanRight, onPanRightDrag] = useParameter('chainPanRight', 'slider');
@@ -417,7 +440,9 @@ export const StereoPanRail: React.FC<{ monoSum: boolean }> = ({ monoSum }) => {
         flexDirection: 'column',
         alignItems: 'center',
         alignSelf: 'center',
-        height: `${STEREO_TILE_SIZE * 2 + LANE_GAP}rem`,
+        // Tracks the lanes' actual (fit-to-width) tile size so the pans stay
+        // level with their lanes.
+        height: `${tileSize * 2 + LANE_GAP}rem`,
         flexShrink: 0,
         // Room for the left edge-fade's 1rem outer overhang (see EdgeFade)
         // so it doesn't sit on the link/swap pill.
