@@ -287,8 +287,9 @@ const HELP_DESKTOP = {
   blockSize: 'NAM Size: LITE saves CPU · FULL is highest quality. Sets this block only.',
   blockSizeChip:
     'NAM Size: this block\u2019s size differs from your default. To choose per block, enable it in Settings.',
-  blockCalibrated: 'Calibration: active \u2014 levels set from this model\u2019s calibration data.',
-  blockUncalibrated: 'Calibration: inactive \u2014 this model has no calibration data.',
+  blockCalibrated: 'Calibration data: present \u2014 turn Calibration on to set levels from it.',
+  blockUncalibrated:
+    'Calibration data: none \u2014 this capture never recorded its input level, so Calibration can\u2019t help it. Set the drive with the In knob.',
   eqToggle: 'EQ: 6-band EQ editor. Outline: EQ shaping the sound.',
   toneInfo: 'Info: tone description, makes, and tags from TONE3000.',
   toneInfoLogin: 'Log In: sign in to TONE3000 to see tone details.',
