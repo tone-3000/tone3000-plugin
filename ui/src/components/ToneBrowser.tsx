@@ -173,13 +173,16 @@ const GearFilterPill: React.FC<{
     role="radio"
     aria-checked={active}
     onClick={onClick}
+    // Compact enough that all seven gear types fit the column at the
+    // design width: the row used to overflow after "Spaces" and the last
+    // pill lived behind a hidden scrollbar and a wheel-only pan.
     style={{
       display: 'flex',
       alignItems: 'center',
-      gap: '8rem',
+      gap: '6rem',
       flexShrink: 0,
-      padding: '8rem 16rem',
-      fontSize: '14rem',
+      padding: '6rem 12rem',
+      fontSize: '13rem',
       fontWeight: 400,
       borderRadius: '9999rem',
       border: active ? `1rem solid ${WHITE}` : BORDER,
@@ -189,7 +192,7 @@ const GearFilterPill: React.FC<{
       whiteSpace: 'nowrap',
     }}
   >
-    <GearIcon gear={id} size={20} color={active ? WHITE : GRAY} />
+    <GearIcon gear={id} size={16} color={active ? WHITE : GRAY} />
     {label}
   </button>
 );
@@ -221,7 +224,7 @@ const GearFilterRow: React.FC<{ active: string | null; onChange: (id: string | n
         className="hide-scrollbar"
         style={{
           display: 'flex',
-          gap: '10rem',
+          gap: '8rem',
           overflowX: 'auto',
           // overflow-x:auto also clips vertically at the scrollport, and at
           // fractional UI scales the pill height can round a subpixel taller
