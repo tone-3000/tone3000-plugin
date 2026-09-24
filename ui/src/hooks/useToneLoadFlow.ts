@@ -1,7 +1,15 @@
 import { useCallback } from 'react';
 import type { useChainState } from './useChainState';
+import { DETAIL_BLOCK_STORAGE_KEY } from '../components/ChainView';
 import type { ChainSide } from '../types/chain';
 import type { Model, Tone } from '../types/tone';
+
+/** Land on the new/swapped block's expanded detail view as soon as it lands
+    in the chain, matching what tapping an existing tile does (issue #114).
+    Flip to false to fall back to just scrolling it into view in the gallery
+    instead — the sessionStorage handoff below stays the same either way, so
+    that's a one-line change, not a re-implementation. */
+const OPEN_DETAIL_ON_BLOCK_ADD = true;
 
 type ChainStateActions = ReturnType<typeof useChainState>['actions'];
 
@@ -102,16 +110,33 @@ export function useToneLoadFlow({
       sessionStorage.removeItem(INSERT_TARGET_STORAGE_KEY);
 
       const toneJson = JSON.stringify(tone);
-      setShowToneBrowser(false);
 
+      // Closing the browser unmounts it and mounts a fresh ChainView (see
+      // Plugin's showToneBrowser ternary), whose detail-view state reads
+      // DETAIL_BLOCK_STORAGE_KEY once, at that mount. So the browser can only
+      // close *after* we know which block to hand it — closing first and
+      // writing the key once the native call resolves would land one render
+      // too late (issue #114).
       if (swapBlockId) {
         const swapped = await actions.swapTone(swapBlockId, toneJson);
-        if (swapped) return;
+        if (swapped) {
+          if (OPEN_DETAIL_ON_BLOCK_ADD) {
+            sessionStorage.setItem(DETAIL_BLOCK_STORAGE_KEY, swapBlockId);
+          }
+          setShowToneBrowser(false);
+          return;
+        }
         console.warn('Swap target no longer exists; adding tone as a new block');
       }
 
       const blockId = await actions.loadTone(toneJson, insertBlockId ?? undefined);
-      if (!blockId) console.error('Failed to load tone');
+      if (!blockId) {
+        console.error('Failed to load tone');
+        setShowToneBrowser(false);
+        return;
+      }
+      if (OPEN_DETAIL_ON_BLOCK_ADD) sessionStorage.setItem(DETAIL_BLOCK_STORAGE_KEY, blockId);
+      setShowToneBrowser(false);
     },
     [actions, setShowToneBrowser]
   );
