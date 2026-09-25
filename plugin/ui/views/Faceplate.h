@@ -1,8 +1,9 @@
-// Bottom faceplate (port of Faceplate.tsx): main input/output gain, gate and
-// the global 3-band tone stack, the stereo-image slot (Spread in mono chain
-// mode, Align in stereo) and, when they apply, the input-mode button, the
-// output balance knob and auto balance. Gate + tone stack carry power
-// switches (APVTS bools, so they automate and persist like everything else).
+// Bottom faceplate (port of Faceplate.tsx): main input/output gain, the gate
+// group (GateGroup, with its advanced deck) and the global 3-band tone
+// stack, the stereo-image slot (Spread in mono chain mode, Align in stereo)
+// and, when they apply, the input-mode button, the output balance knob and
+// auto balance. Gate + tone stack carry power switches (APVTS bools, so they
+// automate and persist like everything else).
 //
 // Five peer groups share the plate width (CSS space-between); every group
 // has a fixed footprint with inactive companions hidden in place, so toggling
@@ -13,6 +14,7 @@
 
 #include <memory>
 
+#include "GateGroup.h"
 #include "StereoImageGroup.h"
 #include "core/Design.h"
 #include "services/Services.h"
@@ -46,9 +48,7 @@ private:
   ParamKnob input_;
   std::unique_ptr<InputModeButton> inputMode_;
 
-  DimGroup gateDim_;
-  ParamKnob gate_;
-  ParamPowerButton gatePower_;
+  GateGroup gate_;
 
   DimGroup toneDim_;
   ParamKnob bass_, middle_, treble_;

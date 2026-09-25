@@ -79,6 +79,11 @@ const std::map<juce::String, Drive>& drives() {
          if (meter != nullptr) hoverAt(root, *meter, meter->clipDotCentre(0));
          wait(100);
        }},
+      {"chrome-gate-deck",
+       [](PluginRoot& root, MockBackend&) {
+         clickByHelp(root, "Gate:", /*right=*/true);
+         wait(200);
+       }},
       {"chrome-spread-deck",
        [](PluginRoot& root, MockBackend&) {
          clickByHelp(root, "Offset:", /*right=*/true);

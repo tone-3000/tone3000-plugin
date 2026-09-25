@@ -23,6 +23,7 @@ target_sources(DspTests PRIVATE
     src/duplicate_tests.cpp
     src/eq_post_routing_tests.cpp
     src/factory_preset_tests.cpp
+    src/gate_tests.cpp
     src/host_program_tests.cpp
     src/ir_temp_file_tests.cpp
     src/local_load_tests.cpp

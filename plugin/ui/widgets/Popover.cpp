@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include "SecondaryPress.h"
 #include "core/NoDefaultFocus.h"
 
 namespace t3k::ui {
@@ -33,7 +34,7 @@ void Popover::open(juce::Component& anchor, Align align, int gap, int inset, Pla
   }
   host->overlayLayer().addAndMakeVisible(this);
   reposition();
-  juce::Desktop::getInstance().addGlobalMouseListener(&watcher_);
+  watchOutsidePresses();
   if (isShowing()) grabKeyboardFocus();  // offscreen (testbed capture) has no peer
 }
 
@@ -52,8 +53,16 @@ void Popover::openAt(juce::Component& context, juce::Point<int> point) {
   const int maxX = std::max(0, juce::roundToInt(overlay.getWidth() / k) - getWidth());
   const int maxY = std::max(0, juce::roundToInt(overlay.getHeight() / k) - getHeight());
   setTopLeftPosition(juce::jlimit(0, maxX, juce::roundToInt(p.x)), juce::jlimit(0, maxY, juce::roundToInt(p.y)));
-  juce::Desktop::getInstance().addGlobalMouseListener(&watcher_);
+  watchOutsidePresses();
   if (isShowing()) grabKeyboardFocus();
+}
+
+void Popover::watchOutsidePresses() {
+  // The press in flight, if the panel is opening from one (see outsidePress).
+  // A keyboard or timer open records a press already fully delivered, which
+  // no later event carries.
+  openingPress_ = juce::Desktop::getInstance().getMainMouseSource().getLastMouseDownTime();
+  juce::Desktop::getInstance().addGlobalMouseListener(&watcher_);
 }
 
 void Popover::reposition() {
@@ -147,7 +156,11 @@ void Popover::focusRow(bool next) {
 }
 
 void Popover::outsidePress(const juce::MouseEvent& e) {
-  if (primaryOnly && !e.mods.isLeftButtonDown()) return;
+  // JUCE delivers a press to the component first and to the global
+  // listeners after, so a panel opened from a mouseDown is watching by the
+  // time that same press reaches the desktop list; it must not count.
+  if (e.mouseDownTime == openingPress_) return;
+  if (primaryOnly && isSecondaryPress(e)) return;
   auto* c = e.eventComponent;
   // Other windows (another plugin instance) don't count as "outside".
   if (c == nullptr || c->getTopLevelComponent() != getTopLevelComponent()) return;

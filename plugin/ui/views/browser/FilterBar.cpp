@@ -323,6 +323,11 @@ void FilterBar::lookupTaxonomy(Taxonomy kind, const juce::String& text) {
       return;
     }
     const bool creators = kind == Taxonomy::creators;
+    // Remember every creator avatar seen: a picked creator stays pinned at
+    // the top after the search moves on and no longer returns them.
+    if (creators)
+      for (const auto& entry : *r)
+        if (entry.avatarUrl.isNotEmpty()) state_.creatorAvatars[entry.name] = entry.avatarUrl;
     const auto& picked = query_.picked(kind);
     std::vector<FilterMenu::Option> options;
     auto add = [&](const juce::String& name, const juce::String& avatarUrl) {
@@ -330,7 +335,11 @@ void FilterBar::lookupTaxonomy(Taxonomy kind, const juce::String& text) {
     };
     for (const auto& name : picked) {
       const auto found = std::find_if(r->begin(), r->end(), [&](const auto& e) { return e.name == name; });
-      add(name, found != r->end() ? found->avatarUrl : juce::String());
+      juce::String avatarUrl = found != r->end() ? found->avatarUrl : juce::String();
+      if (avatarUrl.isEmpty() && creators)
+        if (const auto cached = state_.creatorAvatars.find(name); cached != state_.creatorAvatars.end())
+          avatarUrl = cached->second;
+      add(name, avatarUrl);
     }
     for (const auto& entry : *r)
       if (std::find(picked.begin(), picked.end(), entry.name) == picked.end()) add(entry.name, entry.avatarUrl);

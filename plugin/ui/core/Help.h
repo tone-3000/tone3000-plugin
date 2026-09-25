@@ -12,7 +12,7 @@ enum class Key {
   // Faceplate: gains
   inputLevel, inputMode, outputLevel, outputBalance, autoBalance,
   // Faceplate: gate, tone stack, stereo image (spread / align)
-  gate, gatePower, toneBass, toneMiddle, toneTreble, tonePower,
+  gate, gatePower, gateRelease, gateHold, gateRange, toneBass, toneMiddle, toneTreble, tonePower,
   spreadOffset, spreadWobble, spreadWobblePower, spreadCrossover, spreadCrossoverPower,
   spreadDiffuse, spreadAdvert, spreadPower, imageCorrelation, spreadMonoOutput,
   alignOffset, alignWobble, alignWobblePower, alignCrossover, alignCrossoverPower,

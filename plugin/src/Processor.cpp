@@ -139,6 +139,9 @@ void TONE3000Processor::resolveParamRefs() {
   paramRefs.toneTreble = get("toneTreble");
   paramRefs.gateThreshold = get("gateThreshold");
   paramRefs.gateEnabled = get("gateEnabled");
+  paramRefs.gateRelease = get("gateRelease");
+  paramRefs.gateHold = get("gateHold");
+  paramRefs.gateRange = get("gateRange");
   paramRefs.toneEqEnabled = get("toneEqEnabled");
   paramRefs.targetLoudness = get("targetLoudness");
   paramRefs.calibrateInput = get("calibrateInput");
@@ -277,6 +280,26 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
   layout.add(std::make_unique<juce::AudioParameterChoice>(
       juce::ParameterID{"osFactor", 35}, "osFactor", juce::StringArray{"2x", "4x", "8x"}, 0,
       juce::AudioParameterChoiceAttributes().withAutomatable(false)));
+
+  // Gate advanced-panel deck (right-click the Gate group; see
+  // NoiseGate::Params for what each does and why the defaults are what they
+  // are). Stored in real units like the threshold, so hosts and preset
+  // files read ms / dB. Release rides a log map: the tight end (5-30 ms) is
+  // where the ear resolves differences, and a linear knob would spend most
+  // of its travel above 200 ms.
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"gateRelease", 36}, "gateRelease",
+      juce::NormalisableRange<float>(
+          5.0f, 500.0f,
+          [](float start, float end, float norm) { return start * std::pow(end / start, norm); },
+          [](float start, float end, float ms) {
+            return std::log(ms / start) / std::log(end / start);
+          }),
+      50.0f));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"gateHold", 37}, "gateHold", 0.0f, 200.0f, 20.0f));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"gateRange", 38}, "gateRange", 20.0f, 80.0f, 80.0f));
 
   return layout;
 }
@@ -950,6 +973,9 @@ void TONE3000Processor::updateCachedParameters() {
   updateFloat(cacheMidTone, paramRefs.toneMid, true);
   updateFloat(cacheTrebleTone, paramRefs.toneTreble, true);
   updateFloat(cacheGateThreshold, paramRefs.gateThreshold);
+  updateFloat(cacheGateRelease, paramRefs.gateRelease);
+  updateFloat(cacheGateHold, paramRefs.gateHold);
+  updateFloat(cacheGateRange, paramRefs.gateRange);
   updateFloat(cacheTargetLoudness, paramRefs.targetLoudness);
   updateFloat(cacheInputCalibrationLevel, paramRefs.inputCalibrationLevel);
 
@@ -1627,7 +1653,7 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   if (cacheGateEnabled) {
     if (!gateWasEnabled)
       inputGate.reset();
-    inputGate.setThresholdDb(cacheGateThreshold);
+    inputGate.setParams({cacheGateThreshold, cacheGateRelease, cacheGateHold, cacheGateRange});
     inputGate.process(buffer);
   }
   gateWasEnabled = cacheGateEnabled;

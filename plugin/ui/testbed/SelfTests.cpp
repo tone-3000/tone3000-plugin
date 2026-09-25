@@ -630,6 +630,20 @@ struct ReadoutTests : juce::UnitTest {
     expectEquals(scales::gainDb().format(0.0), juce::String("-24.0 dB"));
     expectEquals(scales::gateDb().format(0.333), juce::String("-67 dB"));
     expectEquals(scales::tone().format(0.5), juce::String("5.0"));
+
+    beginTest("gate deck readouts mirror the processor's real-unit ranges");
+    expectEquals(scales::gateReleaseMs().format(0.0), juce::String("5 ms"));
+    expectEquals(scales::gateReleaseMs().format(1.0), juce::String("500 ms"));
+    // The defaults (50 ms, 20 ms) land on round normalised values: the
+    // MockBackend's seeds and the deck's reset must agree with these.
+    expectEquals(scales::gateReleaseMs().format(0.5), juce::String("50 ms"));
+    expectWithinAbsoluteError(scales::gateReleaseMs().fromDisplay(50), 0.5, 1e-6);
+    expectEquals(scales::gateReleaseMs().format(scales::gateReleaseMs().fromDisplay(100)),
+                 juce::String("100 ms"));
+    expectEquals(scales::gateHoldMs().format(0.1), juce::String("20 ms"));
+    expectEquals(scales::gateHoldMs().format(0.0), juce::String("0 ms"));
+    expectEquals(scales::gateRangeDb().format(1.0), juce::String("80 dB"));
+    expectEquals(scales::gateRangeDb().format(0.0), juce::String("20 dB"));
     expectEquals(scales::offsetMs().format(0.5), juce::String("0 ms"));
     expectEquals(scales::offsetMs().format(0.25), juce::String("12.0 ms L"));
     expectEquals(scales::crossoverHz().format(0.5), juce::String("130 Hz"));

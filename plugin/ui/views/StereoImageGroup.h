@@ -8,7 +8,8 @@
 // feature on and reveals the bipolar Offset knob (+ auto-align for Align)
 // and a power button that collapses back to the advert. Both states share
 // one footprint so the toggle never shifts the plate. Right-click anywhere
-// on the group (touch-and-hold on the knob) opens the shared deck panel.
+// on the group (Ctrl-click on macOS, touch-and-hold on the knob) opens the
+// shared deck panel.
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>

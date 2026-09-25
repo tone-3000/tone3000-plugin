@@ -153,7 +153,7 @@ void Knob::applyLive(float next, bool fine) {
 // Mouse
 void Knob::mouseDown(const juce::MouseEvent& e) {
   const bool touch = e.source.isTouch();
-  if (!touch && !e.mods.isLeftButtonDown()) {  // right-click belongs to the group
+  if (isSecondaryPress(e)) {  // right-click / Ctrl-click belongs to the group
     forwardSecondaryPress(*this, e);
     return;
   }
@@ -382,8 +382,12 @@ void Knob::closeEditor() {
 
 // Painting
 void Knob::resized() {
+  // The editor is a value box the width of the face, centred: a knob
+  // widened for its label (the deck columns) must not widen the box too.
   if (editor_ != nullptr)
-    editor_->setBounds(labelBounds().expanded(0, kEditorOverflow));
+    editor_->setBounds(labelBounds()
+                           .withSizeKeepingCentre(juce::jmin(getWidth(), options_.size), kLabelSlot)
+                           .expanded(0, kEditorOverflow));
 }
 
 void Knob::paint(juce::Graphics& g) {

@@ -49,10 +49,10 @@ void ChromeIconButton::setOpen(bool open) {
 }
 
 void ChromeIconButton::mouseDown(const juce::MouseEvent& e) {
-  if (e.mods.isLeftButtonDown() || e.source.isTouch())
-    juce::Button::mouseDown(e);
-  else
+  if (isSecondaryPress(e))
     forwardSecondaryPress(*this, e);
+  else
+    juce::Button::mouseDown(e);
 }
 
 void ChromeIconButton::paintButton(juce::Graphics& g, bool, bool) {

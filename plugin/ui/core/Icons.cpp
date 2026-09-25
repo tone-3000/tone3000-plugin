@@ -47,20 +47,32 @@ const juce::Drawable* cached(const char* svg, juce::Colour colour, float strokeW
   return slot.get();
 }
 
+// Tint with the *opaque* colour and apply its alpha as group opacity, the way
+// CSS `opacity` composites a whole <svg>. Baking a translucent colour into
+// each sub-path instead would double up wherever Lucide's strokes overlap
+// (dimmed icons got brighter at the crossings), and would also bloat the
+// cache with one entry per alpha.
+void drawTinted(juce::Graphics& g, const char* svg, juce::Rectangle<float> box, juce::Colour colour,
+                float strokeWidth = 0.0f) {
+  if (colour.getFloatAlpha() <= 0.0f) return;
+  if (auto* d = cached(svg, colour.withAlpha(1.0f), strokeWidth))
+    paint::svg(g, *d, box, colour.getFloatAlpha());
+}
+
 }  // namespace
 
 void Icons::draw(juce::Graphics& g, Icon icon, juce::Rectangle<float> box, juce::Colour colour) {
-  draw(g, lucideSvg(icon), box, colour);
+  drawTinted(g, lucideSvg(icon), box, colour);
 }
 
 void Icons::draw(juce::Graphics& g, Icon icon, juce::Rectangle<float> box, juce::Colour colour,
                  float strokeWidth) {
-  if (auto* d = cached(lucideSvg(icon), colour, strokeWidth)) paint::svg(g, *d, box);
+  drawTinted(g, lucideSvg(icon), box, colour, strokeWidth);
 }
 
 void Icons::draw(juce::Graphics& g, const char* svg, juce::Rectangle<float> box,
                  juce::Colour colour) {
-  if (auto* d = cached(svg, colour)) paint::svg(g, *d, box);
+  drawTinted(g, svg, box, colour);
 }
 
 }  // namespace t3k::ui

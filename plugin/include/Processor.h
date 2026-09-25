@@ -1012,6 +1012,9 @@ private:
     std::atomic<float>* toneTreble = nullptr;
     std::atomic<float>* gateThreshold = nullptr;
     std::atomic<float>* gateEnabled = nullptr;
+    std::atomic<float>* gateRelease = nullptr;
+    std::atomic<float>* gateHold = nullptr;
+    std::atomic<float>* gateRange = nullptr;
     std::atomic<float>* toneEqEnabled = nullptr;
     std::atomic<float>* targetLoudness = nullptr;
     std::atomic<float>* calibrateInput = nullptr;
@@ -1063,6 +1066,9 @@ private:
   float cacheTrebleTone = 5.0f;
   float cacheGateThreshold = -80.0f;
   bool cacheGateEnabled = true;
+  float cacheGateRelease = 50.0f;   // ms
+  float cacheGateHold = 20.0f;      // ms
+  float cacheGateRange = 80.0f;     // dB of attenuation when closed
   bool cacheToneEqEnabled = true;
   float cacheTargetLoudness = -18.0f;
   bool cacheCalibrateInput = false;
