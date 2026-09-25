@@ -36,6 +36,7 @@ target_sources(DspTests PRIVATE
     src/state_cache_tests.cpp
     src/swap_fade_tests.cpp
     src/tone_refresh_tests.cpp
+    src/transpose_tests.cpp
     src/tuner_tests.cpp
     src/wav_repair_tests.cpp
     src/worker_pool_tests.cpp
@@ -75,6 +76,11 @@ target_include_directories(DspTests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../plugin/NeuralAmpModelerCore
     ${CMAKE_CURRENT_SOURCE_DIR}/../plugin/NeuralAmpModelerCore/Dependencies/eigen
     ${CMAKE_CURRENT_SOURCE_DIR}/../plugin/NeuralAmpModelerCore/Dependencies/nlohmann
+    # Processor.cpp pulls in TransposeProcessor.h -> signalsmith-stretch.h.
+    # Header-only, no CMake target (see plugin/CMakeLists.txt); plugin/ is
+    # add_subdirectory'd before test/ in the root CMakeLists.txt, so
+    # CPMAddPackage has already fetched it to ${LIB_DIR} by this point.
+    ${LIB_DIR}/signalsmith-stretch
 )
 
 target_compile_definitions(DspTests PRIVATE

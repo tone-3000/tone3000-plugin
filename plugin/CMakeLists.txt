@@ -434,6 +434,7 @@ target_include_directories(${PROJECT_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/Dependencies/nlohmann
         ${CMAKE_CURRENT_SOURCE_DIR}/AudioDSPTools
         ${CMAKE_CURRENT_SOURCE_DIR}/AudioDSPTools/dsp/ResamplingContainer/Dependencies
+        ${LIB_DIR}/signalsmith-stretch
 )
 
 # The define also gates the is_a2_shape declaration, which the plugin uses to
@@ -598,6 +599,25 @@ if (NOT HEADLESS AND BUILD_CLAP)
         CLAP_ID "com.tone3000.plugin"
         CLAP_FEATURES audio-effect distortion)
 endif()
+
+# Signalsmith Stretch (MIT): real-time pitch shifter backing the Transpose
+# knob (TransposeProcessor.h). Pinned to a real release tag, unlike
+# clap-juce-extensions above, because upstream actually cuts tagged releases.
+# Unlike the CPM packages above, this repo ships no CMakeLists.txt at all -
+# just signalsmith-stretch.h plus its own vendored dsp/ (FFT etc, included via
+# relative paths from that header, so no separate FFT dependency to fetch).
+# So there's no CMake target to link against; CPMAddPackage here only fetches
+# the source into ${LIB_DIR}/signalsmith-stretch, and that directory is added
+# to target_include_directories() below, the same way NAM/AudioDSPTools are.
+# Not gated behind NOT HEADLESS: the DSP test suite (test/) links plugin DSP
+# code and needs this too.
+CPMAddPackage(
+    NAME signalsmith-stretch
+    GITHUB_REPOSITORY Signalsmith-Audio/signalsmith-stretch
+    GIT_TAG 1.1.0
+    SOURCE_DIR ${LIB_DIR}/signalsmith-stretch
+    DOWNLOAD_ONLY YES
+)
 
 # Visual Studio Only
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/..) 
