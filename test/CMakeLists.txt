@@ -62,6 +62,7 @@ target_sources(DspTests PRIVATE
     # also what the plugin itself compiles to everywhere but iOS).
     ../plugin/src/StandaloneStateAutosave.cpp
     ../plugin/src/StereoOffset.cpp
+    ../plugin/src/Transpose.cpp
     ../plugin/src/TunerDetector.cpp
 )
 
@@ -76,11 +77,6 @@ target_include_directories(DspTests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../plugin/NeuralAmpModelerCore
     ${CMAKE_CURRENT_SOURCE_DIR}/../plugin/NeuralAmpModelerCore/Dependencies/eigen
     ${CMAKE_CURRENT_SOURCE_DIR}/../plugin/NeuralAmpModelerCore/Dependencies/nlohmann
-    # Processor.cpp pulls in TransposeProcessor.h -> signalsmith-stretch.h.
-    # Header-only, no CMake target (see plugin/CMakeLists.txt); plugin/ is
-    # add_subdirectory'd before test/ in the root CMakeLists.txt, so
-    # CPMAddPackage has already fetched it to ${LIB_DIR} by this point.
-    ${LIB_DIR}/signalsmith-stretch
 )
 
 target_compile_definitions(DspTests PRIVATE
@@ -108,6 +104,8 @@ target_link_libraries(DspTests
         juce::juce_dsp
         juce::juce_audio_formats
         juce::juce_audio_processors
+        # Transpose.cpp's engine (target defined in plugin/CMakeLists.txt).
+        signalsmith-stretch
         # NAM must be linked whole-archive so its self-registering config
         # parsers (WaveNet/ConvNet/LSTM static initializers) survive the
         # linker (same recipe as plugin/CMakeLists.txt).

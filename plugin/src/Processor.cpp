@@ -148,7 +148,11 @@ void TONE3000Processor::resolveParamRefs() {
   paramRefs.inputCalibrationLevel = get("inputCalibrationLevel");
   paramRefs.osEnabled = get("osEnabled");
   paramRefs.osFactor = get("osFactor");
+  paramRefs.transposeEnabled = get("transposeEnabled");
   paramRefs.transposeSemitones = get("transposeSemitones");
+  paramRefs.transposeFine = get("transposeFine");
+  paramRefs.transposeTonality = get("transposeTonality");
+  paramRefs.transposeWindow = get("transposeWindow");
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createParameterLayout() {
@@ -302,12 +306,39 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
   layout.add(std::make_unique<juce::AudioParameterFloat>(
       juce::ParameterID{"gateRange", 38}, "gateRange", 20.0f, 80.0f, 80.0f));
 
-  // Transpose (faceplate, between Input and Gate; see TransposeProcessor.h).
-  // Whole semitones only, so this is an AudioParameterInt rather than the
-  // normalized-float pattern the other knobs use - the UI still drives it in
-  // normalized 0..1 terms, but automation and text entry snap to integers.
+  // Transpose (faceplate, right of the Gate group; see Transpose.h). Off by
+  // default: powering it on is what adds latency, so a fresh chain stays
+  // transparent. Whole semitones, so an AudioParameterInt: the UI drives it
+  // normalised like every knob, but automation and text entry snap.
+  layout.add(std::make_unique<juce::AudioParameterBool>(
+      juce::ParameterID{"transposeEnabled", 39}, "transposeEnabled", false));
   layout.add(std::make_unique<juce::AudioParameterInt>(
-      juce::ParameterID{"transposeSemitones", 39}, "transposeSemitones", -12, 12, 0));
+      juce::ParameterID{"transposeSemitones", 40}, "transposeSemitones", -Transpose::kSemitoneRange,
+      Transpose::kSemitoneRange, 0));
+  // Transpose advanced-panel deck, in real units like the gate deck's. Fine
+  // trims the shift in cents (a song tuned 75 cents up is -12 + fine). The
+  // tonality limit rides a log map over the range where it does something
+  // on a guitar; its top end (20 kHz) is "off", the default: a pure shift.
+  // The window is a 3-way choice and not automatable because, like the
+  // oversampling factor, changing it changes the reported latency.
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"transposeFine", 41}, "transposeFine", -Transpose::kCentsRange,
+      Transpose::kCentsRange, 0.0f));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"transposeTonality", 42}, "transposeTonality",
+      juce::NormalisableRange<float>(
+          Transpose::kTonalityMinHz, Transpose::kTonalityOffHz,
+          [](float start, float end, float norm) { return start * std::pow(end / start, norm); },
+          [](float start, float end, float hz) {
+            return std::log(hz / start) / std::log(end / start);
+          }),
+      Transpose::kTonalityOffHz));
+  juce::StringArray windows;
+  for (const int ms : Transpose::kWindowMs) windows.add(juce::String(ms) + " ms");
+  layout.add(std::make_unique<juce::AudioParameterChoice>(
+      juce::ParameterID{"transposeWindow", 43}, "transposeWindow", windows,
+      static_cast<int>(Transpose::Window::balanced),
+      juce::AudioParameterChoiceAttributes().withAutomatable(false)));
 
   return layout;
 }
@@ -329,6 +360,13 @@ void TONE3000Processor::parameterChanged(const juce::String& parameterID, float 
     triggerAsyncUpdate();
     return;
   }
+  if (parameterID == "transposeEnabled" || parameterID == "transposeWindow") {
+    // The only runtime latency edges. Hosts want latency changes off the
+    // audio thread (VST3 restarts the component), so they ride the same
+    // deferral as the oversampling settings; updateLatency() there is
+    // idempotent, so a spurious run costs nothing.
+    triggerAsyncUpdate();
+  }
   // A preset-managed faceplate param moved, so getChainState's atDefault may
   // have flipped. Deferred like block-param drags: a real bump per change
   // would re-ship the whole chain state at knob-drag/automation rates.
@@ -337,11 +375,25 @@ void TONE3000Processor::parameterChanged(const juce::String& parameterID, float 
 
 void TONE3000Processor::handleAsyncUpdate() {
   applyOversamplingSettings();
+  updateLatency();
 
   // A host called setCurrentProgram off the message thread: apply the
   // deferred program change here (last one wins, like MidiMapper's PC path).
   if (const int program = pendingHostProgram.exchange(-1); program >= 0)
     applyHostProgram(program);
+}
+
+// Message thread. Boundary plus a powered Transpose's window; read from the
+// parameters, not the audio thread's engine, so a change is reported
+// exactly once and the report doesn't depend on a callback having run.
+void TONE3000Processor::updateLatency() {
+  int latency = chainBoundaryLatency;
+  if (paramRefs.transposeEnabled->load() >= 0.5f) {
+    const auto window =
+        Transpose::windowFromIndex(static_cast<int>(std::lround(paramRefs.transposeWindow->load())));
+    latency += Transpose::latencySamples(window, hostSampleRate);
+  }
+  setLatencySamples(latency);  // no-op (no host notification) when unchanged
 }
 
 // Message thread. Re-rates the whole chain domain after an osEnabled/osFactor
@@ -724,14 +776,6 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
 
   updateStereoIoDetection();
 
-  // Transpose (input-stage pitch shifter; see TransposeProcessor.h). Always
-  // configured for 2 channels (its ceiling): the actual per-block buffer can
-  // be mono (a mono host bus - see processBlock/setPlayConfigDetails) or
-  // stereo, and TransposeProcessor::process() handles either against an
-  // engine configured for the max. Prepared before the latency below is
-  // computed and reported.
-  transposeProcessor.prepare(sampleRate, 2, juce::jmax(1, samplesPerBlock));
-
   // Chain-domain resampling boundary.
   // Engaged whenever the host rate differs from the chain base rate, even
   // for an empty chain, so reported latency is a constant per host rate and
@@ -750,12 +794,11 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     chainBoundaryLatency = 0;
   }
   // The oversampler is minimum-phase (zero reported latency), so the boundary
-  // and the transpose engine are the only latency sources at any factor.
-  cacheTransposeLatency = transposeProcessor.getLatencySamples();
-  setLatencySamples(chainBoundaryLatency + cacheTransposeLatency);
+  // and a powered Transpose are the only latency sources at any factor.
+  transpose.prepare(sampleRate, juce::jmax(1, samplesPerBlock));
+  updateLatency();
   DBG("Chain boundary " << (boundaryNeeded ? "engaged" : "bypassed")
-      << " (latency: " << chainBoundaryLatency << " + transpose "
-      << cacheTransposeLatency << " samples)");
+      << " (latency: " << chainBoundaryLatency << " samples)");
 
   // Chain oversampler.
   // Resolve the requested factor before anything chain-domain is sized: the
@@ -1014,11 +1057,16 @@ void TONE3000Processor::updateCachedParameters() {
   cacheChainInvertLeft = loadBool(paramRefs.chainInvertLeft);
   cacheChainInvertRight = loadBool(paramRefs.chainInvertRight);
 
-  // AudioParameterInt's raw value is already the denormalized integer
-  // (stored as a float); round rather than truncate so it lands exactly on
-  // the whole semitone even after the normalized-float round trip through
-  // the webview slider relay.
-  cacheTransposeSemitones = static_cast<int>(std::lround(paramRefs.transposeSemitones->load()));
+  // Transpose, in the engine's units. The int/choice raw values are already
+  // denormalised (stored as floats); round so they land exactly on their
+  // steps. The tonality knob's top end means off.
+  cacheTransposeEnabled = loadBool(paramRefs.transposeEnabled);
+  cacheTranspose.semitones = static_cast<int>(std::lround(paramRefs.transposeSemitones->load()));
+  cacheTranspose.cents = paramRefs.transposeFine->load();
+  const float tonalityHz = paramRefs.transposeTonality->load();
+  cacheTranspose.tonalityHz = tonalityHz < Transpose::kTonalityOffHz ? tonalityHz : 0.0f;
+  cacheTranspose.window =
+      Transpose::windowFromIndex(static_cast<int>(std::lround(paramRefs.transposeWindow->load())));
 }
 
 // ##########################
@@ -1682,28 +1730,19 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   }
   gateWasEnabled = cacheGateEnabled;
 
-  // Transpose (see TransposeProcessor.h): shifts the raw guitar signal
-  // before it reaches the NAM/amp/cab chain, same placement Neural DSP's
-  // X-series plugins use. Runs after gain/gate (both linear, so pitch
-  // tracking is unaffected either way; running the gate on the original,
-  // non-time-smeared transients first avoids the gate interacting with the
-  // phase vocoder's smearing) and before the auto-align probe injection
-  // below, whose synthetic calibration sweep must never be pitch-shifted.
-  transposeProcessor.setSemitones(cacheTransposeSemitones);
-  transposeProcessor.process(buffer);
-  // TransposeProcessor is bypassed (0 added latency) at 0 semitones and
-  // active (~20ms) otherwise, so crossing that boundary changes this
-  // processor's total reported latency mid-session - re-report it to the
-  // host so PDC stays correct. setLatencySamples() is safe to call from the
-  // audio thread (it just stores the value and posts a change notification);
-  // every other latency source here (chainBoundaryLatency) is fixed for the
-  // life of a prepareToPlay call, so this is the one path where that can
-  // happen.
-  const int newTransposeLatency = transposeProcessor.getLatencySamples();
-  if (newTransposeLatency != cacheTransposeLatency) {
-    cacheTransposeLatency = newTransposeLatency;
-    setLatencySamples(chainBoundaryLatency + cacheTransposeLatency);
+  // Transpose (Transpose.h): pitch-shifts the instrument before the chain,
+  // the placement Neural DSP's X-series uses. After the gate so it decides
+  // on the real transients, not the vocoder's smeared ones; before the
+  // auto-align probe below, whose sweep must never be shifted. Only while
+  // powered: off is a bit-exact, zero-latency passthrough, and the latency
+  // report rides the power parameter (updateLatency), not this path.
+  if (cacheTransposeEnabled) {
+    if (!transposeWasEnabled)
+      transpose.reset();
+    transpose.setParams(cacheTranspose);
+    transpose.process(buffer);
   }
+  transposeWasEnabled = cacheTransposeEnabled;
 
   // #########################
   // Auto-align probe injection (see AutoOffset.h): while a measurement is
