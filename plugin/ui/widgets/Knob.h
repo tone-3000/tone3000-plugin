@@ -53,6 +53,10 @@ public:
     const KnobScale* scale = &scales::percent();
     // Normalised default; enables Alt/Option-click (touch: double tap) reset.
     std::optional<float> defaultValue;
+    // Detented travel: every emitted value snaps to one of `steps` evenly
+    // spaced positions across min..max (whole semitones, a 3-way choice),
+    // and the arrow keys move one detent at a time.
+    std::optional<int> steps;
     std::optional<help::Key> help;
     // Idle label in white instead of GRAY (pan rail section titles).
     bool labelBright = false;
@@ -110,6 +114,8 @@ private:
   void commitEdit();
   void closeEditor();
   void endDrag();
+  // The nearest detent when Options::steps is set; otherwise `v` itself.
+  float snapToStep(float v) const;
   void setReadoutVisible(bool show);
   void syncReadout();
   juce::Rectangle<int> labelBounds() const;

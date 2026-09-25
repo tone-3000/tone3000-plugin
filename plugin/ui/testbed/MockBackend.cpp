@@ -44,6 +44,10 @@ constexpr SliderDefault kSliders[] = {
     // The gate deck's real-unit defaults (50 ms / 20 ms / 80 dB) on their
     // normalised maps (KnobScale.h).
     {"gateRelease", 0.5f},       {"gateHold", 0.1f},      {"gateRange", 1.0f},
+    // Transpose at 0 st (centre) with its deck at the defaults: 0 cents,
+    // tonality Off (top), the 60 ms window (middle detent).
+    {"transposeSemitones", 0.5f}, {"transposeFine", 0.5f}, {"transposeTonality", 1.0f},
+    {"transposeWindow", 0.5f},
 };
 struct ToggleDefault {
   const char* id;
@@ -58,6 +62,7 @@ constexpr ToggleDefault kToggles[] = {
     {"chainSoloLeft", false},          {"chainSoloRight", false},
     {"chainInvertLeft", false},        {"chainInvertRight", false},
     {"gateEnabled", true},             {"toneEqEnabled", true},
+    {"transposeEnabled", false},
     {"calibrateInput", false},         {"osEnabled", false},
 };
 

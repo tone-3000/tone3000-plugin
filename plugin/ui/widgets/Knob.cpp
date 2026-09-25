@@ -138,14 +138,21 @@ bool Knob::resetToDefault() {
   return true;
 }
 
+float Knob::snapToStep(float v) const {
+  if (!options_.steps || *options_.steps < 2) return v;
+  const float span = options_.max - options_.min;
+  const float unit = span / static_cast<float>(*options_.steps - 1);
+  return options_.min + std::round((v - options_.min) / unit) * unit;
+}
+
 void Knob::applyLive(float next, bool fine) {
-  // Accumulate raw: the detent is applied to the emitted value only, so drag
-  // progress keeps counting while the readout rests on centre and the knob
-  // glides out the far side of the window.
+  // Accumulate raw: the detents are applied to the emitted value only, so
+  // drag progress keeps counting while the readout rests on centre (or a
+  // step) and the knob glides out the far side of the window.
   const float raw = juce::jlimit(options_.min, options_.max, next);
   live_ = raw;
   const bool snap = options_.variant == Variant::bipolar && !fine && std::abs(raw - 0.5f) < kDetent;
-  const float v = snap ? 0.5f : raw;
+  const float v = snapToStep(snap ? 0.5f : raw);
   if (juce::exactlyEqual(v, emitted_)) return;
   emit(v);
 }
@@ -236,7 +243,7 @@ void Knob::mouseDoubleClick(const juce::MouseEvent& e) {
 // Keyboard / screen reader
 void Knob::nudgeTo(float normalised) {
   if (dragging_) return;
-  const float v = juce::jlimit(options_.min, options_.max, normalised);
+  const float v = snapToStep(juce::jlimit(options_.min, options_.max, normalised));
   if (onDragStateChange) onDragStateChange(true);
   live_ = v;
   if (!juce::exactlyEqual(v, emitted_)) emit(v);
@@ -247,7 +254,10 @@ void Knob::nudgeTo(float normalised) {
 
 bool Knob::keyPressed(const juce::KeyPress& key) {
   using KP = juce::KeyPress;
-  const float step = key.getModifiers().isShiftDown() ? kKeyStep / kFineFactor : kKeyStep;
+  // A detented knob steps one detent per press (fine has nothing to refine).
+  const float step = options_.steps ? (options_.max - options_.min) / static_cast<float>(*options_.steps - 1)
+                     : key.getModifiers().isShiftDown() ? kKeyStep / kFineFactor
+                                                        : kKeyStep;
   if (key.isKeyCode(KP::upKey) || key.isKeyCode(KP::rightKey)) {
     nudgeTo(live_ + step);
   } else if (key.isKeyCode(KP::downKey) || key.isKeyCode(KP::leftKey)) {
@@ -357,8 +367,9 @@ void Knob::commitEdit() {
     if (std::isfinite(parsed)) {
       const double norm = juce::jlimit<double>(options_.min, options_.max,
                                                options_.scale->fromDisplay(parsed));
-      // Typed values keep the fine 1e-4 quantum; no detent.
-      live_ = static_cast<float>(std::round(norm * 10000.0) / 10000.0);
+      // Typed values keep the fine 1e-4 quantum; no centre detent (steps
+      // still apply: a typed 2.4 semitones is 2).
+      live_ = snapToStep(static_cast<float>(std::round(norm * 10000.0) / 10000.0));
       emit(live_);
     }
   }
