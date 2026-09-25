@@ -197,6 +197,7 @@ Faceplate::Faceplate(Services& services)
              primaryKnob("Input", scales::gainDb(), 0.5f, help::Key::inputLevel)),
       inputMode_(std::make_unique<InputModeButton>(services)),
       gate_(services),
+      transpose_(services),
       bass_(services.backend, "toneBass",
             primaryKnob("Bass", scales::tone(), 0.5f, help::Key::toneBass)),
       middle_(services.backend, "toneMid",
@@ -218,6 +219,7 @@ Faceplate::Faceplate(Services& services)
   addAndMakeVisible(input_);
   addChildComponent(*inputMode_);
   addAndMakeVisible(gate_);
+  addAndMakeVisible(transpose_);
 
   // Powered-off section: knobs + labels dim and go inert; the power button
   // stays outside the dimmed wrapper, bright and clickable.
@@ -293,14 +295,16 @@ void Faceplate::resized() {
   const int chromeY = baseline - theme::kIconBoxSize + kChromeLift;
   const int primary = theme::kKnobSizePrimary, secondary = theme::kKnobSizeSecondary, box = theme::kIconBoxSize;
 
-  // Five peers share the plate width (space-between). Their footprints are
+  // Six peers share the plate width (space-between). Their footprints are
   // fixed; only the input group grows when the input-mode button shows.
   const int inputW = primary + (inputMode_->isVisible() ? kGroupGap + inputMode_->getWidth() : 0);
   const int gateW = GateGroup::kWidth;
+  const int transposeW = TransposeGroup::kWidth;
   const int toneW = 3 * primary + 2 * kToneGap + kGroupGap + box;
   const int imageW = StereoImageGroup::kWidth;
   const int outputW = box + kGroupGap + secondary + kGroupGap + primary;
-  const float gap = (content.getWidth() - (inputW + gateW + toneW + imageW + outputW)) / 4.0f;
+  const float gap =
+      (content.getWidth() - (inputW + gateW + transposeW + toneW + imageW + outputW)) / 5.0f;
 
   float x = static_cast<float>(content.getX());
   const auto at = design::snap;
@@ -313,6 +317,10 @@ void Faceplate::resized() {
   // Gate + power (+ deck)
   gate_.setTopLeftPosition(at(x), knobY(secondary));
   x += gateW + gap;
+
+  // Transpose + power (+ deck)
+  transpose_.setTopLeftPosition(at(x), knobY(secondary));
+  x += transposeW + gap;
 
   // Bass / Middle / Treble + power
   toneDim_.setBounds(at(x), knobY(primary), 3 * primary + 2 * kToneGap, Knob::heightFor(primary));

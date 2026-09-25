@@ -36,6 +36,7 @@ target_sources(DspTests PRIVATE
     src/state_cache_tests.cpp
     src/swap_fade_tests.cpp
     src/tone_refresh_tests.cpp
+    src/transpose_tests.cpp
     src/tuner_tests.cpp
     src/wav_repair_tests.cpp
     src/worker_pool_tests.cpp
@@ -61,6 +62,7 @@ target_sources(DspTests PRIVATE
     # also what the plugin itself compiles to everywhere but iOS).
     ../plugin/src/StandaloneStateAutosave.cpp
     ../plugin/src/StereoOffset.cpp
+    ../plugin/src/Transpose.cpp
     ../plugin/src/TunerDetector.cpp
 )
 
@@ -102,6 +104,8 @@ target_link_libraries(DspTests
         juce::juce_dsp
         juce::juce_audio_formats
         juce::juce_audio_processors
+        # Transpose.cpp's engine (target defined in plugin/CMakeLists.txt).
+        signalsmith-stretch
         # NAM must be linked whole-archive so its self-registering config
         # parsers (WaveNet/ConvNet/LSTM static initializers) survive the
         # linker (same recipe as plugin/CMakeLists.txt).

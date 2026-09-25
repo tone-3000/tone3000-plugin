@@ -346,7 +346,38 @@ target_sources(${PROJECT_NAME}
         src/NamEngine.cpp
         include/TunerDetector.h
         src/TunerDetector.cpp
+        include/Transpose.h
+        src/Transpose.cpp
 )
+
+# Signalsmith Stretch (MIT): the polyphonic pitch shifter behind the Transpose
+# group (Transpose.cpp), with Signalsmith Linear for its FFT. Both are
+# header-only INTERFACE targets; Linear picks Accelerate on Apple targets
+# (its own CMake option, on by default) and its portable FFT elsewhere.
+# Linear is fetched first, pinned to the version Stretch's own CMakeLists
+# would otherwise FetchContent into the build tree, so both land in
+# ${LIB_DIR} like every other CPM package. The include dirs are marked SYSTEM
+# so juce_recommended_warning_flags doesn't lint third-party templates.
+# Not gated behind NOT HEADLESS: the DSP test suite links plugin DSP code.
+CPMAddPackage(
+    NAME signalsmith-linear
+    GITHUB_REPOSITORY Signalsmith-Audio/linear
+    GIT_TAG 0.6.4
+    SOURCE_DIR ${LIB_DIR}/signalsmith-linear
+)
+CPMAddPackage(
+    NAME signalsmith-stretch
+    GITHUB_REPOSITORY Signalsmith-Audio/signalsmith-stretch
+    GIT_TAG 1.4.0
+    SOURCE_DIR ${LIB_DIR}/signalsmith-stretch
+)
+foreach(_t3k_ss_target signalsmith-linear signalsmith-stretch)
+    get_target_property(_t3k_ss_inc ${_t3k_ss_target} INTERFACE_INCLUDE_DIRECTORIES)
+    set_target_properties(${_t3k_ss_target} PROPERTIES
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_t3k_ss_inc}")
+endforeach()
+target_link_libraries(${PROJECT_NAME} PRIVATE signalsmith-stretch)
+
 # Include GUI for Desktop builds
 if (NOT HEADLESS)
     target_sources(${PROJECT_NAME}

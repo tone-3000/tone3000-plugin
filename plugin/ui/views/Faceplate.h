@@ -1,11 +1,12 @@
 // Bottom faceplate (port of Faceplate.tsx): main input/output gain, the gate
-// group (GateGroup, with its advanced deck) and the global 3-band tone
-// stack, the stereo-image slot (Spread in mono chain mode, Align in stereo)
-// and, when they apply, the input-mode button, the output balance knob and
-// auto balance. Gate + tone stack carry power switches (APVTS bools, so they
-// automate and persist like everything else).
+// and transpose groups (GateGroup / TransposeGroup, each with an advanced
+// deck) and the global 3-band tone stack, the stereo-image slot (Spread in
+// mono chain mode, Align in stereo) and, when they apply, the input-mode
+// button, the output balance knob and auto balance. Gate, transpose and tone
+// stack carry power switches (APVTS bools, so they automate and persist like
+// everything else).
 //
-// Five peer groups share the plate width (CSS space-between); every group
+// Six peer groups share the plate width (CSS space-between); every group
 // has a fixed footprint with inactive companions hidden in place, so toggling
 // stereo / spread never shifts the plate.
 #pragma once
@@ -16,6 +17,7 @@
 
 #include "GateGroup.h"
 #include "StereoImageGroup.h"
+#include "TransposeGroup.h"
 #include "core/Design.h"
 #include "services/Services.h"
 #include "widgets/ChromeIconButton.h"
@@ -49,6 +51,7 @@ private:
   std::unique_ptr<InputModeButton> inputMode_;
 
   GateGroup gate_;
+  TransposeGroup transpose_;
 
   DimGroup toneDim_;
   ParamKnob bass_, middle_, treble_;

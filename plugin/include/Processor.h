@@ -24,6 +24,7 @@
 #include "RtWorkerPool.h"
 #include "MidiMapper.h"
 #include "NoiseGate.h"
+#include "Transpose.h"
 #include "Spread.h"
 #include "StereoOffset.h"
 #include "PresetManager.h"
@@ -912,6 +913,10 @@ private:
   // Boundary latency in host samples (0 at a 48k host). Constant per host
   // rate; chain edits never change reported latency.
   int chainBoundaryLatency = 0;
+  // Reports boundary + transpose latency to the host. Message thread:
+  // prepareToPlay, and the transpose power / window parameter changes (the
+  // only runtime latency edges).
+  void updateLatency();
   // Second channel handed to the boundary when the host buffer is mono (the
   // boundary is a fixed 2-channel container). Silent in mono chain mode;
   // with stereo chains it becomes the Right lane's working channel: fed a
@@ -980,6 +985,14 @@ private:
   NoiseGate inputGate;
   bool gateWasEnabled = true;
 
+  // Input-stage pitch shifter (post gate, host rate; see Transpose.h). Only
+  // runs while powered, so a powered-off plugin stays bit-exact and
+  // zero-latency; the power edge resets the engine like the gate's does.
+  // The latency it adds is reported from the message thread (see
+  // updateLatency), never from processBlock.
+  Transpose transpose;
+  bool transposeWasEnabled = false;
+
   // Raw APVTS parameter atomics, resolved once in the constructor. The audio
   // thread reads these every block; getRawParameterValue is a string-keyed
   // map lookup and has no business on the RT path.
@@ -1021,6 +1034,11 @@ private:
     std::atomic<float>* inputCalibrationLevel = nullptr;
     std::atomic<float>* osEnabled = nullptr;
     std::atomic<float>* osFactor = nullptr;
+    std::atomic<float>* transposeEnabled = nullptr;
+    std::atomic<float>* transposeSemitones = nullptr;
+    std::atomic<float>* transposeFine = nullptr;
+    std::atomic<float>* transposeTonality = nullptr;
+    std::atomic<float>* transposeWindow = nullptr;
   } paramRefs;
   void resolveParamRefs();
 
@@ -1073,6 +1091,8 @@ private:
   float cacheTargetLoudness = -18.0f;
   bool cacheCalibrateInput = false;
   float cacheInputCalibrationLevel = 12.0f;
+  bool cacheTransposeEnabled = false;
+  Transpose::Params cacheTranspose;
 
   void updateEqCoefficients();
   void updateCachedParameters();

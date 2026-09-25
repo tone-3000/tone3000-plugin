@@ -19,6 +19,12 @@ const std::vector<MappableTarget>& mappableTargets() {
         {"gateRelease", "Gate Release", "Noise Gate", K::continuous},
         {"gateHold", "Gate Hold", "Noise Gate", K::continuous},
         {"gateRange", "Gate Range", "Noise Gate", K::continuous},
+        // The window stays out: like the oversampling factor it changes the
+        // reported latency, a setting rather than a performance control.
+        {"transposeEnabled", "Transpose Power", "Transpose", K::toggle},
+        {"transposeSemitones", "Transpose", "Transpose", K::continuous},
+        {"transposeFine", "Transpose Fine", "Transpose", K::continuous},
+        {"transposeTonality", "Transpose Tonality", "Transpose", K::continuous},
         {"toneEqEnabled", "Tone Stack Power", "Tone Stack", K::toggle},
         {"toneBass", "Bass", "Tone Stack", K::continuous},
         {"toneMid", "Mid", "Tone Stack", K::continuous},
