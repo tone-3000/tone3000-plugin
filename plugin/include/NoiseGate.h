@@ -4,10 +4,12 @@
 #include <cmath>
 
 /**
- * Zero-latency one-knob noise gate for the input stage.
+ * Zero-latency noise gate for the input stage.
  *
- * The only user control is the threshold (the faceplate Gate knob); every
- * other behaviour is fixed, tuned for guitar/bass sources:
+ * The faceplate carries the threshold (the Gate knob); its advanced panel
+ * exposes the three behaviours that shape how a gate sounds once it has
+ * decided to close (release, hold, range; see Params). Everything else is
+ * fixed, tuned for guitar/bass sources:
  *
  *  - Sidechain detector: gating decisions are made from a band-passed copy
  *    of the signal (12 dB/oct highpass at 80 Hz, 6 dB/oct lowpass at 5 kHz)
@@ -22,19 +24,21 @@
  *    the knob setting without open/close flutter.
  *  - Downward-expander close: a closing gate never slams to silence. The
  *    target gain tracks the decaying envelope cubically (a 4:1 expander
- *    curve) down to a -80 dB floor, so note tails fade naturally instead of
+ *    curve) down to the range floor, so note tails fade naturally instead of
  *    being cut. The same curve eases the gate open as the envelope
  *    approaches the threshold from below - a soft knee for free.
- *  - Gain smoothing: ~0.2 ms attack and ~100 ms release one-pole ramps.
- *    The near-instant attack is what makes zero lookahead viable: the gate
- *    is fully open before a pick transient develops.
+ *  - Gain smoothing: ~0.2 ms attack and a release one-pole ramp. The
+ *    near-instant attack is what makes zero lookahead viable: the gate is
+ *    fully open before a pick transient develops. Attack is deliberately
+ *    not a user control: on a zero-lookahead guitar gate a slower attack
+ *    only ever clips pick transients.
  *
  * No lookahead and no internal buffering - zero added latency, safe for
  * live monitoring. Channels (up to 2) are fully independent: in stereo mode
  * the two lanes may carry different instruments, and for mono/duplicated
  * sources identical inputs produce identical gains anyway.
  *
- * Threading: prepare()/reset() from prepareToPlay, setThresholdDb() and
+ * Threading: prepare()/reset() from prepareToPlay, setParams() and
  * process() from the audio thread. process() allocates nothing and costs a
  * handful of multiplies per sample. Denormals are handled by the caller's
  * ScopedNoDenormals.
@@ -43,14 +47,39 @@ class NoiseGate {
 public:
   static constexpr int kMaxChannels = 2;
 
+  /** The user-facing controls, in real units (the APVTS stores them the
+      same way). The launch build hard-wired 100 ms release / 50 ms hold and
+      high-gain players found the close slow (github issue #160); these
+      defaults halve that tail, and a state or preset from before the
+      advanced panel picks them up. Deliberate: the change is subtle, and
+      only audible at all with the threshold raised. */
+  struct Params {
+    float thresholdDb = -80.0f;
+    // Gain-ramp time constant once the gate closes: the note tail. Short
+    // (5-20 ms) is the tight cutoff high-gain rhythm players want; 50 ms
+    // (the NAM plugin gate's close time) rides palm-mute decay without
+    // chopping it.
+    float releaseMs = 50.0f;
+    // How long the envelope must sit below the close threshold before the
+    // release starts. Bridges the gaps in staccato and tremolo picking; 0
+    // hands the timing entirely to the release.
+    float holdMs = 20.0f;
+    // Depth of the closed gate as positive attenuation in dB. 80 is
+    // effectively silence; 20-40 leaves the floor audible, a downward
+    // expander that tames hum without the "gate slam" on clean tones.
+    float rangeDb = 80.0f;
+  };
+
   void prepare(double newSampleRate) {
     sampleRate = newSampleRate;
 
     detectorRiseCoeff = onePoleCoeff(kDetectorRiseMs);
     detectorFallCoeff = onePoleCoeff(kDetectorFallMs);
     attackCoeff = onePoleCoeff(kAttackMs);
-    releaseCoeff = onePoleCoeff(kReleaseMs);
-    holdSamples = static_cast<int>(kHoldMs * 0.001 * sampleRate);
+    applyThreshold();
+    applyRelease();
+    applyHold();
+    applyRange();
 
     // Sidechain highpass: TPT state-variable filter (Zavalishin), Butterworth Q.
     const float g =
@@ -76,16 +105,25 @@ public:
       channel = {};
   }
 
-  /** Audio thread, once per block. The knob value is the open threshold; the
-      close threshold sits kHysteresisDb below it. Early-outs when unchanged,
-      so the transcendentals only run on actual knob moves. */
-  void setThresholdDb(float thresholdDb) {
-    if (thresholdDb == currentThresholdDb)
-      return;
-    currentThresholdDb = thresholdDb;
-    openThreshold = juce::Decibels::decibelsToGain(thresholdDb);
-    closeThreshold = juce::Decibels::decibelsToGain(thresholdDb - kHysteresisDb);
-    invOpenThreshold = 1.0f / openThreshold;
+  /** Audio thread, once per block. Each field early-outs when unchanged, so
+      the transcendentals only run on actual knob moves. */
+  void setParams(const Params& p) {
+    if (p.thresholdDb != params.thresholdDb) {
+      params.thresholdDb = p.thresholdDb;
+      applyThreshold();
+    }
+    if (p.releaseMs != params.releaseMs) {
+      params.releaseMs = p.releaseMs;
+      applyRelease();
+    }
+    if (p.holdMs != params.holdMs) {
+      params.holdMs = p.holdMs;
+      applyHold();
+    }
+    if (p.rangeDb != params.rangeDb) {
+      params.rangeDb = p.rangeDb;
+      applyRange();
+    }
   }
 
   /** Audio thread. Gates up to kMaxChannels in place. */
@@ -103,10 +141,19 @@ private:
   static constexpr float kDetectorRiseMs = 0.2f;
   static constexpr float kDetectorFallMs = 25.0f;
   static constexpr float kAttackMs = 0.2f;
-  static constexpr float kHoldMs = 50.0f;
-  static constexpr float kReleaseMs = 100.0f;
   static constexpr float kHysteresisDb = 5.0f;
-  static constexpr float kFloorGain = 1.0e-4f;   // -80 dB: silent, never a hard zero
+
+  // The open threshold is the knob value; the close threshold sits
+  // kHysteresisDb below it.
+  void applyThreshold() {
+    openThreshold = juce::Decibels::decibelsToGain(params.thresholdDb);
+    closeThreshold = juce::Decibels::decibelsToGain(params.thresholdDb - kHysteresisDb);
+    invOpenThreshold = 1.0f / openThreshold;
+  }
+  void applyRelease() { releaseCoeff = onePoleCoeff(params.releaseMs); }
+  void applyHold() { holdSamples = static_cast<int>(params.holdMs * 0.001 * sampleRate); }
+  // Never a hard zero: the floor is a gain, so the closed gate still glides.
+  void applyRange() { floorGain = juce::Decibels::decibelsToGain(-params.rangeDb); }
 
   enum class State { closed, open, holding };
 
@@ -163,7 +210,7 @@ private:
       float targetGain = 1.0f;
       if (c.state == State::closed) {
         const float ratio = c.envelope * invOpenThreshold;
-        targetGain = juce::jmax(ratio * ratio * ratio, kFloorGain);
+        targetGain = juce::jmax(ratio * ratio * ratio, floorGain);
       }
 
       // Smooth the gain itself so opening never clicks and closing breathes.
@@ -179,17 +226,16 @@ private:
   }
 
   double sampleRate = 48000.0;
+  Params params;
 
-  // Detector/gain coefficients (recomputed in prepare()).
+  // Detector/gain coefficients (recomputed in prepare() and, per field, on
+  // setParams() changes).
   float detectorRiseCoeff = 1.0f, detectorFallCoeff = 0.01f;
   float attackCoeff = 1.0f, releaseCoeff = 0.01f;
   int holdSamples = 0;
+  float floorGain = 1.0e-4f;
   float svfK = 1.0f, svfA1 = 1.0f, svfA2 = 0.0f, svfA3 = 0.0f;
   float lowpassCoeff = 1.0f;
-
-  // Threshold state (recomputed only on knob moves; sentinel forces the
-  // first setThresholdDb() to compute).
-  float currentThresholdDb = 1.0f;
   float openThreshold = 1.0f, closeThreshold = 1.0f, invOpenThreshold = 1.0f;
 
   std::array<Channel, kMaxChannels> channels;

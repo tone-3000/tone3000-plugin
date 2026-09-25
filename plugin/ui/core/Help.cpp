@@ -59,8 +59,15 @@ std::map<Key, String> buildTable() {
   t[Key::autoBalance] = U("Auto Balance: click, play ~2 s to match chain levels. Click again: cancel.");
 
   // Faceplate: gate, tone stack, stereo image
-  t[Key::gate] = knobDesktop("Gate", "noise gate threshold, -100 to 0 dB.");
-  t[Key::gatePower] = U("Gate Power: noise gate on/off.");
+  t[Key::gate] = knobDesktop("Gate", "noise gate threshold, -100 to 0 dB. Right-click: advanced.");
+  // Same touch caveat as the spread power below: the deck answers a hold on
+  // the Gate knob only.
+  t[Key::gatePower] = kTouch ? U("Gate Power: noise gate on/off.")
+                             : U("Gate Power: noise gate on/off. Right-click: advanced.");
+  t[Key::gateRelease] =
+      knobDesktop("Release", "how fast the gate closes, 5-500 ms. Short: tight · long: natural tails.");
+  t[Key::gateHold] = knobDesktop("Hold", "time the gate stays open after the signal drops, 0-200 ms.");
+  t[Key::gateRange] = knobDesktop("Range", "how deep the gate closes, 20-80 dB. 80: mute · 20: tame.");
   t[Key::toneBass] = knobDesktop("Bass", "tone stack lows, 0-10: ±20 dB shelf at 150 Hz.");
   t[Key::toneMiddle] = knobDesktop("Middle", "tone stack mids, 0-10: ±15 dB bell at 425 Hz.");
   t[Key::toneTreble] = knobDesktop("Treble", "tone stack highs, 0-10: ±10 dB shelf at 1.8 kHz.");

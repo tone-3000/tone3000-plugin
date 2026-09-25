@@ -69,6 +69,26 @@ inline const KnobScale& gateDb() {
   return s;
 }
 
+// Gate deck. These mirror the APVTS ranges in Processor.cpp (the parameters
+// are stored in real units): release is a log map over 5-500 ms so the
+// tight end has resolution, hold and range are linear.
+inline const KnobScale& gateReleaseMs() {
+  static const KnobScale s = make([](double n) { return 5.0 * std::pow(100.0, n); },
+                                  [](double d) { return std::log(d / 5.0) / std::log(100.0); },
+                                  "ms", 0);
+  return s;
+}
+inline const KnobScale& gateHoldMs() {
+  static const KnobScale s = linear(0, 200, "ms", 0);
+  return s;
+}
+// Depth of the closed gate as positive attenuation, so clockwise gates
+// harder (80 dB is the full mute the gate shipped with).
+inline const KnobScale& gateRangeDb() {
+  static const KnobScale s = linear(20, 80, "dB", 0);
+  return s;
+}
+
 // Faceplate tone stack knobs: 0..10, 5 = flat.
 inline const KnobScale& tone() {
   static const KnobScale s = linear(0, 10, {}, 1);

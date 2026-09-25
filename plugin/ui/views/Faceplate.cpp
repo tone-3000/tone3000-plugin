@@ -196,10 +196,7 @@ Faceplate::Faceplate(Services& services)
       input_(services.backend, "inputLevel",
              primaryKnob("Input", scales::gainDb(), 0.5f, help::Key::inputLevel)),
       inputMode_(std::make_unique<InputModeButton>(services)),
-      gate_(services.backend, "gateThreshold",
-            secondaryKnob("Gate", scales::gateDb(), static_cast<float>(scales::gateDb().fromDisplay(-80)),
-                          help::Key::gate)),
-      gatePower_(services.backend, "gateEnabled", help::Key::gatePower),
+      gate_(services),
       bass_(services.backend, "toneBass",
             primaryKnob("Bass", scales::tone(), 0.5f, help::Key::toneBass)),
       middle_(services.backend, "toneMid",
@@ -220,15 +217,10 @@ Faceplate::Faceplate(Services& services)
 
   addAndMakeVisible(input_);
   addChildComponent(*inputMode_);
+  addAndMakeVisible(gate_);
 
-  // Powered-off sections: knobs + labels dim and go inert; the power button
+  // Powered-off section: knobs + labels dim and go inert; the power button
   // stays outside the dimmed wrapper, bright and clickable.
-  gateDim_.addAndMakeVisible(gate_);
-  gateDim_.setOff(!gatePower_.value(), false);
-  gatePower_.onValueChange = [this](bool on) { gateDim_.setOff(!on); };
-  addAndMakeVisible(gateDim_);
-  addAndMakeVisible(gatePower_);
-
   for (auto* k : {&bass_, &middle_, &treble_}) toneDim_.addAndMakeVisible(*k);
   toneDim_.setOff(!tonePower_.value(), false);
   tonePower_.onValueChange = [this](bool on) { toneDim_.setOff(!on); };
@@ -304,7 +296,7 @@ void Faceplate::resized() {
   // Five peers share the plate width (space-between). Their footprints are
   // fixed; only the input group grows when the input-mode button shows.
   const int inputW = primary + (inputMode_->isVisible() ? kGroupGap + inputMode_->getWidth() : 0);
-  const int gateW = secondary + kGroupGap + box;
+  const int gateW = GateGroup::kWidth;
   const int toneW = 3 * primary + 2 * kToneGap + kGroupGap + box;
   const int imageW = StereoImageGroup::kWidth;
   const int outputW = box + kGroupGap + secondary + kGroupGap + primary;
@@ -318,10 +310,8 @@ void Faceplate::resized() {
   inputMode_->setTopLeftPosition(at(x) + primary + kGroupGap, chromeY);
   x += inputW + gap;
 
-  // Gate + power
-  gateDim_.setBounds(at(x), knobY(secondary), secondary, Knob::heightFor(secondary));
-  gate_.setTopLeftPosition(0, 0);
-  gatePower_.setTopLeftPosition(at(x) + secondary + kGroupGap, chromeY);
+  // Gate + power (+ deck)
+  gate_.setTopLeftPosition(at(x), knobY(secondary));
   x += gateW + gap;
 
   // Bass / Middle / Treble + power

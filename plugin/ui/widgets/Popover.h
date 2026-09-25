@@ -49,7 +49,8 @@ public:
 
   // Called after the panel is removed (outside press, Escape, or close()).
   std::function<void()> onDismiss;
-  // Ignore non-primary presses (panels toggled by right-click).
+  // Ignore secondary presses (see isSecondaryPress) anywhere outside: a
+  // right-click elsewhere (a tile's context menu) leaves the panel up.
   bool primaryOnly = false;
   // A press on the anchor dismisses too (the anchor is a control, not the
   // panel's toggle).
@@ -84,10 +85,12 @@ private:
   };
 
   void outsidePress(const juce::MouseEvent& e);
+  void watchOutsidePresses();
   // Focus the next (or previous) row after the focused one, wrapping.
   void focusRow(bool next);
 
   OutsidePressWatcher watcher_{*this};
+  juce::Time openingPress_;  // mouseDownTime of the press that opened the panel
   bool keyboardOpened_ = false;  // the anchor had focus at open(): focus returns to it
   juce::Component::SafePointer<juce::Component> anchor_;
   Align align_ = Align::left;

@@ -10,6 +10,13 @@
 
 namespace t3k::ui {
 
+// The press that means "context", the way a browser fires contextmenu: any
+// non-primary button, plus Ctrl-click on macOS (isPopupMenu carries that
+// platform rule). Touch is never secondary here; a hold stands in for it.
+inline bool isSecondaryPress(const juce::MouseEvent& e) {
+  return !e.source.isTouch() && (!e.mods.isLeftButtonDown() || e.mods.isPopupMenu());
+}
+
 class SecondaryPressTarget {
 public:
   virtual ~SecondaryPressTarget() = default;

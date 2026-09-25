@@ -200,6 +200,14 @@ flowchart LR
   button picks what enters the chain: both channels (default) or one channel
   mirrored onto both. Saved with the session, not with presets; it's I/O
   routing, not tone.
+- **Noise gate**: a downward expander on the input with a band-passed
+  sidechain and 5 dB of hysteresis, so pickup hum never chatters the gate.
+  The faceplate exposes the threshold; right-clicking the Gate group
+  (Ctrl-click on macOS, touch-and-hold on the knob) opens an advanced deck
+  with Release (5-500 ms, how fast the gate closes), Hold (0-200 ms, how
+  long it stays open after the signal drops) and Range (20-80 dB, how deep
+  it closes; 80 dB is a mute). Attack is fixed at 0.2 ms: with no
+  lookahead, a slower attack only softens pick transients.
 - **Mono mode**: only the Left chain runs and the pan stage is skipped. With
   Spread on, the chain output becomes an ADT-style stereo double; see
   [`plugin/docs/stereo-image.md`](plugin/docs/stereo-image.md) for the design
@@ -284,6 +292,9 @@ IR assets in `test/files`:
   toggles, state round trips).
 - `multicore_tests.cpp`: parallel stereo output is bit-identical to serial,
   across topologies, host rates, and oversampling factors.
+- `gate_tests.cpp`: the noise gate's release / hold / range contracts, and
+  the compatibility of the first parameters added after launch (a state
+  saved before they existed lands on their defaults; presets carry them).
 - `spread_tests.cpp`, `swap_fade_tests.cpp`, `branch_tests.cpp`, and friends
   cover the doubler, engine-swap fades, and chain routing.
 

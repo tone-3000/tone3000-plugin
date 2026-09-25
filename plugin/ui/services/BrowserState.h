@@ -4,6 +4,9 @@
 // FilterBar read and write it directly.
 #pragma once
 
+#include <juce_core/juce_core.h>
+
+#include <map>
 #include <optional>
 
 #include "ToneSession.h"
@@ -18,6 +21,10 @@ struct BrowserState {
   // The page last shown, rendered again at once on return; it only
   // refreshes on the user's next search, filter change or page turn.
   std::optional<TonePage> result;
+  // Creator avatar URLs by name, from every Creators lookup so far. A
+  // picked creator pins to the top of the menu whatever the search shows;
+  // this keeps its avatar once the lookup no longer returns it.
+  std::map<juce::String, juce::String> creatorAvatars;
 };
 
 }  // namespace t3k::ui

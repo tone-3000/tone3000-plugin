@@ -63,10 +63,10 @@ public:
   }
 
   void mouseDown(const juce::MouseEvent& e) override {
-    if (e.mods.isLeftButtonDown() || e.source.isTouch())
-      juce::Button::mouseDown(e);
-    else
+    if (isSecondaryPress(e))
       forwardSecondaryPress(*this, e);
+    else
+      juce::Button::mouseDown(e);
   }
 
   void paintButton(juce::Graphics& g, bool, bool) override {
@@ -156,7 +156,7 @@ StereoImageGroup::~StereoImageGroup() {
 }
 
 void StereoImageGroup::mouseDown(const juce::MouseEvent& e) {
-  if (e.mods.isPopupMenu()) toggleDeck();
+  if (isSecondaryPress(e)) toggleDeck();
 }
 
 void StereoImageGroup::autoMeasureChanged() {
