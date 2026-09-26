@@ -9,6 +9,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set(T3K_IOS TRUE)
 endif()
 
+# Repeated for a standalone configure of this directory; see the comment in
+# the root CMakeLists.txt. No pre-project() timing requirement here (unlike
+# T3K_IOS above), since Android has no deployment-target floor to force into
+# the cache before project().
+if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    set(T3K_ANDROID TRUE)
+endif()
+
 if(T3K_IOS)
     if(NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET OR CMAKE_OSX_DEPLOYMENT_TARGET STREQUAL "")
         set(CMAKE_OSX_DEPLOYMENT_TARGET "16.0" CACHE STRING "Minimum iOS version" FORCE)
@@ -49,7 +57,9 @@ set(_plugin_formats "VST3") # Default plugin format
 # AU (the desktop v2 wrapper), AAX, LV2 and CLAP are all macOS/Windows/Linux
 # only. The app that ships on an iPad is the Standalone. AUv3 would be the
 # in-host format there and is deliberately out of scope for this spike.
-if (T3K_IOS)
+# Android has no desktop plugin host either, so the same applies there: only
+# the Standalone app is built.
+if (T3K_IOS OR T3K_ANDROID)
     set(_plugin_formats "")
     set(BUILD_AAX OFF)
     set(BUILD_LV2 OFF)
@@ -79,15 +89,16 @@ else()
 endif()
 
 # NeuralAmpModelerCore's own CMakeLists only knows Darwin, Linux and Windows
-# and hard-fails with "Unrecognized Platform!" on anything else, iOS included.
-# Nothing in this build actually needs it: the NAM static library below is
-# compiled here from NAM_SRC precisely to keep the submodule pristine, and the
-# include paths and NAM_ENABLE_A2_FAST definition it would set are directory
-# scoped (they never reached this target anyway; both are set explicitly
-# below). The only things it contributes are the submodule's own dev tools,
-# which are excluded from the default build a few lines down. So skip it on
-# iOS and leave every other platform on the existing path.
-if (NOT T3K_IOS)
+# and hard-fails with "Unrecognized Platform!" on anything else, iOS and
+# Android included. Nothing in this build actually needs it: the NAM static
+# library below is compiled here from NAM_SRC precisely to keep the submodule
+# pristine, and the include paths and NAM_ENABLE_A2_FAST definition it would
+# set are directory scoped (they never reached this target anyway; both are
+# set explicitly below). The only things it contributes are the submodule's
+# own dev tools, which are excluded from the default build a few lines down.
+# So skip it on iOS/Android and leave every other platform on the existing
+# path.
+if (NOT T3K_IOS AND NOT T3K_ANDROID)
     add_subdirectory(NeuralAmpModelerCore)
 endif()
 
@@ -255,6 +266,94 @@ juce_add_plugin(${PROJECT_NAME}
     ICON_BIG "${_app_icon}"
 )
 
+# Android: the Standalone wrapper target this call creates is named
+# "${PROJECT_NAME}_Standalone" ("TONE3000_Standalone"), and JUCE's own
+# _juce_set_output_name() deliberately skips renaming the build output on
+# Android (JUCEUtils.cmake: "if (NOT CMAKE_SYSTEM_NAME STREQUAL Android)"),
+# so the CMake target's own name would otherwise become the .so basename.
+# JUCE's Java glue (Java.java) hardcodes System.loadLibrary("juce_jni"), so
+# OUTPUT_NAME is forced here regardless of the target's CMake name (verified
+# working in the Phase 0 spike, where the target was instead named "juce_jni"
+# directly - PROJECT_NAME can't be renamed here without disturbing every
+# other platform, so OUTPUT_NAME is the equivalent lever for this target).
+if (T3K_ANDROID AND TARGET ${PROJECT_NAME}_Standalone)
+    set_target_properties(${PROJECT_NAME}_Standalone PROPERTIES OUTPUT_NAME juce_jni)
+
+    # _juce_link_plugin_wrapper() (JUCEUtils.cmake) sets hidden visibility on
+    # every plugin-format wrapper target, Standalone included, on every
+    # platform - including Android, where that's fatal rather than just a
+    # smaller export table: juce_juceEventsAndroidStartApp() (see
+    # juce_Messaging_android.cpp) finds the app's entry point by dlopen-ing
+    # this very library and dlsym-ing "juce_CreateApplication" out of it.
+    # Hidden visibility demotes that symbol to local, so dlsym silently
+    # returns null, JuceAppLifecycle never constructs the app, and the
+    # activity boots into a blank/frozen window with no crash to point at.
+    # Confirmed with llvm-nm: without this override the symbol shows up as
+    # "t juce_CreateApplication" (local) rather than "T" (global/exported)
+    # and is entirely absent from the dynamic symbol table (nm -D).
+    # Overriding the property back to default here is enough - no JUCE
+    # source patch needed, unlike most of the other configure-time patches
+    # in the root CMakeLists.txt.
+    set_target_properties(${PROJECT_NAME}_Standalone PROPERTIES
+        CXX_VISIBILITY_PRESET default
+        C_VISIBILITY_PRESET default
+    )
+
+    # NDK 27's linker still defaults to 4 KB-aligned ELF LOAD segments; newer
+    # Android devices (and the Play Store from November 2025) require 16 KB
+    # page-size compatibility instead. Confirmed live on a Galaxy S25 (One UI
+    # 7): installing and launching this Standalone .so with the default
+    # alignment surfaced Android's own "Android app compatibility" warning
+    # dialog, naming this exact library ("lib/arm64-v8a/libjuce_jni.so: LOAD
+    # segment not aligned") - the emulator never surfaced this, since it
+    # doesn't enforce the check. Standard fix per
+    # https://developer.android.com/16kb-page-size: pass max-page-size=16384
+    # to the linker. NDK r28+ defaults to this; since NDK is pinned to r27
+    # here (see the Oboe/AAudio.h NDK 30 conflict noted on ndkVersion in
+    # android/app/build.gradle.kts), it has to be requested explicitly rather
+    # than solved by an NDK bump.
+    target_link_options(${PROJECT_NAME}_Standalone PRIVATE "-Wl,-z,max-page-size=16384")
+
+    # JuceActivity.java (JUCE's stock Android activity, which the app's
+    # MainActivity only subclasses - see android/ Gradle project; the natives
+    # stay registered on JuceActivity, the class that declares them)
+    # unconditionally declares native
+    # appOnResume()/appNewIntent() methods, but JUCE only compiles their C++
+    # implementation (juce_Windowing_android.cpp, part of the juce_gui_basics
+    # module) when JUCE_PUSH_NOTIFICATIONS_ACTIVITY names the activity's JNI
+    # class path; without it the very first onResume() throws
+    # UnsatisfiedLinkError. JUCE_PUSH_NOTIFICATIONS=1 is required alongside
+    # it so that file's call to juce_handleNotificationIntent() resolves
+    # against the real implementation in juce_PushNotifications_android.cpp
+    # (juce_gui_extra) - no Firebase/push setup is actually pulled in beyond
+    # this. Neither define is set by JUCE's CMake API itself (confirmed: no
+    # reference to either anywhere under extras/Build/CMake as of JUCE
+    # 9.0.1).
+    #
+    # Set on ${PROJECT_NAME} ("TONE3000"), NOT ${PROJECT_NAME}_Standalone:
+    # juce_add_plugin() compiles every JUCE module - juce_gui_basics
+    # included - into the shared-code static library target (${PROJECT_NAME}
+    # itself), and the various _FORMAT wrapper targets (${PROJECT_NAME}_...)
+    # only link against that static library rather than recompiling any of
+    # it. A PRIVATE define on the wrapper target never reaches
+    # juce_gui_basics.cpp's compile step, which is why this was first tried
+    # on the wrapper target and, on-device, still crashed with the exact
+    # UnsatisfiedLinkError this is meant to fix (confirmed on the Pixel
+    # Tablet emulator) until moved here.
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+        JUCE_PUSH_NOTIFICATIONS_ACTIVITY="com/rmsl/juce/JuceActivity"
+        JUCE_PUSH_NOTIFICATIONS=1
+        # juce_core.h only pulls in its Android JNI helpers (getEnv(),
+        # AndroidContext, AndroidIntent, AndroidUri, LocalRef, javaString(),
+        # ...) behind this opt-in macro (juce_core.h: "#if
+        # JUCE_CORE_INCLUDE_JNI_HELPERS && JUCE_ANDROID"), undefined (so 0)
+        # by default. AudioPermissions.cpp and PresetManager.cpp's Android
+        # branches both use them directly (openMicSettings' Settings intent;
+        # extractFactoryPresetsFromAssets' AAssetManager lookup).
+        JUCE_CORE_INCLUDE_JNI_HELPERS=1
+    )
+endif()
+
 # What App Store Connect checks on upload. Nothing here changes how the app
 # behaves; without it the upload is rejected or the icon goes missing.
 if (T3K_IOS)
@@ -381,12 +480,23 @@ if (NOT HEADLESS)
         # AVAudioSession route query + the Bluetooth HFP opt-out (see
         # IosAudioRoute.h).
         target_sources(${PROJECT_NAME} PRIVATE src/IosAudioRoute.mm)
+    elseif (T3K_ANDROID)
+        # WindowKeyEvents.cpp itself no-ops on JUCE_ANDROID (see the file):
+        # no desktop DAW window to hand a transport keypress back to on a
+        # touch-only standalone app, same reasoning as the iOS stub in
+        # WindowKeyEvents.mm. Compiled here (unlike the X11/Win32 branches
+        # below) since neither needs anything from the NDK sysroot.
+        target_sources(${PROJECT_NAME} PRIVATE src/WindowKeyEvents.cpp)
+        target_sources(${PROJECT_NAME} PRIVATE src/AudioPermissions.cpp)
     else()
         # Space passthrough to the host DAW (see WindowKeyEvents.cpp).
         target_sources(${PROJECT_NAME} PRIVATE src/WindowKeyEvents.cpp)
         if (UNIX)
             # JUCE dlopens libX11 instead of linking it; the direct Xlib
-            # calls in WindowKeyEvents.cpp need the real link.
+            # calls in WindowKeyEvents.cpp need the real link. UNIX is also
+            # TRUE when cross-compiling for Android (Linux-kernel-based), but
+            # that case is handled by the T3K_ANDROID branch above, so this
+            # only ever runs for desktop Linux/BSD.
             find_package(X11 REQUIRED)
             target_link_libraries(${PROJECT_NAME} PRIVATE X11::X11)
         endif()
@@ -459,12 +569,13 @@ target_link_libraries(${PROJECT_NAME}
         # both have to be listed or the iOS link drops every model architecture
         # and NAM loads fail with "No config parser registered for ...".
         $<$<PLATFORM_ID:Darwin,iOS>:-Wl,-force_load,$<TARGET_FILE:NAM>>
-        # Linux: flags and library must be separate link items. A single
-        # "-Wl,--whole-archive,NAM,-Wl,..." item gets comma-split by the GCC
-        # driver, passing a literal "-Wl" to ld ("unrecognized option '-Wl'").
-        $<$<PLATFORM_ID:Linux>:-Wl,--whole-archive>
-        $<$<PLATFORM_ID:Linux>:NAM>
-        $<$<PLATFORM_ID:Linux>:-Wl,--no-whole-archive>
+        # Linux and Android (NDK Clang/LLD): flags and library must be
+        # separate link items. A single "-Wl,--whole-archive,NAM,-Wl,..."
+        # item gets comma-split by the GCC/Clang driver, passing a literal
+        # "-Wl" to ld ("unrecognized option '-Wl'").
+        $<$<PLATFORM_ID:Linux,Android>:-Wl,--whole-archive>
+        $<$<PLATFORM_ID:Linux,Android>:NAM>
+        $<$<PLATFORM_ID:Linux,Android>:-Wl,--no-whole-archive>
         # Windows (MSVC): /WHOLEARCHIVE is the equivalent; without it the
         # linker drops the objects holding the self-registering config parsers
         # ("No config parser registered for architecture ..." at NAM load).
@@ -499,7 +610,11 @@ target_compile_definitions(${PROJECT_NAME}
 # libcurl-gnutls.so.4, ...) at runtime, which exist on end-user systems
 # without any -dev package. Build hosts need the curl headers
 # (libcurl4-openssl-dev; CI installs it).
-if (UNIX AND NOT APPLE)
+# UNIX is also TRUE for Android (Linux-kernel-based), but the NDK sysroot has
+# no libcurl at all, and JUCE's Android WebInputStream backend (java.net
+# HttpURLConnection via JNI) already handles https:// without it - so Android
+# takes the JUCE_USE_CURL=0 path below despite matching "UNIX AND NOT APPLE".
+if (UNIX AND NOT APPLE AND NOT T3K_ANDROID)
     target_compile_definitions(${PROJECT_NAME}
         PUBLIC
             JUCE_USE_CURL=1
@@ -524,7 +639,7 @@ endif()
 # (libjack-jackd2-dev; CI installs it). The JACK client name defaults to
 # JucePlugin_Name ("TONE3000"). Gated on NOT HEADLESS so embedded
 # toolchains don't grow a header dependency.
-if (UNIX AND NOT APPLE AND NOT HEADLESS)
+if (UNIX AND NOT APPLE AND NOT HEADLESS AND NOT T3K_ANDROID)
     target_compile_definitions(${PROJECT_NAME} PUBLIC JUCE_JACK=1)
 endif()
 
@@ -535,7 +650,7 @@ endif()
 # intermittently in the JUCE 9 standalone on Linux (resolved by relaunch). The
 # only feature XInput2 buys is multitouch, which this plugin doesn't use, so
 # disable the whole path and keep the battle-tested JUCE 8 behavior.
-if (UNIX AND NOT APPLE)
+if (UNIX AND NOT APPLE AND NOT T3K_ANDROID)
     target_compile_definitions(${PROJECT_NAME} PUBLIC JUCE_USE_XINPUT=0)
 endif()
 

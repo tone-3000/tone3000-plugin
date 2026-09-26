@@ -447,7 +447,7 @@ juce::var TONE3000Processor::loadLocalToneUrls(const juce::Array<juce::URL>& sou
   // enumerated through juce::URL (there is no listing API behind the
   // bookmark), so "Load Folder" asks for the files themselves instead. See
   // LocalFiles::pick. Not gated on JUCE_IOS so the DSP suite can run it;
-  // the editor only reaches it on iOS.
+  // the editor only reaches it on iOS and Android.
   if (sources.isEmpty())
     return localToneError("Load Files", "Nothing to load");
 
@@ -730,9 +730,8 @@ std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& mo
   // The TONE3000 API requires a Bearer token on `model_url` requests;
   // attach the latest token the UI handed us, if any. Anonymous fetches still
   // work for legacy public URLs, so we degrade gracefully when no token is set.
-  // Chain the option builders since `InputStreamOptions` has no copy-assign.
   const juce::String token = getAccessToken();
-  const juce::String extraHeaders =
+  const juce::String authHeader =
       token.isNotEmpty() ? juce::String("Authorization: Bearer ") + token
                          : juce::String();
   if (token.isEmpty()) {
@@ -741,10 +740,122 @@ std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& mo
     juce::Logger::writeToLog("[ModelLoader] Fetching model without auth token (may be rejected)");
   }
 
-  auto options =
-      juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
-          .withConnectionTimeoutMs(30000)
-          .withExtraHeaders(extraHeaders);
+  juce::MemoryBlock memoryBlock;
+  const size_t blockSize = 8192;
+  char buffer[blockSize];
+
+  // A stalled response body would otherwise pin a loader thread forever (an
+  // eternal "loading" block in the UI). Bound the whole download, resume
+  // attempts included, instead.
+  const juce::uint32 overallDeadline = juce::Time::getMillisecondCounter() + 120000;
+
+#if JUCE_ANDROID
+  // Android's stock JUCE HTTP backend has no reliable way to detect a short
+  // read on a plain HTTP(S) URL: isExhausted() always returns false, and
+  // getTotalLength() reflects the initial response's Content-Length - here
+  // always 0, since `model_url` itself redirects to the real file, not the
+  // redirected target's. A connection that stops delivering bytes early is
+  // therefore indistinguishable from a real completion. Work around it by
+  // range-resuming from wherever the stream stopped, repeating until the
+  // server confirms via 416 that nothing is left, instead of trusting a
+  // single read to have reached the end.
+  //
+  // Scoped to Android only: desktop/iOS's backend signals completion
+  // correctly, so this would just add an unnecessary extra request per
+  // download there - or, on a server that returns 200 instead of 416 for an
+  // at-end Range request, a full duplicate download.
+  bool confirmedComplete = false;
+  constexpr int kMaxResumeAttempts = 6;
+  for (int resumeAttempt = 0; resumeAttempt <= kMaxResumeAttempts; ++resumeAttempt) {
+    const size_t bytesBeforeThisRequest = memoryBlock.getSize();
+
+    juce::String extraHeaders = authHeader;
+    if (bytesBeforeThisRequest > 0) {
+      if (extraHeaders.isNotEmpty())
+        extraHeaders += "\n";
+      extraHeaders += "Range: bytes=" + juce::String((juce::int64)bytesBeforeThisRequest) + "-";
+    }
+
+    juce::WebInputStream stream(url, false);
+    stream.withExtraHeaders(extraHeaders).withConnectionTimeout(30000);
+
+    if (!stream.connect(nullptr)) {
+      juce::Logger::writeToLog(
+          "[ModelLoader] Failed to open stream for model URL (network down or unreachable): " +
+          modelUrl);
+      // A failed resume attempt shouldn't discard a mostly-complete download
+      // already in hand; only a first-attempt connect failure is fatal.
+      if (bytesBeforeThisRequest > 0)
+        break;
+      return {};
+    }
+
+    const int status = stream.getStatusCode();
+
+    // 416 on a resume request means the server itself confirms there's
+    // nothing past what's already been downloaded - done.
+    if (bytesBeforeThisRequest > 0 && status == 416) {
+      confirmedComplete = true;
+      break;
+    }
+
+    if (status != 200 && status != 206) {
+      juce::Logger::writeToLog("[ModelLoader] Model URL returned HTTP " + juce::String(status) +
+                               ": " + modelUrl);
+      if (bytesBeforeThisRequest > 0)
+        break;
+      return {};
+    }
+
+    // A resume request that comes back 200 instead of 206 means the server
+    // ignored the Range header and is sending the whole file again from byte
+    // 0 - take this fresh copy instead of appending it after data already in
+    // hand, which would double up (or worse, misalign) the content.
+    if (bytesBeforeThisRequest > 0 && status == 200)
+      memoryBlock.reset();
+
+    bool timedOut = false;
+    while (!stream.isExhausted()) {
+      if (juce::Time::getMillisecondCounter() > overallDeadline) {
+        juce::Logger::writeToLog("[ModelLoader] Model download timed out: " + modelUrl);
+        timedOut = true;
+        break;
+      }
+      int bytesRead = stream.read(buffer, (int)blockSize);
+      if (bytesRead > 0) {
+        memoryBlock.append(buffer, bytesRead);
+      } else if (bytesRead < 0) {
+        break;
+      } else {
+        // Not EOF - real end of stream is always signalled by a negative
+        // read() per the InputStream contract, a 0 just means "nothing
+        // available this instant." Sleep a beat rather than hot-looping.
+        juce::Thread::sleep(2);
+      }
+    }
+
+    // Keep whatever was salvaged on timeout too, consistent with the other
+    // exit paths above.
+    if (timedOut)
+      break;
+
+    // No forward progress on this attempt: further resume attempts would
+    // just repeat it (or spin), so stop instead of burning the remaining
+    // attempt budget.
+    if (memoryBlock.getSize() == bytesBeforeThisRequest)
+      break;
+  }
+
+  if (!confirmedComplete && memoryBlock.getSize() > 0) {
+    juce::Logger::writeToLog(
+        "[ModelLoader] Gave up resuming without the server confirming completion via 416 (got " +
+        juce::String(memoryBlock.getSize()) + " bytes) - result may still be truncated: " +
+        modelUrl);
+  }
+#else
+  auto options = juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
+                     .withConnectionTimeoutMs(30000)
+                     .withExtraHeaders(authHeader);
 
   std::unique_ptr<juce::InputStream> stream(url.createInputStream(options));
 
@@ -754,27 +865,18 @@ std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& mo
     return {};
   }
 
-  juce::MemoryBlock memoryBlock;
-  const size_t blockSize = 8192;
-  char buffer[blockSize];
-
-  // The connection timeout above only covers the connect; a stalled response
-  // body would otherwise pin a loader thread forever (an eternal "loading"
-  // block in the UI). Bound the whole download instead.
-  const juce::uint32 readDeadline = juce::Time::getMillisecondCounter() + 120000;
-
   while (!stream->isExhausted()) {
-    if (juce::Time::getMillisecondCounter() > readDeadline) {
+    if (juce::Time::getMillisecondCounter() > overallDeadline) {
       juce::Logger::writeToLog("[ModelLoader] Model download timed out: " + modelUrl);
       return {};
     }
-    int bytesRead = stream->read(buffer, blockSize);
-    if (bytesRead > 0) {
+    int bytesRead = stream->read(buffer, (int)blockSize);
+    if (bytesRead > 0)
       memoryBlock.append(buffer, bytesRead);
-    } else {
+    else
       break;
-    }
   }
+#endif
 
   if (memoryBlock.getSize() == 0) {
     juce::Logger::writeToLog("[ModelLoader] Downloaded 0 bytes from model URL: " + modelUrl);
@@ -785,7 +887,6 @@ std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& mo
 
   std::vector<uint8_t> result(memoryBlock.getSize());
   std::memcpy(result.data(), memoryBlock.getData(), memoryBlock.getSize());
-
   return result;
 }
 

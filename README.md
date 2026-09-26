@@ -160,6 +160,38 @@ device without any conversions") open the card exclusively, which takes the
 whole interface away from every other app while the standalone runs. The
 JACK driver shares it.
 
+## Android
+
+A Standalone-only build (Android has no plugin host): `android/` is a
+hand-rolled Gradle project whose `externalNativeBuild` points at this repo's
+own `CMakeLists.txt`, not a Projucer-generated project. v1 scope is tablet,
+landscape-only, sharing the iOS port's fixed-aspect UI. See
+[`docs/android.md`](docs/android.md) for per-OS prerequisites, signing,
+installing and debugging.
+
+Prerequisites: Android Studio (or the SDK + NDK 27.2.12479018, pinned in
+`android/app/build.gradle.kts` — newer NDKs conflict with JUCE's vendored
+Oboe copy) and a JDK 17+ on `JAVA_HOME` for the Gradle wrapper (Android
+Studio's bundled JBR works; the wrapper itself pins the matching Gradle
+9.7.1, no separate Gradle install needed). On Linux build hosts, JUCE's
+host-side `juceaide` helper also needs `pkg-config`, `libfreetype-dev` and
+`libfontconfig1-dev`.
+
+Set the publishable key in the repo-root `.env` (step 3 above), then open
+`android/` in Android Studio and run, or from the CLI:
+
+```sh
+cd android
+./gradlew assembleRelease   # Windows: gradlew.bat
+```
+
+The APK lands in `android/app/build/outputs/apk/release/`, unsigned — sign
+it (e.g. `apksigner` with a debug keystore) before installing. If a build
+doesn't pick up a `.env` change, delete `android/app/.cxx` to force a fresh
+CMake configure. A cold `libs/juce` fetch can occasionally fail with a
+"Failed to remove directory" error when both ABIs configure at once; retry,
+or build one ABI at a time with `-Pandroid.injected.build.abi=arm64-v8a`.
+
 ## Audio processing
 
 The plugin is a JUCE processor running a chain of NAM and IR blocks, anchored
@@ -326,6 +358,7 @@ Debug`.
 | `plugin/`       | C++ plugin: processor, DSP, presets, MIDI mapping; vendors NeuralAmpModelerCore and AudioDSPTools |
 | `plugin/ui/`    | The JUCE UI: views, widgets, services, testbed (see [plugin/ui/README.md](plugin/ui/README.md)) |
 | `plugin/docs/`  | Design docs (UI, spread, oversampling, multi-core, local models) |
+| `android/`      | Gradle project for the Android Standalone build       |
 | `test/`         | GoogleTest DSP suite + test assets                    |
 | `script/`       | Build, packaging, and install helpers                 |
 | `libs/`         | CPM-fetched dependencies (JUCE, GoogleTest, ...)      |
