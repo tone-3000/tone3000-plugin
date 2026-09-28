@@ -3,7 +3,7 @@
 
 // Transport-key passthrough to the host DAW (used by plugin/ui/NativeEditor).
 // Implemented in WindowKeyEvents.mm (macOS / iOS) and WindowKeyEvents.cpp
-// (Windows / Linux).
+// (Windows / Linux / Android, where it is a no-op).
 namespace HostKeys {
 
 enum class HostKey { space, enter };
