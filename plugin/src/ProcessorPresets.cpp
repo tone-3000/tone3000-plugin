@@ -239,6 +239,11 @@ bool TONE3000Processor::movePreset(const juce::String& presetId, int delta) {
   return true;
 }
 
+void TONE3000Processor::presetBackupImported() {
+  hostProgramInfoCache.clear();
+  updateHostDisplay(ChangeDetails{}.withProgramChanged(true));
+}
+
 bool TONE3000Processor::isChainAtDefault() const {
   if (activePresetId.isNotEmpty() || stereoEnabled.load())
     return false;
