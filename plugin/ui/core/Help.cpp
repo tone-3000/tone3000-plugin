@@ -241,7 +241,7 @@ std::map<Key, String> buildTable() {
                            : U("Band Fader: gain, ±15 dB. ") + shift("drag") +
                                  U(": fine · double-click / ") + alt("click") + ": reset.";
   t[Key::eqFaderPass] = U("Pass Band: no gain. Shape it in Curve view.");
-  t[Key::eqDot] = kTouch ? U("Band Dot: drag: freq + gain · double tap: reset. Q: use the Q chip.")
+  t[Key::eqDot] = kTouch ? U("Band Dot: drag: freq + gain · double tap: reset. Q: two fingers — spread to widen the band, pinch to narrow it.")
                          : U("Band Dot: drag: freq + gain · scroll: Q · ") + shift("drag") +
                                U(": fine · ") + alt("click") + ": reset.";
   t[Key::eqFreqChip] = U("Freq: click to type (“800”, “1.2k”). Enter: commit · Esc: cancel.");

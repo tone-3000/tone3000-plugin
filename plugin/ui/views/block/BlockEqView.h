@@ -4,8 +4,9 @@
 //
 // - Graph: the full editor. Grid bleeds edge-to-edge, controls float over
 //   it. Drag dots for freq/gain (vertical drag tunes Q on cut bands), scroll
-//   to tune the selected band's Q; type selector and Freq/Gain/Q chips for
-//   the selected band.
+//   to tune the selected band's Q. Touch: spread/pinch two fingers on the
+//   graph to widen/narrow the selected band. Type selector and Freq/Gain/Q
+//   chips for the selected band.
 // - Sliders: a Mesa-style graphic EQ mirroring the same bands. Gain only.
 //
 // Interaction conventions (mirroring the knobs): Shift = 8x finer, Alt-click
