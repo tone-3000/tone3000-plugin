@@ -1112,6 +1112,7 @@ private:
     std::atomic<float>* pitchStep = nullptr;
     std::atomic<float>* pitchTonality = nullptr;
     std::atomic<float>* pitchWindow = nullptr;
+    std::atomic<float>* pitchMix = nullptr;
   } paramRefs;
   void resolveParamRefs();
 

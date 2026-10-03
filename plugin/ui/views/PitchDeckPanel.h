@@ -11,8 +11,10 @@
 //    lowest note it holds a full period of, and how often it splices; the
 //    latency it reports to the host is half of it plus 1 ms. Attacks always
 //    pass in a few ms whatever the buffer.
-// Plain controls, no power switches, same footprint as the gate deck so the
-// two read as one family.
+//  - Mix: the dry/shifted blend, 0-100% shifted (the default is 100). Lower
+//    it to mix the dry signal back in.
+// Plain controls, no power switches, same footprint as the gate deck plus
+// Mix's column so the two read as one family.
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -25,7 +27,9 @@ namespace t3k::ui {
 
 class PitchDeckPanel : public Popover {
 public:
-  static constexpr int kWidth = 262;
+  // Four control columns (STEP, Tonality, Buffer, Mix): kWidth is the
+  // padding plus the columns and gaps, inside the panel's 1px border.
+  static constexpr int kWidth = 344;
   static constexpr int kHeight = 85;
   // Gap between the panel's bottom edge and its anchor's top.
   static constexpr int kGap = 6;
@@ -41,7 +45,7 @@ public:
 
 private:
   ParamTextToggle step_;
-  ParamKnob tonality_, window_;
+  ParamKnob tonality_, window_, mix_;
 };
 
 }  // namespace t3k::ui

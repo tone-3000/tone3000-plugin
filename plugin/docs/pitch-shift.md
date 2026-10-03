@@ -466,6 +466,11 @@ bass note's period does not fit it.
 - **Buffer**, the shifter's delay buffer, 20 / 30 / 40 / 60 ms. The tap's
   delay sweeps between the 2 ms floor and the buffer end, and the host is
   told the midpoint, (2 + N) / 2 = 11 / 16 / 21 / 31 ms.
+- **Mix**, the dry/shifted blend, 0-100% shifted. 100 (the default) is the
+  pure shift; lower it to mix the dry signal back in. It scales the shifted
+  term against the dry (a linear crossfade, like a block's Mix) and
+  multiplies into the power fade, so a powered-off shifter still lands on
+  the untouched input.
 
 A smooth sweep asks the engine for a new ratio every block. A pending lag
 search is planned for a drift, so a same-direction change of up to 0.1 in

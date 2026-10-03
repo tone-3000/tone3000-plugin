@@ -28974,7 +28974,7 @@
    "id": "chrome-pitch-deck",
    "section": "chrome",
    "title": "Pitch advanced deck",
-   "description": "Right-clicking the Pitch group (knob or power) opens the pitch deck above the plate, anchored to the knob: the STEP toggle (armed: whole semitones), Tonality and Buffer knobs, no power switches. The group is powered so the knob reads lit; every deck control sits at its default (STEP on, Off, 30 ms), so a stock rig reads unchanged.",
+   "description": "Right-clicking the Pitch group (knob or power) opens the pitch deck above the plate, anchored to the knob: the STEP toggle (armed: whole semitones), Tonality, Buffer and Mix knobs, no power switches. The group is powered so the knob reads lit; every deck control sits at its default (STEP on, Off, 30 ms, 100% Mix), so a stock rig reads unchanged.",
    "chain": {
     "revision": 1,
     "canUndo": true,

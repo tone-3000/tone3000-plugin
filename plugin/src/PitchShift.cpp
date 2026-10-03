@@ -125,6 +125,10 @@ struct PitchShift::Impl {
   // edge where the audio arrives).
   bool enabled = false, running = false;
   juce::LinearSmoothedValue<float> wetMix;
+  // Dry/wet balance (the deck's Mix): the shifted signal's share of the
+  // output, 0 = dry, 1 = wet (the default). Multiplied into the power fade,
+  // so a power-off lands on the untouched input whatever Mix is set to.
+  juce::LinearSmoothedValue<float> mixSmoother;
   int primeLeft = 0;
 
   // Rings: one per channel for the audio, one for the control signal (the
@@ -423,6 +427,8 @@ void PitchShift::prepare(double sampleRate, int maxBlockSamples) {
   // once the tap has audio under it (see primeLeft).
   s.wetMix.reset(sampleRate, kBlendSeconds);
   s.wetMix.setCurrentAndTargetValue(0.0f);
+  s.mixSmoother.reset(sampleRate, kBlendSeconds);
+  s.mixSmoother.setCurrentAndTargetValue(juce::jlimit(0.0f, 1.0f, s.params.mix));
   s.running = s.enabled;
   s.applyWindow();
   s.reset();
@@ -480,6 +486,10 @@ void PitchShift::setParams(const Params& p) {
   if (!juce::exactlyEqual(p.tonalityHz, s.params.tonalityHz)) {
     s.params.tonalityHz = p.tonalityHz;
     s.setTonality(p.tonalityHz);
+  }
+  if (!juce::exactlyEqual(p.mix, s.params.mix)) {
+    s.params.mix = p.mix;
+    s.mixSmoother.setTargetValue(juce::jlimit(0.0f, 1.0f, p.mix));
   }
 }
 
@@ -582,7 +592,9 @@ void PitchShift::process(juce::AudioBuffer<float>& buffer) {
       s.fade += s.fadeInc;
     }
     if (s.primeLeft > 0 && --s.primeLeft == 0 && s.enabled) s.wetMix.setTargetValue(1.0f);
-    const float wetMix = s.wetMix.getNextValue();
+    // Power and Mix both scale the shifted term; their product is the
+    // output's wet share (the block mix stage: dry + m * (wet - dry)).
+    const float wetMix = s.wetMix.getNextValue() * s.mixSmoother.getNextValue();
     const float tonalityMix = s.tonalityMix.getNextValue();
     for (int ch = 0; ch < numChannels; ++ch) {
       auto& ring = s.rings[static_cast<size_t>(ch)];
