@@ -265,15 +265,31 @@ std::unique_ptr<juce::ComponentTraverser> PluginRoot::createKeyboardFocusTravers
 }
 
 bool PluginRoot::FocusPolicy::keyPressed(const juce::KeyPress& key, juce::Component*) {
-  if (!key.isKeyCode(juce::KeyPress::tabKey)) return false;
   // Focus resting on the window itself (a standalone DocumentWindow takes
   // it when the OS activates it) is nothing focused as far as the UI goes.
   auto* focused = juce::Component::getCurrentlyFocusedComponent();
   if (focused != nullptr && root_.isParentOf(focused)) return false;
-  const auto order = juce::KeyboardFocusTraverser().getAllComponents(&root_);
-  if (order.empty()) return false;
-  (key.getModifiers().isShiftDown() ? order.back() : order.front())->grabKeyboardFocus();
-  return true;
+  // The Settings takeover is its own Tab cycle while it is up (its content
+  // is out of the root's order, and the chrome under it must stay out of
+  // reach), and the page the scroll keys move, as a browser scrolls its
+  // document with nothing focused. With a control focused those keys bubble
+  // up from it to the page instead, so this is the only route they need.
+  auto* settings = root_.settingsInFront();
+  if (key.isKeyCode(juce::KeyPress::tabKey)) {
+    const auto order = juce::KeyboardFocusTraverser().getAllComponents(
+        settings != nullptr ? static_cast<juce::Component*>(settings) : &root_);
+    if (order.empty()) return false;
+    (key.getModifiers().isShiftDown() ? order.back() : order.front())->grabKeyboardFocus();
+    return true;
+  }
+  return settings != nullptr && settings->scrollByKey(key);
+}
+
+SettingsScreen* PluginRoot::settingsInFront() const {
+  // A modal over the page takes its keys with it: the page should not move
+  // behind the scrim.
+  if (updateNotice_ != nullptr || connectionModal_ != nullptr) return nullptr;
+  return settings_.get();
 }
 
 void PluginRoot::FocusPolicy::mouseDown(const juce::MouseEvent& e) {

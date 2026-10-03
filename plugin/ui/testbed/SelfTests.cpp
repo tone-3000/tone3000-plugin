@@ -645,6 +645,89 @@ struct DragScrollerTests : juce::UnitTest {
       for (int i = 0; i < 10; ++i) wheel(r.s, 0.0f, -0.001f);  // 0.224px each: 2.24px in all
       expectEquals(r.s.getViewPositionX(), 1002);
     }
+
+    // A vertical page, as Settings has: 300px of view over 2000px of content.
+    struct Page {
+      DragScroller s{DragScroller::Axis::vertical};
+      juce::Component content;
+      Page() {
+        content.setSize(400, 2000);
+        s.setSize(400, 300);
+        s.setViewedComponent(&content, false);
+      }
+    };
+    using KP = juce::KeyPress;
+    const auto key = [](int code, juce::ModifierKeys mods = {}) { return KP(code, mods, 0); };
+
+    beginTest("keys scroll a page: arrows by a line, Page by a page less a line, Home / End to the ends");
+    {
+      Page p;
+      expect(p.s.scrollByKey(key(KP::downKey)));
+      expectEquals(p.s.getViewPositionY(), DragScroller::kKeyLineStep);
+      expect(p.s.scrollByKey(key(KP::pageDownKey)));
+      expectEquals(p.s.getViewPositionY(), 300);  // a line, then a page less a line
+      expect(p.s.scrollByKey(key(KP::upKey)));
+      expectEquals(p.s.getViewPositionY(), 300 - DragScroller::kKeyLineStep);
+      expect(p.s.scrollByKey(key(KP::endKey)));
+      expectEquals(p.s.getViewPositionY(), 1700);
+      expect(p.s.scrollByKey(key(KP::pageUpKey)));
+      expectEquals(p.s.getViewPositionY(), 1700 - (300 - DragScroller::kKeyLineStep));
+      expect(p.s.scrollByKey(key(KP::homeKey)));
+      expectEquals(p.s.getViewPositionY(), 0);
+    }
+
+    beginTest("a key at an end is still spent, and never hands the page's keys on");
+    {
+      Page p;
+      expect(p.s.scrollByKey(key(KP::upKey)));  // already at the top
+      expectEquals(p.s.getViewPositionY(), 0);
+      p.s.scrollByKey(key(KP::endKey));
+      expect(p.s.scrollByKey(key(KP::downKey)));
+      expectEquals(p.s.getViewPositionY(), 1700);
+    }
+
+    beginTest("cross-axis arrows, modified arrows and other keys are not the page's");
+    {
+      Page p;
+      expect(!p.s.scrollByKey(key(KP::leftKey)));
+      expect(!p.s.scrollByKey(key(KP::rightKey)));
+      expect(!p.s.scrollByKey(key(KP::downKey, juce::ModifierKeys::shiftModifier)));
+      expect(!p.s.scrollByKey(key(KP::spaceKey)));
+      expect(!p.s.scrollByKey(key(KP::returnKey)));
+      expectEquals(p.s.getViewPositionY(), 0);
+    }
+
+    beginTest("a page that fits takes no keys (they stay with the host)");
+    {
+      Page p;
+      p.content.setSize(400, 200);
+      expect(!p.s.scrollByKey(key(KP::downKey)));
+      expect(!p.s.scrollByKey(key(KP::endKey)));
+    }
+
+    beginTest("reveal scrolls the least that shows a control with its margin, and not at all when it shows");
+    {
+      Page p;
+      juce::Component control;
+      p.content.addAndMakeVisible(control);
+      control.setBounds(20, 1000, 200, 40);
+      p.s.reveal(control, 48);  // below the view: its bottom edge lands 48px above the view's
+      expectEquals(p.s.getViewPositionY(), 1040 + 48 - 300);
+      const int settled = p.s.getViewPositionY();
+      p.s.reveal(control, 48);  // in view: stays put
+      expectEquals(p.s.getViewPositionY(), settled);
+      p.s.scrollByKey(key(KP::endKey));
+      p.s.reveal(control, 48);  // above the view: its top lands 48px below the view's
+      expectEquals(p.s.getViewPositionY(), 1000 - 48);
+      control.setBounds(20, 1000, 200, 400);  // taller than the view: its top wins
+      p.s.scrollByKey(key(KP::endKey));
+      p.s.reveal(control, 48);
+      expectEquals(p.s.getViewPositionY(), 1000 - 48);
+      juce::Component elsewhere;  // not on the page: ignored
+      elsewhere.setBounds(0, 0, 10, 10);
+      p.s.reveal(elsewhere, 48);
+      expectEquals(p.s.getViewPositionY(), 1000 - 48);
+    }
   }
 };
 
@@ -1040,6 +1123,143 @@ struct FocusPolicyTests : juce::UnitTest {
     }
     key(*peer, juce::KeyPress::escapeKey);
     expect(focused() == nullptr);
+    window.setVisible(false);
+  }
+};
+
+// The Settings page from the keyboard, in a real window (keys through the
+// peer, as in FocusPolicyTests). Issue #203: a pointer with no wheel (a
+// wheel-less mouse; a touchscreen the OS presents as a mouse) had no way to
+// reach the device picker below the fold. With nothing focused the scroll
+// keys move the page and Space / Enter still go to the host; a Tab walk
+// lands every control in view; a focused control passes the keys it does
+// not take on to the page; and a touch drag still pans the page wherever
+// the platform has touch sources (Linux and Windows here; macOS has none).
+struct SettingsKeyboardTests : juce::UnitTest {
+  SettingsKeyboardTests() : juce::UnitTest("Settings keyboard", "ui") {}
+
+  static void pump(int ms) { FocusPolicyTests::pump(ms); }
+  static juce::Component* focused() { return FocusPolicyTests::focused(); }
+  static bool key(juce::ComponentPeer& peer, int code, juce::ModifierKeys mods = {}) {
+    return FocusPolicyTests::key(peer, code, mods);
+  }
+
+  void runTest() override {
+    using KP = juce::KeyPress;
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("settings-system");  // standalone: the long System page
+    if (scenario == nullptr) {
+      expect(false, "settings-system scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("settings keyboard", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(400);
+    auto* peer = host.getPeer();
+    if (peer == nullptr) {
+      expect(false, "no window peer");
+      return;
+    }
+    juce::Process::makeForegroundProcess();
+    window.toFront(true);
+    peer->grabFocus();
+    for (int i = 0; i < 20 && !peer->isFocused(); ++i) pump(50);
+    if (!peer->isFocused()) {
+      logMessage("the window could not take OS focus here; settings keyboard not exercised");
+      return;
+    }
+    auto& root = host.pluginRoot();
+    root.openSettings(SettingsScreen::Tab::system);
+    pump(500);
+    auto* settings = root.settings();
+    expect(settings != nullptr);
+    if (settings == nullptr) return;
+    auto& view = settings->viewport();
+    auto* page = view.getViewedComponent();
+    const int maxY = page->getHeight() - view.getMaximumVisibleHeight();
+    expect(maxY > DragScroller::kKeyLineStep * 4, "the System page overflows the window");
+    const auto inView = [&](const juce::Component& c) {
+      const auto box = page->getLocalArea(&c, c.getLocalBounds());
+      const juce::Rectangle<int> visible(0, view.getViewPositionY(), page->getWidth(), view.getMaximumVisibleHeight());
+      return visible.contains(box) || box.getHeight() > visible.getHeight();
+    };
+
+    beginTest("with nothing focused, arrows, Page and Home / End scroll the page");
+    expect(focused() == nullptr);
+    expect(key(*peer, KP::downKey));
+    expectEquals(view.getViewPositionY(), DragScroller::kKeyLineStep);
+    expect(key(*peer, KP::pageDownKey));
+    expect(view.getViewPositionY() > DragScroller::kKeyLineStep);
+    expect(key(*peer, KP::endKey));
+    expectEquals(view.getViewPositionY(), maxY);
+    expect(key(*peer, KP::pageUpKey));
+    expect(view.getViewPositionY() < maxY);
+    expect(key(*peer, KP::homeKey));
+    expectEquals(view.getViewPositionY(), 0);
+
+    beginTest("Space and Enter are still the host's; a modified arrow is not the page's");
+    expect(!key(*peer, KP::spaceKey));
+    expect(!key(*peer, KP::returnKey));
+    expect(!key(*peer, KP::downKey, juce::ModifierKeys::shiftModifier));
+    expectEquals(view.getViewPositionY(), 0);
+
+    beginTest("a Tab walk stays on the page and wraps; the page follows it below the fold");
+    bool followed = false, wrapped = false;
+    int stops = 0;
+    juce::Component* first = nullptr;
+    for (int i = 0; i < 200; ++i) {
+      expect(key(*peer, KP::tabKey));
+      pump(30);  // the focus callback that reveals is posted
+      auto* f = focused();
+      if (f == nullptr || !page->isParentOf(f)) break;  // walked off the page: the chrome underneath
+      if (first == nullptr) first = f;
+      else if (f == first) {
+        wrapped = true;
+        break;
+      }
+      ++stops;
+      expect(inView(*f), "Tab stop " + juce::String(stops) + " (" + f->getName() + ") is out of view");
+      if (view.getViewPositionY() > 0) followed = true;
+    }
+    expect(wrapped, "the cycle came back to its first stop without leaving the page");
+    expect(stops > 3 && followed, "the walk reached controls below the fold and the page followed");
+    key(*peer, KP::escapeKey);
+    expect(focused() == nullptr);
+
+    beginTest("a focused control passes the page's keys up to the page");
+    view.setViewPosition(0, 0);
+    expect(key(*peer, KP::tabKey));  // the first stop: the Close button
+    pump(30);
+    expect(dynamic_cast<Clickable*>(focused()) != nullptr);
+    expect(key(*peer, KP::downKey));
+    expectEquals(view.getViewPositionY(), DragScroller::kKeyLineStep);
+    expect(!key(*peer, KP::spaceKey));  // and Space still falls through to the host
+    key(*peer, KP::escapeKey);
+    expect(focused() == nullptr);
+
+    beginTest("a touch drag pans the page");
+    view.setViewPosition(0, 0);
+    using Type = juce::MouseInputSource::InputSourceType;
+    auto& desktop = juce::Desktop::getInstance();
+    const int sourcesBefore = desktop.getNumMouseSources();
+    const auto start = peer->getComponent().getLocalPoint(&view, view.getLocalBounds().getCentre().toFloat());
+    juce::int64 time = juce::Time::currentTimeMillis();
+    const auto touch = [&](juce::Point<float> pos, bool down) {
+      peer->handleMouseEvent(Type::touch, pos, down ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                             0.0f, 0.0f, ++time, {}, /*touchIndex=*/1);
+      pump(10);
+    };
+    touch(start, true);
+    if (desktop.getNumMouseSources() == sourcesBefore) {
+      logMessage("no touch input source on this platform; the touch pan is not exercised");
+    } else {
+      for (int i = 1; i <= 8; ++i) touch(start.translated(0, -15.0f * i), true);
+      touch(start.translated(0, -120.0f), false);
+      expect(view.getViewPositionY() > 0, "the page panned under the finger");
+    }
     window.setVisible(false);
   }
 };
@@ -1959,6 +2179,7 @@ FontTests fontTests;
 RichFlowTests richFlowTests;
 AccessibilityTests accessibilityTests;
 FocusPolicyTests focusPolicyTests;
+SettingsKeyboardTests settingsKeyboardTests;
 TouchScrollTests touchScrollTests;
 PopoverFollowTests popoverFollowTests;
 PointerTests pointerTests;

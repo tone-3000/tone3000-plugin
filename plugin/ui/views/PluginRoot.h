@@ -131,6 +131,10 @@ private:
   // Which of main screen, faceplate, browser and sign-in screen show under
   // the takeovers.
   void syncTakeovers();
+  // The Settings page when it is open and nothing modal sits over it: the
+  // Tab cycle to enter and the page the scroll keys move with nothing
+  // focused.
+  SettingsScreen* settingsInFront() const;
 
   Services& services_;
   PluginHeader header_;
@@ -154,11 +158,12 @@ private:
   DelayedCall bannerWait_;
   juce::Component* watchedParent_ = nullptr;
 
-  // The two focus rules a browser has and JUCE lacks. Keys with nothing
+  // The focus rules a browser has and JUCE lacks. Keys with nothing
   // focused go to the window's component, which we are inside of, not
-  // above, so Tab-from-nothing listens on the window. A press outside the
-  // focused control drops its focus, so a Tab-focused button never keeps
-  // Enter from the host once the user is back on the mouse.
+  // above, so Tab-from-nothing and the scroll keys for the page in front
+  // (Settings) listen on the window. A press outside the focused control
+  // drops its focus, so a Tab-focused button never keeps Enter from the
+  // host once the user is back on the mouse.
   class FocusPolicy : public juce::KeyListener, public juce::MouseListener {
   public:
     explicit FocusPolicy(PluginRoot& root) : root_(root) {}

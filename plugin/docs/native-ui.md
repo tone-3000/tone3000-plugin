@@ -292,6 +292,25 @@ touch swipe (the drag distance within `GalleryTile::kFlickMs`) clears the
 flag mid-gesture and the chain lane pans from the press with the viewport's
 own inertia; a slower drag sorts. Any touch source, on every platform.
 
+The Settings page also scrolls from the keyboard, as a browser scrolls a
+document: arrows a line (`DragScroller::kKeyLineStep`), Page Up / Down a
+page less a line, Home / End to the ends (`DragScroller::scrollByKey`; a key
+at an end is still spent, a page that fits takes none). With nothing focused
+the keys come through `PluginRoot::FocusPolicy` to the page in front (not
+under a modal); with a control focused they bubble up from it to
+`SettingsScreen::keyPressed`. Space, Enter and modified arrows are never
+the page's. The page follows keyboard focus too (`DragScroller::reveal`,
+from `FocusChangeListener`): a Tab stop below the fold scrolls into view
+with `SettingsScreen::kFocusMargin` to spare. `juce::Viewport` scrolls from
+keys only with a visible scrollbar, which `DragScroller` never has, and
+the chain lane's arrows mean sorting, so this is the owner's call per
+scroller rather than the widget's. It matters where the pointer has no
+wheel and no touch: a mouse without one, or a touchscreen the OS hands the
+plugin as a mouse. Raspberry Pi OS's labwc does that by default
+(`<touch mouseEmulation="yes"/>`, the "Multitouch" switch in Screen
+Configuration turns it off), and a mouse drag deliberately does not pan
+(`ScrollOnDragMode::nonHover`: a finger does, a mouse selects and drags).
+
 What a mouse reveals on hover (the tile's power / swap / trash strip, the
 branch dots in the stereo gaps) has to stay up for a finger, which can't
 hover. The web read that off `pointer: coarse`; here it is
@@ -324,11 +343,15 @@ that no control takes go back to the host (`NativeEditor::keyPressed`, the
   with nothing focused, so `PluginRoot::FocusPolicy` listens on the window's
   component and enters the order at either end (focus resting on a
   standalone `DocumentWindow` counts as nothing). Tab order is JUCE's
-  (top-to-bottom, left-to-right per parent).
+  (top-to-bottom, left-to-right per parent). While the Settings takeover is
+  up (and no modal over it) Tab enters its cycle instead: `SettingsScreen` is
+  a keyboard focus container, since the chrome it covers is still showing
+  to JUCE and must stay out of reach, and the page scrolls each stop into
+  view (5.8).
 - **Focus is dropped** by Escape (`PluginRoot::keyPressed`) and by a press
   anywhere outside the focused control's line of ancestry (`FocusPolicy::
-  mouseDown`, a recursive mouse listener on the root). `PluginRoot` and
-  `Popover` are keyboard focus containers whose traverser
+  mouseDown`, a recursive mouse listener on the root). `PluginRoot`,
+  `SettingsScreen` and `Popover` are keyboard focus containers whose traverser
   (`core/NoDefaultFocus`) names no default, so removing the focused
   component or activating the window focuses nothing instead of JUCE's
   "first focusable".
@@ -361,7 +384,10 @@ browser results ("12 tones, page 1 of 3"), nothing found, fetch failures.
 
 Tests: `--selftest` runs the naming rules and each control's keys
 (`AccessibilityTests`) and the whole focus policy in a real window
-(`FocusPolicyTests`: keys and presses through the peer). `--capture` audits
+(`FocusPolicyTests`: keys and presses through the peer), and the Settings
+page's keys, Tab cycle, focus follow and touch pan the same way
+(`SettingsKeyboardTests`; the pan where the platform has a touch source).
+`--capture` audits
 every scenario for Tab stops without a name (`drive::unnamedFocusables`) and
 fails the run on any.
 

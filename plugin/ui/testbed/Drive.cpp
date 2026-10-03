@@ -141,12 +141,24 @@ void submit(PluginRoot& root, const juce::String& placeholder, const juce::Strin
 void wait(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
 
 namespace {
-void collectFocusables(juce::Component& container, std::vector<juce::Component*>& out) {
-  for (auto* c : juce::KeyboardFocusTraverser().getAllComponents(&container)) {
-    out.push_back(c);
-    // Nested containers (popovers) hide their rows from the outer order.
-    if (c->isKeyboardFocusContainer()) collectFocusables(*c, out);
+void collectFocusables(juce::Component& container, std::vector<juce::Component*>& out);
+
+// Nested keyboard focus containers keep their own order out of the outer
+// one, whether they are Tab stops themselves (popovers) or not (the Settings
+// takeover); walk into each that is showing.
+void collectNested(juce::Component& parent, std::vector<juce::Component*>& out) {
+  for (auto* c : parent.getChildren()) {
+    if (!c->isVisible()) continue;
+    if (c->isKeyboardFocusContainer())
+      collectFocusables(*c, out);
+    else
+      collectNested(*c, out);
   }
+}
+
+void collectFocusables(juce::Component& container, std::vector<juce::Component*>& out) {
+  for (auto* c : juce::KeyboardFocusTraverser().getAllComponents(&container)) out.push_back(c);
+  collectNested(container, out);
 }
 }  // namespace
 
