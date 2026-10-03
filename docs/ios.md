@@ -201,6 +201,16 @@ picker instead (see Known gaps).
     the iPad speaker, or a USB audio interface. The generic "runs lightest
     at 48 kHz" note is suppressed while it shows, so there is one
     explanation instead of two.
+- **Sample-rate discovery uses explicit 44.1 and 48 kHz choices on iOS.**
+  Some USB interfaces take long enough to handle JUCE's repeated rate probes
+  that startup can exceed the iPadOS launch watchdog deadline. The build sets
+  `JUCE_IOS_AUDIO_EXPLICIT_SAMPLERATES` to skip that scan. A configure-time
+  patch in the root `CMakeLists.txt` retains the rate negotiation/readback
+  before buffer-size discovery, so buffer durations use the actual device
+  rate rather than JUCE's 44.1 kHz constructor default. The choices are
+  requests; iPadOS still determines the actual rate. Re-run the iOS CMake
+  preset before building to apply the patch. Desktop rate discovery is
+  unchanged.
 - `xcrun simctl privacy grant microphone` does not suppress the prompt;
   `AVAudioSession` still asks once.
 - **`UIRequiresFullScreen` no longer opts an app out of multitasking** on

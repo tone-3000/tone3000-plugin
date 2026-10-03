@@ -158,6 +158,33 @@ CPMAddPackage(
 # gitignored libs/). Each one is anchored on a T3K_* marker so a re-run is a
 # no-op, and fails loudly when the JUCE layout moves under it.
 
+# iOS: the explicit-rate shortcut skips the normal scan's final rate
+# negotiation/readback. Pimpl starts at 44.1 kHz, so a 48 kHz USB route can
+# leave updateAvailableBufferSizes using a stale rate. Keep that final step
+# while bypassing the slow scan (one negotiation instead of many).
+set(_juce_ios_audio "${LIB_DIR}/juce/modules/juce_audio_devices/native/juce_Audio_ios.cpp")
+if (EXISTS "${_juce_ios_audio}")
+    file(READ "${_juce_ios_audio}" _juce_ios_audio_src)
+    if (NOT _juce_ios_audio_src MATCHES "T3K_IOS_EXPLICIT_RATE_SYNC")
+        set(_juce_ios_rate_old
+[=[            availableSampleRates = Array<double> (iOSExplicitSampleRates);
+            return;]=])
+        set(_juce_ios_rate_new
+[=[            availableSampleRates = Array<double> (iOSExplicitSampleRates);
+            // T3K_IOS_EXPLICIT_RATE_SYNC: buffer durations need the actual
+            // negotiated rate, just as in the normal rate-discovery path.
+            sampleRate = trySampleRate (sampleRate);
+            return;]=])
+        string(REPLACE "${_juce_ios_rate_old}" "${_juce_ios_rate_new}"
+            _juce_ios_audio_src "${_juce_ios_audio_src}")
+        if (NOT _juce_ios_audio_src MATCHES "T3K_IOS_EXPLICIT_RATE_SYNC")
+            message(FATAL_ERROR "T3K_IOS_EXPLICIT_RATE_SYNC: JUCE source layout changed; update the patch anchor.")
+        endif()
+        file(WRITE "${_juce_ios_audio}" "${_juce_ios_audio_src}")
+        message(STATUS "Patched JUCE iOS audio: synchronize explicit sample rate before buffer setup")
+    endif()
+endif()
+
 # macOS: when Thread::startRealtimeThread's time-constraint upgrade is
 # rejected by the kernel (thread_policy_set fails, e.g. for very long
 # per-buffer budgets), the new pthread exits BEFORE juce_threadEntryPoint,
