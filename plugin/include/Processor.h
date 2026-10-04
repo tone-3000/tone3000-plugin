@@ -719,6 +719,16 @@ private:
   // chainSampleRate) and chain-domain block size. Holds no lock.
   void prepareChain(std::vector<std::unique_ptr<ChainBlock>>& blocks);
 
+  // (Re)design one block's rate-dependent linear stages (EQ biquads, spectrum
+  // analyzer) for the current chain rate. prepareChain covers the blocks that
+  // exist when the chain domain moves (prepareToPlay, oversampling changes);
+  // every path that brings a tone block into the chain mid-session must call
+  // this as well, or the block's EQ runs coefficients designed for the
+  // default 48 kHz inside an oversampled chain and every band lands at
+  // freq × factor (issue #212). Resets the filters' state and the analyzer's
+  // history. Caller holds chainMutex.
+  void prepareBlockForChainRate(ChainBlock& block);
+
   // Recompute the longest loaded IR across both lanes into irTailBaseSamples
   // (base-rate samples; IRs always convolve at the base rate, see
   // ChainBlock::irBaseRateIsland). Called wherever the set of live IR engines

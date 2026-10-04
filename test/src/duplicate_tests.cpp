@@ -53,12 +53,7 @@ TEST(ChainDuplicateTest, PasteFillsInsertSlotAndCarriesEverySetting) {
   ASSERT_TRUE(waitForChainLoaded(proc)) << "source never finished loading from cache";
 
   // A shaped EQ band on the source (through the real setter).
-  auto* band = new juce::DynamicObject();
-  band->setProperty("type", "bell");
-  band->setProperty("freqHz", 1500.0);
-  band->setProperty("gainDb", 4.5);
-  band->setProperty("q", 1.2);
-  ASSERT_TRUE(proc.setBlockEqBand("blk-a", 2, juce::var(band)));
+  ASSERT_TRUE(proc.setBlockEqBand("blk-a", 2, eqBandVar("bell", 1500.0, 4.5, 1.2)));
 
   // Paste into the first insert slot (lane index 1): the slot is consumed;
   // the clone takes its place, the lane stays at its minimum layout.

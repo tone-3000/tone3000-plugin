@@ -282,6 +282,11 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString,
   block->namSlimSize = namSlimSizeDefault.load();
   block->loaded = false;
   block->modelLoading = true;
+  // The only tone-block creation path that doesn't go through
+  // applyBlockSettings, so the block's EQ/analyzer meet the chain rate here.
+  // An oversampling change while the model is still loading is covered too:
+  // prepareChain walks every block in the lane, loading or not.
+  prepareBlockForChainRate(*block);
   // The right default mix depends on the model itself (long IR = half wet),
   // which is only known after download; the first successful apply sets it
   // (see applyPreparedModelToChainBlock).

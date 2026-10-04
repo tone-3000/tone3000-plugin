@@ -103,6 +103,38 @@ inline juce::ValueTree makeNamBlockTree(const juce::String& blockId, int toneId,
   return block;
 }
 
+// The { name, data } file entries loadLocalTone takes (the UI ships dropped
+// files this way): one entry per file, base64 payload.
+inline juce::String base64Of(const juce::File& file) {
+  juce::MemoryBlock bytes;
+  EXPECT_TRUE(file.loadFileAsData(bytes));
+  return juce::Base64::toBase64(bytes.getData(), bytes.getSize());
+}
+
+inline juce::var fileEntry(const juce::String& name, const juce::String& base64) {
+  juce::DynamicObject::Ptr entry = new juce::DynamicObject();
+  entry->setProperty("name", name);
+  entry->setProperty("data", base64);
+  return juce::var(entry.get());
+}
+
+inline juce::var testFileEntry(const char* name) {
+  return fileEntry(name, base64Of(testFile(name)));
+}
+
+inline juce::var filesOf(const juce::Array<juce::var>& entries) { return juce::var(entries); }
+
+// A { type, freqHz, gainDb, q } band object, the shape setBlockEqBand takes
+// from the UI.
+inline juce::var eqBandVar(const char* type, double freqHz, double gainDb, double q) {
+  juce::DynamicObject::Ptr band = new juce::DynamicObject();
+  band->setProperty("type", type);
+  band->setProperty("freqHz", freqHz);
+  band->setProperty("gainDb", gainDb);
+  band->setProperty("q", q);
+  return juce::var(band.get());
+}
+
 // Seed stereo mode with the given IR blocks per lane (ids only; tones/models
 // are synthesized). Restores through the real state path, so lanes come back
 // normalized (insert slots padded) and loads are queued cache-first.

@@ -228,10 +228,12 @@ void TONE3000Processor::applyBlockSettings(ChainBlock& block, const juce::ValueT
     block.namEngine->setSlimmableSize(block.namSlimSize);
 
   if (block.type != ChainBlockType::INSERT) {
-    // A missing Eq child restores as flat. Block EQs always run in the chain
-    // domain (fixed rate).
+    // A missing Eq child restores as flat. The restored bands are then
+    // designed for the live chain rate: this is the creation funnel for
+    // duplicated, pasted and undo/preset-restored blocks, none of which
+    // prepareChain has seen.
     block.eq.restoreFromValueTree(blockState.getChildWithName("Eq"));
-    block.eq.prepare(chainSampleRate());
+    prepareBlockForChainRate(block);
   }
 }
 

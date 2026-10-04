@@ -14,15 +14,8 @@ namespace {
 constexpr int kBlock = 512;
 
 // A strongly shaped POST band, well clear of "inert" (~0 dB) so the EQ is
-// unambiguously active. Same shape as duplicate_tests.cpp's shaped-band case.
-juce::var shapedBand() {
-  auto* band = new juce::DynamicObject();
-  band->setProperty("type", "bell");
-  band->setProperty("freqHz", 1500.0);
-  band->setProperty("gainDb", 12.0);
-  band->setProperty("q", 1.2);
-  return juce::var(band);
-}
+// unambiguously active.
+juce::var shapedBand() { return eqBandVar("bell", 1500.0, 12.0, 1.2); }
 
 // Two full processor runs, EQ flat (default, isActive() == false, a no-op)
 // vs. a strongly shaped POST band, everything else identical - isolating the

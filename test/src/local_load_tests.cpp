@@ -20,23 +20,8 @@
 
 namespace {
 
-juce::String base64Of(const juce::File& file) {
-  juce::MemoryBlock bytes;
-  EXPECT_TRUE(file.loadFileAsData(bytes));
-  return juce::Base64::toBase64(bytes.getData(), bytes.getSize());
-}
-
-// One { name, data } entry of the files array the UI ships.
-juce::var fileEntry(const juce::String& name, const juce::String& base64) {
-  juce::DynamicObject::Ptr entry = new juce::DynamicObject();
-  entry->setProperty("name", name);
-  entry->setProperty("data", base64);
-  return juce::var(entry.get());
-}
-
-juce::var testFileEntry(const char* name) { return fileEntry(name, base64Of(testFile(name))); }
-
-juce::var filesOf(const juce::Array<juce::var>& entries) { return juce::var(entries); }
+// fileEntry / testFileEntry / filesOf (the { name, data } entries the UI
+// ships) live in chain_test_helpers.h.
 
 // First tone block of the (mono) chain, or void when none.
 juce::var firstToneBlock(TONE3000Processor& proc) {

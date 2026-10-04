@@ -627,10 +627,14 @@ void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& b
     block->swapWetMuteGain.reset(chainRate, kWetFadeSeconds);
     block->swapWetMuteGain.setCurrentAndTargetValue(1.0f);
 
-    // Per-block EQ + spectrum analyzer need the sample rate for their math.
-    block->eq.prepare(chainRate);
-    block->spectrum.prepare(chainRate);
+    prepareBlockForChainRate(*block);
   }
+}
+
+void TONE3000Processor::prepareBlockForChainRate(ChainBlock& block) {
+  const double chainRate = chainSampleRate();
+  block.eq.prepare(chainRate);
+  block.spectrum.prepare(chainRate);
 }
 
 // See the declaration. Both lanes are scanned regardless of stereo mode:
