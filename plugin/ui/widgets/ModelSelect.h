@@ -45,12 +45,14 @@ public:
   void paint(juce::Graphics& g) override;
   void resized() override;
 
+  // One model back / on (the steppers, and the arrow keys: see PluginRoot).
+  void step(int delta);
+
 private:
   class StepButton;
   class Dropdown;
 
   int currentIndex() const;
-  void step(int delta);
   void toggleList();
   void dismissAndSelect(const juce::String& id);
   void syncSteppers();

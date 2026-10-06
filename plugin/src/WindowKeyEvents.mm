@@ -10,6 +10,7 @@ namespace HostKeys {
 // key itself so nothing beeps or scrolls), so keep the symbol and make it a
 // no-op rather than teaching the UI a second platform check.
 void forwardKeyToHost(void*, HostKey) {}
+bool forwardKeyCodeToHost(void*, int) { return false; }
 
 }  // namespace HostKeys
 
@@ -60,6 +61,9 @@ void forwardKeyToHost(void* nsViewPtr, HostKey key) {
   [NSApp postEvent:keyEvent(NSEventTypeKeyDown) atStart:NO];
   [NSApp postEvent:keyEvent(NSEventTypeKeyUp) atStart:NO];
 }
+
+// A click gives the view the keyboard here already: nothing to hand back.
+bool forwardKeyCodeToHost(void*, int) { return false; }
 
 }  // namespace HostKeys
 

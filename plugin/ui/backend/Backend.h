@@ -148,6 +148,14 @@ public:
   enum class HostKey { space, enter };
   virtual bool forwardKeyToHost(HostKey key) = 0;
 
+  // Any other key nothing in the plugin used (a JUCE key code), back to the
+  // host where the plugin takes the keyboard on a click (Windows); false
+  // when there is no host or nothing to do.
+  virtual bool forwardOtherKeyToHost(int /*juceKeyCode*/) { return false; }
+  // Take the keyboard on a click where the host doesn't hand it over by
+  // itself (Windows hosts); the keys the plugin doesn't use go back.
+  virtual bool takesKeyboardOnClick() const { return false; }
+
 protected:
   juce::ListenerList<Listener> listeners;
 };

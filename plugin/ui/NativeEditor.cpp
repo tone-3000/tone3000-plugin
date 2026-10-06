@@ -85,6 +85,10 @@ NativeEditor::NativeEditor(TONE3000Processor& owner)
   // plugin instances in the same process.
   juce::LookAndFeel::setDefaultLookAndFeel(&darkLookAndFeel_.get());
   setOpaque(true);
+  // Where a click takes the keyboard (a Windows host), the editor holds JUCE
+  // focus when no control does, so the wrapper's keyboard hook delivers the
+  // model keys (see PluginRoot's FocusPolicy).
+  setWantsKeyboardFocus(backend_.takesKeyboardOnClick());
   addAndMakeVisible(root_);
   // Nothing polls or repaints while the window is minimised or the editor
   // hidden (isShowing covers both); visibilityChanged /
@@ -247,9 +251,12 @@ void NativeEditor::resized() {
 // mouse work; only a text field, or a control the user Tabbed to, takes
 // them for itself (PluginRoot's focus policy).
 bool NativeEditor::keyPressed(const juce::KeyPress& key) {
+  if (root_.handleModelKey(key)) return true;  // left / right step the model (PluginRoot)
   if (key == juce::KeyPress::spaceKey) return backend_.forwardKeyToHost(Backend::HostKey::space);
   if (key == juce::KeyPress::returnKey) return backend_.forwardKeyToHost(Backend::HostKey::enter);
-  return false;
+  // Where the plugin takes the keyboard on a click (Windows hosts), every
+  // other key it didn't use goes back, so the host's shortcuts still work.
+  return backend_.forwardOtherKeyToHost(key.getKeyCode());
 }
 
 void NativeEditor::visibilityChanged() { services_.clock.wake(); }

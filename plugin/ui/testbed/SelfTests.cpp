@@ -1772,6 +1772,58 @@ struct PopoverFollowTests : juce::UnitTest {
 
 // Services::pointer: a desktop build follows the input, and the gallery's
 // hover-revealed chrome pins while that input is a finger.
+// Left / right step the open block card's model (PluginRoot::handleModelKey),
+// as its picker's steppers do; other keys and modified arrows are left alone.
+struct ModelKeyTests : juce::UnitTest {
+  ModelKeyTests() : juce::UnitTest("Model keys", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("main-detail");  // a TONE3000 block's card is open
+    if (scenario == nullptr) {
+      expect(false, "main-detail scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("model keys", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(400);
+    auto& root = host.pluginRoot();
+    const std::string blockId = scenario->data["sessionStorage"]["t3k.detailBlockId"].toString().toStdString();
+    const auto* block = root.services().chain.state().findBlock(blockId);
+    if (block == nullptr) {
+      expect(false, "the open block");
+      return;
+    }
+    const int first = block->activeModelId;
+
+    // Through the window as a real press arrives, with nothing focused: the
+    // top-level key listener (PluginRoot's focus policy) takes the model
+    // keys before the scroll keys.
+    beginTest("right steps the open card to its next model (not taken as a scroll)");
+    if (auto* focused = juce::Component::getCurrentlyFocusedComponent()) focused->giveAwayKeyboardFocus();
+    auto* peer = window.getPeer();
+    expect(peer != nullptr, "the window is on screen");
+    if (peer != nullptr) peer->handleKeyPress(juce::KeyPress(juce::KeyPress::rightKey));
+    pump(200);
+    expectEquals(juce::String(backend.lastSwitch().first), juce::String(blockId));
+    expect(backend.lastSwitch().second != 0 && backend.lastSwitch().second != first, "another model");
+    const int next = backend.lastSwitch().second;
+
+    beginTest("other keys, and arrows with a modifier, are left alone");
+    expect(!root.handleModelKey(juce::KeyPress(',')));
+    expect(!root.handleModelKey(juce::KeyPress('.')));
+    expect(!root.handleModelKey(juce::KeyPress(juce::KeyPress::rightKey, juce::ModifierKeys::shiftModifier, 0)));
+    pump(100);
+    expectEquals(backend.lastSwitch().second, next, "no other switch");
+    window.setVisible(false);
+  }
+};
+
 struct PointerTests : juce::UnitTest {
   PointerTests() : juce::UnitTest("Pointer", "ui") {}
 
@@ -2634,6 +2686,7 @@ SettingsKeyboardTests settingsKeyboardTests;
 ScrollSurfacesTests scrollSurfacesTests;
 TouchScrollTests touchScrollTests;
 PopoverFollowTests popoverFollowTests;
+ModelKeyTests modelKeyTests;
 PointerTests pointerTests;
 GlowCornerTests glowCornerTests;
 PresetReorderTests presetReorderTests;

@@ -170,6 +170,8 @@ ModelSelect::ModelSelect()
       list_(std::make_unique<Dropdown>(*this)) {
   prev_->onClick = [this] { step(-1); };
   next_->onClick = [this] { step(+1); };
+  prev_->setHelpText(juce::String::fromUTF8("Previous model (key: \xe2\x86\x90)"));
+  next_->setHelpText(juce::String::fromUTF8("Next model (key: \xe2\x86\x92)"));
   addAndMakeVisible(*prev_);
   addAndMakeVisible(*next_);
   auto trigger = std::make_unique<Trigger>();
