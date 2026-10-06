@@ -161,6 +161,7 @@ void TONE3000Processor::resolveParamRefs() {
   paramRefs.pitchStep = get("pitchStep");
   paramRefs.pitchTonality = get("pitchTonality");
   paramRefs.pitchWindow = get("pitchWindow");
+  paramRefs.pitchMix = get("pitchMix");
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createParameterLayout() {
@@ -363,6 +364,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
       juce::ParameterID{"pitchWindow", 43}, "pitchWindow", windows,
       static_cast<int>(PitchShift::kDefaultWindow),
       juce::AudioParameterChoiceAttributes().withAutomatable(false)));
+  // Dry/wet Mix: the same linear blend as a block's Mix (0 = dry, 1 = the
+  // pure shift, the default), so the dry signal can be mixed back in.
+  layout.add(normParam("pitchMix", 44, 1.0f));
 
   return layout;
 }
@@ -1155,6 +1159,7 @@ void TONE3000Processor::updateCachedParameters() {
   cachePitch.tonalityHz = tonalityHz < PitchShift::kTonalityOffHz ? tonalityHz : 0.0f;
   cachePitch.window =
       PitchShift::windowFromIndex(static_cast<int>(std::lround(paramRefs.pitchWindow->load())));
+  cachePitch.mix = paramRefs.pitchMix->load();
 }
 
 // ##########################

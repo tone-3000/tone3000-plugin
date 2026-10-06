@@ -8,10 +8,11 @@ namespace t3k::ui {
 namespace {
 
 // Defaults: STEP on, tonality Off (top, normalised), the 30 ms buffer (the
-// second of four detents).
+// second of four detents), Mix fully shifted.
 constexpr bool kStepDefault = true;
 constexpr float kTonalityDefault = 1.0f;
 constexpr float kWindowDefault = 1.0f / 3.0f;
+constexpr float kMixDefault = 1.0f;
 
 // The gate deck's geometry (see GateDeckPanel.cpp).
 constexpr int kPadTop = 14, kPadSide = 16, kPadBottom = 8;
@@ -38,9 +39,11 @@ PitchDeckPanel::PitchDeckPanel(Services& services)
       tonality_(services.backend, "pitchTonality",
                 deckKnob("Tonality", scales::tonalityHz(), kTonalityDefault, help::Key::pitchTonality)),
       window_(services.backend, "pitchWindow",
-              deckKnob("Buffer", scales::bufferMs(), kWindowDefault, help::Key::pitchWindow, 4)) {
+              deckKnob("Buffer", scales::bufferMs(), kWindowDefault, help::Key::pitchWindow, 4)),
+      mix_(services.backend, "pitchMix",
+           deckKnob("Mix", scales::percent(), kMixDefault, help::Key::pitchMix)) {
   addAndMakeVisible(step_);
-  for (auto* k : {&tonality_, &window_}) addAndMakeVisible(*k);
+  for (auto* k : {&tonality_, &window_, &mix_}) addAndMakeVisible(*k);
   primaryOnly = true;          // right-click toggles the panel; don't dismiss on it
   dismissOnAnchorPress = true; // the anchor is the Pitch knob, a control
   setSize(kWidth, kHeight);
@@ -50,6 +53,7 @@ void PitchDeckPanel::resetDeck(Backend& backend) {
   ParamBinding(backend, "pitchStep").set(kStepDefault);
   ParamBinding(backend, "pitchTonality").set(kTonalityDefault);
   ParamBinding(backend, "pitchWindow").set(kWindowDefault);
+  ParamBinding(backend, "pitchMix").set(kMixDefault);
 }
 
 namespace {
@@ -78,7 +82,7 @@ void PitchDeckPanel::resized() {
                            getLocalBounds().getCentreY() - step_.getHeight() / 2);
   const int height = Knob::heightFor(theme::kKnobSizeSecondary);
   int i = 1;
-  for (auto* k : {&tonality_, &window_}) {
+  for (auto* k : {&tonality_, &window_, &mix_}) {
     const auto c = column(content, i++);
     k->setBounds(c.getX(), content.getBottom() - height + Knob::kEditorOverflow, kSectionWidth, height);
   }

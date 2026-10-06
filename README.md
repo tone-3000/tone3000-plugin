@@ -251,13 +251,16 @@ flowchart LR
   semitones, a transpose; off, it sweeps smoothly with Shift-drag for fine
   control), Tonality (1-20 kHz, the
   frequency above which the input bypasses the shifter, which keeps pick
-  noise and string squeak natural; Off at the top) and Buffer (the engine's
+  noise and string squeak natural; Off at the top), Buffer (the engine's
   delay buffer, 20 / 30 / 40 / 60 ms; the tap's delay sweeps between a 2 ms
   floor and the buffer end, so the latency reported to the host is the
-  midpoint, 11 / 16 / 21 / 31 ms). Power, Buffer and Tonality changes blend over
-  25 ms like the stereo image's, never click. The engine is a time-domain
-  correlation-spliced delay line with onset re-sync, so pick attacks pass
-  in a few ms whatever the buffer; the buffer sets the lowest note it holds
+  midpoint, 11 / 16 / 21 / 31 ms) and Mix (the dry/shifted blend, 100% by
+  default; lower it to mix the dry signal back in, held by the floor so it
+  lands with the attacks). Power, Buffer, Tonality
+  and Mix changes blend over 25 ms like the stereo image's, never click. The
+  engine is a time-domain correlation-spliced delay line with onset re-sync,
+  so pick attacks pass in a few ms whatever the buffer; the buffer sets the
+  lowest note it holds
   a full period of (20 ms is guitar-only, 30 ms, the default, covers bass)
   and how often it splices. Two octaves up is as clean as one; two octaves
   down is on pitch but grainy, a sub-octave effect rather than a clean

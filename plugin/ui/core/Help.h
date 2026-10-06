@@ -14,7 +14,7 @@ enum class Key {
   inputModeRight, outputLevel, outputBalance, autoBalance,
   // Faceplate: gate, pitch shift, tone stack, stereo image (spread / align)
   gate, gatePower, gateRelease, gateHold, gateRange,
-  pitch, pitchPower, pitchStep, pitchTonality, pitchWindow,
+  pitch, pitchPower, pitchStep, pitchTonality, pitchWindow, pitchMix,
   toneBass, toneMiddle, toneTreble, tonePower,
   spreadOffset, spreadWobble, spreadWobblePower, spreadCrossover, spreadCrossoverPower,
   spreadDiffuse, spreadAdvert, spreadPower, imageCorrelation, spreadMonoOutput, spreadDualMono,
