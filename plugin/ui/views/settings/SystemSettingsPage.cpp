@@ -179,6 +179,7 @@ SystemSettingsPage::SystemSettingsPage(Services& services)
                  {{"Allow Access", [this] { apply([&] { return services_.audioDevice.openMicSettings(); }); }}}),
       inlineError_(AlertVariant::error, {},
                    {{"Retry", [this] { apply([&] { return services_.audioDevice.restartDevice(); }); }}}),
+      inlineWarning_(AlertVariant::warn, {}),
       hearYourself_("Hear Yourself", "Hear your instrument while playing."),
       group_("Audio Interface", custom_icons::kAudioInterface),
       driver_("Audio Driver"),
@@ -203,6 +204,7 @@ SystemSettingsPage::SystemSettingsPage(Services& services)
   // (unlike the other inline mirrors) it keeps its action button.
   add(micDenied_);
   add(inlineError_);
+  add(inlineWarning_);
 
   // Output monitoring goes at the top of the tab; this is how sound starts.
   hearYourself_.onChange = [this, &dev](bool hear) { apply([&] { return dev.setHearYourself(hear); }); };
@@ -305,6 +307,9 @@ void SystemSettingsPage::sync() {
   if (inlineError.isNotEmpty())
     inlineError_.setContent(boldThen(inlineError, " Plug the interface back in, hit Retry, or choose another device."));
   setShown(inlineError_, inlineError.isNotEmpty());
+  const auto& warning = services_.audioDevice.warning();
+  inlineWarning_.setContent(boldThen(warning, {}));
+  setShown(inlineWarning_, warning.isNotEmpty() && inlineError.isEmpty());
 
   // Inline mirrors of the main-window banners, gated to a running device (a
   // dead device is already covered by the top-of-form error above), placed

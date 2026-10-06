@@ -498,6 +498,14 @@ target_compile_definitions(${PROJECT_NAME}
         JUCE_VST3_CAN_REPLACE_VST2=0
 )
 
+# Avoid slow iOS sample-rate scans during launch. The matching root CMake
+# patch synchronizes the actual rate before JUCE discovers buffer sizes.
+if (T3K_IOS)
+    target_compile_definitions(${PROJECT_NAME}
+        PUBLIC JUCE_IOS_AUDIO_EXPLICIT_SAMPLERATES=44100,48000,88200,96000,176400,192000
+    )
+endif()
+
 # Native networking (juce::URL / WebInputStream), used for model downloads
 # (ProcessorModelLoader). macOS/Windows use the OS HTTP stacks and ignore
 # JUCE_USE_CURL entirely. On Linux, curl is the ONLY backend with TLS: with

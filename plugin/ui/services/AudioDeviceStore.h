@@ -29,6 +29,7 @@ public:
 
   // nullopt in hosted builds and while loading.
   const std::optional<AudioDeviceState>& state() const { return state_; }
+  const juce::String& warning() const { return warning_; }
   void refresh();
 
   void addListener(Listener* l) { listeners.add(l); }
@@ -57,6 +58,7 @@ private:
 
   Backend& backend_;
   std::optional<AudioDeviceState> state_;
+  juce::String warning_;
   juce::ListenerList<Listener> listeners;
 };
 

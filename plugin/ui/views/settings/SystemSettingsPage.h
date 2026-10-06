@@ -47,6 +47,7 @@ private:
 
   AlertCard micDenied_;
   AlertCard inlineError_;
+  AlertCard inlineWarning_;
 
   ToggleRow hearYourself_;
   InlineBannerAlert feedbackRisk_{"feedback-risk"};

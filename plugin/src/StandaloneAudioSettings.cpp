@@ -4,6 +4,8 @@
 #include "IosAudioRoute.h"
 #include "Processor.h"
 
+#include <cmath>
+
 // The standalone filter window header expects the full GUI/audio module set
 // to be visible first.
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -229,6 +231,13 @@ juce::var StandaloneAudioSettings::getState() {
   if (device != nullptr) {
     for (const auto rate : device->getAvailableSampleRates())
       sampleRates.add(rate);
+#if JUCE_IOS
+    // The explicit choices cannot predict every route (e.g. Bluetooth at
+    // 24 kHz). Include the actual readback so the selector can show it on
+    // first launch, saved-setup restoration and route changes as well.
+    if (const auto actualRate = device->getCurrentSampleRate(); actualRate > 0.0)
+      sampleRates.addIfNotAlreadyThere(juce::var(actualRate));
+#endif
     for (const auto size : device->getAvailableBufferSizes())
       bufferSizes.add(size);
   }
@@ -425,10 +434,45 @@ juce::var StandaloneAudioSettings::setSampleRate(double rate) {
   if (dm == nullptr)
     return makeResult("Audio settings are unavailable.");
   auto setup = dm->getAudioDeviceSetup();
+#if !JUCE_IOS
   setup.sampleRate = rate;
+#endif
   pinActiveChannels(setup, dm->getCurrentAudioDevice(), explicitInputChannels, explicitOutputChannels,
                     /*pinInputs=*/true, /*pinOutputs=*/true);
+#if JUCE_IOS
+  const auto previousSetup = setup;
+  setup.sampleRate = rate;
+  // Explicit rates are requests, not discovered capabilities. Negotiate only
+  // the selected rate; never probe the other choices here or during launch.
+  auto error = dm->setAudioDeviceSetup(setup, true);
+  auto* device = dm->getCurrentAudioDevice();
+  if (error.isNotEmpty() || device == nullptr || !device->isOpen()) {
+    if (error.isEmpty())
+      error = "The audio device couldn't be opened.";
+    const auto restoreError = dm->setAudioDeviceSetup(previousSetup, true);
+    device = dm->getCurrentAudioDevice();
+    if (restoreError.isEmpty() && device != nullptr && device->isOpen()) {
+      finishApply({});  // Remember the restored readback, not the failed request.
+      error += " Previous audio settings restored.";
+    } else {
+      error += " Couldn't restore the previous audio settings.";
+      if (restoreError.isNotEmpty())
+        error += " " + restoreError;
+    }
+    return finishApply(error);
+  }
+
+  const auto actualRate = device->getCurrentSampleRate();
+  auto result = finishApply({});  // Persist the actual, negotiated setup.
+  if (std::abs(actualRate - rate) > 1.0) {
+    result.getDynamicObject()->setProperty(
+        "warning", juce::String(rate / 1000.0, 1) + " kHz unavailable on this audio route; using " +
+                       juce::String(actualRate / 1000.0, 1) + " kHz.");
+  }
+  return result;
+#else
   return finishApply(dm->setAudioDeviceSetup(setup, true));
+#endif
 }
 
 juce::var StandaloneAudioSettings::setBufferSize(int samples) {
@@ -738,6 +782,11 @@ bool StandaloneAudioSettings::applyRememberedSetup(const juce::var& saved) {
   auto* dm = deviceManager();
   auto* device = dm->getCurrentAudioDevice();
   auto setup = dm->getAudioDeviceSetup();
+#if JUCE_IOS
+  const auto previousSetup = setup;
+  const auto previousInputs = explicitInputChannels;
+  const auto previousOutputs = explicitOutputChannels;
+#endif
 
   const double rate = saved.getProperty("rate", 0.0);
   const int buffer = saved.getProperty("buffer", 0);
@@ -771,7 +820,27 @@ bool StandaloneAudioSettings::applyRememberedSetup(const juce::var& saved) {
     explicitOutputChannels = outMask;
   }
 
+#if JUCE_IOS
+  const auto error = dm->setAudioDeviceSetup(setup, true);
+  device = dm->getCurrentAudioDevice();
+  if (error.isEmpty() && device != nullptr && device->isOpen()) {
+    // A saved request may belong to a different USB route. Replace it with
+    // the actual startup readback so we don't retry an unavailable rate.
+    rememberCurrentSetup();
+    return true;
+  }
+  explicitInputChannels = previousInputs;
+  explicitOutputChannels = previousOutputs;
+  const auto restoreError = dm->setAudioDeviceSetup(previousSetup, true);
+  device = dm->getCurrentAudioDevice();
+  if (restoreError.isEmpty() && device != nullptr && device->isOpen())
+    rememberCurrentSetup();
+  juce::Logger::writeToLog("[AudioSettings] saved iOS setup failed: " + error +
+                           "; restore: " + restoreError);
+  return false;
+#else
   return dm->setAudioDeviceSetup(setup, true).isEmpty();
+#endif
 }
 
 void StandaloneAudioSettings::rememberCurrentSetup() {

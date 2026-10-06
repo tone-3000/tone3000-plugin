@@ -23,6 +23,7 @@ template <typename Fn>
 juce::String AudioDeviceStore::run(Fn&& fn) {
   const juce::var res = fn();
   juce::String error;
+  warning_ = res.isObject() ? res.getProperty("warning", juce::var()).toString() : juce::String();
   if (!res.isObject() || !res.hasProperty("ok"))
     error = "Audio settings are unavailable.";
   else if (const auto r = AudioDeviceResult::parse(res); !r.ok)
