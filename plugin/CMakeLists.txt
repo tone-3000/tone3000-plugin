@@ -335,6 +335,7 @@ target_sources(${PROJECT_NAME}
         include/PresetFile.h
         src/PresetFile.cpp
         include/PresetManager.h
+        src/PresetBackup.cpp
         src/PresetManager.cpp
         include/Processor.h
         src/Processor.cpp

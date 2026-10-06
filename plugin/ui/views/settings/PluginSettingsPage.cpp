@@ -132,9 +132,14 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
             "Control the plugin from pedals and knobs. Mappings are saved with the plugin and work in your DAW too."),
       midiSection_(services),
       presets_("Presets",
-               "Your saved presets are files in a folder you can back up, share, or copy to another computer."),
+               "Back up all saved user presets, including their NAM and IR files, to a ZIP. "
+               "Import can add copies or replace all user presets. Save edits before exporting."),
       openPresets_("Open presets folder", FormButton::text(form::kBodyPx, false, theme::kLinkBlue)),
       openPresetsBox_(openPresets_, static_cast<float>(openPresets_.preferredHeight())),
+      exportPresets_("Export all user presets", FormButton::cta()),
+      importPresets_("Import preset backup", FormButton::cta()),
+      exportPresetsBox_(exportPresets_, static_cast<float>(exportPresets_.preferredHeight())),
+      importPresetsBox_(importPresets_, static_cast<float>(importPresets_.preferredHeight())),
       diagnostics_("Diagnostics", "Copy recent diagnostic logs to the clipboard and paste them into a bug report."),
       copyLogs_("Copy Logs", FormButton::cta()),
       revealLogs_("Reveal log file on disk", FormButton::text(form::kBodyPx, false, theme::kLinkBlue)),
@@ -201,14 +206,18 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
   midi_.content().add(midiSection_);
   add(midi_);
 
-  // Presets: a link to the folder the files live in. Hidden where there is
-  // no file browser to open (iOS).
+  // Native Files/document picker also exposes iCloud Drive on iPad.
+  presets_.setInlineLabel();
+  presets_.content().setGap(form::kControlGap);
+  presets_.content().add(exportPresetsBox_);
+  presets_.content().add(importPresetsBox_);
+  exportPresets_.onClick = [this] { exportPresets(); };
+  importPresets_.onClick = [this] { importPresets(); };
   if (services_.backend.canOpenPresetsFolder()) {
-    presets_.setInlineLabel();
     presets_.content().add(openPresetsBox_);
     openPresets_.onClick = [this] { services_.backend.openPresetsFolder(); };
-    add(presets_);
   }
+  add(presets_);
 
   // Diagnostics.
   diagnostics_.setInlineLabel();
@@ -298,6 +307,120 @@ void PluginSettingsPage::chainChanged(const ChainState& state) {
   lite_.setSelected(!full);
   full_.setSelected(full);
   multiCore_.setValue(state.multiCore);
+}
+
+void PluginSettingsPage::setPresetTransferBusy(bool busy) {
+  presetTransferBusy_ = busy;
+  exportPresets_.setEnabled(!busy);
+  importPresets_.setEnabled(!busy);
+}
+
+void PluginSettingsPage::exportPresets() {
+  if (presetTransferBusy_) return;
+  setPresetTransferBusy(true);
+  services_.toast.show("Preparing preset backup...");
+  juce::Component::SafePointer<PluginSettingsPage> self(this);
+  // Shared ownership holds the source ZIP through compression, the native
+  // export picker and its callback, even if Settings/the editor is closed.
+  const auto name = "TONE3000-presets-" + juce::Time::getCurrentTime().formatted("%Y%m%d-%H%M%S") + ".zip";
+  const auto file = juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile(name, {});
+  const auto temp = std::make_shared<juce::TemporaryFile>(file, file);
+  services_.backend.exportPresetBackup(file, [self, temp](juce::Result result) {
+    if (self == nullptr) return;
+    if (result.failed()) {
+      self->setPresetTransferBusy(false);
+      self->services_.toast.show(result.getErrorMessage());
+      return;
+    }
+    self->presetChooser_ = std::make_unique<juce::FileChooser>("Export all user presets", temp->getFile(), "*.zip");
+    self->presetChooser_->launchAsync(juce::FileBrowserComponent::saveMode |
+                                     juce::FileBrowserComponent::canSelectFiles |
+                                     juce::FileBrowserComponent::warnAboutOverwriting,
+        [self, temp](const juce::FileChooser& chooser) {
+          if (self == nullptr) return;
+          const auto url = chooser.getURLResult();
+          if (!url.isEmpty()) {
+#if JUCE_IOS
+            // JUCE passes the existing ZIP to Apple's export-as-copy picker;
+            // Apple has already copied it to Files/iCloud before this callback.
+            self->services_.toast.show("Preset backup exported");
+#else
+            const auto target = chooser.getResult();
+            juce::TemporaryFile output(target);
+            const bool saved = temp->getFile().copyFileTo(output.getFile()) && output.overwriteTargetFileWithTemporary();
+            self->services_.toast.show(saved ? "Preset backup exported" : "Could not save the preset backup");
+#endif
+          }
+          // Never destroy the chooser inside its own callback.
+          juce::MessageManager::callAsync([self, temp] {
+            if (self != nullptr) {
+              self->presetChooser_.reset();
+              self->setPresetTransferBusy(false);
+            }
+          });
+        });
+  });
+}
+
+void PluginSettingsPage::importPresets() {
+  if (presetTransferBusy_) return;
+  setPresetTransferBusy(true);
+  juce::Component::SafePointer<PluginSettingsPage> self(this);
+  juce::PopupMenu menu;
+  menu.addItem(1, "Add copies");
+  menu.addItem(2, "Replace all user presets...");
+  menu.showMenuAsync(juce::PopupMenu::Options()
+      .withTargetComponent(&importPresets_)
+      .withStandardItemHeight(design::kCoarsePointer ? 64 : 0)
+      .withMinimumWidth(design::kCoarsePointer ? 320 : 0),
+      [self](int choice) {
+        if (self == nullptr) return;
+        if (choice == 1) {
+          self->choosePresetBackup(PresetImportMode::addCopies);
+        } else if (choice == 2) {
+          juce::AlertWindow::showAsync(
+              juce::MessageBoxOptions()
+                  .withIconType(juce::MessageBoxIconType::WarningIcon)
+                  .withTitle("Replace all user presets?")
+                  .withMessage("Presets not in this backup will be removed. A recovery ZIP of your saved user presets will be kept in the app's PresetBackups folder. Factory presets and global settings will be kept.")
+                  .withButton("Replace all")
+                  .withButton("Cancel"),
+              [self](int result) {
+                if (self == nullptr) return;
+                if (result == 1) self->choosePresetBackup(PresetImportMode::replaceAll);
+                else self->setPresetTransferBusy(false);
+              });
+        } else {
+          self->setPresetTransferBusy(false);
+        }
+      });
+}
+
+void PluginSettingsPage::choosePresetBackup(PresetImportMode mode) {
+  juce::Component::SafePointer<PluginSettingsPage> self(this);
+  presetChooser_ = std::make_unique<juce::FileChooser>("Import preset backup", juce::File{}, "*.zip");
+  presetChooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+      [self, mode](const juce::FileChooser& chooser) {
+        if (self == nullptr) return;
+        const auto url = chooser.getURLResult();
+        juce::MessageManager::callAsync([self, url, mode] {
+          if (self == nullptr) return;
+          self->presetChooser_.reset();
+          if (url.isEmpty()) {
+            self->setPresetTransferBusy(false);
+            return;
+          }
+          self->services_.toast.show("Importing preset backup...");
+          self->services_.backend.importPresetBackup(url, mode, [self, mode](juce::Result result) {
+            if (self == nullptr) return;
+            self->setPresetTransferBusy(false);
+            self->services_.presets.refresh();
+            self->services_.toast.show(result.wasOk()
+                ? (mode == PresetImportMode::replaceAll ? "User presets replaced" : "User presets imported")
+                : result.getErrorMessage());
+          });
+        });
+      });
 }
 
 // Version / update sit last so diagnostics stay above the footer.

@@ -465,6 +465,8 @@ public:
 
   // Where user presets are saved (Settings > Presets opens it).
   juce::File getUserPresetsDir() const { return presetManager.userPresetsDir(); }
+  PresetManager presetStoreForTransfer() const { return presetManager; }
+  void presetBackupImported();
 
   // Re-root the internal preset store at an explicit directory (tests use a
   // temp dir so preset/program behavior can be driven without touching the

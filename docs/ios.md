@@ -243,3 +243,33 @@ picker instead (see Known gaps).
   `UIImpactFeedbackGenerator` does nothing there and the tile lift and drop
   are silent.
 - AUv3 is not built. Only the Standalone app exists on iOS.
+
+### Back up user presets to Files or iCloud Drive
+
+In **Settings → Plugin → Presets**, choose **Export all user presets**. Select
+**iCloud Drive** or **On My iPad** in Apple's Files picker and save the ZIP.
+The backup contains every saved user preset, its embedded NAM/IR data, and the
+user preset order. Save any current edits as a preset before exporting. Factory
+presets and global audio, MIDI and app settings are not included.
+
+To restore, choose **Import preset backup**, pick an import mode, and select the
+ZIP in Files. **Add copies** keeps existing presets and appends the imported
+presets in the backup's order. Copies get new IDs and duplicate names get
+`(2)`, `(3)`, etc.
+
+**Replace all user presets** asks for confirmation, then validates and stages
+the entire ZIP before changing anything. It replaces the user preset list and
+its order; importing the same ZIP again does not add duplicates. Factory
+presets, their order, and global audio/MIDI/app settings are kept. The currently
+playing chain stays loaded until you select a restored preset.
+
+Before replacement, existing saved user presets are backed up to a ZIP in
+`PresetBackups`, beside the app's `Presets` folder. If that backup cannot be
+created, replacement stops. A failed restore rolls back the original files and
+order. Recovery ZIPs are retained after a successful restore and can be imported
+through the same picker. Save current edits and keep your own backup in Files
+or iCloud Drive before replacing presets; uninstalling the app also removes its
+local recovery ZIPs.
+
+This uses Apple's document picker and file providers. iCloud handles uploading
+and downloading the ZIP; no TONE3000 account or cloud backup service is needed.
