@@ -2264,6 +2264,64 @@ struct MidiMapCommitTests : juce::UnitTest {
   }
 };
 
+// The tuner's speaker toggle: each click flips the backend mute and swaps the
+// button's name (its accessible title), and a reopened tuner starts unmuted.
+struct TunerMuteTests : juce::UnitTest {
+  TunerMuteTests() : juce::UnitTest("Tuner mute", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  static juce::Button* named(juce::Component& root, const juce::String& name) {
+    return dynamic_cast<juce::Button*>(
+        drive::find(root, [&](juce::Component& c) { return c.getName() == name && c.isShowing(); }));
+  }
+
+  void runTest() override {
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("main-stereo");
+    if (scenario == nullptr) {
+      expect(false, "main-stereo scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("tuner mute", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(400);
+    auto& root = host.pluginRoot();
+    root.setTunerShown(true);
+    pump(100);
+
+    beginTest("the tuner opens unmuted");
+    auto* mute = named(root, "Mute output");
+    expect(mute != nullptr, "no mute toggle on the tuner");
+    if (mute == nullptr) return;
+    expect(!backend.tunerMuted());
+
+    beginTest("a click mutes, and the toggle offers to unmute");
+    mute->onClick();
+    expect(backend.tunerMuted());
+    expect(named(root, "Mute output") == nullptr);
+    expect(named(root, "Unmute output") == mute);
+
+    beginTest("a second click unmutes");
+    mute->onClick();
+    expect(!backend.tunerMuted());
+    expect(named(root, "Mute output") == mute);
+
+    beginTest("a reopened tuner starts unmuted");
+    mute->onClick();
+    root.setTunerShown(false);
+    pump(50);
+    root.setTunerShown(true);
+    pump(100);
+    expect(named(root, "Mute output") != nullptr);
+    expect(named(root, "Unmute output") == nullptr);
+    window.setVisible(false);
+  }
+};
+
 // A readout wider than its knob ("-100 dB" under the 36px gate, whose dim
 // group is exactly the knob's width) shows whole: it floats in the overlay
 // layer, past the column and the parents that clip the knob.
@@ -2640,6 +2698,7 @@ PresetReorderTests presetReorderTests;
 ChainCrossLaneDragTests chainCrossLaneDragTests;
 BlockSizeToggleTests blockSizeToggleTests;
 MidiMapCommitTests midiMapCommitTests;
+TunerMuteTests tunerMuteTests;
 KnobReadoutTests knobReadoutTests;
 FaceplateEffectsTests faceplateEffectsTests;
 FaceplateDualMonoTests faceplateDualMonoTests;

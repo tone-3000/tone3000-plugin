@@ -73,13 +73,18 @@ private:
 };
 
 TunerView::TunerView(Services& services)
-    : feed_(services.backend, services.clock), up_(std::make_unique<Triangle>(true)), down_(std::make_unique<Triangle>(false)) {
+    : backend_(services.backend),
+      feed_(services.backend, services.clock),
+      up_(std::make_unique<Triangle>(true)), down_(std::make_unique<Triangle>(false)) {
   setOpaque(true);
   close_.setName("Close tuner");
   close_.onClick = [this] {
     if (onClose) onClose();
   };
   addAndMakeVisible(close_);
+  mute_.setName("Mute output");
+  mute_.onClick = [this] { setMuted(!muted_); };
+  addAndMakeVisible(mute_);
   addAndMakeVisible(*up_);
   addAndMakeVisible(*down_);
   feed_.onChange = [this] { feedChanged(); };
@@ -87,6 +92,13 @@ TunerView::TunerView(Services& services)
 }
 
 TunerView::~TunerView() = default;
+
+void TunerView::setMuted(bool muted) {
+  muted_ = muted;
+  backend_.setTunerMuted(muted);
+  mute_.setIcon(muted ? Icon::VolumeX : Icon::Volume2);
+  mute_.setName(muted ? "Unmute output" : "Mute output");
+}
 
 // The feed notifies on every smoothed-cents change, most of which move
 // nothing visible; only the parts whose drawn state changed get dirtied,
@@ -125,6 +137,7 @@ juce::Rectangle<int> TunerView::readoutArea() const {
 void TunerView::resized() {
   const auto area = getLocalBounds();
   close_.setBounds(area.getRight() - kCloseRight - kCloseBox, area.getY() + kCloseTop, kCloseBox, kCloseBox);
+  mute_.setBounds(close_.getX() - kMuteGap - kCloseBox, close_.getY(), kCloseBox, kCloseBox);
 
   const int x0 = area.getX() + (area.getWidth() - kRowW) / 2;
   const int y0 = area.getY() + (area.getHeight() - kColumnH) / 2;

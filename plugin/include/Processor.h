@@ -477,7 +477,14 @@ public:
 
   // Tuner: enabled by the UI while the tuner screen is visible. Reads the raw
   // (pre-gain, pre-gate) input so gating never starves the pitch detector.
-  void setTunerEnabled(bool enabled) { tuner.setEnabled(enabled); }
+  // Closing the tuner also clears the mute, so the output can't stay silenced
+  // once the screen that offers the toggle is gone.
+  void setTunerEnabled(bool enabled) {
+    tuner.setEnabled(enabled);
+    if (!enabled) tunerMuted.store(false);
+  }
+  // Silences the output (faded) while the tuner screen is open; no effect otherwise.
+  void setTunerMuted(bool muted) { tunerMuted.store(muted); }
   juce::var getTunerReading() { return tuner.getReading(); }
 
   // Auto balance: one-shot chain energy match.
@@ -951,6 +958,12 @@ private:
   // post-chain image matrix, pre-pan), smoothed so knob moves glide instead
   // of stepping once per block. Audio thread only.
   juce::SmoothedValue<float> outputGainSmoother;
+
+  // Tuner mute: UI-set flag, faded through outputGainSmoother in the output
+  // stage. Only honoured while the tuner is enabled (setTunerEnabled(false)
+  // clears it).
+  std::atomic<bool> tunerMuted{false};
+  bool tunerMuteActive() const { return tunerMuted.load() && tuner.isEnabled(); }
 
   // Monotonic revision of everything getChainState() reports. Bumped on every
   // chain mutation (structure, params, load completion, stereo/side changes)

@@ -117,6 +117,8 @@ public:
 
   juce::var getMeterLevels() override;
   void setTunerEnabled(bool) override {}
+  void setTunerMuted(bool muted) override { tunerMuted_ = muted; }
+  bool tunerMuted() const { return tunerMuted_; }
   juce::var getTunerReading() override { return signal_ != nullptr ? signal_->tuner() : tuner_; }
   void startAutoBalance() override {}
   void cancelAutoBalance() override {}
@@ -155,6 +157,7 @@ private:
   std::vector<juce::String> machineDefaults_;
   juce::var meters_;
   juce::var tuner_;
+  bool tunerMuted_ = false;
   juce::var autoMeasure_;
   juce::String version_;
   std::unique_ptr<MockSignal> signal_;

@@ -42,6 +42,7 @@ target_sources(DspTests PRIVATE
     src/state_cache_tests.cpp
     src/swap_fade_tests.cpp
     src/tone_refresh_tests.cpp
+    src/tuner_mute_tests.cpp
     src/tuner_tests.cpp
     src/worker_pool_tests.cpp
     # Compiled straight from the plugin tree so the tests exercise the real
