@@ -50,6 +50,17 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT T3K_IOS)
         "for the deployment-target floor.")
 endif()
 
+# Android: unlike T3K_IOS, this has no deployment-target floor that must be
+# forced into the cache before project() (CMAKE_OSX_DEPLOYMENT_TARGET has no
+# Android equivalent), so CMAKE_SYSTEM_NAME is read here, after project(),
+# rather than needing the iOS block's pre-project() timing above. The NDK's
+# own android.toolchain.cmake (passed via CMAKE_TOOLCHAIN_FILE, which the
+# Gradle externalNativeBuild integration sets automatically) resolves
+# CMAKE_SYSTEM_NAME=Android well before this point.
+if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    set(T3K_ANDROID TRUE)
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs)
 
@@ -93,7 +104,11 @@ include(cmake/cpm.cmake)
 # 2.13.2 the ubuntu-24.04 CI image was already building against, so glyph
 # rendering is unchanged. Desktop Linux only: HEADLESS builds take the
 # find_package(JUCE) route and macOS / Windows / iOS never touch FreeType.
-if (UNIX AND NOT APPLE AND NOT HEADLESS)
+# Android also matches UNIX AND NOT APPLE but has no pkg-config in the NDK
+# toolchain (find_package(PkgConfig REQUIRED) below would hard-fail the
+# configure) and no host FreeType to collide with in the first place, so
+# it's excluded alongside the others.
+if (UNIX AND NOT APPLE AND NOT HEADLESS AND NOT T3K_ANDROID)
     CPMAddPackage(
         NAME freetype
         GITHUB_REPOSITORY freetype/freetype
@@ -902,6 +917,156 @@ void AccessibilityHandler::postAnnouncement (const String& announcementString, A
     endif()
 endif()
 
+# T3K_ANDROID_HTTP_HEADERS: fix every Android POST failing before it is sent
+# (the sign-in token exchange surfaced it as "token_exchange_failed"). JUCE
+# builds request headers with CRLF line ends and always appends its own
+# "Content-length: N\r\n" to a POST (URL::createHeadersAndPostData), but
+# JuceHTTPStream.java splits them on '\n' alone, so each value keeps a
+# trailing '\r'. HttpURLConnection rejects a control character in a header
+# value by throwing, which JuceHTTPStream reports as a failed connection. Trim
+# both halves of each header line. The .java source is the one that runs: the
+# Gradle project compiles it into the APK (android/app/build.gradle.kts), and
+# JUCE loads the app's class before its embedded bytecode copy. Idempotent
+# configure-time patch, same rationale as the patches above.
+set(_juce_http_stream_java "${LIB_DIR}/juce/modules/juce_core/native/java/app/com/rmsl/juce/JuceHTTPStream.java")
+if (EXISTS "${_juce_http_stream_java}")
+    file(READ "${_juce_http_stream_java}" _juce_http_stream_src)
+    if (NOT _juce_http_stream_src MATCHES "T3K_ANDROID_HTTP_HEADERS")
+        string(REPLACE
+            "String field = headerLines[i].substring(0, pos);"
+            "String field = headerLines[i].substring(0, pos).trim(); // T3K_ANDROID_HTTP_HEADERS"
+            _juce_http_stream_src "${_juce_http_stream_src}")
+        string(REPLACE
+            "String value = headerLines[i].substring(pos + 1);"
+            "String value = headerLines[i].substring(pos + 1).trim();"
+            _juce_http_stream_src "${_juce_http_stream_src}")
+        if (NOT _juce_http_stream_src MATCHES "T3K_ANDROID_HTTP_HEADERS" OR
+            NOT _juce_http_stream_src MATCHES "substring\\(pos \\+ 1\\)\\.trim\\(\\)")
+            message(FATAL_ERROR
+                "T3K_ANDROID_HTTP_HEADERS: failed to patch ${_juce_http_stream_java}. "
+                "The JUCE source layout likely changed in this version. Update the patch "
+                "anchors in CMakeLists.txt.")
+        endif()
+        file(WRITE "${_juce_http_stream_java}" "${_juce_http_stream_src}")
+        message(STATUS "Patched JUCE JuceHTTPStream (Android): request header lines trimmed")
+    endif()
+endif()
+
+# T3K_ANDROID_HTTP_POST: the other half of the same failure. The Android
+# backend passes addParametersToRequestBody as JuceHTTPStream's isPost flag,
+# which is only set for ParameterHandling::inPostData; raw POST data
+# (URL::withPOSTData, as the UI's HttpClient sends the token form) leaves it
+# false, so the body is never written and the server rejects an empty POST.
+# Pass hasBodyDataToSend, which covers both, as every other backend does.
+set(_juce_network_android_cpp "${LIB_DIR}/juce/modules/juce_core/native/juce_Network_android.cpp")
+if (EXISTS "${_juce_network_android_cpp}")
+    file(READ "${_juce_network_android_cpp}" _juce_network_android_src)
+    if (NOT _juce_network_android_src MATCHES "T3K_ANDROID_HTTP_POST")
+        string(REPLACE
+            "(jboolean) addParametersToRequestBody,"
+            "(jboolean) hasBodyDataToSend, // T3K_ANDROID_HTTP_POST"
+            _juce_network_android_src "${_juce_network_android_src}")
+        if (NOT _juce_network_android_src MATCHES "T3K_ANDROID_HTTP_POST")
+            message(FATAL_ERROR
+                "T3K_ANDROID_HTTP_POST: failed to patch ${_juce_network_android_cpp}. "
+                "The JUCE source layout likely changed in this version. Update the patch "
+                "anchor in CMakeLists.txt.")
+        endif()
+        file(WRITE "${_juce_network_android_cpp}" "${_juce_network_android_src}")
+        message(STATUS "Patched JUCE Network (Android): raw POST data is sent")
+    endif()
+endif()
+
+# T3K_ANDROID_FONT_API_29: AndroidTypeface's font-fallback path (AFontMatcher,
+# ASystemFontIterator) calls NDK APIs that carry a "strict" availability
+# attribute: unlike ordinary NDK symbols, Clang refuses the call outright when
+# the compile target (ANDROID_PLATFORM, which android/app/build.gradle.kts
+# keeps equal to minSdk) is below the API level they were introduced in (29) -
+# even inside JUCE's own `__builtin_available (android 29, *)` runtime guards.
+# Confirmed by compiling this file's exact pattern against NDK 27 at
+# android-27: __builtin_available does not suppress it, because these symbols
+# (and any of JUCE's own functions tagged JUCE_INTRODUCED_IN_29/__INTRODUCED_IN)
+# are unconditionally unavailable below 29, not just weakly linked. Below API
+# 29 the calls must not be compiled at all; the "feature unavailable" fallback
+# already sitting next to each one covers that case at runtime, so every call
+# site is additionally gated by `#if __ANDROID_API__ >= 29`, which the NDK
+# toolchain sets from ANDROID_PLATFORM. Idempotent configure-time patch, same
+# rationale as the Android patches above.
+set(_juce_fonts_android_cpp "${LIB_DIR}/juce/modules/juce_graphics/native/juce_Fonts_android.cpp")
+if (EXISTS "${_juce_fonts_android_cpp}")
+    file(READ "${_juce_fonts_android_cpp}" _juce_fonts_android_src)
+    if (NOT _juce_fonts_android_src MATCHES "T3K_ANDROID_FONT_API_29")
+        # Sites 1-2 are one-line calls, so the whole guard is replaced in one
+        # go. Sites 3-4 wrap multi-line blocks; only their opening and closing
+        # lines are used as anchors so the patch doesn't duplicate their
+        # unchanged bodies.
+
+        # Site 1: createSystemFallback()
+        string(REPLACE
+[=[        if (__builtin_available (android 29, *))
+            return matchWithAFontMatcher (text, language);]=]
+[=[#if __ANDROID_API__ >= 29 // T3K_ANDROID_FONT_API_29_1
+        if (__builtin_available (android 29, *))
+            return matchWithAFontMatcher (text, language);
+#endif // T3K_ANDROID_FONT_API_29_1]=]
+            _juce_fonts_android_src "${_juce_fonts_android_src}")
+
+        # Site 2: findSystemTypeface()
+        string(REPLACE
+[=[        if (__builtin_available (android 29, *))
+            return findSystemTypefaceWithMatcher();]=]
+[=[#if __ANDROID_API__ >= 29 // T3K_ANDROID_FONT_API_29_2
+        if (__builtin_available (android 29, *))
+            return findSystemTypefaceWithMatcher();
+#endif // T3K_ANDROID_FONT_API_29_2]=]
+            _juce_fonts_android_src "${_juce_fonts_android_src}")
+
+        # Site 3: SystemFontMap::getInstance(), the ASystemFontIterator scan
+        string(REPLACE
+[=[                if (__builtin_available (android 29, *))]=]
+[=[#if __ANDROID_API__ >= 29 // T3K_ANDROID_FONT_API_29_3
+                if (__builtin_available (android 29, *))]=]
+            _juce_fonts_android_src "${_juce_fonts_android_src}")
+        string(REPLACE
+[=[                        return sfm;
+                    }
+                }]=]
+[=[                        return sfm;
+                    }
+                }
+#endif // T3K_ANDROID_FONT_API_29_3]=]
+            _juce_fonts_android_src "${_juce_fonts_android_src}")
+
+        # Site 4: Font::Native::getDefaultPlatformTypefaceForFont()
+        string(REPLACE
+[=[        if (__builtin_available (android 29, *))
+        {]=]
+[=[#if __ANDROID_API__ >= 29 // T3K_ANDROID_FONT_API_29_4
+        if (__builtin_available (android 29, *))
+        {]=]
+            _juce_fonts_android_src "${_juce_fonts_android_src}")
+        string(REPLACE
+[=[            return AndroidTypeface::fromMatchedFont (afont.get(), weight, italic);
+        }]=]
+[=[            return AndroidTypeface::fromMatchedFont (afont.get(), weight, italic);
+        }
+#endif // T3K_ANDROID_FONT_API_29_4]=]
+            _juce_fonts_android_src "${_juce_fonts_android_src}")
+
+        if (NOT _juce_fonts_android_src MATCHES "T3K_ANDROID_FONT_API_29_1" OR
+            NOT _juce_fonts_android_src MATCHES "T3K_ANDROID_FONT_API_29_2" OR
+            NOT _juce_fonts_android_src MATCHES "T3K_ANDROID_FONT_API_29_3" OR
+            NOT _juce_fonts_android_src MATCHES "T3K_ANDROID_FONT_API_29_4")
+            message(FATAL_ERROR
+                "T3K_ANDROID_FONT_API_29: failed to patch ${_juce_fonts_android_cpp}. "
+                "The JUCE source layout likely changed in this version. Update the patch "
+                "anchors in CMakeLists.txt.")
+        endif()
+        file(WRITE "${_juce_fonts_android_cpp}" "${_juce_fonts_android_src}")
+        message(STATUS "Patched JUCE Fonts (Android): API 29 font-matcher calls compile out below minSdk 29")
+    endif()
+endif()
+
 # Download GoogleTest Framework using CPM
 CPMAddPackage(
     NAME GOOGLETEST
@@ -918,8 +1083,9 @@ enable_testing() # Allow running build tests
 add_subdirectory(plugin) # Add plugin project
 # The DSP suite is a host-run console binary (it reads test assets off the
 # build machine's disk and is driven by script/test-dsp.sh). Cross-compiling it
-# for iOS produces something that cannot be run, so keep it out of that build.
-if (NOT T3K_IOS)
+# for iOS or Android produces something that cannot be run, so keep it out of
+# those builds.
+if (NOT T3K_IOS AND NOT T3K_ANDROID)
     add_subdirectory(test)   # DSP test suite (DspTests, see script/test-dsp.sh)
     add_subdirectory(tools)  # maintainer utilities (PresetTool), EXCLUDE_FROM_ALL
 endif()

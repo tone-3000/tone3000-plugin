@@ -6,7 +6,20 @@
 // key repeats reach it without us), then deliver a synthesized press/release
 // of the forwarded key to it.
 
-#if JUCE_WINDOWS
+#if JUCE_ANDROID
+
+namespace HostKeys {
+
+// Android has no host DAW to hand a transport keypress back to: the
+// Standalone app IS the host, same reasoning as the iOS stub in
+// WindowKeyEvents.mm. The UI still calls this (it suppresses the key itself
+// so nothing beeps or scrolls), so keep the symbol and make it a no-op
+// rather than teaching the UI a second platform check.
+void forwardKeyToHost(void*, HostKey) {}
+
+}  // namespace HostKeys
+
+#elif JUCE_WINDOWS
 
 #include <windows.h>
 
