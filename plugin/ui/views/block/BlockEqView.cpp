@@ -6,6 +6,7 @@
 #include "core/AlphaTween.h"
 #include "core/Design.h"
 #include "core/EqMath.h"
+#include "core/EqPinchGesture.h"
 #include "core/Fonts.h"
 #include "core/Help.h"
 #include "core/Icons.h"
@@ -147,6 +148,7 @@ public:
     freq_.onCommit = [this](const juce::String& raw) { commitFreq(raw); };
     gain_.onCommit = [this](const juce::String& raw) { commitGain(raw); };
     q_.onCommit = [this](const juce::String& raw) { commitQ(raw); };
+    chrome_.setInterceptsMouseClicks(false, true);
     addAndMakeVisible(chrome_);
     rebuildTypeSelector();
     setSize(kGraphW, eq::kBodyH);
@@ -166,8 +168,13 @@ public:
 
   void enabledChanged(bool animate) {
     const bool on = owner_.eqEnabled();
+    if (!on) cancelGesture();
     fade_.animateTo(on ? 1.0f : theme::kDisabledOpacity, kDimMs, animate);
     setInterceptsMouseClicks(on, on);
+  }
+
+  void visibilityChanged() override {
+    if (!isVisible()) cancelGesture();
   }
 
   void paint(juce::Graphics& g) override {
@@ -254,26 +261,44 @@ public:
 
   // Dots
   void mouseMove(const juce::MouseEvent& e) override {
-    const bool over = dotAt(graphPoint(e)).has_value();
+    const bool over = dotAt(e).has_value();
     setMouseCursor(over ? juce::MouseCursor::DraggingHandCursor : juce::MouseCursor::NormalCursor);
     setHelpText(over ? help::text(help::Key::eqDot) : juce::String());
   }
 
   void mouseDown(const juce::MouseEvent& e) override {
-    const auto hit = dotAt(graphPoint(e));
+    const auto& bands = owner_.bands();
+    if (!owner_.eqEnabled() || selected_ >= static_cast<int>(bands.size())) return;
+    if (e.source.isTouch()) {
+      // The first touch may grab a dot or start on empty graph space. The
+      // second touch edits the already selected band, never a different dot.
+      pinch_.down(e.source.getIndex(), screenPoint(e), selected_, bands[static_cast<size_t>(selected_)].q);
+      if (pinch_.blocksSingleDrag()) {
+        drag_.reset();
+        lastTap_.reset();
+        setViewportIgnoreDragFlag(true);
+        owner_.setDragging(true);
+        pin_ = std::make_unique<HintPin>(owner_.services().hints, help::text(help::Key::eqDot));
+        return;
+      }
+    } else if (pinch_.hasContacts()) {
+      return;
+    }
+    const auto hit = dotAt(e);
     setViewportIgnoreDragFlag(hit.has_value());  // a dot drag edits; the graph around it pans
-    if (!hit) return;
+    if (!hit) {
+      lastTap_.reset();
+      return;
+    }
     select(*hit);
-    // Touch: the second tap of a double tap resets and ends the gesture.
-    if (e.source.isTouch() && e.getNumberOfClicks() == 2) {
-      resetBand(*hit);
-      return;
-    }
     if (e.mods.isAltDown()) {
+      lastTap_.reset();
       resetBand(*hit);
       return;
     }
-    drag_ = Drag{*hit, graphPoint(e).toDouble()};
+    // Always allow a fresh grab, even immediately after the previous drag.
+    // A touch double tap is recognised on release, once we know it was a tap.
+    drag_ = Drag{*hit, graphPoint(e).toDouble(), e.source.getIndex(), e.source.isTouch()};
     owner_.setDragging(true);
     pin_ = std::make_unique<HintPin>(owner_.services().hints, help::text(help::Key::eqDot));
   }
@@ -281,7 +306,22 @@ public:
   // Delta-based (not absolute) so Shift = 8x finer can toggle mid-drag
   // without the dot jumping.
   void mouseDrag(const juce::MouseEvent& e) override {
-    if (!drag_) return;
+    if (e.source.isTouch()) {
+      const auto q = pinch_.move(e.source.getIndex(), screenPoint(e), kEqMinQ, kEqMaxQ);
+      if (pinch_.blocksSingleDrag()) {
+        if (q) {
+          const auto index = pinch_.band();
+          if (index && *index < static_cast<int>(owner_.bands().size())) {
+            auto band = owner_.bands()[static_cast<size_t>(*index)];
+            band.q = *q;
+            owner_.updateBand(*index, band);
+          }
+        }
+        return;
+      }
+    }
+    if (!isDragSource(e)) return;
+    if (e.mouseWasDraggedSinceMouseDown()) lastTap_.reset();
     const auto& bands = owner_.bands();
     const int index = drag_->index;
     if (index >= static_cast<int>(bands.size())) return;
@@ -305,15 +345,44 @@ public:
     owner_.updateBand(index, band);
   }
 
-  void mouseUp(const juce::MouseEvent&) override {
-    if (!drag_) return;
+  void mouseUp(const juce::MouseEvent& e) override {
+    if (e.source.isTouch()) {
+      const bool wasPinch = pinch_.blocksSingleDrag();
+      pinch_.up(e.source.getIndex());
+      if (wasPinch) {
+        lastTap_.reset();
+        if (!pinch_.hasContacts()) {
+          pin_.reset();
+          owner_.setDragging(false);
+          setViewportIgnoreDragFlag(false);
+        }
+        return;
+      }
+    }
+    if (!isDragSource(e)) return;
+    const int index = drag_->index;
     drag_.reset();
     pin_.reset();
     owner_.setDragging(false);
+    if (e.source.isTouch() && !e.mouseWasDraggedSinceMouseDown() &&
+        e.eventTime - e.mouseDownTime < juce::RelativeTime::milliseconds(juce::MouseEvent::getDoubleClickTimeout())) {
+      const auto pos = e.getScreenPosition().toFloat();
+      if (lastTap_ && lastTap_->index == index &&
+          e.eventTime - lastTap_->time < juce::RelativeTime::milliseconds(juce::MouseEvent::getDoubleClickTimeout()) &&
+          pos.getDistanceFrom(lastTap_->screenPos) <= kTouchHitRadius) {
+        lastTap_.reset();
+        resetBand(index);
+      } else {
+        lastTap_ = Tap{index, pos, e.eventTime};
+      }
+    } else {
+      lastTap_.reset();
+    }
   }
 
   // Wheel tunes the selected band's Q.
   void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override {
+    if (pinch_.hasContacts()) return;
     const auto& bands = owner_.bands();
     if (selected_ >= static_cast<int>(bands.size())) return;
     auto band = bands[static_cast<size_t>(selected_)];
@@ -324,11 +393,38 @@ public:
 private:
   static constexpr int kChromeGap = 8;
   static constexpr float kDotRadius = 5.5f;
+  static constexpr float kTouchHitRadius = 22.0f;  // 44pt target, independent of editor zoom
+
+  struct Tap {
+    int index;
+    juce::Point<float> screenPos;
+    juce::Time time;
+  };
 
   struct Drag {
     int index;
     juce::Point<double> last;
+    int source;
+    bool touch;
   };
+
+  bool isDragSource(const juce::MouseEvent& e) const {
+    return drag_ && drag_->source == e.source.getIndex() && drag_->touch == e.source.isTouch();
+  }
+
+  static EqPinchGesture::Point screenPoint(const juce::MouseEvent& e) {
+    const auto p = e.eventComponent->localPointToGlobal(e.position);
+    return {p.x, p.y};
+  }
+
+  void cancelGesture() {
+    if (drag_ || pinch_.hasContacts()) owner_.setDragging(false);
+    drag_.reset();
+    pinch_ = {};
+    lastTap_.reset();
+    pin_.reset();
+    setViewportIgnoreDragFlag(false);
+  }
 
   // Pointer position in graph (SVG viewBox) space.
   static juce::Point<float> graphPoint(const juce::MouseEvent& e) {
@@ -341,12 +437,26 @@ private:
     return {static_cast<float>(eq::freqToNorm(band.freqHz) * kGraphW), static_cast<float>(cy)};
   }
 
-  // Topmost (last drawn) dot under the point.
-  std::optional<int> dotAt(juce::Point<float> p) const {
+  // Choose the nearest dot when finger-sized targets overlap. Measure touch
+  // distance in screen points: the root zoom and SVG stretch must not shrink
+  // the grab area. Mouse input keeps the original, precise hit radius.
+  std::optional<int> dotAt(const juce::MouseEvent& e) const {
+    const bool touch = e.source.isTouch() || design::kCoarsePointer;
+    const auto p = touch ? localPointToGlobal(e.position) : graphPoint(e);
+    float nearest = touch ? kTouchHitRadius : kDotRadius + 0.75f;
+    std::optional<int> hit;
     const int n = static_cast<int>(owner_.bands().size());
-    for (int i = n - 1; i >= 0; --i)
-      if (dotCentre(i).getDistanceFrom(p) <= kDotRadius + 0.75f) return i;
-    return std::nullopt;
+    for (int i = n - 1; i >= 0; --i) {
+      auto centre = dotCentre(i);
+      if (touch) centre = localPointToGlobal(juce::Point<float>{centre.x, centre.y * eq::kSvgStretch});
+      const float distance = centre.getDistanceFrom(p);
+      // Equal distances keep the topmost (last drawn) dot.
+      if (distance <= nearest && (!hit || distance < nearest)) {
+        hit = i;
+        nearest = distance;
+      }
+    }
+    return hit;
   }
 
   void select(int index) {
@@ -440,7 +550,9 @@ private:
 
   BlockEqView& owner_;
   int selected_ = 1;
+  EqPinchGesture pinch_;
   std::optional<Drag> drag_;
+  std::optional<Tap> lastTap_;
   std::unique_ptr<HintPin> pin_;
   juce::Component chrome_;
   std::unique_ptr<SegmentedText> typeSel_;
