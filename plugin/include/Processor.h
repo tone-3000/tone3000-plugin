@@ -29,6 +29,7 @@
 #include "StereoOffset.h"
 #include "PresetManager.h"
 #include "TunerDetector.h"
+#include "GlobalLooper.h"
 
 class TONE3000Processor;
 
@@ -76,6 +77,13 @@ public:
   // processBlock; serializes with plugin state so maps travel with DAW
   // sessions and the standalone's saved session alike.
   MidiMapper midiMapper{parameters};
+
+  // Global post-chain looper, independent of presets. Commands apply at the next callback.
+  bool looperCommand(const juce::String& command);
+  void setLooperMidiEnabled(bool enabled) { looperMidiEnabled.store(enabled); }
+  void setLooperMix(float value) { globalLooper.setMix(value); }
+  void setLooperPan(float value) { globalLooper.setPan(value); }
+  juce::var getLooperState() const;
 
   // Chain management methods
   // Load a tone into an insert slot. `targetInsertId` is the insert block the
@@ -916,6 +924,9 @@ private:
   // Which lane loadTone inserts into when the target insert id is stale.
   // Set by the UI when an Add starts; not a view mode.
   ChainSide pendingAddSide{ChainSide::Left};
+  GlobalLooper globalLooper;
+  std::atomic<bool> looperMidiEnabled{false};
+
   juce::CriticalSection chainMutex;
 
   // Chain branch state (see the public setChainBranch).

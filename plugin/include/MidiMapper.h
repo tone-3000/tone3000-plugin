@@ -16,7 +16,7 @@
  * in hosts (the DAW hands us the buffer). The map serializes with plugin
  * state (getStateInformation), so it travels with DAW sessions.
  *
- * Targets come in four kinds:
+ * Targets come in five kinds:
  *   - APVTS parameters ("gateThreshold").
  *   - Positional block powers ("block1Power" = the first tone block in the
  *     Left lane, "rightBlock1Power" = the first in the Right lane; stereo
@@ -28,6 +28,8 @@
  *   - Preset steps ("presetPrevious" / "presetNext"): fire-per-press
  *     triggers that walk the preset list, for footswitches programmed with
  *     CC / note buttons instead of program changes.
+ *   - Looper record/play ("looperRecord"): a lightweight audio-thread
+ *     transport trigger, alternating fresh recording and loop playback.
  *
  * Model: one source per target (mapping identity == targetId); one physical
  * control may drive any number of targets. A global channel filter (omni by
@@ -51,7 +53,8 @@
  * Threading: the audio thread applies mappings under a SpinLock try-lock
  * (skipping one buffer on the rare contended edit) and never mutates the map.
  * Parameter writes go through setValueNotifyingHost, the standard MIDI-learn
- * path, which hosts accept from the processing callback. Everything else is
+ * path, which hosts accept from the processing callback. Looper transport
+ * invokes a lock-free hook in the same callback. Other virtual actions are
  * deferred to the message thread via AsyncUpdater: learn captures, program
  * changes, preset steps, and block-power / stereo toggles (chain edits take
  * the chain lock and are undoable, so they must never run on the audio
@@ -106,10 +109,14 @@ public:
   /** Mapped preset prev/next controls fired; delta is the net step count
       (+1 per next press, -1 per previous, coalesced like the toggles). */
   std::function<void(int delta)> onPresetStep;
+  /** Audio-thread hook: one press toggles fresh recording / loop playback.
+      Must be lock-free and must not access the UI or chain. */
+  std::function<void()> onLooperRecordToggle;
 
 private:
   enum class Source : int { cc = 0, note = 1 };
-  enum class Kind : int { parameter = 0, blockPower = 1, stereoMode = 2, presetStep = 3 };
+  enum class Kind : int { parameter = 0, blockPower = 1, stereoMode = 2, presetStep = 3, looperRecord = 4 };
+  static constexpr const char* kLooperRecordTarget = "looperRecord";
 
   /** Virtual target id for the chain's stereo on/off (chain state, not an
       APVTS parameter; the UI catalog uses the same id). */
@@ -151,7 +158,7 @@ private:
 
   bool isValidTarget(const juce::String& targetId) const {
     return blockPowerTargetFor(targetId).index >= 0 || targetId == kStereoTarget ||
-           targetId == kPresetPrevTarget || targetId == kPresetNextTarget ||
+           targetId == kPresetPrevTarget || targetId == kPresetNextTarget || targetId == kLooperRecordTarget ||
            parameters.getParameter(targetId) != nullptr;
   }
 

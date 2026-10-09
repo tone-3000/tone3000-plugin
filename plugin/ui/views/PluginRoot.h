@@ -43,6 +43,7 @@
 #include "SignInScreen.h"
 #include "ToastView.h"
 #include "TunerView.h"
+#include "LooperView.h"
 #include "browser/ToneBrowser.h"
 #include "core/DelayedCall.h"
 #include "modals/ConnectionModal.h"
@@ -79,6 +80,8 @@ public:
   // The tuner takeover replaces the meters + chain band; the pitch
   // detector runs only while it is up.
   void setTunerShown(bool shown);
+  void setLooperShown(bool shown);
+  bool looperShown() const { return looper_ != nullptr; }
   bool tunerShown() const { return tuner_ != nullptr; }
   // The tone browser takeover covers everything under the header (meters,
   // chain and faceplate); mounted only while open. A tuner opened over it
@@ -149,6 +152,7 @@ private:
   std::unique_ptr<ToneBrowser> browser_;
   std::unique_ptr<SignInScreen> signIn_;
   std::unique_ptr<TunerView> tuner_;
+  std::unique_ptr<LooperView> looper_;
   std::unique_ptr<SettingsScreen> settings_;
   Faceplate faceplate_;
   AppBanner banner_;

@@ -40,6 +40,13 @@ public:
   virtual bool redoChain() = 0;
   virtual bool resetToDefault() = 0;
 
+  // Global looper (runtime tool, not a preset block).
+  virtual bool looperCommand(const juce::String&) { return false; }
+  virtual void setLooperMidiEnabled(bool) {}
+  virtual void setLooperMix(float) {}
+  virtual void setLooperPan(float) {}
+  virtual juce::var getLooperState() { return {}; }
+
   // Chain mutations
   // Returns the new block id, "" on failure.
   virtual std::string loadTone(const juce::String& toneJson, const std::string& targetInsertId) = 0;

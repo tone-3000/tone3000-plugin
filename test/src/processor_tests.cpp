@@ -417,4 +417,24 @@ TEST(ProcessorTest, TailReportCoversDcBlockerWithEmptyChain) {
   EXPECT_DOUBLE_EQ(proc.getTailLengthSeconds(), 2.0);
 }
 
+TEST(ProcessorTest, LoggerSurvivesOverlappingAndSequentialProcessorDestruction) {
+  juce::Logger* logger = nullptr;
+  {
+    TONE3000Processor first;
+    logger = juce::Logger::getCurrentLogger();
+    ASSERT_NE(logger, nullptr);
+    {
+      TONE3000Processor second;
+      EXPECT_EQ(juce::Logger::getCurrentLogger(), logger);
+    }
+    EXPECT_EQ(juce::Logger::getCurrentLogger(), logger);
+  }
+  EXPECT_EQ(juce::Logger::getCurrentLogger(), logger);
+  {
+    TONE3000Processor third;
+    EXPECT_EQ(juce::Logger::getCurrentLogger(), logger);
+  }
+  EXPECT_EQ(juce::Logger::getCurrentLogger(), logger);
+}
+
 }  // namespace

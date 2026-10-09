@@ -24,6 +24,8 @@ PluginRoot::PluginRoot(Services& services)
   setOpaque(true);
   setFocusContainerType(FocusContainerType::keyboardFocusContainer);
 
+  faceplate_.onHideLooper = [this] { setLooperShown(false); };
+  faceplate_.onToggleLooper = [this] { setLooperShown(!looperShown()); };
   header_.onToggleTuner = [this](bool show) { setTunerShown(show); };
   header_.onStereoToggle = [this](bool stereo) {
     closeTunerThen([&] { services_.chain.setStereoMode(stereo); });
@@ -352,6 +354,7 @@ void PluginRoot::handleBannerAction(BannerAction action) {
 void PluginRoot::setTunerShown(bool shown) {
   if (shown == tunerShown()) return;
   if (shown) {
+    setLooperShown(false);
     tuner_ = std::make_unique<TunerView>(services_);
     tuner_->onClose = [this] { setTunerShown(false); };
     addAndMakeVisible(*tuner_);
@@ -361,6 +364,23 @@ void PluginRoot::setTunerShown(bool shown) {
   }
   syncTakeovers();
   header_.setTunerShown(shown);
+  resized();
+}
+
+void PluginRoot::setLooperShown(bool shown) {
+  if (shown && !services_.prefs.getBool(UiPrefs::kShowLooperControl, false)) return;
+  if (shown == looperShown()) return;
+  if (shown) {
+    setTunerShown(false);
+    looper_ = std::make_unique<LooperView>(services_);
+    looper_->onClose = [this] { setLooperShown(false); };
+    addAndMakeVisible(*looper_);
+    overlay_.toFront(false);
+  } else {
+    looper_.reset();
+  }
+  faceplate_.setLooperShown(shown);
+  syncTakeovers();
   resized();
 }
 
@@ -391,7 +411,7 @@ void PluginRoot::setBrowserShown(bool shown) {
 // What a takeover covers is hidden, not left painting underneath: the meters
 // tick at 30 Hz and would otherwise repaint for nothing.
 void PluginRoot::syncTakeovers() {
-  const bool tuner = tunerShown(), browser = browserShown(), signIn = signInShown();
+  const bool tuner = tunerShown() || looperShown(), browser = browserShown(), signIn = signInShown();
   const bool column = browser || signIn;  // something covers the whole column
   main_.setVisible(!tuner && !column);
   faceplate_.setVisible(tuner || !column);
@@ -400,11 +420,13 @@ void PluginRoot::syncTakeovers() {
 }
 
 void PluginRoot::closeTunerThen(const std::function<void()>& fn) {
+  setLooperShown(false);
   setTunerShown(false);
   if (fn) fn();
 }
 
 void PluginRoot::showChainThen(const std::function<void()>& fn) {
+  setLooperShown(false);
   setTunerShown(false);
   if (browserShown()) {
     services_.loadFlow.clearPendingTargets();
@@ -466,6 +488,7 @@ void PluginRoot::resized() {
   faceplate_.setBounds(column.removeFromBottom(Faceplate::kHeight));
   main_.setBounds(column);
   if (tuner_) tuner_->setBounds(column);
+  if (looper_) looper_->setBounds(column);
 
   // The toast floats above the faceplate, measured from the overlay's bottom.
   const int belowColumn = getHeight() - (slotH + design::kHeight + hintH);

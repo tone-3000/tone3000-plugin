@@ -18,6 +18,33 @@
 #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
 #endif
 
+namespace {
+
+// JUCE's current logger is a non-owning, process-wide pointer. Keep our
+// logger alive across processor instances, then detach and delete it when
+// this module shuts down. A logger supplied by the host remains untouched.
+class ProcessFileLoggerOwner {
+public:
+  explicit ProcessFileLoggerOwner(const juce::File& file) {
+    if (juce::Logger::getCurrentLogger() == nullptr) {
+      logger = std::make_unique<juce::FileLogger>(file, "TONE3000 JUCE Log");
+      juce::Logger::setCurrentLogger(logger.get());
+    }
+  }
+  ~ProcessFileLoggerOwner() {
+    if (logger && juce::Logger::getCurrentLogger() == logger.get())
+      juce::Logger::setCurrentLogger(nullptr);
+  }
+private:
+  std::unique_ptr<juce::FileLogger> logger;
+};
+
+void installProcessFileLogger(const juce::File& file) {
+  static ProcessFileLoggerOwner owner(file);
+}
+
+} // namespace
+
 // ##############
 // MAIN PROCESSOR
 // ##############
@@ -38,9 +65,7 @@ TONE3000Processor::TONE3000Processor()
   // Attach the file logger first thing: state restore (and the background
   // model loads it queues) runs before prepareToPlay, and its diagnostics
   // used to vanish because the logger didn't exist yet.
-  if (!juce::Logger::getCurrentLogger()) {
-    juce::Logger::setCurrentLogger(new juce::FileLogger(getLogFile(), "TONE3000 JUCE Log"));
-  }
+  installProcessFileLogger(getLogFile());
 
   // Heal the per-user app-data folder before anything writes to it: a
   // root-owned folder fails every settings save and drop-stash write while
@@ -96,6 +121,10 @@ TONE3000Processor::TONE3000Processor()
     toggleBlockPower(index, right);
   };
   midiMapper.onStereoToggle = [this] { setStereoMode(!isStereoMode()); };
+  midiMapper.onLooperRecordToggle = [this] {
+    if (looperMidiEnabled.load(std::memory_order_relaxed))
+      globalLooper.request(GlobalLooper::Command::toggleRecord);
+  };
 
   // Every lane starts at its minimum slot layout (kMinLaneSlots pass-through
   // insert placeholders). The right lane stays invisible until stereo mode is
@@ -525,8 +554,8 @@ TONE3000Processor::~TONE3000Processor() {
 
   juce::Logger::writeToLog("[Processor] Destructor called");
 
-  // Clean up the logger to prevent leaks
-  juce::Logger::setCurrentLogger(nullptr);
+  // The module owns the logger; other processors and their background
+  // workers may still be using it after this instance is destroyed.
 }
 
 // #############
@@ -559,7 +588,8 @@ double TONE3000Processor::getTailLengthSeconds() const {
   //    reference NAM plugin reports the same allowance for VST3 tail checks.
   const double irTailSeconds = irTailBaseSamples.load() / kChainBaseSampleRate;
   const double dcBlockerTailSeconds = 10.0 / 5.0;
-  return std::max(irTailSeconds, dcBlockerTailSeconds);
+  const double looperTail = globalLooper.getState() == MonoLooper::State::playing ? 40.0 : 0.0;
+  return std::max({irTailSeconds, dcBlockerTailSeconds, looperTail});
 }
 
 // The host program API (getNumPrograms and friends) lives in
@@ -979,6 +1009,8 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   midFilter.reset();
   trebleFilter.reset();
   dcBlocker.reset();
+
+  globalLooper.prepare(sampleRate);
 
   // Scratch buffers, sized once here; the RT path never resizes them.
   // The lane dry scratches live in the chain domain, where a callback can
@@ -2041,8 +2073,8 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // ###########
   // Output gain (level ±24 dB, same on both channels; the balance trim
   // lives in the post-chain image matrix above, pre-pan). Smoothed so knob
-  // moves glide instead of stepping once per block. Per-channel output
-  // meters ride the same pass.
+  // moves glide instead of stepping once per block. The global looper is
+  // added afterwards, so Output changes affect live guitar but not the take.
   // ###########
   {
     outputGainSmoother.setTargetValue(mainStageGain(cacheOutputLevel));
@@ -2053,11 +2085,18 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     for (int i = 0; i < numSamples; ++i) {
       const float g = outputGainSmoother.getNextValue();
       l[i] *= g;
+      if (r) r[i] *= g;
+    }
+
+    // Record post-Output and add playback at its recorded level. Pause during
+    // auto-align so its probe cannot enter a take or its measurement.
+    if (autoOffset.state() == AutoOffset::State::Idle)
+      globalLooper.process(l, r, numSamples, stereoRig);
+
+    // Meter the final sum, including loop playback.
+    for (int i = 0; i < numSamples; ++i) {
       peakL = std::max(peakL, std::abs(l[i]));
-      if (r) {
-        r[i] *= g;
-        peakR = std::max(peakR, std::abs(r[i]));
-      }
+      if (r) peakR = std::max(peakR, std::abs(r[i]));
     }
     if (numChannels < 2) 
       peakR = peakL;
@@ -2346,4 +2385,24 @@ juce::File TONE3000Processor::getLogFile() {
   return juce::FileLogger::getSystemLogFileFolder()
       .getChildFile("TONE3000")
       .getChildFile("TONE3000.log");
+}
+
+// Global looper controls (take and transport are never serialized in presets).
+bool TONE3000Processor::looperCommand(const juce::String& command) {
+  if (command == "record") globalLooper.request(GlobalLooper::Command::record);
+  else if (command == "stop") globalLooper.request(GlobalLooper::Command::stop);
+  else if (command == "play") globalLooper.request(GlobalLooper::Command::play);
+  else return false;
+  return true;
+}
+
+juce::var TONE3000Processor::getLooperState() const {
+  auto* result = new juce::DynamicObject();
+  const auto state = globalLooper.getState();
+  result->setProperty("state", state == MonoLooper::State::recording ? "Recording" :
+                     state == MonoLooper::State::playing ? "Playing" : "Stopped");
+  result->setProperty("seconds", globalLooper.seconds());
+  result->setProperty("mix", globalLooper.getMix());
+  result->setProperty("pan", globalLooper.getPan());
+  return juce::var(result);
 }
