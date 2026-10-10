@@ -11,7 +11,9 @@
 #             Components first: pluginval shells out to auval, which looks
 #             plugins up by registered component ID, not file path. auval also
 #             takes ~1 min on this plugin, longer than pluginval's default
-#             30 s per-test timeout, hence --timeout-ms.
+#             30 s per-test timeout, hence --timeout-ms. Windows needs far
+#             more than that anyway: Parameter thread safety alone runs past
+#             two minutes there, so the ceiling is generous (see timeout_ms).
 #   CLAP      clap-validator (github.com/free-audio/clap-validator; drop the
 #             release binary on PATH or in build/tools/).
 #   LV2       lv2lint if installed (Linux mainly); skipped otherwise. There is
@@ -19,14 +21,20 @@
 #   AAX       always skipped: needs Avid's DSH test harness + PACE signing.
 #   Standalone always skipped: it's an app, there is no host spec to validate.
 #
-# Strictness can be overridden with STRICTNESS=n.
+# Strictness can be overridden with STRICTNESS=n, the per-test timeout with
+# TIMEOUT_MS=n.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
 requested_format="${1:-}"
 build_type="${2:-Release}"
 strictness="${STRICTNESS:-10}"
-timeout_ms=120000
+# Per-test ceiling, not a delay: a healthy run never waits on it, so it costs
+# nothing to be generous and a hang is still caught, just later. Two minutes
+# was enough for auval on macOS but not for pluginval's Parameter thread
+# safety test on Windows, where the stock value fails every build — including
+# an unmodified main — with "Timeout after 2 mins".
+timeout_ms="${TIMEOUT_MS:-600000}"
 
 case "$build_type" in
   Debug|Release) ;;

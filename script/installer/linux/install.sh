@@ -17,10 +17,9 @@
 #               Presets/Factory (default: $XDG_CONFIG_HOME/TONE3000,
 #               or ~/.config/TONE3000)
 #
-# Runtime dependencies: the UI runs in a system WebKitGTK webview, which JUCE
-# loads dynamically at runtime (it is NOT bundled, unlike WebView2 on Windows).
-# Without it the plugin window renders black. This script checks for the
-# required libraries and offers to install them with your package manager.
+# Runtime dependencies: JUCE dlopens libcurl (tone downloads), ALSA and
+# FreeType at runtime rather than linking them. This script checks for them
+# and offers to install them with your package manager.
 
 set -euo pipefail
 
@@ -40,8 +39,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # under `set -o pipefail`: grep -q exits as soon as it finds a match, which
 # can SIGPIPE a still-writing ldconfig, and pipefail then reports that SIGPIPE
 # exit as the whole pipeline failing even though grep found the library. That
-# made this script randomly claim present libraries (webkit, gtk3, ...) were
-# missing. Matching in-shell against a single captured snapshot avoids the
+# made this script randomly claim present libraries were missing. Matching in-shell against a single captured snapshot avoids the
 # pipe entirely.
 LDCONFIG_CACHE="$(ldconfig -p 2>/dev/null || true)"
 
@@ -53,33 +51,24 @@ have_lib() {
   esac
 }
 
-# JUCE dlopens WebKitGTK at runtime, preferring the 4.1 ABI (libsoup3) and
-# falling back to 4.0 (libsoup2). Either one works.
-have_webkit() {
-  { have_lib "libwebkit2gtk-4.1.so" && have_lib "libjavascriptcoregtk-4.1.so" && have_lib "libsoup-3.0.so"; } ||
-  { have_lib "libwebkit2gtk-4.0.so" && have_lib "libjavascriptcoregtk-4.0.so" && have_lib "libsoup-2.4.so"; }
-}
-
-# JUCE also dlopens libcurl at runtime for native HTTPS (tone model
-# downloads). It accepts the OpenSSL or GnuTLS flavour, any current SONAME.
+# JUCE dlopens libcurl at runtime for HTTPS (tone model downloads). It
+# accepts the OpenSSL or GnuTLS flavour, any current SONAME.
 have_curl() {
   have_lib "libcurl.so" || have_lib "libcurl-gnutls.so"
 }
 
 # Everything the binary needs but may not be on a minimal install.
-# Prints the names of missing components (webkit, curl, gtk3, alsa, freetype).
+# Prints the names of missing components (curl, alsa, freetype).
 missing_deps() {
   local missing=()
-  have_webkit             || missing+=("webkit")
   have_curl               || missing+=("curl")
-  have_lib "libgtk-3.so"  || missing+=("gtk3")
   have_lib "libasound.so" || missing+=("alsa")
   have_lib "libfreetype.so" || missing+=("freetype")
   echo "${missing[@]:-}"
 }
 
 # Debian/Ubuntu renamed several runtime packages for the 64-bit time_t
-# transition (24.04+: libgtk-3-0t64, libasound2t64). Pick whichever name
+# transition (24.04+: libcurl4t64, libasound2t64). Pick whichever name
 # exists in this system's package index.
 apt_pick() {
   for name in "$@"; do
@@ -96,30 +85,22 @@ apt_pick() {
 install_command() {
   local missing="$1" pkgs=()
   if command -v apt-get >/dev/null; then
-    [[ "$missing" == *webkit* ]]   && pkgs+=("$(apt_pick libwebkit2gtk-4.1-0 libwebkit2gtk-4.0-37)")
     [[ "$missing" == *curl* ]]     && pkgs+=("$(apt_pick libcurl4t64 libcurl4)")
-    [[ "$missing" == *gtk3* ]]     && pkgs+=("$(apt_pick libgtk-3-0t64 libgtk-3-0)")
     [[ "$missing" == *alsa* ]]     && pkgs+=("$(apt_pick libasound2t64 libasound2)")
     [[ "$missing" == *freetype* ]] && pkgs+=("libfreetype6")
     echo "sudo apt-get install -y ${pkgs[*]}"
   elif command -v dnf >/dev/null; then
-    [[ "$missing" == *webkit* ]]   && pkgs+=("webkit2gtk4.1")
     [[ "$missing" == *curl* ]]     && pkgs+=("libcurl")
-    [[ "$missing" == *gtk3* ]]     && pkgs+=("gtk3")
     [[ "$missing" == *alsa* ]]     && pkgs+=("alsa-lib")
     [[ "$missing" == *freetype* ]] && pkgs+=("freetype")
     echo "sudo dnf install -y ${pkgs[*]}"
   elif command -v pacman >/dev/null; then
-    [[ "$missing" == *webkit* ]]   && pkgs+=("webkit2gtk-4.1")
     [[ "$missing" == *curl* ]]     && pkgs+=("curl")
-    [[ "$missing" == *gtk3* ]]     && pkgs+=("gtk3")
     [[ "$missing" == *alsa* ]]     && pkgs+=("alsa-lib")
     [[ "$missing" == *freetype* ]] && pkgs+=("freetype2")
     echo "sudo pacman -S --needed --noconfirm ${pkgs[*]}"
   elif command -v zypper >/dev/null; then
-    [[ "$missing" == *webkit* ]]   && pkgs+=("libwebkit2gtk-4_1-0")
     [[ "$missing" == *curl* ]]     && pkgs+=("libcurl4")
-    [[ "$missing" == *gtk3* ]]     && pkgs+=("libgtk-3-0")
     [[ "$missing" == *alsa* ]]     && pkgs+=("alsa")
     [[ "$missing" == *freetype* ]] && pkgs+=("libfreetype6")
     echo "sudo zypper install -y ${pkgs[*]}"
@@ -131,15 +112,12 @@ check_and_install_deps() {
   missing="$(missing_deps)"
 
   if [[ -z "$missing" ]]; then
-    echo "Runtime dependencies: OK (WebKitGTK, GTK3, ALSA, FreeType found)"
+    echo "Runtime dependencies: OK (curl, ALSA, FreeType found)"
     return 0
   fi
 
   echo ""
   echo "Missing runtime dependencies: $missing"
-  if [[ "$missing" == *webkit* ]]; then
-    echo "  Note: without WebKitGTK the plugin window will render as a black screen."
-  fi
   if [[ "$missing" == *curl* ]]; then
     echo "  Note: without libcurl, tone model downloads from TONE3000 will fail."
   fi
@@ -149,9 +127,7 @@ check_and_install_deps() {
   # print instructions instead of auto-running anything.
   if [[ -f /run/ostree-booted ]]; then
     local pkgs=()
-    [[ "$missing" == *webkit* ]]   && pkgs+=("webkit2gtk4.1")
     [[ "$missing" == *curl* ]]     && pkgs+=("libcurl")
-    [[ "$missing" == *gtk3* ]]     && pkgs+=("gtk3")
     [[ "$missing" == *alsa* ]]     && pkgs+=("alsa-lib")
     [[ "$missing" == *freetype* ]] && pkgs+=("freetype")
     echo ""
@@ -170,9 +146,8 @@ check_and_install_deps() {
   fi
   if [[ -z "$cmd" ]]; then
     echo ""
-    echo "Could not detect your package manager. Install the WebKitGTK 4.1 (or 4.0),"
-    echo "curl, GTK3, ALSA and FreeType runtime libraries with your distro's package"
-    echo "manager, then re-run this script."
+    echo "Could not detect your package manager. Install the curl, ALSA and FreeType"
+    echo "runtime libraries with your distro's package manager, then re-run this script."
     return 1
   fi
 
@@ -196,7 +171,7 @@ check_and_install_deps() {
     fi
     echo "Runtime dependencies: OK"
   else
-    echo "Skipped. The plugin UI will not work until these are installed."
+    echo "Skipped. Tone downloads and/or audio will not work until these are installed."
     return 1
   fi
 }
@@ -253,7 +228,7 @@ if [[ ! -d "$HERE/TONE3000.vst3" || ! -d "$HERE/TONE3000.lv2" ||
   exit 1
 fi
 
-# Dependencies first: a black-screen install is worse than no install.
+# Dependencies first: a broken install is worse than no install.
 deps_ok=1
 check_and_install_deps || deps_ok=0
 check_linked_libs || deps_ok=0
@@ -325,6 +300,5 @@ fi
 if [[ "$deps_ok" == "0" ]]; then
   echo ""
   echo "WARNING: runtime dependencies are still missing (see above)."
-  echo "The plugin UI will show a black screen until they are installed."
   echo "Re-run './install.sh --check' after installing them to verify."
 fi

@@ -1,0 +1,39 @@
+The 206 catalog models (1.8% of 11,463) that fail the peak-ratio >= 2 gate
+at the defaults, re-probed every way that might rescue them
+=====================================================================
+
+Who they are: high-gain amp captures (names like "MOAB", "Heavy Hand",
+"SLO RATT ATTACK", "6262 Lead", "5150 gain 9", "AFD 100"), 103 amp-cab,
+94 amp, 7 pedal, 2 outboard; 102 sweep-v3, 81 dry-wet, 23 convert. Their
+loudness metadata is unremarkable (median -19.1 dB vs -18.4 for the
+catalog). Confidence (normalized correlation of output vs probe) is
+0.02-0.08 against a catalog median of 0.50: the output is nearly
+uncorrelated with the sweep. 113 of the 153 catalog models with
+confidence < 0.1 are in this set.
+
+Each row: nam_latency_tool --csv with the given flags over the 206 files.
+"pass" = peak-ratio >= 2 on both analyzers; "agree" = of those, time-domain
+and GCC-PHAT peaks within 1 sample; "stable" = of those, GCC-PHAT peak
+within 1 sample of the same probe 10 dB quieter.
+
+  probe                        pass        agree  stable  median conf
+  --amp 0.6     (-4 dBFS)      23  (11%)    19      -        0.08
+  --amp 0.3     (-10 dBFS)     11  ( 5%)     9      -        0.07
+  defaults      (-20 dBFS)      0  ( 0%)     0      -        0.06
+  --amp 0.0316  (-30 dBFS)     20  (10%)     8      -        0.03
+  --amp 0.01    (-40 dBFS)     26  (13%)    10      -        0.02
+  --amp 0.003   (-50 dBFS)     23  (11%)    12      -        0.02
+  --max-lag-ms 2                7  ( 3%)     6       6       0.06
+  --probe-ms 280               15  ( 7%)    11      11       0.02
+  --probe-ms 1000              32  (16%)    26      21       0.02
+
+Confidence falls as the probe gets quieter: at low level the output is
+dominated by something that is not a response to the input (a learned
+noise/hum floor, or self-oscillation). At high level it is saturation. A
+1 s sweep (10x the inference) recovers one in six. None of this is worth
+a default. Treat a gate failure as "unmeasurable", store nothing for the
+peak and polarity, and do not apply a correction.
+
+The onset is more robust than the peak even here: 166 of the 206 (81%)
+report the same onset within 1 sample at -20 and -30 dBFS. It may be
+shown as a diagnostic; it should not be applied automatically.

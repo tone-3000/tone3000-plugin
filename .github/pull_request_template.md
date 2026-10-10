@@ -7,7 +7,7 @@
 CI does not run on pull requests. A maintainer can dispatch **Build Plugin** from the Actions tab when they want a full signed build. Run the local checks this PR can break:
 
 - [ ] DSP: `./script/test-dsp.sh` (or N/A: no audio/chain/state change)
-- [ ] UI: `cd ui && npm run lint && npm run build` (or N/A: no `ui/` change)
+- [ ] UI: `UiTestbed --selftest`, and a `--capture` before/after diff for visual changes (or N/A: no `plugin/ui/` change; see `plugin/ui/README.md`)
 - [ ] Host validators, if you touched the processor, editor, or plugin wrappers: `./script/validate-plugin.sh` ([pluginval](https://github.com/Tracktion/pluginval) strictness 10 for VST3/AU, clap-validator, lv2lint). AAX and Standalone are skipped by that script.
 - [ ] Host smoke (DAW + format + sample rate), if this is user-visible
 

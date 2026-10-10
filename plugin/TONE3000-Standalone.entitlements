@@ -14,7 +14,9 @@
     <!-- Microphone access for audio input -->
     <key>com.apple.security.device.audio-input</key>
     <true/>
-    <!-- Network access for WebView UI -->
+    <!-- Network access: TONE3000 API, tone downloads, the update check, and
+         the OAuth loopback listener -->
+
     <key>com.apple.security.network.client</key>
     <true/>
 </dict>

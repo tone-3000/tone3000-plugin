@@ -20,8 +20,10 @@
 // Run locally:  ./script/test-dsp.sh          (configures/builds/runs)
 // or manually:  cmake --build build --target DspTests
 //               ctest --test-dir build -R Dsp --output-on-failure
+#include "ChainBlock.h"
 #include "ChainOversampler.h"
 #include "NamEngine.h"
+#include "Processor.h"
 #include "RtWorkerPool.h"
 #include "test_helpers.h"
 
@@ -251,22 +253,23 @@ TEST(ChainOversamplerTest, IslandHandlesMonoBuffers) {
 
 // NamEngine (real A2 models)
 
-// Builds phase instances from a .nam file exactly the way the model loader
-// does (nam::get_dsp per phase, all from the same parsed config).
+// Builds model instances from a .nam file exactly the way the model loader
+// does (nam::get_dsp per instance, all from the same parsed config):
+// `instanceCount` phases per voice, `voices` voices (voice-major layout).
 std::unique_ptr<NamEngine> makeNamEngine(const juce::File& modelFile, int oversampleFactor,
-                                         int instanceCount) {
+                                         int instanceCount, int voices = 1) {
   juce::MemoryBlock bytes;
   EXPECT_TRUE(modelFile.loadFileAsData(bytes));
   const auto* begin = static_cast<const char*>(bytes.getData());
   const nlohmann::json config = nlohmann::json::parse(begin, begin + bytes.getSize());
 
   std::vector<std::unique_ptr<nam::DSP>> instances;
-  for (int i = 0; i < instanceCount; ++i) {
+  for (int i = 0; i < instanceCount * voices; ++i) {
     auto dsp = nam::get_dsp(config);
     EXPECT_NE(dsp, nullptr);
     instances.push_back(std::move(dsp));
   }
-  return std::make_unique<NamEngine>(std::move(instances), oversampleFactor);
+  return std::make_unique<NamEngine>(std::move(instances), oversampleFactor, voices);
 }
 
 struct NamModelParam {
@@ -409,6 +412,159 @@ TEST_P(NamEngineTest, PhaseForkMatchesSerialBitExact) {
     for (int i = 0; i < total; ++i)
       ASSERT_EQ(serial[static_cast<size_t>(i)], forked[static_cast<size_t>(i)]) << "at " << i;
   }
+}
+
+// Dual mono voices (see the NamEngine.h header): a two-voice engine fed a
+// stereo buffer with `dualMono` set must compute, on each channel, exactly
+// what a fresh single-voice engine computes on that channel alone. This is
+// the whole definition of the feature at the engine level.
+TEST_P(NamEngineTest, DualMonoVoicesProcessChannelsIndependently) {
+  const int total = 4096;
+  const auto inL = makeNoise(total, 7001, 0.5f);
+  const auto inR = makeNoise(total, 7002, 0.5f);
+
+  auto dual = makeNamEngine(testFile(GetParam().file), 1, 1, /*voices=*/2);
+  EXPECT_EQ(dual->getVoiceCount(), 2);
+  EXPECT_EQ(dual->getPhaseCount(), 1);
+  dual->prepare(512);
+  juce::AudioBuffer<float> stereo(2, total);
+  stereo.copyFrom(0, 0, inL.data(), total);
+  stereo.copyFrom(1, 0, inR.data(), total);
+  dual->process(stereo, nullptr, /*dualMono=*/true);
+
+  auto reference = [&](const std::vector<float>& in) {
+    auto engine = makeNamEngine(testFile(GetParam().file), 1, 1);
+    engine->prepare(512);
+    juce::AudioBuffer<float> mono(1, total);
+    mono.copyFrom(0, 0, in.data(), total);
+    engine->process(mono);
+    return std::vector<float>(mono.getReadPointer(0), mono.getReadPointer(0) + total);
+  };
+  const auto refL = reference(inL);
+  const auto refR = reference(inR);
+
+  float lrDiff = 0.0f;
+  for (int i = 0; i < total; ++i) {
+    ASSERT_EQ(stereo.getSample(0, i), refL[static_cast<size_t>(i)]) << "left at " << i;
+    ASSERT_EQ(stereo.getSample(1, i), refR[static_cast<size_t>(i)]) << "right at " << i;
+    lrDiff = std::max(lrDiff, std::abs(stereo.getSample(0, i) - stereo.getSample(1, i)));
+  }
+  EXPECT_GT(lrDiff, 1e-3f) << "the two channels should carry different signals";
+}
+
+// Without the flag, or on a mono buffer, a two-voice engine is
+// indistinguishable from a single-voice one: voice 0 processes channel 0
+// and fans out. Pins that the chain's per-callback gating (Left/Right
+// folds, mono host buses, stereo chains) never pays for the idle voice and
+// never changes the sound.
+TEST_P(NamEngineTest, DualMonoEngineFallsBackToFanOut) {
+  const int total = 2048;
+  const auto inL = makeNoise(total, 7003, 0.5f);
+  const auto inR = makeNoise(total, 7004, 0.5f);
+
+  auto single = makeNamEngine(testFile(GetParam().file), 1, 1);
+  single->prepare(512);
+  juce::AudioBuffer<float> ref(1, total);
+  ref.copyFrom(0, 0, inL.data(), total);
+  single->process(ref);
+
+  {
+    SCOPED_TRACE("stereo buffer, dualMono = false");
+    auto dual = makeNamEngine(testFile(GetParam().file), 1, 1, 2);
+    dual->prepare(512);
+    juce::AudioBuffer<float> stereo(2, total);
+    stereo.copyFrom(0, 0, inL.data(), total);
+    stereo.copyFrom(1, 0, inR.data(), total);
+    dual->process(stereo, nullptr, false);
+    for (int i = 0; i < total; ++i) {
+      ASSERT_EQ(stereo.getSample(0, i), ref.getSample(0, i)) << "at " << i;
+      ASSERT_EQ(stereo.getSample(1, i), ref.getSample(0, i)) << "fan-out at " << i;
+    }
+  }
+  {
+    SCOPED_TRACE("mono buffer, dualMono = true");
+    auto dual = makeNamEngine(testFile(GetParam().file), 1, 1, 2);
+    dual->prepare(512);
+    juce::AudioBuffer<float> mono(1, total);
+    mono.copyFrom(0, 0, inL.data(), total);
+    dual->process(mono, nullptr, true);
+    for (int i = 0; i < total; ++i)
+      ASSERT_EQ(mono.getSample(0, i), ref.getSample(0, i)) << "at " << i;
+  }
+  {
+    SCOPED_TRACE("single-voice engine ignores dualMono");
+    auto one = makeNamEngine(testFile(GetParam().file), 1, 1);
+    one->prepare(512);
+    juce::AudioBuffer<float> stereo(2, total);
+    stereo.copyFrom(0, 0, inL.data(), total);
+    stereo.copyFrom(1, 0, inR.data(), total);
+    one->process(stereo, nullptr, true);
+    for (int i = 0; i < total; ++i) {
+      ASSERT_EQ(stereo.getSample(0, i), ref.getSample(0, i)) << "at " << i;
+      ASSERT_EQ(stereo.getSample(1, i), ref.getSample(0, i)) << "fan-out at " << i;
+    }
+  }
+}
+
+// The flat voice × phase fork against the serial loop, on the same ugly
+// chunk geometry as the phase-only test, at every factor up to the pool's
+// 16-job limit (2 voices × 8 phases). Any job touching a sibling's stream
+// (the one hazard a voice-major slot layout could introduce) shows up as a
+// bit mismatch on one channel.
+TEST_P(NamEngineTest, DualMonoForkMatchesSerialBitExact) {
+  RtWorkerPool pool;
+  pool.start(kFs, 512);
+
+  for (const int factor : {1, 2, 4, 8}) {
+    SCOPED_TRACE("factor " + juce::String(factor));
+    const int chunk = 313, chunks = 24, total = chunk * chunks;
+    const auto inL = makeNoise(total, 60001 + factor, 0.5f);
+    const auto inR = makeNoise(total, 61001 + factor, 0.5f);
+
+    auto run = [&](RtWorkerPool* forkPool) {
+      auto engine = makeNamEngine(testFile(GetParam().file), factor, factor, 2);
+      engine->prepare(256);
+      std::vector<float> l(inL.begin(), inL.end()), r(inR.begin(), inR.end());
+      for (int off = 0; off < total; off += chunk) {
+        float* ptrs[] = {l.data() + off, r.data() + off};
+        juce::AudioBuffer<float> view(ptrs, 2, chunk);
+        engine->process(view, forkPool, true);
+      }
+      return std::make_pair(std::move(l), std::move(r));
+    };
+
+    const auto [sl, sr] = run(nullptr);
+    const auto [pl, pr] = run(&pool);
+    for (int i = 0; i < total; ++i) {
+      ASSERT_EQ(sl[static_cast<size_t>(i)], pl[static_cast<size_t>(i)]) << "left at " << i;
+      ASSERT_EQ(sr[static_cast<size_t>(i)], pr[static_cast<size_t>(i)]) << "right at " << i;
+    }
+  }
+}
+
+// Layout validation: the constructor is the only place the voice × phase
+// geometry is checked, so every malformed shape must be rejected there
+// rather than indexing out of range on the audio thread.
+TEST(NamEngineLayoutTest, RejectsMalformedVoiceLayouts) {
+  juce::MemoryBlock bytes;
+  ASSERT_TRUE(testFile("a2-amp-test.nam").loadFileAsData(bytes));
+  const auto* begin = static_cast<const char*>(bytes.getData());
+  const nlohmann::json config = nlohmann::json::parse(begin, begin + bytes.getSize());
+  auto make = [&](int count) {
+    std::vector<std::unique_ptr<nam::DSP>> instances;
+    for (int i = 0; i < count; ++i)
+      instances.push_back(nam::get_dsp(config));
+    return instances;
+  };
+
+  EXPECT_THROW(NamEngine(make(1), 1, 0), std::invalid_argument) << "zero voices";
+  EXPECT_THROW(NamEngine(make(3), 1, 3), std::invalid_argument) << "three voices";
+  EXPECT_THROW(NamEngine(make(3), 2, 2), std::invalid_argument) << "count not a voice multiple";
+  EXPECT_THROW(NamEngine(make(6), 2, 2), std::invalid_argument) << "phases neither 1 nor factor";
+  EXPECT_THROW(NamEngine(make(1), 0, 1), std::invalid_argument) << "factor below 1";
+  EXPECT_NO_THROW(NamEngine(make(2), 4, 2)) << "one phase per voice is valid at any factor";
+  EXPECT_NO_THROW(NamEngine(make(8), 4, 2)) << "factor phases per voice";
+  EXPECT_NO_THROW(NamEngine(make(16), 8, 2)) << "the 16-job maximum";
 }
 
 TEST(NamEngineAliasingTest, OversamplingReducesRealAmpAliasing) {
@@ -597,11 +753,84 @@ TEST(IrConvolutionTest, IslandedConvolutionInOversampledChainMatchesBaseRate) {
   }
 }
 
+TEST(IrConvolutionTest, ChunkedCappedConvolverMatchesHostSizedConvolver) {
+  // Above kIrConvolverMaxBlockSize the RT path prepares the convolver at the
+  // cap and feeds it through processConvolverInChunks (hosts like Ardour
+  // promise 8192 while running 64, and a convolver prepared for the promise
+  // burns ~40x the CPU). Partitioning must not change the sound: at every
+  // host block size, including ones above the cap and not a multiple of it,
+  // a capped, chunk-fed convolver matches one prepared for exactly that host
+  // block. (At or below the cap the plugin uses the host size itself, so
+  // the 64 and 256 rows here pin the helper, not the production spec.)
+  const int total = 96000;
+  const auto noise = makeNoise(total, 777, 0.25f);
+
+  // Settle JUCE's install crossfade on silence first, like the loader's
+  // elapseConvolverInstallFade, so both paths start fully wet from silent
+  // state and the comparison can cover every sample.
+  auto settle = [](juce::dsp::Convolution& convolver, int chunk) {
+    juce::AudioBuffer<float> silence(2, chunk);
+    for (int done = 0; done < static_cast<int>(kFs * 0.15); done += chunk) {
+      silence.clear();
+      juce::dsp::AudioBlock<float> block(silence);
+      convolver.process(juce::dsp::ProcessContextReplacing<float>(block));
+    }
+  };
+
+  auto run = [&](juce::dsp::Convolution& convolver, int hostBlock, bool chunked) {
+    juce::AudioBuffer<float> buffer(2, total);
+    buffer.copyFrom(0, 0, noise.data(), total);
+    buffer.copyFrom(1, 0, noise.data(), total);
+    for (int off = 0; off < total; off += hostBlock) {
+      const auto frames = static_cast<size_t>(std::min(hostBlock, total - off));
+      juce::dsp::AudioBlock<float> block(buffer.getArrayOfWritePointers(), 2,
+                                         static_cast<size_t>(off), frames);
+      if (chunked)
+        processConvolverInChunks(convolver, block);
+      else
+        convolver.process(juce::dsp::ProcessContextReplacing<float>(block));
+    }
+    return buffer;
+  };
+
+  for (const char* irName : {"cab-ir-test.wav", "reverb-ir-mono-test.wav"}) {
+    for (int hostBlock : {64, 256, 1000, 8192}) {
+      auto reference =
+          makeConvolver(testFile(irName), juce::dsp::Convolution::Stereo::no, hostBlock);
+      auto fixed = makeConvolver(testFile(irName), juce::dsp::Convolution::Stereo::no,
+                                 kIrConvolverMaxBlockSize);
+      settle(*reference, hostBlock);
+      settle(*fixed, kIrConvolverMaxBlockSize);
+
+      const auto expected = run(*reference, hostBlock, false);
+      const auto actual = run(*fixed, hostBlock, true);
+
+      float peak = 0.0f, maxDiff = 0.0f;
+      for (int ch = 0; ch < 2; ++ch)
+        for (int i = 0; i < total; ++i) {
+          peak = std::max(peak, std::abs(expected.getSample(ch, i)));
+          maxDiff =
+              std::max(maxDiff, std::abs(expected.getSample(ch, i) - actual.getSample(ch, i)));
+        }
+      ASSERT_GT(peak, 1e-3f) << irName << ": reference output is silent";
+      // Different FFT partitioning only reorders float rounding (-100 dB
+      // relative is far below anything audible, and far above a real bug).
+      EXPECT_LT(maxDiff, peak * 1e-5f)
+          << irName << " at host block " << hostBlock
+          << ": chunked fixed-size convolution deviates from host-sized convolution";
+    }
+  }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
   // JUCE convolution/format readers want the usual JUCE runtime scaffolding.
   juce::ScopedJuceInitialiser_GUI juceInit;
+  // Every processor the tests construct must start at the parameter
+  // defaults, whatever calibration/oversampling the developer's own
+  // machine-wide settings file holds.
+  TONE3000Processor::disableMachineDefaultParametersForTesting();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

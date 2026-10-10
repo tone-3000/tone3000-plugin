@@ -3,7 +3,9 @@
 
 BlockSpectrum::BlockSpectrum() {
   ring.resize(kRingSize, 0.0f);
+  ring1.resize(kRingSize, 0.0f);
   fftData.resize(kFftSize * 2, 0.0f);
+  fftData1.resize(kFftSize * 2, 0.0f);
   smoothedDb.resize(kNumBins, kMinDb);
 
   windowTable.resize(kFftSize);
@@ -16,16 +18,25 @@ BlockSpectrum::BlockSpectrum() {
 void BlockSpectrum::prepare(double newSampleRate) {
   sampleRate = newSampleRate > 0.0 ? newSampleRate : 48000.0;
   std::fill(ring.begin(), ring.end(), 0.0f);
+  std::fill(ring1.begin(), ring1.end(), 0.0f);
   std::fill(smoothedDb.begin(), smoothedDb.end(), kMinDb);
 }
 
-void BlockSpectrum::pushSamples(const float* ch0, const float* ch1OrNull, int numSamples) {
+void BlockSpectrum::pushSamples(const float* ch0, const float* ch1OrNull, int numSamples,
+                                bool independent) {
+  independent = independent && ch1OrNull != nullptr;
   int pos = writePos.load(std::memory_order_relaxed);
   for (int i = 0; i < numSamples; ++i) {
-    const float s = ch1OrNull != nullptr ? 0.5f * (ch0[i] + ch1OrNull[i]) : ch0[i];
-    ring[static_cast<size_t>(pos)] = s;
+    const auto slot = static_cast<size_t>(pos);
+    if (independent) {
+      ring[slot] = ch0[i];
+      ring1[slot] = ch1OrNull[i];
+    } else {
+      ring[slot] = ch1OrNull != nullptr ? 0.5f * (ch0[i] + ch1OrNull[i]) : ch0[i];
+    }
     pos = (pos + 1) & (kRingSize - 1);
   }
+  independentChannels.store(independent, std::memory_order_relaxed);
   writePos.store(pos, std::memory_order_release);
 }
 
@@ -43,28 +54,40 @@ juce::var BlockSpectrum::getSpectrum() {
   return juce::var(bins);
 }
 
-void BlockSpectrum::analyze() {
+void BlockSpectrum::transformRing(const std::vector<float>& source, int endPos,
+                                  std::vector<float>& data) {
   // Copy the most recent kFftSize samples out of the ring, windowed.
-  const int endPos = writePos.load(std::memory_order_acquire);
   const int start = (endPos - kFftSize) & (kRingSize - 1);
   for (int i = 0; i < kFftSize; ++i)
-    fftData[static_cast<size_t>(i)] =
-        ring[static_cast<size_t>((start + i) & (kRingSize - 1))] *
-        windowTable[static_cast<size_t>(i)];
-  std::fill(fftData.begin() + kFftSize, fftData.end(), 0.0f);
+    data[static_cast<size_t>(i)] = source[static_cast<size_t>((start + i) & (kRingSize - 1))] *
+                                   windowTable[static_cast<size_t>(i)];
+  std::fill(data.begin() + kFftSize, data.end(), 0.0f);
+  fft.performRealOnlyForwardTransform(data.data());
+}
 
-  fft.performRealOnlyForwardTransform(fftData.data());
+void BlockSpectrum::analyze() {
+  const int endPos = writePos.load(std::memory_order_acquire);
+  const bool independent = independentChannels.load(std::memory_order_relaxed);
+  transformRing(ring, endPos, fftData);
+  if (independent)
+    transformRing(ring1, endPos, fftData1);
 
   // Hann coherent gain is 0.5; 2/N for single-sided amplitude → 4/N overall.
   const float ampScale = 4.0f / static_cast<float>(kFftSize);
   const double binHz = sampleRate / static_cast<double>(kFftSize);
   const double logRatio = std::log(kMaxFreqHz / kMinFreqHz);
 
+  // Per FFT bin: the one spectrum, or the louder of the two channels'
+  // (dual mono shows whatever is in excess on either side).
   auto magnitudeAt = [&](int fftBin) -> float {
     fftBin = juce::jlimit(0, kFftSize / 2 - 1, fftBin);
-    const float re = fftData[static_cast<size_t>(fftBin * 2)];
-    const float im = fftData[static_cast<size_t>(fftBin * 2 + 1)];
-    return std::sqrt(re * re + im * im);
+    auto magnitude = [fftBin](const std::vector<float>& data) {
+      const float re = data[static_cast<size_t>(fftBin * 2)];
+      const float im = data[static_cast<size_t>(fftBin * 2 + 1)];
+      return std::sqrt(re * re + im * im);
+    };
+    const float m = magnitude(fftData);
+    return independent ? std::max(m, magnitude(fftData1)) : m;
   };
 
   for (int i = 0; i < kNumBins; ++i) {

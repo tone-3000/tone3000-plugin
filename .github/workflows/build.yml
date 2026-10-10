@@ -1,8 +1,9 @@
 # TONE3000 Plugin - Multi-platform build
 # Builds VST3, Standalone, AU (macOS), and AAX (macOS/Windows, PACE-signed
-# when secrets are configured) on macOS, Windows, and Linux. macOS is
-# universal via per-arch builds + lipo, since dual -arch clang invocations are
-# not sccache-cacheable.
+# when secrets are configured) on macOS, Windows, and Linux, plus the UI
+# testbed whose self-tests run next to the DSP suite. macOS is universal via
+# per-arch builds + lipo, since dual -arch clang invocations are not
+# sccache-cacheable.
 
 name: Build Plugin
 
@@ -27,13 +28,14 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     environment: builds
     env:
-      # Publishable key (OAuth client_id). A secret, not a variable, so it
-      # is never exposed through repo variables.
-      VITE_T3K_PUBLISHABLE_KEY: ${{ secrets.VITE_T3K_PUBLISHABLE_KEY }}
-      # Startup update check (ui/src/t3k/config.ts). Sourced from the repo
-      # variable, not hardcoded, so a clone without that variable falls
-      # back to the code default of off and never pings tone3000.com.
-      VITE_T3K_UPDATE_NOTICE: ${{ vars.VITE_T3K_UPDATE_NOTICE }}
+      # Publishable key (OAuth client_id), from the "builds" environment
+      # secrets. Read at CMake configure by plugin/ui/NativeUi.cmake into
+      # T3kConfig.h.
+      T3K_PUBLISHABLE_KEY: ${{ secrets.T3K_PUBLISHABLE_KEY }}
+      # Startup update check. Sourced from the environment, not hardcoded,
+      # so a clone without that secret falls back to the code default of
+      # off and never pings tone3000.com.
+      T3K_UPDATE_NOTICE: ${{ secrets.T3K_UPDATE_NOTICE }}
       # Compiler cache (see "Setup sccache" step below); persists compiled
       # object results across runs via the GitHub Actions cache backend.
       SCCACHE_GHA_ENABLED: "true"
@@ -105,43 +107,18 @@ jobs:
             cmake \
             pkg-config \
             libgtk-3-dev \
-            libwebkit2gtk-4.1-dev \
             libasound2-dev \
+            libjack-jackd2-dev \
             libcurl4-openssl-dev \
             libfreetype6-dev \
             libx11-dev \
             libxcomposite-dev \
             libxcursor-dev \
+            libxi-dev \
             libxinerama-dev \
             libxrandr-dev \
-            libxrender-dev
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: ui/package-lock.json
-
-      # CMake configure first to fetch JUCE (CPM), required before npm install
-      # (UI depends on libs/juce). Use the arm64 build dir; x86_64 is configured
-      # after the UI build. Single-arch (not "arm64;x86_64") so sccache can hash
-      # each compile; see the lipo step below.
-      - name: Configure CMake (macOS arm64 bootstrap)
-        if: matrix.os == 'macos'
-        run: |
-          cmake -B build-arm64 -S . \
-            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DBUILD_AAX=ON \
-            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
-            -DCMAKE_OBJC_COMPILER_LAUNCHER=sccache \
-            -DCMAKE_OBJCXX_COMPILER_LAUNCHER=sccache
-
-      - name: Install WebView2 (Windows)
-        if: matrix.os == 'windows'
-        run: pwsh -File script/install-webview2.ps1
+            libxrender-dev \
+            xvfb
 
       # CMAKE_<LANG>_COMPILER_LAUNCHER (how sccache hooks in, see below) is only
       # honored by the Makefile/Ninja generators, not the default Visual Studio
@@ -172,47 +149,17 @@ jobs:
           "ASIO_SDK_PATH=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "ASIO SDK extracted to $sdk"
 
-      - name: Configure CMake (Windows)
-        if: matrix.os == 'windows'
-        shell: bash
-        run: |
-          cmake -B build -S . -G Ninja \
-            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
-            -DBUILD_AAX=ON \
-            -DASIO_SDK_PATH="$ASIO_SDK_PATH" \
-            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
-
-      - name: Configure CMake (Linux)
-        if: matrix.os == 'linux'
-        run: |
-          cmake -B build -S . \
-            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
-            -DCMAKE_TOOLCHAIN_FILE=cmake/linux-toolchain.cmake \
-            -DBUILD_AAX=OFF \
-            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
-
-      - name: Build UI
-        run: |
-          cd ui
-          npm ci
-          npm run build
-          cd ..
-
-      - name: Lint UI (Linux)
-        if: matrix.os == 'linux'
-        run: |
-          cd ui
-          npm run lint
-
-      - name: Reconfigure CMake (macOS arm64)
+      # Single-arch macOS builds (not "arm64;x86_64") so sccache can hash each
+      # compile; see the lipo step below. -DT3K_BUILD_UI_TESTBED builds the UI
+      # testbed alongside and registers its self-tests with ctest.
+      - name: Configure CMake (macOS arm64)
         if: matrix.os == 'macos'
         run: |
           cmake -B build-arm64 -S . \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DBUILD_AAX=ON \
+            -DT3K_BUILD_UI_TESTBED=ON \
             -DCMAKE_C_COMPILER_LAUNCHER=sccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
             -DCMAKE_OBJC_COMPILER_LAUNCHER=sccache \
@@ -230,24 +177,26 @@ jobs:
             -DCMAKE_OBJC_COMPILER_LAUNCHER=sccache \
             -DCMAKE_OBJCXX_COMPILER_LAUNCHER=sccache
 
-      - name: Reconfigure CMake (Windows)
+      - name: Configure CMake (Windows)
         if: matrix.os == 'windows'
         shell: bash
         run: |
           cmake -B build -S . -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DBUILD_AAX=ON \
+            -DT3K_BUILD_UI_TESTBED=ON \
             -DASIO_SDK_PATH="$ASIO_SDK_PATH" \
             -DCMAKE_C_COMPILER_LAUNCHER=sccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
-      - name: Reconfigure CMake (Linux)
+      - name: Configure CMake (Linux)
         if: matrix.os == 'linux'
         run: |
           cmake -B build -S . \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DCMAKE_TOOLCHAIN_FILE=cmake/linux-toolchain.cmake \
             -DBUILD_AAX=OFF \
+            -DT3K_BUILD_UI_TESTBED=ON \
             -DCMAKE_C_COMPILER_LAUNCHER=sccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
@@ -278,6 +227,21 @@ jobs:
       - name: Run DSP tests (macOS)
         if: matrix.os == 'macos'
         run: ctest --test-dir build-arm64/test --output-on-failure
+
+      # The native UI's pure-logic unit tests (plugin/ui/testbed/SelfTests.cpp:
+      # parsers, wrapping, OAuth/PKCE, token refresh, the connection gate).
+      # The testbed is a JUCE GUI app, so Linux gives it a virtual display.
+      - name: Run UI self-tests (Linux)
+        if: matrix.os == 'linux'
+        run: xvfb-run -a ctest --test-dir build/plugin/ui/testbed --output-on-failure
+
+      - name: Run UI self-tests (Windows)
+        if: matrix.os == 'windows'
+        run: ctest --test-dir build/plugin/ui/testbed --output-on-failure
+
+      - name: Run UI self-tests (macOS)
+        if: matrix.os == 'macos'
+        run: ctest --test-dir build-arm64/plugin/ui/testbed --output-on-failure
 
       # Merge single-arch artefact trees into the path create-pkg.sh expects.
       - name: Lipo universal artefacts (macOS)
@@ -576,8 +540,8 @@ jobs:
     runs-on: macos-14
     environment: builds
     env:
-      VITE_T3K_PUBLISHABLE_KEY: ${{ secrets.VITE_T3K_PUBLISHABLE_KEY }}
-      VITE_T3K_UPDATE_NOTICE: ${{ vars.VITE_T3K_UPDATE_NOTICE }}
+      T3K_PUBLISHABLE_KEY: ${{ secrets.T3K_PUBLISHABLE_KEY }}
+      T3K_UPDATE_NOTICE: ${{ secrets.T3K_UPDATE_NOTICE }}
 
     steps:
       - name: Checkout
@@ -597,27 +561,7 @@ jobs:
             libs/clap-juce-extensions
           key: cpm-deps-ios-${{ hashFiles('CMakeLists.txt', 'plugin/CMakeLists.txt') }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: ui/package-lock.json
-
-      # Same order as the desktop job: configure first so CPM fetches JUCE,
-      # which the UI build needs, then reconfigure so the content-hashed UI
-      # assets are picked up (plugin/CMakeLists.txt globs them at configure).
-      - name: Configure CMake (iOS Simulator bootstrap)
-        run: cmake --preset ios-simulator
-
-      - name: Build UI
-        run: |
-          cd ui
-          npm ci
-          npm run build
-          cd ..
-
-      - name: Reconfigure CMake (iOS Simulator)
+      - name: Configure CMake (iOS Simulator)
         run: cmake --preset ios-simulator
 
       - name: Build Standalone (iOS Simulator)

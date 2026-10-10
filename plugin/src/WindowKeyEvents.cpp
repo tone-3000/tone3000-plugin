@@ -1,4 +1,4 @@
-#include "EditorWebViewSetup.h"
+#include "WindowKeyEvents.h"
 
 // Windows and Linux implementations of forwardKeyToHost; the macOS one
 // lives in WindowKeyEvents.mm. Same shape on every platform: hand keyboard
@@ -10,7 +10,7 @@
 
 #include <windows.h>
 
-namespace EditorWebViewSetup {
+namespace HostKeys {
 
 void forwardKeyToHost(void* nativeHandle, HostKey key) {
   HWND host = GetAncestor(static_cast<HWND>(nativeHandle), GA_ROOT);
@@ -32,7 +32,7 @@ void forwardKeyToHost(void* nativeHandle, HostKey key) {
   PostMessageW(host, WM_KEYUP, virtualKey, up);
 }
 
-}  // namespace EditorWebViewSetup
+}  // namespace HostKeys
 
 #elif JUCE_LINUX
 
@@ -62,7 +62,7 @@ namespace {
 
 }  // namespace
 
-namespace EditorWebViewSetup {
+namespace HostKeys {
 
 void forwardKeyToHost(void* nativeHandle, HostKey key) {
   // A private connection: the peer's Display is JUCE-internal, and one
@@ -94,6 +94,6 @@ void forwardKeyToHost(void* nativeHandle, HostKey key) {
   XCloseDisplay(display);  // flushes the queue
 }
 
-}  // namespace EditorWebViewSetup
+}  // namespace HostKeys
 
 #endif

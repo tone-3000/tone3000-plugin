@@ -16,6 +16,14 @@ threads. Two sections fork:
   one native-rate model per core instead of eight on one. This fork nests
   inside a lane fork when both apply, and unlike the lane fork it doesn't
   need stereo: a mono chain's oversampled NAM blocks fork too.
+- **Dual-mono voices.** In Dual Mono input mode a mono chain's `NamEngine`
+  holds two voices (one per input channel), each with its own full set of
+  phase instances. The engine forks the flat voice × phase set as one group
+  (at most 2 × 8 = 16 jobs, the pool's `kMaxJobs`), so a dual-mono 8x
+  model still costs about one native-rate model per core. The voices are
+  as independent as the phases (separate models, separate buffers), and
+  `MultiCoreTest.DualMonoParallelMatchesSerialBitExact` pins the output as
+  bit-identical to the serial loop at every factor.
 
 Implementation is `plugin/include/RtWorkerPool.h` (header-only). The
 contract is pinned by `test/src/worker_pool_tests.cpp` (the scheduling
@@ -85,8 +93,14 @@ work saves (a dozen realtime threads wake to find the one job already
 claimed), enough to cancel the lane fork's speedup outright on a 14-core
 machine. The park/publish race is closed with a seq_cst fence pairing
 (worker: set bit, then re-check for armed jobs; publisher: arm jobs, then
-read the mask), and the 1 ms park timeout plus the join steal bound a
-doubly-missed wakeup to one serial-cost block.
+read the mask), and the join steal bounds a doubly-missed wakeup to one
+serial-cost block. Parked workers also re-check on a 100 ms timeout as a
+last resort. That timeout was 1 ms originally, and with every wake
+signalled explicitly it only added kernel time: 13 parked workers timing
+out 1,000 times a second cost about 11% of a core while the plugin was
+idle, more than the neural net itself. Profiled on a 14-core M-series Mac
+with `ps -M`: the worker threads showed ~0.8% system time each and ~0.1%
+user time; at 100 ms they show 0.0%.
 
 One easy-to-miss detail: FTZ/DAZ denormal flags are per-thread CPU state.
 Each worker sets `ScopedNoDenormals` in its own loop; without it, NAM decay

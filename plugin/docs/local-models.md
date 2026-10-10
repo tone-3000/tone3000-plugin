@@ -8,21 +8,30 @@ second-class block: once in, they ride the exact catalog pipeline
 (background load, in-memory model cache, undo, duplication, presets, DAW
 state), and the code branches on "local" in only a handful of places.
 
-Entry points: `handleDropFile` in `ui/src/hooks/useToneLoadFlow.ts` →
-`loadLocalTone` in `plugin/src/ProcessorModelLoader.cpp` (drops), and the
-tiles' menus → `pickLocalToneFile` on the editor → `loadLocalTonePath`
-(picker). Behavior is pinned by `test/src/local_load_tests.cpp`.
+Entry points: both the drop and the picker land in
+`plugin/ui/services/LocalFiles` (`drop` / `pick`), which hands a path to
+`TONE3000Processor::loadLocalTonePath` in
+`plugin/src/ProcessorModelLoader.cpp` (on iOS, security-scoped URLs to
+`loadLocalToneUrls`; see `docs/ios.md`). Behavior is pinned by
+`test/src/local_load_tests.cpp`, which drives the byte-array sibling
+`loadLocalTone` ({ name, base64 data } entries: the shape the UI used before
+it had file paths, kept because the tests feed files that way).
 
-## The drop
+## Drop and picker
 
-The stock OS webviews never expose file paths to the DOM (no Electron-style
-`webUtils.getPathForFile`), so the UI reads the dropped bytes and ships them
-over the bridge as base64, one `{ name, data }` entry per file. Folders are
-walked recursively; the majority extension decides NAM vs IR, the folder
-name becomes the tone title, and each file becomes one model named after it
-(300 max, matching the catalog's per-tone model limit).
+Dropping a file or folder onto a tile (`juce::FileDragAndDropTarget` on the
+gallery tiles) and right-clicking a tile for **Load File** / **Load Folder**
+(a native `juce::FileChooser`) are the same route with two front doors: an
+insert slot adds, a tone tile swaps in place.
 
-Native validates each file at drop time (`.nam` must parse and pass the A2
+`loadLocalTonePath` reads the bytes straight from disk. A folder is walked
+recursively; the majority extension decides NAM vs IR, the folder name
+becomes the tone title, and each file becomes one model named after it
+(300 files / 50 MB each max, matching the catalog's per-tone model limit,
+in natural name order). A single file must be `.nam` or `.wav` and is titled
+from its name.
+
+Each file is validated at load time (`.nam` must parse and pass the A2
 shape check, `.wav` must open as real audio) so a bad file is a toast, never
 a retry badge. Survivors are stashed (below) and wrapped in a synthetic tone
 JSON: `id: 0`, `local: true`, and each model's `model_url` pointing at its
@@ -30,24 +39,23 @@ stash copy with a `file://` URL. From there `loadTone` takes over, and
 `fetchModelFromUrl` resolves `file://` URLs from disk instead of the
 network.
 
-## The picker
+While a file is open for validation, its gear is inferred best-effort so a
+lane of local tiles isn't a row of identical file glyphs: a `.nam`'s
+`metadata.gear_type` (free text written by the trainer; only the common
+spellings map, e.g. `amp` / `pedal_amp` / `preamp` → `amp`, `amp_cab` →
+`amp-cab`, `studio` → `outboard`) and, for an IR, cab length (at or under
+the short/long cutoff → `cab`). The result is the same catalog `gear` id a
+TONE3000 tone carries, set on the tone from its first file; when nothing
+matches, `gear` is simply absent and the tile keeps the generic file glyph
+(`ToneImage`).
 
-Right-clicking a tile offers **Load File** / **Load Folder**: a native
-`juce::FileChooser` on the editor (`pickLocalToneFile`), whose pick feeds
-`loadLocalTonePath`, the path-based sibling of `loadLocalTone` that reads
-bytes straight from disk (no base64 bridge trip) and then converges on the
-same validate/stash/load pipeline. The folder rules the UI implements for
-drops (majority extension, 300-file / 50 MB caps, natural name order, title
-from the folder name) live natively in `loadLocalTonePath` for this flow.
-An insert slot adds and a tone tile swaps in place, the same targeting as a
-drop.
-
-The picker isn't sugar: it's the local-load route that works everywhere.
-Linux never delivers OS file drags to the embedded WebKitGTK view (XDnD
-dies at the embedded `GtkPlug`, below the DOM, so no drop event ever fires;
-[issue #22](https://github.com/tone-3000/tone3000-plugin/issues/22)), so on
-that platform the menu is how local files get in at all. It also covers
-users who never think to drag-drop, and works signed out.
+The picker isn't sugar: it covers users who never think to drag-drop, works
+signed out, and is the only route on iOS (the Files app has no drag into
+the plugin). Drops work on every desktop platform, Linux included; the old
+web UI never received them there because XDnD died at the embedded
+WebKitGTK view
+([issue #22](https://github.com/tone-3000/tone3000-plugin/issues/22)), one
+of the reasons the UI is native.
 
 ## One stored model list, one exception
 
@@ -87,3 +95,14 @@ Its lifecycle is self-maintaining:
   such a load hits the embedded cache and the stash copy is missing (GC'd,
   or a different machine), `refreshLocalStashCopy` writes it back, so undo
   and retry keep working there too.
+- **A writable root, even after damage.** The app-data folder can exist
+  without being writable: a sudo'd run of an older `install-plugin.sh`
+  (it wrote the user Factory folder, and macOS sudo keeps `$HOME`) or a
+  restored backup leaves it root-owned, and every stash write then failed as
+  "Couldn't store the dropped file" while reads kept working
+  ([issue #76](https://github.com/tone-3000/tone3000-plugin/issues/76)).
+  `ensureWritableDir` (constructor, once per process, plus the stash and
+  preset write paths) puts the write bits back in place when the user still
+  owns the folder; otherwise it renames the folder aside to an `.unwritable`
+  sibling (the parent belongs to the user even when the folder doesn't) and
+  recreates it fresh. Nothing is deleted, and the log names what it did.

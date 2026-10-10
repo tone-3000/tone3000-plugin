@@ -1,30 +1,56 @@
 #pragma once
 #include <juce_core/juce_core.h>
 #include <juce_data_structures/juce_data_structures.h>
+#include <map>
+#include <set>
 #include <vector>
 
+#include "PresetFile.h"
+
 /**
- * On-disk internal preset store. Pure file layer: one XML file per preset,
- * no knowledge of what a preset contains (the processor builds/consumes the
- * ValueTree payloads). Message-thread only.
+ * On-disk internal preset store. Pure file layer: one preset per file (the
+ * framing lives in PresetFile.h), no knowledge of what a preset contains
+ * (the processor builds/consumes the payloads). Message-thread only for
+ * writes.
  *
  * Layout:
- *   <user data dir>/TONE3000/Presets/<uuid>.t3kpreset   (user presets)
- *   <user data dir>/TONE3000/Presets/Factory/…          (read-only factory)
- *   <system data dir>/TONE3000/Presets/Factory/…        (installer-shipped)
+ *   <user data dir>/TONE3000/Presets/<Name>.t3kpreset    (user presets)
+ *   <user data dir>/TONE3000/Presets/Factory/…           (read-only factory)
+ *   <system data dir>/TONE3000/Presets/Factory/…         (installer-shipped)
  *
  * The system Factory folder is where installers drop shipped presets
- * (macOS /Library/Application Support, Windows ProgramData). Both Factory
- * dirs are scanned; a user-Factory file with the same stem wins so local
+ * (macOS /Library/Application Support, Windows ProgramData); on iOS there is
+ * no installer, so it is FactoryPresets inside the app bundle. Both Factory
+ * dirs are scanned; a user-Factory file with the same id wins so local
  * overrides of a shipped preset are possible.
  *
- * Ids are "user:<stem>" / "factory:<stem>" so the two namespaces can never
- * collide and the UI can tell them apart without extra lookups. Display
- * names live *inside* the file (filenames are uuids), so any characters are
- * fine and renames never touch the filesystem name.
+ * Identity vs. filename. A preset's identity is the "id" property inside
+ * the file (a uuid minted on first save); the filename is a *view* of its
+ * display name, sanitized so the same file is valid on macOS, Windows,
+ * Linux and iOS (presetfile::sanitizeStem), with " 2", " 3", … appended on
+ * a collision. Ids are exposed as "user:<id>" / "factory:<id>" so the two
+ * namespaces can never collide and the UI can tell them apart without extra
+ * lookups. Because identity lives inside, renames (which rename the file)
+ * and users shuffling files in Finder/Explorer never break the ids stored in
+ * order.json or as activePresetId inside DAW projects.
  *
- * The list is rescanned on every call; it's a handful of stat()s, and it
- * keeps multiple plugin instances sharing the folder coherent for free.
+ * Legacy files (pre-readable-names) are named <uuid>.t3kpreset and carry no
+ * "id"; their id is the filename stem, which is the same uuid, so every id
+ * ever handed out keeps resolving. Migration is lazy: the next save-over or
+ * rename of such a preset writes the stem in as its "id", rewrites it in
+ * the v2 framing and renames the file to its display name. Files with no
+ * "id" and a readable stem (a user renamed one by hand) work the same way.
+ *
+ * Cost model. list() rescans the directories on every call so multiple
+ * plugin instances sharing the folder stay coherent for free. A rescan is
+ * a directory listing plus one stat() per file: id and name are cached per
+ * file, keyed on (mtime, size), and a changed/new file costs one *header*
+ * read (a few hundred bytes; PresetFile.h) rather than deserializing the
+ * megabytes of model bytes it embeds. Only legacy v1 files need a full
+ * parse, once. This matters because hosts drive list() at editor open
+ * (Reaper asks for all 128 program names every time, GitHub issue #169),
+ * and the cache is per plugin instance, so every instance's first call in
+ * a session is cold.
  *
  * Ordering: user presets always come before factory presets (the browser's
  * two sections; a player's own presets own the low MIDI program-change
@@ -39,13 +65,13 @@ public:
   struct Info {
     juce::String id;
     juce::String name;
-    juce::String category;
+    juce::String category;  // user category, "" = root; always an existing category
     bool favorite{false};
     bool factory{false};
   };
 
-  static constexpr const char* kFileExtension = ".t3kpreset";
-  static constexpr const char* kPresetTag = "T3KPreset";
+  static constexpr const char* kFileExtension = t3k::presetfile::kExtension;
+  static constexpr const char* kPresetTag = t3k::presetfile::kTag;
   static constexpr int kMaxCategoryNameLength = 50;
 
   PresetManager();
@@ -56,6 +82,15 @@ public:
       machine. */
   explicit PresetManager(const juce::File& baseDir, const juce::File& systemFactory = {});
 
+  /** Copies re-root at the same directories with an empty cache (the lock is
+      per instance). Exists for setPresetStoreForTesting. */
+  PresetManager(const PresetManager& other);
+  PresetManager& operator=(const PresetManager& other);
+
+  /** The folder user presets are saved to (may not exist yet on a fresh
+      install; created on first save). Factory presets live elsewhere. */
+  juce::File userPresetsDir() const { return userDir; }
+
   /** All presets, user first then factory, each section sorted by name. */
   std::vector<Info> list() const;
 
@@ -63,12 +98,13 @@ public:
   juce::ValueTree load(const juce::String& id) const;
 
   /** Store a preset under `name`. A user preset with the same name is
-      overwritten in place (same id); that's the "update" path, since the
-      save popover is the only write UI. Returns the resulting Info, or an
+      overwritten (same id); that's the "update" path, since the save
+      popover is the only write UI. Returns the resulting Info, or an
       empty-id Info on IO failure. */
   Info save(const juce::String& name, juce::ValueTree preset) const;
 
-  /** Rename a user preset (rewrites the name inside the file). */
+  /** Rename a user preset: rewrites the name inside the file and renames
+      the file to match. The id is unchanged. */
   bool rename(const juce::String& id, const juce::String& newName) const;
 
   /** Delete a user preset. Factory presets are refused. */
@@ -82,52 +118,101 @@ public:
   /** User categories, sorted alphabetically (case-insensitive). */
   juce::StringArray listCategories() const;
 
-  /** Add a user category (trimmed, non-empty, max 50 chars, case-insensitive unique). */
+  /** Add a category (trimmed, non-empty, <= kMaxCategoryNameLength chars,
+      case-insensitively unique). */
   bool addCategory(const juce::String& name) const;
 
-  /** Delete a category. Existing presets in this category are moved to root (""). */
+  /** Delete a category. Its presets fall back to the root; none are deleted. */
   bool deleteCategory(const juce::String& name) const;
 
-  /** Assign a user preset to a category (empty string = root "Your Presets"). */
+  /** File user presets under an existing category ("" = root). Refuses
+      factory presets, unknown ids and categories that don't exist. */
   bool setPresetCategory(const juce::String& id, const juce::String& category) const;
-
-  /** Move multiple presets to a category. */
   bool movePresetsToCategory(const juce::StringArray& ids, const juce::String& category) const;
 
-  /** Set favourite / starred status for a preset. */
+  /** Star/unstar presets (factory presets included). All-or-nothing: false
+      when any id is unknown or the write fails. */
   bool setPresetFavorite(const juce::String& id, bool isFavorite) const;
-
-  /** Set favourite / starred status for multiple presets. */
   bool setPresetsFavorite(const juce::StringArray& ids, bool isFavorite) const;
 
-  /** Duplicate a user preset with "Copy-" prepended to the name. */
+  /** Copy a user preset as "Copy-<name>" (" 2", " 3", … on a clash) with a
+      fresh id, in the same category, unstarred. Empty-id Info on failure. */
   Info duplicatePreset(const juce::String& id) const;
-
-  /** Duplicate multiple user presets with "Copy-" prepended. */
   std::vector<Info> duplicatePresets(const juce::StringArray& ids) const;
 
-  /** Delete multiple user presets. */
-  bool removePresets(const juce::StringArray& ids) const;
+  /** Delete user presets; returns the ids actually removed. */
+  juce::StringArray removePresets(const juce::StringArray& ids) const;
+
+  /** presetfile::sanitizeStem, kept here for callers/tests of the store. */
+  static juce::String sanitizeFileStem(const juce::String& name) {
+    return t3k::presetfile::sanitizeStem(name);
+  }
+  static constexpr int kMaxStemBytes = t3k::presetfile::kMaxStemBytes;
 
 private:
-  juce::File fileForId(const juce::String& id) const;
+  // One scanned file: its public Info plus where it lives.
+  struct Entry {
+    Info info;
+    juce::File file;
+  };
+
   static juce::File defaultSystemFactoryDir();
-  static juce::ValueTree readPresetFile(const juce::File& file);
-  static bool writePresetFile(const juce::File& file, const juce::ValueTree& preset);
+
+  // Bookkeeping across the per-directory scans of one list() call: which
+  // files exist (to prune the cache) and how many were actually read.
+  struct ScanState {
+    std::set<juce::String> seen;
+    int parsed{0};
+  };
+  /** One directory's presets, name-sorted. Ids/names come from the cache
+      when the file is unchanged. Caller holds cacheLock. */
+  std::vector<Entry> scanDir(const juce::File& dir, const char* prefix, bool factory,
+                             ScanState& state) const;
+  /** The merged, section-ordered list with file paths (list() minus paths). */
+  std::vector<Entry> entries() const;
+  /** The file behind an id, or an invalid File. User Factory beats system
+      Factory for the same factory id. */
+  juce::File fileForId(const juce::String& id) const;
+  /** Write `preset` for a user preset whose canonical filename is
+      sanitizeStem(name): in place when `current` already has that stem,
+      otherwise to a fresh unique file with `current` removed after the
+      write succeeds (the lazy legacy migration). */
+  static juce::File writeUserPreset(const juce::File& dir, const juce::File& current,
+                                    const juce::String& name, const juce::ValueTree& preset);
 
   juce::File orderFile() const;
   juce::StringArray readOrder() const;
   bool writeOrder(const juce::StringArray& ids) const;
 
-  juce::File categoriesFile() const;
-  juce::StringArray readCategories() const;
-  bool writeCategories(const juce::StringArray& categories) const;
+  /** Category/favourite bookkeeping, one side file (presets-meta.json) beside
+      the preset files. Keyed by preset id, so it survives renames and never
+      touches the preset files (which keeps list()'s header-only scan cheap). */
+  struct Meta {
+    juce::StringArray categories;                // sorted, case-insensitive
+    std::map<juce::String, juce::String> filed;  // user preset id -> category
+    juce::StringArray favorites;                 // preset ids
+  };
+  juce::File metaFile() const;
+  Meta readMeta() const;
+  bool writeMeta(const Meta& meta) const;
+  static int indexOfCategory(const juce::StringArray& categories, const juce::String& name);
 
-  juce::File favoritesFile() const;
-  juce::StringArray readFavorites() const;
-  bool writeFavorites(const juce::StringArray& ids) const;
+  // Per-file cache behind list(); see the class comment. `valid` is false
+  // for files that failed to parse, so a corrupt file costs one read, not
+  // one per call. Entries for files that vanished are dropped on the next
+  // scan. Locked because hosts may call the program API off the message
+  // thread.
+  struct Cached {
+    juce::int64 modificationMs{0};
+    juce::int64 size{0};
+    bool valid{false};
+    juce::String rawId;  // "id" from the file, or the stem when it has none
+    juce::String name;
+  };
+  mutable juce::CriticalSection cacheLock;
+  mutable std::map<juce::String, Cached> cache;  // full path -> entry
 
   juce::File userDir;
-  juce::File factoryDir;        // user-local Factory/ (dev drops, Linux install)
+  juce::File factoryDir;        // user-local Factory/ (user overrides; the Linux tarball installs here)
   juce::File systemFactoryDir;  // installer-shipped Factory/ (invalid when absent)
 };

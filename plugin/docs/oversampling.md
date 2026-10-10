@@ -56,6 +56,16 @@ the realtime worker pool instead of running it sequentially (see
 `multicore.md`). Scheduling only; `NamEngineTest.PhaseForkMatchesSerialBitExact`
 pins forked output bit-identical to serial.
 
+The same slot layout carries Dual Mono input mode: the engine holds
+`voices × phases` instances (voice-major), a mono chain's engine has one
+voice and a dual-mono one has two, each voice owning a full phase set fed
+from its own input channel. Phase and voice slots are equally independent,
+so the fork is one flat loop over all of them; `NamEngineTest.DualMono*`
+pins each voice's output against a single-voice engine on that channel. A
+model is prepared for the voice count the mode wants at the time, and a
+prepared engine that no longer matches the live factor or voice count is
+re-queued rather than installed.
+
 LSTM models update state on consecutive samples and can't be phase-split;
 they get a single instance run time-scaled at the full chain rate. (A
 defensive path in practice: the catalog and the local-file gate only admit

@@ -3,13 +3,15 @@
 // Multi-core mode spreads the chain stage across the RtWorkerPool realtime
 // workers (see RtWorkerPool.h) in two places: stereo mode forks the two
 // lanes (the Right/branch lane on a worker, the other on the audio thread),
-// and an oversampled NAM engine forks its phase instances, nested inside a
-// lane fork when both apply. Parallelism is pure scheduling (no arithmetic
-// or ordering changes anywhere), so its one testable contract is strong:
+// and a NAM engine forks its voice × phase instances (oversampling phases,
+// dual mono voices, or both), nested inside a lane fork when both apply.
+// Parallelism is pure scheduling (no arithmetic or ordering changes
+// anywhere), so its one testable contract is strong:
 //
 //   - the parallel schedule's output is BIT-IDENTICAL to the serial one,
-//     across topologies (independent lanes, branched, mono), host rates and
-//     oversampling factors, and across mid-stream toggles of the setting,
+//     across topologies (independent lanes, branched, mono, dual mono), host
+//     rates and oversampling factors, and across mid-stream toggles of the
+//     setting,
 //   - the pool survives the host lifecycle (re-prepare, release, restart)
 //     with audio flowing throughout.
 //
@@ -173,6 +175,59 @@ TEST(MultiCoreTest, MonoPhaseParallelMatchesSerialBitExact) {
 
     EXPECT_EQ(settledDiff(sl, pl), 0.0f) << "phase fork diverged from the serial phase loop";
     EXPECT_EQ(settledDiff(sr, pr), 0.0f) << "fan-out channel diverged";
+  }
+}
+
+// Dual mono (Processor.h, InputMode::DualMono): a mono chain fed two takes
+// runs a two-voice NAM engine, and with multi-core on the engine forks all
+// its voice × phase instances in one flat fork (2 jobs plain, 2 × factor
+// oversampled: 16 at 8x, the pool's job cap). Same contract, with a
+// per-voice assertion: distinct takes, each voice must null exactly against
+// the serial schedule, and the two must stay different (a fan-out would
+// make them equal).
+TEST(MultiCoreTest, DualMonoParallelMatchesSerialBitExact) {
+  auto runDualMonoRig = [](bool multiCore, float osFactorNormalized,
+                           const std::vector<float>& inL, const std::vector<float>& inR) {
+    ChainTestProcessor proc;
+    proc.setMultiCoreEnabled(multiCore, /*persist=*/false);
+    proc.setPlayConfigDetails(2, 2, kFs, kBlock);
+    if (osFactorNormalized >= 0.0f) {
+      proc.parameters.getParameter("osEnabled")->setValueNotifyingHost(1.0f);
+      proc.parameters.getParameter("osFactor")->setValueNotifyingHost(osFactorNormalized);
+    }
+    proc.prepareToPlay(kFs, kBlock);
+
+    juce::ValueTree state("ChainSnapshot");
+    juce::ValueTree lane("ChainBlocks");
+    lane.appendChild(makeNamBlockTree("blk-amp", 1, 100), nullptr);
+    auto cab = makeIrBlockTree("blk-cab", 2, 200);
+    cab.setProperty("mix", 0.7f, nullptr);
+    lane.appendChild(cab, nullptr);
+    state.appendChild(lane, nullptr);
+    proc.restoreFromTree(state, "dual");
+    EXPECT_TRUE(waitForChainLoaded(proc)) << "blocks never finished loading from cache";
+    EXPECT_EQ(proc.namEngineVoiceCount("blk-amp"), 2);
+
+    return processStereoLR(proc, inL, inR);
+  };
+
+  struct Factor {
+    float normalized;  // < 0 = oversampling off
+    const char* label;
+  };
+  const auto inL = makeNoise(240 * kBlock, 1001, 0.1f);
+  const auto inR = makeNoise(240 * kBlock, 2002, 0.1f);
+
+  for (const Factor f :
+       {Factor{-1.0f, "off"}, Factor{0.0f, "2x"}, Factor{0.5f, "4x"}, Factor{1.0f, "8x"}}) {
+    SCOPED_TRACE(juce::String("oversampling ") + f.label);
+
+    const auto [sl, sr] = runDualMonoRig(false, f.normalized, inL, inR);
+    const auto [pl, pr] = runDualMonoRig(true, f.normalized, inL, inR);
+
+    EXPECT_GT(settledDiff(sl, sr), 1e-3f) << "the two voices should carry different takes";
+    EXPECT_EQ(settledDiff(sl, pl), 0.0f) << "left voice diverged under the parallel schedule";
+    EXPECT_EQ(settledDiff(sr, pr), 0.0f) << "right voice diverged under the parallel schedule";
   }
 }
 

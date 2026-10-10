@@ -1,0 +1,201 @@
+### --delay 37
+Self-test wrapper: +37 samples delay, polarity unchanged
+test/files/a2-amp-test.nam
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 2.8 ms
+  time-domain  peak   42 smp ( 42.349 smp =  0.882 ms)  onset   38 smp  normal   conf 0.511  peak-ratio   98.2  lobe-ratio  1.08 AMBIGUOUS  analyze  1.23 ms
+                 early lobe   39 smp INVERTED
+  gcc-phat     peak   42 smp ( 41.938 smp =  0.874 ms)  onset   38 smp  normal   conf 0.511  peak-ratio   34.7  lobe-ratio  1.06 AMBIGUOUS  analyze  1.30 ms
+                 early lobe   39 smp INVERTED
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.55 ms
+  impulse      peak  243 smp (242.888 smp =  5.060 ms)  onset   40 smp  normal   conf 0.000  peak-ratio    1.0  lobe-ratio  1.01 AMBIGUOUS  analyze  0.00 ms
+                 early lobe   66 smp normal
+test/files/a2-am-test-2.nam
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 2.8 ms
+  time-domain  peak   54 smp ( 54.142 smp =  1.128 ms)  onset   54 smp  normal   conf 0.788  peak-ratio  122.1  lobe-ratio  1.42  analyze  1.19 ms
+  gcc-phat     peak   54 smp ( 54.282 smp =  1.131 ms)  onset   54 smp  normal   conf 0.788  peak-ratio   56.9  lobe-ratio  1.43  analyze  1.14 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.51 ms
+  impulse      peak   54 smp ( 54.336 smp =  1.132 ms)  onset   54 smp  normal   conf 0.000  peak-ratio    2.3  lobe-ratio  1.05 AMBIGUOUS  analyze  0.00 ms
+test/files/a2-amp-cab-test.nam
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 2.6 ms
+  time-domain  peak   54 smp ( 54.300 smp =  1.131 ms)  onset   51 smp  normal   conf 0.399  peak-ratio    8.1  lobe-ratio  1.19  analyze  1.12 ms
+  gcc-phat     peak   55 smp ( 54.809 smp =  1.142 ms)  onset   51 smp  normal   conf 0.383  peak-ratio   16.0  lobe-ratio  1.95  analyze  1.18 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.52 ms
+  impulse      peak   60 smp ( 59.773 smp =  1.245 ms)  onset   53 smp  INVERTED conf 0.000  peak-ratio    7.7  lobe-ratio  1.44  analyze  0.00 ms
+
+### --invert
+Self-test wrapper: +0 samples delay, polarity flipped
+test/files/a2-amp-test.nam
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 3.0 ms
+  time-domain  peak    5 smp (  5.349 smp =  0.111 ms)  onset    1 smp  INVERTED conf 0.511  peak-ratio   98.2  lobe-ratio  1.08 AMBIGUOUS  analyze  1.11 ms
+                 early lobe    2 smp normal
+  gcc-phat     peak    5 smp (  4.937 smp =  0.103 ms)  onset    1 smp  INVERTED conf 0.511  peak-ratio   34.8  lobe-ratio  1.06 AMBIGUOUS  analyze  1.12 ms
+                 early lobe    2 smp normal
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.54 ms
+  impulse      peak  206 smp (205.888 smp =  4.289 ms)  onset    3 smp  INVERTED conf 0.000  peak-ratio    1.0  lobe-ratio  1.01 AMBIGUOUS  analyze  0.00 ms
+                 early lobe   29 smp INVERTED
+test/files/a2-am-test-2.nam
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 2.9 ms
+  time-domain  peak   17 smp ( 17.142 smp =  0.357 ms)  onset   17 smp  INVERTED conf 0.788  peak-ratio  122.1  lobe-ratio  1.42  analyze  1.34 ms
+  gcc-phat     peak   17 smp ( 17.282 smp =  0.360 ms)  onset   17 smp  INVERTED conf 0.788  peak-ratio   57.0  lobe-ratio  1.43  analyze  1.18 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.55 ms
+  impulse      peak   17 smp ( 17.336 smp =  0.361 ms)  onset   17 smp  INVERTED conf 0.000  peak-ratio    2.3  lobe-ratio  1.05 AMBIGUOUS  analyze  0.00 ms
+test/files/a2-amp-cab-test.nam
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 2.8 ms
+  time-domain  peak   17 smp ( 17.300 smp =  0.360 ms)  onset   14 smp  INVERTED conf 0.399  peak-ratio    8.1  lobe-ratio  1.19  analyze  1.13 ms
+  gcc-phat     peak   18 smp ( 17.833 smp =  0.372 ms)  onset   14 smp  INVERTED conf 0.383  peak-ratio   15.7  lobe-ratio  1.89  analyze  1.17 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.57 ms
+  impulse      peak   23 smp ( 22.773 smp =  0.474 ms)  onset   16 smp  normal   conf 0.000  peak-ratio    7.7  lobe-ratio  1.44  analyze  0.00 ms
+
+### --probe exp
+test/files/a2-amp-test.nam
+  probe: exponential sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 3.4 ms
+  time-domain  peak    5 smp (  5.498 smp =  0.115 ms)  onset    1 smp  normal   conf 0.219  peak-ratio    1.2  lobe-ratio  1.01 AMBIGUOUS  analyze  1.46 ms
+  gcc-phat     peak    5 smp (  5.142 smp =  0.107 ms)  onset    1 smp  normal   conf 0.219  peak-ratio   15.0  lobe-ratio  1.33  analyze  1.12 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.51 ms
+  impulse      peak  206 smp (205.888 smp =  4.289 ms)  onset    3 smp  normal   conf 0.000  peak-ratio    1.0  lobe-ratio  1.01 AMBIGUOUS  analyze  0.00 ms
+                 early lobe   29 smp normal
+test/files/a2-am-test-2.nam
+  probe: exponential sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 2.7 ms
+  time-domain  peak   17 smp ( 16.899 smp =  0.352 ms)  onset   11 smp  normal   conf 0.415  peak-ratio    1.9  lobe-ratio  1.63  analyze  1.12 ms
+  gcc-phat     peak   17 smp ( 17.251 smp =  0.359 ms)  onset   11 smp  normal   conf 0.415  peak-ratio   25.2  lobe-ratio  1.62  analyze  1.19 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.51 ms
+  impulse      peak   17 smp ( 17.336 smp =  0.361 ms)  onset   17 smp  normal   conf 0.000  peak-ratio    2.3  lobe-ratio  1.05 AMBIGUOUS  analyze  0.00 ms
+test/files/a2-amp-cab-test.nam
+  probe: exponential sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 2.8 ms
+  time-domain  peak   17 smp ( 16.620 smp =  0.346 ms)  onset    1 smp  normal   conf 0.438  peak-ratio    1.4  lobe-ratio  1.09 AMBIGUOUS  analyze  1.31 ms
+  gcc-phat     peak   18 smp ( 17.775 smp =  0.370 ms)  onset    1 smp  normal   conf 0.403  peak-ratio    9.1  lobe-ratio  1.92  analyze  1.70 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.50 ms
+  impulse      peak   23 smp ( 22.773 smp =  0.474 ms)  onset   16 smp  INVERTED conf 0.000  peak-ratio    7.7  lobe-ratio  1.44  analyze  0.00 ms
+
+### --amp 0.01
+test/files/a2-amp-test.nam
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 2.6 ms
+  time-domain  peak    6 smp (  5.738 smp =  0.120 ms)  onset    2 smp  normal   conf 0.505  peak-ratio   82.4  lobe-ratio  1.24  analyze  1.21 ms
+  gcc-phat     peak    5 smp (  5.431 smp =  0.113 ms)  onset    2 smp  normal   conf 0.454  peak-ratio   40.0  lobe-ratio  1.20  analyze  1.13 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.53 ms
+  impulse      peak  206 smp (205.888 smp =  4.289 ms)  onset    3 smp  normal   conf 0.000  peak-ratio    1.0  lobe-ratio  1.01 AMBIGUOUS  analyze  0.00 ms
+                 early lobe   29 smp normal
+test/files/a2-am-test-2.nam
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 2.8 ms
+  time-domain  peak   17 smp ( 17.398 smp =  0.362 ms)  onset   17 smp  normal   conf 0.671  peak-ratio  108.1  lobe-ratio  1.59  analyze  1.26 ms
+  gcc-phat     peak   17 smp ( 17.477 smp =  0.364 ms)  onset   17 smp  normal   conf 0.671  peak-ratio   59.4  lobe-ratio  1.43  analyze  1.18 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.51 ms
+  impulse      peak   17 smp ( 17.336 smp =  0.361 ms)  onset   17 smp  normal   conf 0.000  peak-ratio    2.3  lobe-ratio  1.05 AMBIGUOUS  analyze  0.00 ms
+test/files/a2-amp-cab-test.nam
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 2.7 ms
+  time-domain  peak   23 smp ( 23.347 smp =  0.486 ms)  onset   14 smp  INVERTED conf 0.398  peak-ratio    8.4  lobe-ratio  1.05 AMBIGUOUS  analyze  1.16 ms
+                 early lobe   17 smp normal
+  gcc-phat     peak   18 smp ( 18.082 smp =  0.377 ms)  onset   14 smp  normal   conf 0.349  peak-ratio   15.5  lobe-ratio  1.36  analyze  1.16 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.48 ms
+  impulse      peak   23 smp ( 22.773 smp =  0.474 ms)  onset   16 smp  INVERTED conf 0.000  peak-ratio    7.7  lobe-ratio  1.44  analyze  0.00 ms
+
+### --amp 0.3
+test/files/a2-amp-test.nam
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 2.8 ms
+  time-domain  peak    2 smp (  2.019 smp =  0.042 ms)  onset    1 smp  INVERTED conf 0.523  peak-ratio  129.2  lobe-ratio  1.01 AMBIGUOUS  analyze  1.12 ms
+  gcc-phat     peak    2 smp (  2.061 smp =  0.043 ms)  onset    1 smp  INVERTED conf 0.523  peak-ratio   46.6  lobe-ratio  1.10 AMBIGUOUS  analyze  1.16 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.52 ms
+  impulse      peak  206 smp (205.888 smp =  4.289 ms)  onset    3 smp  normal   conf 0.000  peak-ratio    1.0  lobe-ratio  1.01 AMBIGUOUS  analyze  0.00 ms
+                 early lobe   29 smp normal
+test/files/a2-am-test-2.nam
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 2.8 ms
+  time-domain  peak   17 smp ( 17.110 smp =  0.356 ms)  onset   17 smp  normal   conf 0.800  peak-ratio  136.3  lobe-ratio  1.43  analyze  1.23 ms
+  gcc-phat     peak   17 smp ( 17.252 smp =  0.359 ms)  onset   17 smp  normal   conf 0.800  peak-ratio   64.4  lobe-ratio  1.45  analyze  1.15 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.50 ms
+  impulse      peak   17 smp ( 17.336 smp =  0.361 ms)  onset   17 smp  normal   conf 0.000  peak-ratio    2.3  lobe-ratio  1.05 AMBIGUOUS  analyze  0.00 ms
+test/files/a2-amp-cab-test.nam
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 2.7 ms
+  time-domain  peak   17 smp ( 17.335 smp =  0.361 ms)  onset   14 smp  normal   conf 0.404  peak-ratio    8.1  lobe-ratio  1.27  analyze  1.18 ms
+  gcc-phat     peak   18 smp ( 17.789 smp =  0.371 ms)  onset   14 smp  normal   conf 0.391  peak-ratio   17.5  lobe-ratio  2.00  analyze  1.17 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.58 ms
+  impulse      peak   23 smp ( 22.773 smp =  0.474 ms)  onset   16 smp  INVERTED conf 0.000  peak-ratio    7.7  lobe-ratio  1.44  analyze  0.00 ms
+
+### --probe-ms 30
+test/files/a2-amp-test.nam
+  probe: linear sweep, 1440 samples + 480 tail @ 48000 Hz, ran through the processor in 1.0 ms
+  time-domain  peak    2 smp (  2.065 smp =  0.043 ms)  onset    1 smp  INVERTED conf 0.547  peak-ratio   68.4  lobe-ratio  1.18  analyze  0.34 ms
+  gcc-phat     peak    2 smp (  2.133 smp =  0.044 ms)  onset    1 smp  INVERTED conf 0.547  peak-ratio   19.5  lobe-ratio  1.10  analyze  0.55 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.53 ms
+  impulse      peak  206 smp (205.888 smp =  4.289 ms)  onset    3 smp  normal   conf 0.000  peak-ratio    1.0  lobe-ratio  1.01 AMBIGUOUS  analyze  0.00 ms
+                 early lobe   29 smp normal
+test/files/a2-am-test-2.nam
+  probe: linear sweep, 1440 samples + 480 tail @ 48000 Hz, ran through the processor in 1.0 ms
+  time-domain  peak   17 smp ( 17.156 smp =  0.357 ms)  onset   17 smp  normal   conf 0.799  peak-ratio   88.9  lobe-ratio  1.38  analyze  0.35 ms
+  gcc-phat     peak   17 smp ( 17.298 smp =  0.360 ms)  onset   17 smp  normal   conf 0.799  peak-ratio   70.7  lobe-ratio  1.40  analyze  0.58 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.58 ms
+  impulse      peak   17 smp ( 17.336 smp =  0.361 ms)  onset   17 smp  normal   conf 0.000  peak-ratio    2.3  lobe-ratio  1.05 AMBIGUOUS  analyze  0.00 ms
+test/files/a2-amp-cab-test.nam
+  probe: linear sweep, 1440 samples + 480 tail @ 48000 Hz, ran through the processor in 1.1 ms
+  time-domain  peak   23 smp ( 23.337 smp =  0.486 ms)  onset   15 smp  INVERTED conf 0.378  peak-ratio    8.4  lobe-ratio  1.06 AMBIGUOUS  analyze  0.32 ms
+                 early lobe   17 smp normal
+  gcc-phat     peak   18 smp ( 17.850 smp =  0.372 ms)  onset   15 smp  normal   conf 0.353  peak-ratio   19.7  lobe-ratio  1.78  analyze  0.69 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.59 ms
+  impulse      peak   23 smp ( 22.773 smp =  0.474 ms)  onset   16 smp  INVERTED conf 0.000  peak-ratio    7.7  lobe-ratio  1.44  analyze  0.00 ms
+
+### --probe-ms 50
+test/files/a2-amp-test.nam
+  probe: linear sweep, 2400 samples + 480 tail @ 48000 Hz, ran through the processor in 1.7 ms
+  time-domain  peak    2 smp (  2.060 smp =  0.043 ms)  onset    1 smp  INVERTED conf 0.510  peak-ratio   83.0  lobe-ratio  1.03 AMBIGUOUS  analyze  0.57 ms
+  gcc-phat     peak    2 smp (  2.138 smp =  0.045 ms)  onset    1 smp  INVERTED conf 0.510  peak-ratio   26.7  lobe-ratio  1.01 AMBIGUOUS  analyze  0.52 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.52 ms
+  impulse      peak  206 smp (205.888 smp =  4.289 ms)  onset    3 smp  normal   conf 0.000  peak-ratio    1.0  lobe-ratio  1.01 AMBIGUOUS  analyze  0.00 ms
+                 early lobe   29 smp normal
+test/files/a2-am-test-2.nam
+  probe: linear sweep, 2400 samples + 480 tail @ 48000 Hz, ran through the processor in 1.6 ms
+  time-domain  peak   17 smp ( 17.148 smp =  0.357 ms)  onset   17 smp  normal   conf 0.792  peak-ratio  114.5  lobe-ratio  1.39  analyze  0.58 ms
+  gcc-phat     peak   17 smp ( 17.291 smp =  0.360 ms)  onset   17 smp  normal   conf 0.792  peak-ratio   83.7  lobe-ratio  1.41  analyze  0.55 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.49 ms
+  impulse      peak   17 smp ( 17.336 smp =  0.361 ms)  onset   17 smp  normal   conf 0.000  peak-ratio    2.3  lobe-ratio  1.05 AMBIGUOUS  analyze  0.00 ms
+test/files/a2-amp-cab-test.nam
+  probe: linear sweep, 2400 samples + 480 tail @ 48000 Hz, ran through the processor in 1.6 ms
+  time-domain  peak   17 smp ( 17.358 smp =  0.362 ms)  onset   15 smp  normal   conf 0.383  peak-ratio    7.6  lobe-ratio  1.02 AMBIGUOUS  analyze  0.60 ms
+  gcc-phat     peak   18 smp ( 17.882 smp =  0.373 ms)  onset   15 smp  normal   conf 0.371  peak-ratio   17.4  lobe-ratio  1.75  analyze  0.58 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.51 ms
+  impulse      peak   23 smp ( 22.773 smp =  0.474 ms)  onset   16 smp  INVERTED conf 0.000  peak-ratio    7.7  lobe-ratio  1.44  analyze  0.00 ms
+
+### --probe-ms 280
+test/files/a2-amp-test.nam
+  probe: linear sweep, 13440 samples + 480 tail @ 48000 Hz, ran through the processor in 7.2 ms
+  time-domain  peak    5 smp (  5.370 smp =  0.112 ms)  onset    1 smp  normal   conf 0.496  peak-ratio   38.7  lobe-ratio  1.05 AMBIGUOUS  analyze  3.54 ms
+                 early lobe    2 smp INVERTED
+  gcc-phat     peak    5 smp (  5.013 smp =  0.104 ms)  onset    1 smp  normal   conf 0.496  peak-ratio   32.2  lobe-ratio  1.03 AMBIGUOUS  analyze  2.36 ms
+                 early lobe    2 smp INVERTED
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.52 ms
+  impulse      peak  206 smp (205.888 smp =  4.289 ms)  onset    3 smp  normal   conf 0.000  peak-ratio    1.0  lobe-ratio  1.01 AMBIGUOUS  analyze  0.00 ms
+                 early lobe   29 smp normal
+test/files/a2-am-test-2.nam
+  probe: linear sweep, 13440 samples + 480 tail @ 48000 Hz, ran through the processor in 7.2 ms
+  time-domain  peak   17 smp ( 17.142 smp =  0.357 ms)  onset   17 smp  normal   conf 0.784  peak-ratio   59.6  lobe-ratio  1.43  analyze  3.33 ms
+  gcc-phat     peak   17 smp ( 17.279 smp =  0.360 ms)  onset   17 smp  normal   conf 0.784  peak-ratio   48.0  lobe-ratio  1.43  analyze  2.42 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.53 ms
+  impulse      peak   17 smp ( 17.336 smp =  0.361 ms)  onset   17 smp  normal   conf 0.000  peak-ratio    2.3  lobe-ratio  1.05 AMBIGUOUS  analyze  0.00 ms
+test/files/a2-amp-cab-test.nam
+  probe: linear sweep, 13440 samples + 480 tail @ 48000 Hz, ran through the processor in 7.3 ms
+  time-domain  peak   17 smp ( 17.217 smp =  0.359 ms)  onset   14 smp  normal   conf 0.408  peak-ratio    7.3  lobe-ratio  1.31  analyze  3.26 ms
+  gcc-phat     peak   18 smp ( 17.875 smp =  0.372 ms)  onset   14 smp  normal   conf 0.385  peak-ratio   12.2  lobe-ratio  1.81  analyze  2.34 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.50 ms
+  impulse      peak   23 smp ( 22.773 smp =  0.474 ms)  onset   16 smp  INVERTED conf 0.000  peak-ratio    7.7  lobe-ratio  1.44  analyze  0.00 ms
+
+### --block 64
+test/files/a2-amp-test.nam
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 3.1 ms
+  time-domain  peak    5 smp (  5.349 smp =  0.111 ms)  onset    1 smp  normal   conf 0.511  peak-ratio   98.2  lobe-ratio  1.08 AMBIGUOUS  analyze  1.27 ms
+                 early lobe    2 smp INVERTED
+  gcc-phat     peak    5 smp (  4.937 smp =  0.103 ms)  onset    1 smp  normal   conf 0.511  peak-ratio   34.8  lobe-ratio  1.06 AMBIGUOUS  analyze  1.26 ms
+                 early lobe    2 smp INVERTED
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.58 ms
+  impulse      peak  206 smp (205.888 smp =  4.289 ms)  onset    3 smp  normal   conf 0.000  peak-ratio    1.0  lobe-ratio  1.01 AMBIGUOUS  analyze  0.00 ms
+                 early lobe   29 smp normal
+test/files/a2-am-test-2.nam
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 3.1 ms
+  time-domain  peak   17 smp ( 17.142 smp =  0.357 ms)  onset   17 smp  normal   conf 0.788  peak-ratio  122.1  lobe-ratio  1.42  analyze  1.18 ms
+  gcc-phat     peak   17 smp ( 17.282 smp =  0.360 ms)  onset   17 smp  normal   conf 0.788  peak-ratio   57.0  lobe-ratio  1.43  analyze  1.18 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.60 ms
+  impulse      peak   17 smp ( 17.336 smp =  0.361 ms)  onset   17 smp  normal   conf 0.000  peak-ratio    2.3  lobe-ratio  1.05 AMBIGUOUS  analyze  0.00 ms
+test/files/a2-amp-cab-test.nam
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 3.1 ms
+  time-domain  peak   17 smp ( 17.300 smp =  0.360 ms)  onset   14 smp  normal   conf 0.399  peak-ratio    8.1  lobe-ratio  1.19  analyze  1.37 ms
+  gcc-phat     peak   18 smp ( 17.833 smp =  0.372 ms)  onset   14 smp  normal   conf 0.383  peak-ratio   15.7  lobe-ratio  1.89  analyze  1.19 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.60 ms
+  impulse      peak   23 smp ( 22.773 smp =  0.474 ms)  onset   16 smp  INVERTED conf 0.000  peak-ratio    7.7  lobe-ratio  1.44  analyze  0.00 ms
+

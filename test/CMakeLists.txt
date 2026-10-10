@@ -20,18 +20,29 @@ target_sources(DspTests PRIVATE
     src/branch_tests.cpp
     src/clipboard_tests.cpp
     src/dsp_tests.cpp
+    src/dual_mono_tests.cpp
     src/duplicate_tests.cpp
+    src/eq_chain_rate_tests.cpp
+    src/eq_post_routing_tests.cpp
+    src/factory_preset_tests.cpp
+    src/gate_tests.cpp
+    src/host_program_tests.cpp
+    src/ir_block_size_tests.cpp
+    src/ir_classification_tests.cpp
     src/ir_temp_file_tests.cpp
     src/local_load_tests.cpp
     src/midi_map_tests.cpp
     src/multicore_tests.cpp
+    src/outgain_tests.cpp
+    src/padless_wav_tests.cpp
+    src/pitch_shift_tests.cpp
     src/preset_tests.cpp
     src/processor_tests.cpp
     src/spread_tests.cpp
+    src/state_cache_tests.cpp
     src/swap_fade_tests.cpp
     src/tone_refresh_tests.cpp
     src/tuner_tests.cpp
-    src/wav_repair_tests.cpp
     src/worker_pool_tests.cpp
     # Compiled straight from the plugin tree so the tests exercise the real
     # processor, not a copy. GUI sources are excluded; HEADLESS=1 below
@@ -39,8 +50,10 @@ target_sources(DspTests PRIVATE
     ../plugin/src/AutoOffset.cpp
     ../plugin/src/BlockEq.cpp
     ../plugin/src/BlockSpectrum.cpp
+    ../plugin/src/LegacyParamIds.cpp
     ../plugin/src/MidiMapper.cpp
     ../plugin/src/NamEngine.cpp
+    ../plugin/src/PresetFile.cpp
     ../plugin/src/PresetManager.cpp
     ../plugin/src/Processor.cpp
     ../plugin/src/ProcessorChain.cpp
@@ -49,6 +62,12 @@ target_sources(DspTests PRIVATE
     ../plugin/src/ProcessorPresets.cpp
     ../plugin/src/ProcessorState.cpp
     ../plugin/src/Spread.cpp
+    # Processor.cpp's constructor calls StandaloneStateAutosave::install().
+    # Always the portable no-op stub here, never the .mm: the real observer
+    # is iOS-standalone-only and this suite never runs there (the stub is
+    # also what the plugin itself compiles to everywhere but iOS).
+    ../plugin/src/StandaloneStateAutosave.cpp
+    ../plugin/src/PitchShift.cpp
     ../plugin/src/StereoOffset.cpp
     ../plugin/src/TunerDetector.cpp
 )
@@ -68,12 +87,13 @@ target_include_directories(DspTests PRIVATE
 
 target_compile_definitions(DspTests PRIVATE
     JUCE_WEB_BROWSER=0
+    JUCE_USE_WEBP=0
     JUCE_USE_CURL=0
     # Prevent windows.h min/max macros from breaking std::min/std::max in
     # AudioDSPTools and plugin code (same as plugin/CMakeLists.txt).
     $<$<PLATFORM_ID:Windows>:NOMINMAX>
-    # The processor compiles in its headless configuration (no Editor /
-    # webview / standalone-window code); the DSP under test is identical.
+    # The processor compiles in its headless configuration (no editor /
+    # standalone-window code); the DSP under test is identical.
     HEADLESS=1
     # midi_map_tests pumps the dispatch loop (runDispatchLoopUntil) to
     # deliver the MidiMapper's AsyncUpdater work; the plugin itself never

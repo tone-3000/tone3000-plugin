@@ -1,0 +1,151 @@
+### --click-amp 0.5
+test/files/a2-amp-test.nam
+  time-domain  peak    5 smp (  5.349 smp =  0.111 ms)  onset    1 smp  normal   conf 0.511  peak-ratio   98.2  lobe-ratio  1.08 AMBIGUOUS  analyze  1.25 ms
+                 early lobe    2 smp INVERTED
+  gcc-phat     peak    5 smp (  4.937 smp =  0.103 ms)  onset    1 smp  normal   conf 0.511  peak-ratio   34.8  lobe-ratio  1.06 AMBIGUOUS  analyze  1.27 ms
+                 early lobe    2 smp INVERTED
+  impulse      peak  215 smp (215.091 smp =  4.481 ms)  onset    3 smp  normal   conf 0.000  peak-ratio    1.0  lobe-ratio  1.00 AMBIGUOUS  analyze  0.00 ms
+                 early lobe    4 smp normal
+test/files/a2-am-test-2.nam
+  time-domain  peak   17 smp ( 17.142 smp =  0.357 ms)  onset   17 smp  normal   conf 0.788  peak-ratio  122.1  lobe-ratio  1.42  analyze  1.29 ms
+  gcc-phat     peak   17 smp ( 17.282 smp =  0.360 ms)  onset   17 smp  normal   conf 0.788  peak-ratio   57.0  lobe-ratio  1.43  analyze  1.20 ms
+  impulse      peak   68 smp ( 68.064 smp =  1.418 ms)  onset   17 smp  INVERTED conf 0.000  peak-ratio    1.0  lobe-ratio  1.29  analyze  0.00 ms
+                 early lobe   17 smp normal
+test/files/a2-amp-cab-test.nam
+  time-domain  peak   17 smp ( 17.300 smp =  0.360 ms)  onset   14 smp  normal   conf 0.399  peak-ratio    8.1  lobe-ratio  1.19  analyze  1.16 ms
+  gcc-phat     peak   18 smp ( 17.833 smp =  0.372 ms)  onset   14 smp  normal   conf 0.383  peak-ratio   15.7  lobe-ratio  1.89  analyze  1.16 ms
+  impulse      peak   18 smp ( 18.122 smp =  0.378 ms)  onset   15 smp  normal   conf 0.000  peak-ratio    2.8  lobe-ratio  1.41  analyze  0.00 ms
+plugin/NeuralAmpModelerCore/example_models/wavenet.nam
+  time-domain  peak   16 smp ( 16.454 smp =  0.343 ms)  onset   16 smp  normal   conf 0.652  peak-ratio  184.8  lobe-ratio  1.48  analyze  1.26 ms
+  gcc-phat     peak   17 smp ( 16.530 smp =  0.344 ms)  onset   16 smp  normal   conf 0.619  peak-ratio  120.8  lobe-ratio  1.63  analyze  1.18 ms
+  impulse      peak   16 smp ( 16.486 smp =  0.343 ms)  onset   16 smp  normal   conf 0.000  peak-ratio 188091608870.3  lobe-ratio  1.10 AMBIGUOUS  analyze  0.00 ms
+plugin/NeuralAmpModelerCore/example_models/A2.nam
+  time-domain  peak    3 smp (  2.591 smp =  0.054 ms)  onset    0 smp  INVERTED conf 0.458  peak-ratio   10.4  lobe-ratio  1.28  analyze  1.33 ms
+  gcc-phat     peak    3 smp (  2.838 smp =  0.059 ms)  onset    0 smp  INVERTED conf 0.458  peak-ratio   14.2  lobe-ratio  1.96  analyze  1.12 ms
+  impulse      peak    7 smp (  6.755 smp =  0.141 ms)  onset    2 smp  normal   conf 0.000  peak-ratio    1.3  lobe-ratio  1.51  analyze  0.00 ms
+plugin/NeuralAmpModelerCore/example_models/lstm.nam
+  time-domain  peak    0 smp (  0.000 smp =  0.000 ms)  onset    0 smp  normal   conf 0.985  peak-ratio  155.3  lobe-ratio  6.40  analyze  1.24 ms
+  gcc-phat     peak    0 smp (  0.081 smp =  0.002 ms)  onset    0 smp  normal   conf 0.985  peak-ratio  559.2  lobe-ratio  6.18  analyze  0.85 ms
+  impulse      peak    0 smp (  0.000 smp =  0.000 ms)  onset    0 smp  normal   conf 0.000  peak-ratio 1581.7  lobe-ratio 32.69  analyze  0.00 ms
+
+### --click-amp 0.1
+test/files/a2-amp-test.nam
+  time-domain  peak    5 smp (  5.349 smp =  0.111 ms)  onset    1 smp  normal   conf 0.511  peak-ratio   98.2  lobe-ratio  1.08 AMBIGUOUS  analyze  1.16 ms
+                 early lobe    2 smp INVERTED
+  gcc-phat     peak    5 smp (  4.937 smp =  0.103 ms)  onset    1 smp  normal   conf 0.511  peak-ratio   34.8  lobe-ratio  1.06 AMBIGUOUS  analyze  1.09 ms
+                 early lobe    2 smp INVERTED
+  impulse      peak  206 smp (205.888 smp =  4.289 ms)  onset    3 smp  normal   conf 0.000  peak-ratio    1.0  lobe-ratio  1.01 AMBIGUOUS  analyze  0.00 ms
+                 early lobe   29 smp normal
+test/files/a2-am-test-2.nam
+  time-domain  peak   17 smp ( 17.142 smp =  0.357 ms)  onset   17 smp  normal   conf 0.788  peak-ratio  122.1  lobe-ratio  1.42  analyze  1.21 ms
+  gcc-phat     peak   17 smp ( 17.282 smp =  0.360 ms)  onset   17 smp  normal   conf 0.788  peak-ratio   57.0  lobe-ratio  1.43  analyze  1.28 ms
+  impulse      peak   17 smp ( 17.336 smp =  0.361 ms)  onset   17 smp  normal   conf 0.000  peak-ratio    2.3  lobe-ratio  1.05 AMBIGUOUS  analyze  0.00 ms
+test/files/a2-amp-cab-test.nam
+  time-domain  peak   17 smp ( 17.300 smp =  0.360 ms)  onset   14 smp  normal   conf 0.399  peak-ratio    8.1  lobe-ratio  1.19  analyze  1.15 ms
+  gcc-phat     peak   18 smp ( 17.833 smp =  0.372 ms)  onset   14 smp  normal   conf 0.383  peak-ratio   15.7  lobe-ratio  1.89  analyze  1.19 ms
+  impulse      peak   23 smp ( 22.773 smp =  0.474 ms)  onset   16 smp  INVERTED conf 0.000  peak-ratio    7.7  lobe-ratio  1.44  analyze  0.00 ms
+plugin/NeuralAmpModelerCore/example_models/wavenet.nam
+  time-domain  peak   16 smp ( 16.454 smp =  0.343 ms)  onset   16 smp  normal   conf 0.652  peak-ratio  184.8  lobe-ratio  1.48  analyze  1.16 ms
+  gcc-phat     peak   17 smp ( 16.530 smp =  0.344 ms)  onset   16 smp  normal   conf 0.619  peak-ratio  120.8  lobe-ratio  1.63  analyze  1.15 ms
+  impulse      peak   17 smp ( 16.517 smp =  0.344 ms)  onset   16 smp  normal   conf 0.000  peak-ratio 78105355787.6  lobe-ratio  1.39  analyze  0.00 ms
+plugin/NeuralAmpModelerCore/example_models/A2.nam
+  time-domain  peak    3 smp (  2.591 smp =  0.054 ms)  onset    0 smp  INVERTED conf 0.458  peak-ratio   10.4  lobe-ratio  1.28  analyze  1.29 ms
+  gcc-phat     peak    3 smp (  2.838 smp =  0.059 ms)  onset    0 smp  INVERTED conf 0.458  peak-ratio   14.2  lobe-ratio  1.96  analyze  1.23 ms
+  impulse      peak    6 smp (  6.300 smp =  0.131 ms)  onset    2 smp  normal   conf 0.000  peak-ratio    1.9  lobe-ratio  1.39  analyze  0.00 ms
+plugin/NeuralAmpModelerCore/example_models/lstm.nam
+  time-domain  peak    0 smp (  0.000 smp =  0.000 ms)  onset    0 smp  normal   conf 0.985  peak-ratio  155.3  lobe-ratio  6.40  analyze  1.27 ms
+  gcc-phat     peak    0 smp (  0.081 smp =  0.002 ms)  onset    0 smp  normal   conf 0.985  peak-ratio  559.2  lobe-ratio  6.18  analyze  0.93 ms
+  impulse      peak    0 smp (  0.000 smp =  0.000 ms)  onset    0 smp  normal   conf 0.000  peak-ratio 1415.9  lobe-ratio 32.66  analyze  0.00 ms
+
+### --click-amp 0.02
+test/files/a2-amp-test.nam
+  time-domain  peak    5 smp (  5.349 smp =  0.111 ms)  onset    1 smp  normal   conf 0.511  peak-ratio   98.2  lobe-ratio  1.08 AMBIGUOUS  analyze  1.30 ms
+                 early lobe    2 smp INVERTED
+  gcc-phat     peak    5 smp (  4.937 smp =  0.103 ms)  onset    1 smp  normal   conf 0.511  peak-ratio   34.8  lobe-ratio  1.06 AMBIGUOUS  analyze  1.28 ms
+                 early lobe    2 smp INVERTED
+  impulse      peak   67 smp ( 66.538 smp =  1.386 ms)  onset    2 smp  normal   conf 0.000  peak-ratio    1.0  lobe-ratio  1.00 AMBIGUOUS  analyze  0.00 ms
+                 early lobe    4 smp normal
+test/files/a2-am-test-2.nam
+  time-domain  peak   17 smp ( 17.142 smp =  0.357 ms)  onset   17 smp  normal   conf 0.788  peak-ratio  122.1  lobe-ratio  1.42  analyze  1.13 ms
+  gcc-phat     peak   17 smp ( 17.282 smp =  0.360 ms)  onset   17 smp  normal   conf 0.788  peak-ratio   57.0  lobe-ratio  1.43  analyze  1.16 ms
+  impulse      peak   20 smp ( 20.283 smp =  0.423 ms)  onset   17 smp  INVERTED conf 0.000  peak-ratio    9.2  lobe-ratio  1.54  analyze  0.00 ms
+test/files/a2-amp-cab-test.nam
+  time-domain  peak   17 smp ( 17.300 smp =  0.360 ms)  onset   14 smp  normal   conf 0.399  peak-ratio    8.1  lobe-ratio  1.19  analyze  1.20 ms
+  gcc-phat     peak   18 smp ( 17.833 smp =  0.372 ms)  onset   14 smp  normal   conf 0.383  peak-ratio   15.7  lobe-ratio  1.89  analyze  1.15 ms
+  impulse      peak   23 smp ( 22.892 smp =  0.477 ms)  onset   15 smp  INVERTED conf 0.000  peak-ratio    9.6  lobe-ratio  1.42  analyze  0.00 ms
+plugin/NeuralAmpModelerCore/example_models/wavenet.nam
+  time-domain  peak   16 smp ( 16.454 smp =  0.343 ms)  onset   16 smp  normal   conf 0.652  peak-ratio  184.8  lobe-ratio  1.48  analyze  1.22 ms
+  gcc-phat     peak   17 smp ( 16.530 smp =  0.344 ms)  onset   16 smp  normal   conf 0.619  peak-ratio  120.8  lobe-ratio  1.63  analyze  1.16 ms
+  impulse      peak   17 smp ( 16.521 smp =  0.344 ms)  onset   16 smp  normal   conf 0.000  peak-ratio 16742437321.2  lobe-ratio  1.43  analyze  0.00 ms
+plugin/NeuralAmpModelerCore/example_models/A2.nam
+  time-domain  peak    3 smp (  2.591 smp =  0.054 ms)  onset    0 smp  INVERTED conf 0.458  peak-ratio   10.4  lobe-ratio  1.28  analyze  1.16 ms
+  gcc-phat     peak    3 smp (  2.838 smp =  0.059 ms)  onset    0 smp  INVERTED conf 0.458  peak-ratio   14.2  lobe-ratio  1.96  analyze  1.09 ms
+  impulse      peak    6 smp (  6.482 smp =  0.135 ms)  onset    2 smp  normal   conf 0.000  peak-ratio    3.9  lobe-ratio  1.12  analyze  0.00 ms
+plugin/NeuralAmpModelerCore/example_models/lstm.nam
+  time-domain  peak    0 smp (  0.000 smp =  0.000 ms)  onset    0 smp  normal   conf 0.985  peak-ratio  155.3  lobe-ratio  6.40  analyze  1.17 ms
+  gcc-phat     peak    0 smp (  0.081 smp =  0.002 ms)  onset    0 smp  normal   conf 0.985  peak-ratio  559.2  lobe-ratio  6.18  analyze  0.81 ms
+  impulse      peak    0 smp (  0.000 smp =  0.000 ms)  onset    0 smp  normal   conf 0.000  peak-ratio 1299.2  lobe-ratio 32.64  analyze  0.00 ms
+
+### --click-amp 0.005
+test/files/a2-amp-test.nam
+  time-domain  peak    5 smp (  5.349 smp =  0.111 ms)  onset    1 smp  normal   conf 0.511  peak-ratio   98.2  lobe-ratio  1.08 AMBIGUOUS  analyze  1.13 ms
+                 early lobe    2 smp INVERTED
+  gcc-phat     peak    5 smp (  4.937 smp =  0.103 ms)  onset    1 smp  normal   conf 0.511  peak-ratio   34.8  lobe-ratio  1.06 AMBIGUOUS  analyze  1.15 ms
+                 early lobe    2 smp INVERTED
+  impulse      peak    4 smp (  4.293 smp =  0.089 ms)  onset    3 smp  normal   conf 0.000  peak-ratio    1.5  lobe-ratio  1.19  analyze  0.00 ms
+test/files/a2-am-test-2.nam
+  time-domain  peak   17 smp ( 17.142 smp =  0.357 ms)  onset   17 smp  normal   conf 0.788  peak-ratio  122.1  lobe-ratio  1.42  analyze  1.23 ms
+  gcc-phat     peak   17 smp ( 17.282 smp =  0.360 ms)  onset   17 smp  normal   conf 0.788  peak-ratio   57.0  lobe-ratio  1.43  analyze  1.14 ms
+  impulse      peak   17 smp ( 17.340 smp =  0.361 ms)  onset   17 smp  normal   conf 0.000  peak-ratio   14.4  lobe-ratio  1.01 AMBIGUOUS  analyze  0.00 ms
+test/files/a2-amp-cab-test.nam
+  time-domain  peak   17 smp ( 17.300 smp =  0.360 ms)  onset   14 smp  normal   conf 0.399  peak-ratio    8.1  lobe-ratio  1.19  analyze  1.32 ms
+  gcc-phat     peak   18 smp ( 17.833 smp =  0.372 ms)  onset   14 smp  normal   conf 0.383  peak-ratio   15.7  lobe-ratio  1.89  analyze  1.13 ms
+  impulse      peak   23 smp ( 23.304 smp =  0.486 ms)  onset   15 smp  INVERTED conf 0.000  peak-ratio    7.0  lobe-ratio  1.06 AMBIGUOUS  analyze  0.00 ms
+                 early lobe   17 smp normal
+plugin/NeuralAmpModelerCore/example_models/wavenet.nam
+  time-domain  peak   16 smp ( 16.454 smp =  0.343 ms)  onset   16 smp  normal   conf 0.652  peak-ratio  184.8  lobe-ratio  1.48  analyze  1.21 ms
+  gcc-phat     peak   17 smp ( 16.530 smp =  0.344 ms)  onset   16 smp  normal   conf 0.619  peak-ratio  120.8  lobe-ratio  1.63  analyze  1.16 ms
+  impulse      peak   17 smp ( 16.521 smp =  0.344 ms)  onset   16 smp  normal   conf 0.000  peak-ratio 4201493866.3  lobe-ratio  1.44  analyze  0.00 ms
+plugin/NeuralAmpModelerCore/example_models/A2.nam
+  time-domain  peak    3 smp (  2.591 smp =  0.054 ms)  onset    0 smp  INVERTED conf 0.458  peak-ratio   10.4  lobe-ratio  1.28  analyze  1.14 ms
+  gcc-phat     peak    3 smp (  2.838 smp =  0.059 ms)  onset    0 smp  INVERTED conf 0.458  peak-ratio   14.2  lobe-ratio  1.96  analyze  1.09 ms
+  impulse      peak    3 smp (  2.820 smp =  0.059 ms)  onset    2 smp  INVERTED conf 0.000  peak-ratio    7.0  lobe-ratio  1.35  analyze  0.00 ms
+plugin/NeuralAmpModelerCore/example_models/lstm.nam
+  time-domain  peak    0 smp (  0.000 smp =  0.000 ms)  onset    0 smp  normal   conf 0.985  peak-ratio  155.3  lobe-ratio  6.40  analyze  1.14 ms
+  gcc-phat     peak    0 smp (  0.081 smp =  0.002 ms)  onset    0 smp  normal   conf 0.985  peak-ratio  559.2  lobe-ratio  6.18  analyze  0.81 ms
+  impulse      peak    0 smp (  0.000 smp =  0.000 ms)  onset    0 smp  normal   conf 0.000  peak-ratio  915.5  lobe-ratio 32.59  analyze  0.00 ms
+
+### --click-amp 0.001
+test/files/a2-amp-test.nam
+  time-domain  peak    5 smp (  5.349 smp =  0.111 ms)  onset    1 smp  normal   conf 0.511  peak-ratio   98.2  lobe-ratio  1.08 AMBIGUOUS  analyze  1.12 ms
+                 early lobe    2 smp INVERTED
+  gcc-phat     peak    5 smp (  4.937 smp =  0.103 ms)  onset    1 smp  normal   conf 0.511  peak-ratio   34.8  lobe-ratio  1.06 AMBIGUOUS  analyze  1.15 ms
+                 early lobe    2 smp INVERTED
+  impulse      peak    8 smp (  7.568 smp =  0.158 ms)  onset    4 smp  normal   conf 0.000  peak-ratio    5.3  lobe-ratio  1.10 AMBIGUOUS  analyze  0.00 ms
+test/files/a2-am-test-2.nam
+  time-domain  peak   17 smp ( 17.142 smp =  0.357 ms)  onset   17 smp  normal   conf 0.788  peak-ratio  122.1  lobe-ratio  1.42  analyze  1.17 ms
+  gcc-phat     peak   17 smp ( 17.282 smp =  0.360 ms)  onset   17 smp  normal   conf 0.788  peak-ratio   57.0  lobe-ratio  1.43  analyze  1.15 ms
+  impulse      peak   17 smp ( 17.365 smp =  0.362 ms)  onset   17 smp  normal   conf 0.000  peak-ratio   27.9  lobe-ratio  1.37  analyze  0.00 ms
+test/files/a2-amp-cab-test.nam
+  time-domain  peak   17 smp ( 17.300 smp =  0.360 ms)  onset   14 smp  normal   conf 0.399  peak-ratio    8.1  lobe-ratio  1.19  analyze  1.14 ms
+  gcc-phat     peak   18 smp ( 17.833 smp =  0.372 ms)  onset   14 smp  normal   conf 0.383  peak-ratio   15.7  lobe-ratio  1.89  analyze  1.26 ms
+  impulse      peak   23 smp ( 23.396 smp =  0.487 ms)  onset   15 smp  INVERTED conf 0.000  peak-ratio    6.8  lobe-ratio  1.04 AMBIGUOUS  analyze  0.00 ms
+                 early lobe   17 smp normal
+plugin/NeuralAmpModelerCore/example_models/wavenet.nam
+  time-domain  peak   16 smp ( 16.454 smp =  0.343 ms)  onset   16 smp  normal   conf 0.652  peak-ratio  184.8  lobe-ratio  1.48  analyze  1.15 ms
+  gcc-phat     peak   17 smp ( 16.530 smp =  0.344 ms)  onset   16 smp  normal   conf 0.619  peak-ratio  120.8  lobe-ratio  1.63  analyze  1.15 ms
+  impulse      peak   17 smp ( 16.520 smp =  0.344 ms)  onset   16 smp  normal   conf 0.000  peak-ratio 840699067.3  lobe-ratio  1.44  analyze  0.00 ms
+plugin/NeuralAmpModelerCore/example_models/A2.nam
+  time-domain  peak    3 smp (  2.591 smp =  0.054 ms)  onset    0 smp  INVERTED conf 0.458  peak-ratio   10.4  lobe-ratio  1.28  analyze  1.18 ms
+  gcc-phat     peak    3 smp (  2.838 smp =  0.059 ms)  onset    0 smp  INVERTED conf 0.458  peak-ratio   14.2  lobe-ratio  1.96  analyze  1.15 ms
+  impulse      peak    3 smp (  2.801 smp =  0.058 ms)  onset    2 smp  INVERTED conf 0.000  peak-ratio    7.8  lobe-ratio  1.28  analyze  0.00 ms
+plugin/NeuralAmpModelerCore/example_models/lstm.nam
+  time-domain  peak    0 smp (  0.000 smp =  0.000 ms)  onset    0 smp  normal   conf 0.985  peak-ratio  155.3  lobe-ratio  6.40  analyze  1.17 ms
+  gcc-phat     peak    0 smp (  0.081 smp =  0.002 ms)  onset    0 smp  normal   conf 0.985  peak-ratio  559.2  lobe-ratio  6.18  analyze  0.77 ms
+  impulse      peak    0 smp (  0.000 smp =  0.000 ms)  onset    0 smp  normal   conf 0.000  peak-ratio  503.5  lobe-ratio 33.57  analyze  0.00 ms
+
+### --click-amp 0.02 test/files/a2-am-test-2.nam, taps
+  time-domain correlation = est. impulse response, lags 0..27 (normalized):
+    -0.00 -0.02 +0.02 -0.02 +0.02 -0.00 -0.02 +0.04 -0.04 +0.02 +0.01 +0.00 +0.11 -0.02 +0.16 +0.03 +0.04 +1.00 +0.46 -0.70 -0.33 -0.12 -0.17 +0.01 -0.09 -0.04 -0.04 -0.07
+  click response, lags 0..27 (normalized):
+    +0.00 -0.00 +0.01 -0.00 +0.01 -0.00 +0.00 -0.01 -0.01 -0.02 +0.00 -0.05 -0.01 -0.01 +0.09 -0.09 +0.04 +0.65 +0.57 -0.59 -1.00 -0.89 -0.52 -0.57 +0.02 +0.00 +0.22 -0.01

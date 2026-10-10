@@ -269,6 +269,62 @@ TEST(ProcessorTest, ParameterStateSurvivesSaveRestore) {
   EXPECT_EQ(b.getLatencySamples(), 0);
 }
 
+// Calibration and oversampling double as machine-wide defaults (github issue
+// #66): a Settings-page edit writes the parameter's denormalised value under
+// its id, and a fresh instance seeds from those keys. Driven over a scratch
+// PropertySet; the real file is never touched (main() disables the seeding).
+TEST(ProcessorTest, MachineDefaultParametersRoundTrip) {
+  juce::PropertySet settings;
+  {
+    TONE3000Processor a;
+    a.parameters.getParameter("calibrateInput")->setValueNotifyingHost(1.0f);
+    auto* dbu = a.parameters.getParameter("inputCalibrationLevel");
+    dbu->setValueNotifyingHost(dbu->convertTo0to1(4.0f));
+    a.parameters.getParameter("osEnabled")->setValueNotifyingHost(1.0f);
+    a.parameters.getParameter("osFactor")->setValueNotifyingHost(0.5f);  // index 1 = 4x
+    for (const auto* id : {"calibrateInput", "inputCalibrationLevel", "osEnabled", "osFactor"})
+      a.writeMachineDefaultParameter(settings, id);
+  }
+  // Stored in real units, like preset files.
+  EXPECT_EQ(settings.getIntValue("calibrateInput"), 1);
+  EXPECT_NEAR(settings.getDoubleValue("inputCalibrationLevel"), 4.0, 1e-4);
+  EXPECT_EQ(settings.getIntValue("osEnabled"), 1);
+  EXPECT_EQ(settings.getIntValue("osFactor"), 1);
+
+  TONE3000Processor b;
+  b.applyMachineDefaultParameters(settings);
+  EXPECT_EQ(b.parameters.getRawParameterValue("calibrateInput")->load(), 1.0f);
+  EXPECT_NEAR(b.parameters.getRawParameterValue("inputCalibrationLevel")->load(), 4.0f, 1e-4f);
+  EXPECT_EQ(b.parameters.getRawParameterValue("osEnabled")->load(), 1.0f);
+  EXPECT_EQ(b.parameters.getRawParameterValue("osFactor")->load(), 1.0f);
+
+  // A host restore that follows wins over the machine default, so a project
+  // reopens exactly as it was saved.
+  juce::MemoryBlock state;
+  {
+    TONE3000Processor saved;
+    saved.parameters.getParameter("osEnabled")->setValueNotifyingHost(0.0f);
+    saved.parameters.getParameter("calibrateInput")->setValueNotifyingHost(0.0f);
+    saved.getStateInformation(state);
+  }
+  b.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+  EXPECT_EQ(b.parameters.getRawParameterValue("osEnabled")->load(), 0.0f);
+  EXPECT_EQ(b.parameters.getRawParameterValue("calibrateInput")->load(), 0.0f);
+
+  // Keys missing from the file leave the parameter at its default; a tone
+  // parameter is never a machine default.
+  juce::PropertySet partial;
+  partial.setValue("osFactor", 2);
+  partial.setValue("inputLevel", 0.9);
+  TONE3000Processor c;
+  c.applyMachineDefaultParameters(partial);
+  EXPECT_EQ(c.parameters.getRawParameterValue("osFactor")->load(), 2.0f);
+  EXPECT_EQ(c.parameters.getRawParameterValue("osEnabled")->load(), 0.0f);
+  EXPECT_NEAR(c.parameters.getRawParameterValue("inputLevel")->load(), 0.5f, 1e-6f);
+  EXPECT_FALSE(TONE3000Processor::isMachineDefaultParameter("inputLevel"));
+  EXPECT_TRUE(TONE3000Processor::isMachineDefaultParameter("inputCalibrationLevel"));
+}
+
 TEST(ProcessorTest, RestoredNamsBeforePrepareMatchNamsLoadedAtFourTimes) {
   juce::MemoryBlock saved;
   {

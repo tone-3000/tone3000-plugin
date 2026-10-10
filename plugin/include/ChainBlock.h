@@ -1,6 +1,7 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
+#include <algorithm>
 #include <atomic>
 #include <map>
 #include <memory>
@@ -53,6 +54,42 @@ constexpr double kWetFadeSeconds = 0.025;
 // level with the trunk lane (see alignBranchLaneLengths).
 constexpr int kMinLaneSlots = 5;
 
+// IR convolver block size cap. juce::dsp::Convolution's zero-latency engines
+// size their FFT partition from ProcessSpec::maximumBlockSize and run a full
+// forward + inverse FFT of that size on *every* process() call, however few
+// samples it carries. Preparing from the host's promised maximum ties IR CPU
+// to a number unrelated to the real callback size: Ardour advertises 8192 to
+// every LV2 plugin whatever buffer it actually runs, and one cab IR at
+// 64-sample callbacks then costs ~90% of a core instead of ~2%. So the
+// convolver's prepared block size is the host's base block *capped* at this
+// (irConvolverBlockSizeFor), and the RT path never feeds it more per call
+// (processConvolverInChunks). Hosts at or below the cap get exactly the
+// partition they always did, so nothing changes for them; hosts above it
+// (or over-promising ones) get a 256 partition and chunked input instead
+// of an oversized FFT per callback.
+constexpr int kIrConvolverMaxBlockSize = 256;
+
+// The block size convolvers are prepared with for a chain whose base-rate
+// block is `chainBaseBlockSize` frames (TONE3000Processor::chainBaseBlockSize).
+inline int irConvolverBlockSizeFor(int chainBaseBlockSize) noexcept {
+  return std::min(std::max(chainBaseBlockSize, 1), kIrConvolverMaxBlockSize);
+}
+
+// Feed `block` to a convolver prepared via irConvolverBlockSizeFor in pieces
+// of at most kIrConvolverMaxBlockSize frames. When the base block is at or
+// below the cap this is a single call (the island hands at most the base
+// block per callback); above it, the convolver was prepared at the cap and
+// the loop keeps every call within what it was prepared for.
+inline void processConvolverInChunks(juce::dsp::Convolution& convolver,
+                                     const juce::dsp::AudioBlock<float>& block) {
+  const size_t numSamples = block.getNumSamples();
+  constexpr size_t chunkSize = static_cast<size_t>(kIrConvolverMaxBlockSize);
+  for (size_t start = 0; start < numSamples; start += chunkSize) {
+    auto chunk = block.getSubBlock(start, std::min(chunkSize, numSamples - start));
+    convolver.process(juce::dsp::ProcessContextReplacing<float>(chunk));
+  }
+}
+
 // Chain block data structure
 struct ChainBlock {
   std::string id;  // Chain block UUID
@@ -73,6 +110,25 @@ struct ChainBlock {
 
   // Model cache: stores downloaded model data by model ID
   std::map<int, std::vector<uint8_t>> modelCache;
+
+  // True when the block's stored tone can still name this model: it is the
+  // active model, or the toneVar models array lists it (local tones keep
+  // their full list; catalog tones collapse to the active model on every
+  // switch, see switchModel). This is the persistence boundary for
+  // modelCache: saves embed bytes and restores re-seed them only for
+  // referenced models (serializeChainToTree / reconcileChainFromTree).
+  // Anything else in the cache is an in-memory audition convenience;
+  // persisting those bytes is what bloated DAW projects by hundreds of MB
+  // (issue #127).
+  bool referencesModel(int modelId) const {
+    if (modelId == activeModelId)
+      return true;
+    if (const auto* models = toneVar["models"].getArray())
+      for (const auto& model : *models)
+        if (static_cast<int>(model["id"]) == modelId)
+          return true;
+    return false;
+  }
 
   // State flags
   bool loaded;   // True when active model is loaded and ready
@@ -112,10 +168,11 @@ struct ChainBlock {
   // callbacks are running the change applies directly, nothing is audible).
   //
   // Two fade shapes, picked by `swapMuteWet`:
-  //  - false (bypass fade): wetFadeGain rides the mix, so the output
-  //    crossfades toward the block's dry input. Right for transitions that
-  //    END at bypass (power off, removal, failure drop, fresh-block
-  //    fade-in; dry is what plays afterwards anyway).
+  //  - false (bypass fade): wetFadeGain rides the mix and glides the
+  //    post-mix Out Gain to unity in step, so the output crossfades toward
+  //    the block's dry input at pass-through level. Right for transitions
+  //    that END at bypass (power off, removal, failure drop, fresh-block
+  //    fade-in; unity dry is what plays afterwards anyway).
   //  - true (wet mute): engine swaps end back at wet, and their dry input
   //    was never audible; at 100% mix crossfading through it blasts ~50 ms
   //    of the un-cabbed/un-ampped signal (a raw amp head into no cab is a
@@ -161,11 +218,14 @@ struct ChainBlock {
   // the built engine). Feeds refreshIrTailLength / getTailLengthSeconds so
   // hosts render real reverb tails.
   int irLengthBaseSamples{0};
-  // The single short/long classification (kernel length vs the cutoff in
-  // ProcessorModelLoader.cpp). Short = cab-like: -18 dB output pad
-  // (spectrally concentrated kernels play back hot at unit energy), 100%
-  // default mix. Long = reverb-like: no pad (diffuse kernels sit at ≈ dry
-  // level at unit energy), 50% default mix. Shipped to the UI as `irLong`.
+  // The single cab-like / reverb-like classification. Short = cab-like:
+  // -18 dB output pad (spectrally concentrated kernels play back hot at
+  // unit energy), 100% default mix. Long = reverb-like: no pad (diffuse
+  // kernels sit at ≈ dry level at unit energy), 50% default mix. Decided by
+  // the tone's gear when it is unambiguous ("cab" / "space"), else by the
+  // kernel length against the cutoff in ProcessorModelLoader.cpp (see
+  // irIsLongFor there). Runtime-only: recomputed on every load. Shipped to
+  // the UI as `irLong`.
   bool irIsLong{false};
   juce::LinearSmoothedValue<float> irNormalizationSmoother;
   float irNormalizationGainLinear{1.0f};
@@ -198,13 +258,15 @@ struct ChainBlock {
 
   // Per-block meter levels (dB, -60 floor). Written by the audio thread every
   // block, read by the UI via getMeterLevels(). Input is measured post
-  // input-gain (what the model actually receives), output post gain+mix.
+  // input-gain (what the model actually receives), output post mix + Out
+  // Gain.
   std::atomic<float> inputMeterDb{-60.0f};
   std::atomic<float> outputMeterDb{-60.0f};
 
-  // Per-block 6-band EQ: after output gain + mix by default, or between the
-  // input gain and the model when its pre flag is on. Flat by default, in
-  // which case processing is skipped entirely (single branch per audio block).
+  // Per-block 6-band EQ: on the wet signal after the model by default
+  // (before Out Gain and the mix), or between the input gain and the model
+  // when its pre flag is on. Flat by default, in which case processing is
+  // skipped entirely (single branch per audio block).
   BlockEq eq;
 
   // Spectrum analyzer for the EQ editor backdrop. Only fed by the audio thread

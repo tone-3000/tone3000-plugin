@@ -282,6 +282,11 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString,
   block->namSlimSize = namSlimSizeDefault.load();
   block->loaded = false;
   block->modelLoading = true;
+  // The only tone-block creation path that doesn't go through
+  // applyBlockSettings, so the block's EQ/analyzer meet the chain rate here.
+  // An oversampling change while the model is still loading is covered too:
+  // prepareChain walks every block in the lane, loading or not.
+  prepareBlockForChainRate(*block);
   // The right default mix depends on the model itself (long IR = half wet),
   // which is only known after download; the first successful apply sets it
   // (see applyPreparedModelToChainBlock).
@@ -1027,8 +1032,8 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
         row.modelLoading = block->modelLoading;
         row.irLong = block->type == ChainBlockType::IR && block->irIsLong;
         // NAM calibration metadata off the loaded engine, absent when the
-        // model carries none. Non-finite values never ship; the JSON bridge
-        // can't carry them (and the DSP rejects them too).
+        // model carries none. Non-finite values never ship: the DSP rejects
+        // them and JSON (presets) can't carry them.
         if (block->type == ChainBlockType::NAM && block->namEngine != nullptr) {
           if (block->namEngine->hasInputLevel() &&
               std::isfinite(block->namEngine->getInputLevel())) {
@@ -1178,6 +1183,10 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
   // True in the standalone app; gates standalone-only settings.
   state->setProperty("standalone", isStandalone());
   state->setProperty("inputMode", inputModeToString(getInputMode()));
+  // True while dual mono is actually running (mode selected on a mono chain
+  // with a stereo source *and* a stereo rig; see dualMonoEngaged). The UI
+  // shows stereo output meters and the Balance control, and dims Spread.
+  state->setProperty("dualMonoActive", dualMonoEngaged());
   // Machine-wide settings ride this payload because they change together
   // with a revision bump, like everything else Settings displays.
   state->setProperty("namSlimSizeDefault", namSlimSizeDefault.load());
@@ -1206,7 +1215,7 @@ juce::var TONE3000Processor::getMeterLevels() const {
   // Stereo-image output correlation (-1..1, 1 when the engine is idle) for
   // the mono-compatibility meter: whichever image engine the mode runs
   // (Spread in mono, the Align deck in stereo). Riding this poll costs no
-  // extra bridge traffic.
+  // extra call.
   root->setProperty("correlation", stereoEnabled.load() ? stereoOffset.correlation()
                                                         : spread.correlation());
 
@@ -1264,14 +1273,20 @@ void TONE3000Processor::setStereoMode(bool enabled) {
   alignBranchLaneLengths();
 
   // A re-engaged branch means a single mono source again, so re-enforce the
-  // input-mode invariant (the fold may have gone back to stereo while the
-  // branch lay dormant).
-  if (rtBranchTapIndex >= 0 && getInputMode() == InputMode::Stereo)
+  // input-mode invariant (the feed may have gone back to stereo / dual mono
+  // while the branch lay dormant).
+  if (rtBranchTapIndex >= 0 && isStereoFeed(getInputMode()))
     inputMode.store(static_cast<int>(InputMode::Left));
 
   // Make sure the right chain's engines are ready to run in the chain domain.
   if (enabled)
     prepareChain(right);
+
+  // Dual mono only applies to a mono chain, so with it selected the mode
+  // switch moves the NAM voice requirement (see wantedNamVoices): rebuild
+  // the engines and hold this fade until they land, like a preset load.
+  if (requeueNamEnginesForVoiceCount())
+    editFade.releaseWhenChainLoadsSettle();
 
   bumpChainRevision();
   DBG("Stereo mode " << (enabled ? "enabled" : "disabled"));
@@ -1389,9 +1404,11 @@ bool TONE3000Processor::setChainBranch(const juce::String& side,
   alignBranchLaneLengths();
 
   // A branched chain has a single (mono) source: the trunk's channel. A
-  // stereo input fold would silently drop the other channel, so force a
-  // definite pick; the UI hides the "stereo" option while branched.
-  if (getInputMode() == InputMode::Stereo)
+  // stereo feed would silently drop the other channel, so force a definite
+  // pick; the UI hides the "stereo" / "dual mono" options while branched.
+  // (Branching is stereo-mode only, where the NAM voice requirement is
+  // already one, so this never moves it.)
+  if (isStereoFeed(getInputMode()))
     inputMode.store(static_cast<int>(InputMode::Left));
 
   bumpChainRevision();

@@ -129,7 +129,7 @@ BlockEq::Band BlockEq::clampBand(Band band) {
 }
 
 // RBJ Audio EQ Cookbook coefficients, A = 10^(dB/40). Keep in exact sync with
-// the TypeScript mirror in ui/src/components/eqMath.ts.
+// the editor's mirror in plugin/ui/core/EqMath.cpp.
 void BlockEq::updateBand(int index) {
   const Band& band = bands[static_cast<size_t>(index)];
   Biquad& f = filters[static_cast<size_t>(index)];

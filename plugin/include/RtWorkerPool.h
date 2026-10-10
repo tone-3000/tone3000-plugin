@@ -65,8 +65,11 @@
 // publisher arms jobs and *then* reads the mask (with a seq_cst fence
 // pairing the two), so either the worker sees the job or the publisher sees
 // the bit. If both sides still miss (the worker was mid-park during an
-// earlier fork's mask read), the 1 ms park timeout and the joiner's steal
-// bound the damage to one serial-cost block.
+// earlier fork's mask read), the joiner's steal bounds the damage to one
+// serial-cost block, and the 100 ms park timeout is a last-resort re-check.
+// The timeout is deliberately long: every timed-out wait is a kernel wakeup
+// on a realtime thread, and a full pool of them at 1 ms costs more idle CPU
+// than the DSP itself.
 //
 // Jobs are a plain function pointer + context pointer: the publishing thread
 // builds small context structs on its own stack (alive until forkJoin
@@ -81,6 +84,10 @@ public:
       flight. A fork that finds the registry full runs the overflow jobs
       inline immediately: still correct, just less parallel. */
   static constexpr int kMaxJobs = 16;
+
+  /** How long a parked worker sleeps before re-checking on its own (see the
+      worker loop). Every wake it relies on is signalled explicitly. */
+  static constexpr int kParkTimeoutMs = 100;
 
   RtWorkerPool() = default;
   ~RtWorkerPool() { stop(); }
@@ -368,10 +375,13 @@ private:
           pool.parkedMask.fetch_and(~parkedBit, std::memory_order_relaxed);
           continue;
         }
-        // The 1 ms timeout only bounds how long shutdown/workgroup changes
-        // can go unnoticed; forkJoin signals, so job pickup latency is the
-        // event wake (~µs), not the timeout.
-        wake.wait(1);
+        // forkJoin, stop() and setAudioWorkgroup() all signal, so job pickup
+        // latency is the event wake (~µs), not the timeout. The timeout is
+        // only a safety net for a doubly-missed wakeup, and the joiner's
+        // steal already bounds that to one serial block, so it can be long.
+        // At 1 ms, 13 parked workers spend ~11% of a core in kernel time
+        // (13,000 timed-out waits a second) with the plugin idle.
+        wake.wait(kParkTimeoutMs);
         pool.parkedMask.fetch_and(~parkedBit, std::memory_order_relaxed);
       }
 

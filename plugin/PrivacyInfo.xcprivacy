@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSPrivacyTracking</key>
+    <false/>
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+    <!-- The app does not collect data on the developer's behalf. The optional
+         TONE3000 sign-in is the user's own account on tone3000.com; its token
+         stays on the device. -->
+    <key>NSPrivacyCollectedDataTypes</key>
+    <array/>
+    <!-- Required-reason APIs. Every one of these is reached from JUCE, not
+         from plugin code, and the reason codes are the ones Apple publishes
+         for that use. Uploads are rejected (ITMS-91053) when a required-reason
+         API in the binary is missing here. -->
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array>
+        <dict>
+            <!-- NSUserDefaults. Declared defensively: the plugin's own code
+                 never touches it, and the JUCE call that once did (the
+                 WebBrowserComponent) compiles out with JUCE_WEB_BROWSER=0,
+                 but a missing declaration rejects the upload while a spare
+                 one costs nothing. Re-derive when the JUCE version moves. -->
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>CA92.1</string>
+            </array>
+        </dict>
+        <dict>
+            <!-- stat() for File::getFileTimesInternal / getLastModificationTime
+                 in juce_SharedCode_posix.h. -->
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>C617.1</string>
+            </array>
+        </dict>
+        <dict>
+            <!-- statfs() for File::getBytesFreeOnVolume in
+                 juce_SharedCode_posix.h. -->
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>85F4.1</string>
+            </array>
+        </dict>
+        <dict>
+            <!-- [[NSProcessInfo processInfo] systemUptime] timestamps every
+                 touch and scroll event in juce_UIViewComponentPeer_ios.mm.
+                 Also covers the mach_absolute_time calls in
+                 juce_SystemStats_mac.mm and juce_CoreMidi_mac.mm. -->
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>35F9.1</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>

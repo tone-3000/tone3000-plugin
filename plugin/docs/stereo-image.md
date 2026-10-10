@@ -78,7 +78,9 @@ Align applies a short corrective delay (up to 24 ms, sub-sample precise) to
 one chain, for chains that land a few ms apart: captures of the same
 performance, or NAM models / IRs with different baked-in latency. The
 auto-align button measures the inter-chain lag with an internal sweep and
-writes the correction into the offset (see `AutoOffset.h`).
+writes the correction into the offset (see `AutoOffset.h`; the probe
+method, applied per model and validated against trainer metadata and real
+DI, is written up in [`model-latency.md`](model-latency.md)).
 
 On top of the corrective delay sits the same deck as Spread's, with two
 deliberate differences (rationale in `StereoOffset.h`):

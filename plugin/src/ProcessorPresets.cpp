@@ -1,5 +1,7 @@
 #include "Processor.h"
 
+#include "LegacyParamIds.h"
+
 // #############################
 // INTERNAL PRESETS
 // #############################
@@ -17,7 +19,10 @@ const std::vector<juce::String>& TONE3000Processor::presetParameterIds() {
   static const std::vector<juce::String> ids = {
       "inputLevel",     "outputLevel",      "outputBalance",
       "toneBass",       "toneMid",          "toneTreble",
-      "gateThreshold",  "gateEnabled",      "toneEqEnabled",
+      "gateThreshold",  "gateEnabled",      "gateRelease",
+      "gateHold",       "gateRange",        "toneEqEnabled",
+      "pitchEnabled",   "pitchSemitones",   "pitchStep",
+      "pitchTonality",  "pitchWindow",
       "spreadEnabled",  "spreadOffset",     "spreadWobble",
       "spreadWobbleEnabled", "spreadCrossover", "spreadCrossoverEnabled",
       "spreadDiffuseEnabled",
@@ -49,9 +54,8 @@ juce::var TONE3000Processor::getPresetList() const {
     presetArray.add(juce::var(obj.get()));
   }
   juce::Array<juce::var> categoryArray;
-  for (const auto& cat : presetManager.listCategories()) {
-    categoryArray.add(cat);
-  }
+  for (const auto& category : presetManager.listCategories())
+    categoryArray.add(category);
   juce::DynamicObject::Ptr root = new juce::DynamicObject();
   root->setProperty("presets", presetArray);
   root->setProperty("categories", categoryArray);
@@ -90,6 +94,10 @@ juce::var TONE3000Processor::savePreset(const juce::String& rawName) {
     return {};
 
   setActivePreset(info.id, info.name);
+  // The list gained/renamed an entry and the active program index may have
+  // moved with it: refresh host program names and displays.
+  hostProgramInfoCache.clear();
+  updateHostDisplay(ChangeDetails{}.withProgramChanged(true));
   juce::Logger::writeToLog("[Presets] Saved preset: " + info.name);
 
   juce::DynamicObject::Ptr obj = new juce::DynamicObject();
@@ -155,10 +163,13 @@ bool TONE3000Processor::loadPreset(const juce::String& presetId) {
 
   // Faceplate parameters: every preset-managed id is set, entries missing
   // from the file (saved before a parameter existed) land on the parameter
-  // default, so a preset always restores the same rig. Gestured so hosts
+  // default, so a preset always restores the same rig. Ids an older build
+  // wrote are renamed first (in this call's copy of the tree; the file is
+  // rewritten with the current ids on its next save). Gestured so hosts
   // treat this like a user edit (automation write modes record it instead
   // of fighting it).
-  const juce::ValueTree params = preset.getChildWithName("Params");
+  juce::ValueTree params = preset.getChildWithName("Params");
+  t3k::legacy_ids::migrateParamIds(params, "id");
   for (const auto& paramId : presetParameterIds()) {
     auto* p = parameters.getParameter(paramId);
     if (p == nullptr)
@@ -176,6 +187,11 @@ bool TONE3000Processor::loadPreset(const juce::String& presetId) {
 
   juce::Logger::writeToLog("[Presets] Loaded preset: " + activePresetName);
 
+  // Tell hosts the current program moved so their program parameter/menus
+  // follow (the VST3 wrapper syncs its program parameter off this; its echo
+  // is suppressed by applyHostProgram's already-active guard).
+  updateHostDisplay(ChangeDetails{}.withProgramChanged(true));
+
   // The restore queued every block's engine build on the background loader;
   // hold the mute until they land (bounded), else the chain fades back in on
   // unloaded pass-through blocks and blasts the raw dry input.
@@ -186,30 +202,112 @@ bool TONE3000Processor::loadPreset(const juce::String& presetId) {
 bool TONE3000Processor::renamePreset(const juce::String& presetId, const juce::String& newName) {
   if (!presetManager.rename(presetId, newName))
     return false;
-  juce::ScopedLock lock(chainMutex);
-  if (activePresetId == presetId) {
-    activePresetName = newName.trim();
-    bumpChainRevision();
+  hostProgramInfoCache.clear();  // host program names follow the rename
+  {
+    juce::ScopedLock lock(chainMutex);
+    if (activePresetId == presetId) {
+      activePresetName = newName.trim();
+      bumpChainRevision();
+    }
   }
+  // A rename can reorder the list (name order within a section), moving the
+  // active preset's program index.
+  updateHostDisplay(ChangeDetails{}.withProgramChanged(true));
   return true;
 }
 
 bool TONE3000Processor::deletePreset(const juce::String& presetId) {
   if (!presetManager.remove(presetId))
     return false;
-  juce::ScopedLock lock(chainMutex);
-  if (activePresetId == presetId) {
-    activePresetId.clear();
-    activePresetName.clear();
-    bumpChainRevision();
+  hostProgramInfoCache.clear();
+  {
+    juce::ScopedLock lock(chainMutex);
+    if (activePresetId == presetId) {
+      activePresetId.clear();
+      activePresetName.clear();
+      bumpChainRevision();
+    }
   }
+  // Every preset after the deleted one shifted down a program slot (and the
+  // active one may be gone entirely), so host program state moved.
+  updateHostDisplay(ChangeDetails{}.withProgramChanged(true));
   return true;
+}
+
+bool TONE3000Processor::addPresetCategory(const juce::String& name) {
+  return presetManager.addCategory(name);
+}
+
+bool TONE3000Processor::deletePresetCategory(const juce::String& name) {
+  return presetManager.deleteCategory(name);
+}
+
+bool TONE3000Processor::setPresetCategory(const juce::String& presetId,
+                                          const juce::String& category) {
+  return presetManager.setPresetCategory(presetId, category);
+}
+
+bool TONE3000Processor::movePresetsToCategory(const juce::StringArray& ids,
+                                              const juce::String& category) {
+  return presetManager.movePresetsToCategory(ids, category);
+}
+
+bool TONE3000Processor::setPresetFavorite(const juce::String& presetId, bool isFavorite) {
+  return presetManager.setPresetFavorite(presetId, isFavorite);
+}
+
+bool TONE3000Processor::setPresetsFavorite(const juce::StringArray& ids, bool isFavorite) {
+  return presetManager.setPresetsFavorite(ids, isFavorite);
+}
+
+juce::var TONE3000Processor::duplicatePresets(const juce::StringArray& ids) {
+  const auto created = presetManager.duplicatePresets(ids);
+  juce::Array<juce::var> result;
+  for (const auto& info : created) {
+    juce::DynamicObject::Ptr obj = new juce::DynamicObject();
+    obj->setProperty("id", info.id);
+    obj->setProperty("name", info.name);
+    obj->setProperty("category", info.category);
+    obj->setProperty("favorite", info.favorite);
+    obj->setProperty("factory", info.factory);
+    result.add(juce::var(obj.get()));
+  }
+  if (!created.empty()) {
+    // New user presets shift every factory preset's program slot.
+    hostProgramInfoCache.clear();
+    updateHostDisplay(ChangeDetails{}.withProgramChanged(true));
+  }
+  return result;
+}
+
+bool TONE3000Processor::deletePresets(const juce::StringArray& ids) {
+  // Remove first, then clear the active preset only if it really went: a
+  // failed delete must not drop the loaded preset's identity.
+  const juce::StringArray removed = presetManager.removePresets(ids);
+  if (removed.isEmpty())
+    return false;
+  hostProgramInfoCache.clear();
+  {
+    juce::ScopedLock lock(chainMutex);
+    if (removed.contains(activePresetId)) {
+      activePresetId.clear();
+      activePresetName.clear();
+      bumpChainRevision();
+    }
+  }
+  updateHostDisplay(ChangeDetails{}.withProgramChanged(true));
+  return removed.size() == ids.size();
 }
 
 bool TONE3000Processor::movePreset(const juce::String& presetId, int delta) {
   // Pure list-order change: nothing about the loaded chain moves, so no
-  // revision bump; the UI re-pulls the preset list after the call.
-  return presetManager.move(presetId, delta);
+  // revision bump; the UI re-pulls the preset list after the call. Program
+  // numbers follow the list order though, so host displays must refresh.
+  if (!presetManager.move(presetId, delta))
+    return false;
+  hostProgramInfoCache.clear();
+  updateHostDisplay(ChangeDetails{}.withProgramChanged(true));
+  return true;
 }
 
 bool TONE3000Processor::isChainAtDefault() const {
@@ -262,64 +360,102 @@ bool TONE3000Processor::resetToDefault() {
   }
 
   juce::Logger::writeToLog("[Presets] Reset to default");
+  // The active preset is gone, so the host program index fell back (see
+  // getCurrentProgram); keep host program displays in step.
+  updateHostDisplay(ChangeDetails{}.withProgramChanged(true));
   // No deferred fade release: an empty chain queues no model loads.
   return true;
 }
 
-bool TONE3000Processor::addPresetCategory(const juce::String& name) {
-  return presetManager.addCategory(name);
+// #############################
+// HOST PROGRAM API
+// #############################
+//
+// The internal preset list, exposed as the JUCE/host program list. This is
+// what makes MIDI program changes work in VST3 hosts (Cubase, Ableton, VST
+// Live; GitHub issue #38): VST3 never delivers PC as MIDI. JUCE's wrapper
+// reconstructs CCs/notes/pitch bend/aftertouch from IMidiMapping emulation
+// parameters, but a program change can only arrive as a change of the
+// wrapper's program parameter, which exists only when getNumPrograms() > 1.
+// Hosts map incoming PC n onto that parameter and the wrapper lands it in
+// setCurrentProgram(n) on the message thread. Raw-MIDI formats (Standalone,
+// AU, LV2, CLAP) keep delivering PC through MidiMapper::processMidi →
+// loadPresetAtIndex; both routes load the preset at index n in list order,
+// so a preset's PC number (shown in the preset browser) means the same tone
+// everywhere.
+//
+// Known wrapper edge, accepted: on an instance that never had a preset
+// active, getCurrentProgram() necessarily reports 0, and JUCE's VST3
+// wrapper drops program changes that match the current program, so the
+// very first PC targeting program 0 is swallowed until any other program
+// (or any preset via UI/MIDI) has been selected. Every JUCE plugin with
+// programs shares this; the alternative (reserving slot 0) would shift the
+// advertised "PC n = nth preset" numbering.
+
+int TONE3000Processor::getNumPrograms() {
+  return kNumHostPrograms;
 }
 
-bool TONE3000Processor::deletePresetCategory(const juce::String& name) {
-  return presetManager.deleteCategory(name);
-}
-
-bool TONE3000Processor::setPresetCategory(const juce::String& id, const juce::String& category) {
-  return presetManager.setPresetCategory(id, category);
-}
-
-bool TONE3000Processor::movePresetsToCategory(const juce::StringArray& ids, const juce::String& category) {
-  return presetManager.movePresetsToCategory(ids, category);
-}
-
-bool TONE3000Processor::setPresetFavorite(const juce::String& id, bool isFavorite) {
-  return presetManager.setPresetFavorite(id, isFavorite);
-}
-
-bool TONE3000Processor::setPresetsFavorite(const juce::StringArray& ids, bool isFavorite) {
-  return presetManager.setPresetsFavorite(ids, isFavorite);
-}
-
-juce::var TONE3000Processor::duplicatePresets(const juce::StringArray& ids) {
-  const auto created = presetManager.duplicatePresets(ids);
-  juce::Array<juce::var> result;
-  for (const auto& info : created) {
-    juce::DynamicObject::Ptr obj = new juce::DynamicObject();
-    obj->setProperty("id", info.id);
-    obj->setProperty("name", info.name);
-    obj->setProperty("category", info.category);
-    obj->setProperty("favorite", info.favorite);
-    obj->setProperty("factory", info.factory);
-    result.add(juce::var(obj.get()));
-  }
-  return result;
-}
-
-bool TONE3000Processor::deletePresets(const juce::StringArray& ids) {
-  bool activeDeleted = false;
+int TONE3000Processor::getCurrentProgram() {
+  juce::String id;
   {
     juce::ScopedLock lock(chainMutex);
-    for (const auto& id : ids) {
-      if (activePresetId == id) {
-        activePresetId.clear();
-        activePresetName.clear();
-        activeDeleted = true;
-        break;
-      }
-    }
+    id = activePresetId;
   }
-  if (activeDeleted)
-    bumpChainRevision();
+  if (id.isEmpty())
+    return 0;  // no active preset; the API still needs a valid index
+  // Fresh list, not the name cache: guards compare against this (see
+  // applyHostProgram and the wrapper's own echo suppression), so it must
+  // track the store exactly. One scan per call, event-rate only.
+  const auto presets = presetManager.list();
+  const int count = juce::jmin(static_cast<int>(presets.size()), kNumHostPrograms);
+  for (int i = 0; i < count; ++i)
+    if (presets[static_cast<size_t>(i)].id == id)
+      return i;
+  return 0;  // active preset deleted elsewhere or beyond the program range
+}
 
-  return presetManager.removePresets(ids);
+void TONE3000Processor::setCurrentProgram(int index) {
+  if (index < 0 || index >= kNumHostPrograms)
+    return;
+  // Preset loads are heavyweight message-thread work (chain lock, undo
+  // history, background model builds). VST3 lands here on the message
+  // thread, but the AudioProcessor contract doesn't promise one, so defer
+  // exactly like MidiMapper defers its PC deliveries.
+  if (juce::MessageManager::existsAndIsCurrentThread()) {
+    applyHostProgram(index);
+  } else {
+    pendingHostProgram.store(index);
+    triggerAsyncUpdate();
+  }
+}
+
+void TONE3000Processor::applyHostProgram(int index) {
+  const auto presets = presetManager.list();
+  if (index < 0 || index >= static_cast<int>(presets.size()))
+    return;  // empty program slot: ignore, like an out-of-range PC
+  {
+    juce::ScopedLock lock(chainMutex);
+    if (activePresetId == presets[static_cast<size_t>(index)].id)
+      return;  // already active: host echo / re-select, don't reload
+  }
+  loadPreset(presets[static_cast<size_t>(index)].id);
+}
+
+const juce::String TONE3000Processor::getProgramName(int index) {
+  // Mutations clear the snapshot; the 500 ms expiry re-reads names saved by
+  // another instance sharing the preset folder.
+  const auto now = juce::Time::getMillisecondCounter();
+  if (hostProgramInfoCache.empty() || now - hostProgramInfoCacheTime > 500) {
+    hostProgramInfoCache = presetManager.list();
+    hostProgramInfoCacheTime = now;
+  }
+  if (index >= 0 && index < static_cast<int>(hostProgramInfoCache.size()))
+    return hostProgramInfoCache[static_cast<size_t>(index)].name;
+  return "(empty)";
+}
+
+void TONE3000Processor::changeProgramName(int, const juce::String&) {
+  // Preset renames go through renamePreset (the preset browser); host
+  // program-name edits are not supported.
 }

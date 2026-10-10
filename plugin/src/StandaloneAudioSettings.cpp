@@ -1,10 +1,11 @@
 #include "StandaloneAudioSettings.h"
 
 #include "AudioPermissions.h"
+#include "IosAudioRoute.h"
 #include "Processor.h"
 
 // The standalone filter window header expects the full GUI/audio module set
-// to be visible first (same include order as Editor.h).
+// to be visible first.
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_gui_extra/juce_gui_extra.h>
@@ -60,9 +61,11 @@ juce::var toVar(const juce::StringArray& strings) {
   return arr;
 }
 
+#if !JUCE_IOS
 // Feedback-risk heuristic: a built-in microphone feeding speakers is the one
 // setup where unmuted monitoring squeals. Device names are the only signal
-// the OS gives us; interfaces and headphones never match both sides.
+// the OS gives us; interfaces and headphones never match both sides. (iOS
+// asks the audio route instead: see IosAudioRoute::isBuiltInMicToSpeaker.)
 bool looksLikeMicrophone(const juce::String& name) {
   const auto n = name.toLowerCase();
   return n.contains("microphone") || n.contains("mic array") || n.containsWholeWord("mic");
@@ -72,6 +75,7 @@ bool looksLikeSpeakers(const juce::String& name) {
   const auto n = name.toLowerCase();
   return n.contains("speaker") || n.contains("built-in output");
 }
+#endif
 
 // Stereo-pair label, e.g. "Output 1 + 2". Same common-prefix trimming as
 // JUCE's AudioDeviceSelectorComponent so labels match what users have seen.
@@ -116,6 +120,8 @@ StandaloneAudioSettings::StandaloneAudioSettings(TONE3000Processor& p,
   jassert(isAvailable());
   if (auto* dm = deviceManager())
     dm->addChangeListener(this);
+  // iOS: Measurement mode, and no Bluetooth headset mic route (see
+  // IosAudioRoute.h). No-op off iOS.
   applyRawInputMode();
   ensureInitialPolicies();
 }
@@ -239,6 +245,11 @@ juce::var StandaloneAudioSettings::getState() {
   // OS mic gate: on macOS a "denied" state silently kills all audio input,
   // so the UI surfaces it (banner + inline alert) with a jump to the fix.
   obj->setProperty("micPermission", micStatusString(AudioPermissions::getMicStatus()));
+
+  // iOS: a Bluetooth route caps the session at 16 or 24 kHz and adds
+  // latency; the UI turns this into one plain-language tip. Always false on
+  // desktop.
+  obj->setProperty("bluetoothRoute", IosAudioRoute::isBluetoothRoute());
 
   // MIDI inputs, re-enumerated per pull like the audio devices above (the UI
   // polls while the tab is open, which is also our hot-plug detection; the
@@ -438,8 +449,9 @@ juce::var StandaloneAudioSettings::setHearYourself(bool hear) {
   h->getMuteInputValue().setValue(!hear);
   // A manual toggle pins the choice for the current device: mark this pair as
   // already handled so the auto policy won't fight it. Switching to a
-  // different input/output pair re-evaluates from feedback risk.
-  lastMonitoringKey = currentSetupKey();
+  // different input/output pair re-evaluates from feedback risk (on iOS, so
+  // does a route change that flips the risk; see monitoringKey).
+  lastMonitoringKey = monitoringKey();
   return makeResult({});
 }
 
@@ -804,31 +816,25 @@ void StandaloneAudioSettings::rememberCurrentSetup() {
 
 void StandaloneAudioSettings::applyRawInputMode() {
 #if JUCE_IOS
-  auto* dm = deviceManager();
-  auto* device = dm != nullptr ? dm->getCurrentAudioDevice() : nullptr;
-  if (device == nullptr)
-    return;
-
   // JUCE opens the session with setCategory: and no mode, so it stays in
   // AVAudioSessionModeDefault - the voice chain. Its AGC levels the guitar
   // before the model ever sees it (pick attack and the guitar's volume knob
   // stop coming through), and the processing inflates
   // AVAudioSession.inputLatency, the figure the settings UI reports.
-  // setAudioPreprocessingEnabled(false) is Measurement mode, the raw path.
+  // Measurement mode is the raw path.
+  //
+  // The mode goes in one setCategory:mode:options: call together with the
+  // category options, never through setMode: alone: on iPadOS 26 a bare
+  // setMode: from Default mode cleared the category options to MixWithOthers
+  // only, which cost the A2DP, AirPlay and DefaultToSpeaker options JUCE
+  // asked for. The same call drops AllowBluetoothHFP, the option that lets a
+  // headset mic cap the whole session at 16 or 24 kHz (see IosAudioRoute.h).
   //
   // setCategory: clears the session mode, and JUCE calls it every time a
   // device opens, so this cannot be done once at startup. Device opens and
   // route changes both end up at the device manager's change broadcast, which
   // is where this is re-applied from.
-  //
-  // The retry covers a USB route restart, where the first setMode: can be
-  // dropped while the route is still settling. Nothing is reported on a second
-  // refusal: JUCE returns `session.mode == mode`, an NSString pointer
-  // comparison rather than isEqualToString:, so a false is not evidence the
-  // mode failed to take, and a log built on it would send someone chasing a
-  // session that is already in Measurement mode.
-  if (!device->setAudioPreprocessingEnabled(false))
-    device->setAudioPreprocessingEnabled(false);
+  IosAudioRoute::configureSession();
 #endif
 }
 
@@ -841,8 +847,9 @@ void StandaloneAudioSettings::applyMonitoringPolicy() {
   // a pair with no feedback risk (an interface, headphones, etc.) turns Hear
   // Yourself on so the user is heard immediately; a laptop mic + speakers pair
   // stays muted (with the UI banner explaining why). Within the same pair we
-  // don't touch it, so a manual toggle sticks until the user switches devices.
-  const auto key = currentSetupKey();
+  // don't touch it, so a manual toggle sticks until the user switches devices
+  // (on iOS, until the route's feedback risk changes).
+  const auto key = monitoringKey();
   if (key == lastMonitoringKey)
     return;
   lastMonitoringKey = key;
@@ -862,8 +869,12 @@ bool StandaloneAudioSettings::computeFeedbackRisk() const {
   if (device->getActiveInputChannels().isZero() || device->getActiveOutputChannels().isZero())
     return false;
 
+#if JUCE_IOS
+  return IosAudioRoute::isBuiltInMicToSpeaker();
+#else
   const auto setup = dm->getAudioDeviceSetup();
   return looksLikeMicrophone(setup.inputDeviceName) && looksLikeSpeakers(setup.outputDeviceName);
+#endif
 }
 
 juce::var StandaloneAudioSettings::finishApply(const juce::String& error) {
@@ -891,6 +902,18 @@ juce::String StandaloneAudioSettings::currentSetupKey() const {
   const auto setup = dm->getAudioDeviceSetup();
   return dm->getCurrentAudioDeviceType() + "|" + setup.inputDeviceName + "|" +
          setup.outputDeviceName;
+}
+
+juce::String StandaloneAudioSettings::monitoringKey() const {
+  auto key = currentSetupKey();
+#if JUCE_IOS
+  // The iOS device keeps one name ("iOS Audio") whatever is plugged in, so the
+  // pair never changes; key on the feedback risk too, so plugging in
+  // headphones or an interface re-runs the policy the way picking a new pair
+  // does.
+  key << (computeFeedbackRisk() ? "|risk" : "|safe");
+#endif
+  return key;
 }
 
 juce::var StandaloneAudioSettings::getRememberedSetups() const {

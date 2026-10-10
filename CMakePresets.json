@@ -36,7 +36,7 @@
     {
       "name": "ios-simulator",
       "displayName": "iOS Standalone (Simulator)",
-      "description": "Standalone-only iOS app for the iPad Simulator. Xcode is multi-config, so pick the configuration at build time; use Release, a Debug build points the WebView at the dev server. Build with: cmake --build build-ios --config Release --target TONE3000_Standalone -- -sdk iphonesimulator",
+      "description": "Standalone-only iOS app for the iPad Simulator. Xcode is multi-config, so pick the configuration at build time. Build with: cmake --build build-ios --config Release --target TONE3000_Standalone -- -sdk iphonesimulator",
       "generator": "Xcode",
       "binaryDir": "build-ios",
       "cacheVariables": {

@@ -1,7 +1,10 @@
-// CPU benchmark: real WaveNet model at 1x vs 8x phase-interleaved.
-// Approximates NamEngine's phase configuration: factor N = N instances, each
-// processing every Nth sample (per-call block = hostBlock/N per phase... in
-// chain terms: chain block = 512*N frames -> each phase gets 512).
+// CPU benchmark: real WaveNet model at 1x vs 8x phase-interleaved, mono vs
+// dual mono. Approximates NamEngine's instance layout: factor N = N phase
+// instances, each processing every Nth sample (per-call block = hostBlock/N
+// per phase... in chain terms: chain block = 512*N frames -> each phase gets
+// 512); dual mono doubles the set (one voice per channel, each voice its
+// own full phase set), so its serial cost is exactly 2x the mono row and
+// the multi-core fork is what buys it back.
 //
 // Needs the built static NAM lib (its config parsers self-register from
 // static initializers, hence -force_load on macOS). Build the plugin first
@@ -36,11 +39,13 @@ int main(int argc, char** argv) {
   const int baseBlock = 512;
 
   for (double slim : {0.0, 1.0})
+  for (int voices : {1, 2})
   for (int factor : {1, 8}) {
-    // Phase-safe config: `factor` instances, each at 48k. Chain frames per
-    // callback = baseBlock*factor, so each phase still gets baseBlock frames.
+    // Phase-safe config: `factor` instances per voice, each at 48k. Chain
+    // frames per callback = baseBlock*factor, so each phase still gets
+    // baseBlock frames; a second voice runs the same set on the other channel.
     std::vector<std::unique_ptr<nam::DSP>> instances;
-    for (int i = 0; i < factor; ++i) {
+    for (int i = 0; i < factor * voices; ++i) {
       auto dsp = nam::get_dsp(config);
       dsp->ResetAndPrewarm(baseRate, baseBlock);
       if (auto* s = dynamic_cast<nam::SlimmableModel*>(dsp.get()))
@@ -62,9 +67,9 @@ int main(int argc, char** argv) {
     }
     const auto t1 = std::chrono::high_resolution_clock::now();
     const double elapsed = std::chrono::duration<double>(t1 - t0).count();
-    std::printf("A2-%s  factor %d: %.3f s CPU for %.1f s audio -> %.1f%% of one core (%.1fx realtime)\n",
-                slim < 0.5 ? "Lite" : "Full", factor, elapsed, seconds,
-                100.0 * elapsed / seconds, seconds / elapsed);
+    std::printf("A2-%s  %s  factor %d: %.3f s CPU for %.1f s audio -> %.1f%% of one core (%.1fx realtime)\n",
+                slim < 0.5 ? "Lite" : "Full", voices == 1 ? "mono     " : "dual mono", factor,
+                elapsed, seconds, 100.0 * elapsed / seconds, seconds / elapsed);
   }
   return 0;
 }

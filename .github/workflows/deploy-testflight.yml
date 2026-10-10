@@ -1,0 +1,219 @@
+name: Deploy to TestFlight
+
+# Publishing a GitHub Release builds, signs and uploads the iOS app to App Store
+# Connect. The archive is development-signed with one Apple Development
+# certificate kept as a secret (.p12) and imported into a temporary keychain,
+# as build.yml does with the Developer ID certs; Xcode's automatic signing
+# then only fetches the managed profile. Without a certificate on the runner
+# Xcode mints a new one per run through the API key, and the team's
+# certificate cap ends that after a handful of releases. The App Store
+# signature is applied at export with the cloud-managed Apple Distribution
+# certificate, through the same API key that does the upload, so no
+# distribution certificate or profile is stored anywhere.
+#
+# workflow_dispatch runs the same pipeline against any ref. A build number
+# already on TestFlight is refused at upload, so the build number is the run
+# number rather than anything in the tree.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref (tag / branch / SHA) to build and upload"
+        required: true
+        default: main
+
+concurrency:
+  group: testflight-deploy
+  cancel-in-progress: false
+
+jobs:
+  # The signing credentials live in the `builds` environment. A fork that does
+  # not have them should skip rather than fail, and the secrets context cannot
+  # be read from a job-level `if`, so the check is its own job whose output
+  # gates the real one.
+  preflight:
+    name: Signing credentials
+    runs-on: ubuntu-latest
+    environment: builds
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          IOS_DEV_CERTIFICATE: ${{ secrets.IOS_DEV_CERTIFICATE }}
+        run: |
+          if [ -n "$ASC_KEY_ID" ] && [ -n "$ASC_ISSUER_ID" ] \
+            && [ -n "$ASC_API_KEY_BASE64" ] && [ -n "$APPLE_TEAM_ID" ] \
+            && [ -n "$IOS_DEV_CERTIFICATE" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::App Store Connect credentials are not set on this repository, skipping the upload."
+          fi
+
+  deploy:
+    name: TestFlight
+    needs: preflight
+    if: needs.preflight.outputs.ready == 'true'
+    # App Store Connect refuses builds made against an older iOS SDK, and the
+    # SDK comes from whichever Xcode the image ships, so this tracks the newest
+    # runner image rather than the one the Simulator job uses.
+    runs-on: macos-26
+    environment: builds
+    env:
+      BUILD_TYPE: Release
+      # Build-time configuration, from the "builds" environment secrets (see
+      # build.yml).
+      T3K_PUBLISHABLE_KEY: ${{ secrets.T3K_PUBLISHABLE_KEY }}
+      T3K_UPDATE_NOTICE: ${{ secrets.T3K_UPDATE_NOTICE }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.event.inputs.ref }}
+          submodules: recursive
+
+      - name: Select the newest Xcode
+        run: |
+          set -euo pipefail
+          latest=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1 || true)
+          if [ -n "$latest" ]; then sudo xcode-select -s "$latest"; fi
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i iphoneos
+
+      - name: Read version
+        run: echo "T3K_VERSION=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_ENV"
+
+      # The release train and the source should agree. The build number is a
+      # separate integer and is not checked here.
+      - name: Check the release tag against VERSION
+        if: github.event_name == 'release'
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.release.tag_name }}"
+          if [ "${TAG#v}" != "$T3K_VERSION" ]; then
+            echo "::error::Release tag ${TAG#v} does not match VERSION ($T3K_VERSION)."
+            exit 1
+          fi
+
+      - name: Cache CPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            libs/juce
+            libs/googletest
+            libs/clap-juce-extensions
+          key: cpm-deps-ios-device-${{ hashFiles('CMakeLists.txt', 'plugin/CMakeLists.txt') }}
+
+      # The key lives in ~/.appstoreconnect/private_keys because altool has no
+      # key-path flag: it looks up AuthKey_<id>.p8 in a fixed list of
+      # directories, of which this is one. xcodebuild takes the explicit path,
+      # so the one location serves both tools.
+      - name: Install the App Store Connect API key
+        env:
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          echo "$ASC_API_KEY_BASE64" | base64 --decode > "$KEY_PATH"
+          echo "ASC_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+
+      # The development certificate the archive signs with. APPLE_APP_PASSWORD
+      # is the .p12 password, as for the macOS certs in build.yml.
+      - name: Install the development certificate
+        env:
+          IOS_DEV_CERTIFICATE: ${{ secrets.IOS_DEV_CERTIFICATE }}
+          KEYCHAIN_PWD: ${{ secrets.KEYCHAIN_PWD }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          security create-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_PATH"
+          echo "$IOS_DEV_CERTIFICATE" | base64 --decode -o "$RUNNER_TEMP/dev.p12"
+          security import "$RUNNER_TEMP/dev.p12" -P "$APPLE_APP_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          rm -f "$RUNNER_TEMP/dev.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PWD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychain -d user | sed 's/[[:space:]"]//g')
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      # The archive keeps the preset's automatic development signing: forcing
+      # "Apple Distribution" here conflicts with automatic signing and Xcode
+      # refuses to archive. The App Store signature is applied at export,
+      # where the app-store-connect method and the API key re-sign the
+      # archive. The build number is the run number: App Store Connect
+      # refuses one it has already seen for a marketing version.
+      - name: Configure CMake
+        run: |
+          cmake --preset ios-device \
+            -DT3K_IOS_BUILD_NUMBER=${{ github.run_number }} \
+            -DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }} \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_STYLE=Automatic
+
+      - name: Archive
+        run: |
+          set -euo pipefail
+          xcodebuild -project build-ios-device/TONE3000.xcodeproj \
+            -scheme TONE3000_Standalone \
+            -configuration "$BUILD_TYPE" \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/TONE3000.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            archive
+
+      # Written here rather than committed so the Apple team id stays a secret.
+      - name: Export the IPA
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/exportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store-connect</string>
+              <key>teamID</key>
+              <string>${{ secrets.APPLE_TEAM_ID }}</string>
+              <key>destination</key>
+              <string>export</string>
+              <key>uploadSymbols</key>
+              <true/>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/TONE3000.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist "$RUNNER_TEMP/exportOptions.plist" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: Upload to TestFlight
+        run: |
+          set -euo pipefail
+          IPA=$(ls "$RUNNER_TEMP/export"/*.ipa | head -1)
+          xcrun altool --upload-app -f "$IPA" -t ios \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+
+      - name: Remove the API key and the keychain
+        if: always()
+        run: |
+          rm -rf "$HOME/.appstoreconnect/private_keys"
+          security delete-keychain "$RUNNER_TEMP/build.keychain-db" || true

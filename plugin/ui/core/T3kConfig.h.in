@@ -1,0 +1,17 @@
+// Generated from the repo-root .env by plugin/ui/NativeUi.cmake. Edit the
+// .env (see .env.example), not this file.
+#pragma once
+
+namespace t3k::ui::config {
+
+// OAuth client_id (`t3k_pub_…`). Empty → the login flow surfaces an error.
+inline constexpr const char* kPublishableKey = "@T3K_PUBLISHABLE_KEY@";
+// API origin without trailing slash.
+inline constexpr const char* kApiOrigin = "@T3K_API_DOMAIN@";
+// Startup update check (`/api/v1/plugin/version`), off by default for forks.
+inline constexpr bool kUpdateNoticeEnabled = @T3K_UPDATE_NOTICE@;
+// NAM model architecture the plugin loads: the search and `GET /api/v1/models`
+// filter.
+inline constexpr int kArchitecture = 2;
+
+}  // namespace t3k::ui::config

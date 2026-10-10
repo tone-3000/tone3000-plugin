@@ -52,7 +52,7 @@ InfoBeforeFile=..\..\..\LICENSE
 ; Branding: dark T3K banner on the welcome/finish pages, mark chip on the
 ; inner-page header, and the T3K icon on the setup exe itself. The BMP pairs
 ; are 100% / 200% DPI variants rendered from design/tone3000-wordmark.svg and
-; ui/public/t3k-mark.svg (BMP, not PNG: PNG needs Inno 6.5.2+).
+; plugin/ui/assets/t3k-mark.svg (BMP, not PNG: PNG needs Inno 6.5.2+).
 WizardStyle=modern
 DisableWelcomePage=no
 WizardImageFile=wizard-image-100.bmp,wizard-image-200.bmp

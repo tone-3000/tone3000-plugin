@@ -24,6 +24,7 @@
 #include "RtWorkerPool.h"
 #include "MidiMapper.h"
 #include "NoiseGate.h"
+#include "PitchShift.h"
 #include "Spread.h"
 #include "StereoOffset.h"
 #include "PresetManager.h"
@@ -55,6 +56,9 @@ public:
   bool acceptsMidi() const override;
   bool producesMidi() const override;
   bool isMidiEffect() const override;
+  // Host program API, backed by the internal preset list. Not cosmetic:
+  // this is the only route a MIDI program change can take in a VST3 host
+  // (see the HOST PROGRAM API section in ProcessorPresets.cpp).
   int getNumPrograms() override;
   int getCurrentProgram() override;
   void setCurrentProgram(int) override;
@@ -75,8 +79,8 @@ public:
 
   // Chain management methods
   // Load a tone into an insert slot. `targetInsertId` is the insert block the
-  // user clicked (it survives the OAuth redirect in the UI's sessionStorage);
-  // the new tone block takes that slot's position. When the id is absent or
+  // user clicked (the UI remembers it across the tone-select flow); the new
+  // tone block takes that slot's position. When the id is absent or
   // stale (undone away mid-flow), the active lane's first insert is used.
   std::string loadTone(const juce::String& toneJsonString,
                        const std::string& targetInsertId = {});
@@ -94,9 +98,9 @@ public:
   // message.
   juce::var loadLocalTone(const juce::String& title, const juce::var& files,
                           const std::string& targetInsertId = {});
-  // Path-based sibling of loadLocalTone for files native already has on
-  // disk: the tile menus' Load File / Load Folder pickers (the webview
-  // drop path can't hand over paths, so it ships base64 instead). A
+  // Path-based sibling of loadLocalTone for files already on disk: the
+  // UI's drops and Load File / Load Folder pickers (loadLocalTone's
+  // byte-array form is what the DSP tests drive). A
   // directory loads as one multi-model tone by the same rules as a folder
   // drop in the UI: majority extension picks NAM vs IR, capped at 300
   // files / 50 MB each, models in natural name order, title from the
@@ -110,7 +114,7 @@ public:
       so the bytes have to come through juce::URL rather than the raw path.
       Takes 1..N URLs because multi-select stands in for the folder route on
       iOS (a security-scoped directory cannot be enumerated through
-      juce::URL); see pickLocalToneFile. Same return contract as
+      juce::URL); see LocalFiles::pick. Same return contract as
       loadLocalTone. Compiled on every platform so the DSP suite can test it;
       only the iOS editor calls it. */
   juce::var loadLocalToneUrls(const juce::Array<juce::URL>& sources,
@@ -127,6 +131,23 @@ public:
   // over an hour (the age guard protects a concurrent instance's in-flight
   // file). Returns how many files it deleted.
   static int sweepLeakedIrTempFiles(const juce::File& tempDir);
+  // Make `dir` a directory this process can write to, healing the one
+  // app-data wound we can't chown away: the folder (or a file squatting on
+  // its path) existing but not being writable. A sudo'd run of an older
+  // script/install-plugin.sh (macOS sudo keeps $HOME) or a restored backup
+  // leaves ~/Library/Application Support/TONE3000 root-owned; every settings
+  // save and drop-stash write then fails while reads keep working (github
+  // issue #76, every drop answering "Couldn't store the dropped file"). Two
+  // unprivileged fixes cover it: a folder the user still owns gets its write
+  // bits chmod'd back in place (contents stay put); anything else (root
+  // owned, or a file squatting on the path) is renamed aside to a
+  // "<name>.unwritable" sibling (kept for manual recovery, never deleted)
+  // and recreated fresh, the parent folder being the user's own.
+  // Returns true when `dir` is a writable directory on exit; failures log
+  // their reason. No-op (two stats) on a healthy folder. Run once per
+  // process on the app-data root (see the constructor) and defensively from
+  // the stash and preset write paths.
+  static bool ensureWritableDir(const juce::File& dir);
   // Resolve a persisted local-model `file://` URL to the stash file that
   // actually holds those bytes, given the current stash root. The URL stored
   // in a block's tone JSON is absolute, and that JSON is persisted in
@@ -214,9 +235,8 @@ public:
   // poll loop stays cheap.
   juce::var getChainState(int knownRevision) const;
   // Current chain revision, promoting any settled continuous-gesture edit
-  // into a real bump first. The editor's push timer watches this to emit a
-  // `chainChanged` event to the webview, so the UI resyncs immediately after
-  // mutations instead of fast-polling.
+  // into a real bump first. The UI's ChainStore polls this (an atomic read)
+  // and refetches getChainState only when it moved.
   juce::uint32 getCurrentChainRevision() const;
   // Single entry point for all per-block user params. Supported params:
   // "enabled" (0/1), "normalize" (0/1), "inputGain", "outputGain", "mix"
@@ -264,13 +284,37 @@ public:
   // scheduling path must not touch the user's machine-wide preference).
   void setMultiCoreEnabled(bool enabled, bool persist = true);
 
+  // Machine-wide defaults for the Plugin Settings parameters that describe
+  // the workstation rather than the tone: input calibration (on/off, dBu
+  // level) and oversampling (on/off, factor). They stay host parameters, so
+  // a project reopens exactly as it was saved and automation keeps working;
+  // the shared settings file only seeds a fresh instance (in the
+  // constructor, before any host restore, which then wins) and is written
+  // when the user changes one of them in Plugin Settings, never from a
+  // restore or automation (github issue #66: a new DAW instance came up at
+  // the parameter defaults, while the standalone remembered them).
+  static bool isMachineDefaultParameter(const juce::String& paramId);
+  // Store `paramId`'s current value as the machine default. Ignores ids
+  // outside the set above.
+  void persistParameterAsMachineDefault(const juce::String& paramId);
+  // The two halves over an explicit PropertySet (the settings file in the
+  // plugin; a scratch set in tests). Values are stored denormalised (dBu,
+  // choice index, 0/1), like preset files, so a range retune can't move them.
+  void writeMachineDefaultParameter(juce::PropertySet& settings, const juce::String& paramId) const;
+  void applyMachineDefaultParameters(const juce::PropertySet& settings);
+  // Tests: construction seeds from the user's real settings file, which
+  // would leak a developer's oversampling choice into every DSP test, so the
+  // test binary turns the seeding off process-wide and drives the two halves
+  // above directly.
+  static void disableMachineDefaultParametersForTesting();
+
   // All meter levels in one call: { input, output, blocks: { id: { in, out } },
   // cpu (0..1 audio-callback load), correlation (-1..1 stereo-image output
   // correlation, from whichever engine the mode runs) }. Levels in dB with a
   // -60 floor. Designed to be polled once per UI frame.
   juce::var getMeterLevels() const;
 
-  // Per-block EQ (post-block by default, pre-model when its pre flag is on).
+  // Per-block EQ (wet-only post-model by default, pre-model when its pre flag is on).
   // setBlockEqBand takes { type, freqHz, gainDb, q } for one band, the undo
   // stack's mutation granularity. Band drags defer their revision bump like
   // continuous block params (see deferredRevisionBump).
@@ -284,7 +328,7 @@ public:
   // when disabled the audio thread does no analyzer work for that block.
   bool setBlockSpectrumEnabled(const std::string& blockId, bool enabled);
   juce::var getBlockSpectrum(const std::string& blockId);
-  // Editor teardown: the webview can't send per-block disables while dying.
+  // Editor teardown: one call instead of one per open EQ view.
   void disableAllBlockSpectrums();
 
   // Stereo mode: two independent Left/Right chains.
@@ -305,29 +349,64 @@ public:
   bool setChainBranch(const juce::String& side, const std::string& afterBlockId);
   bool clearChainBranch();
 
-  // Which channels of a stereo source feed the plugin: both (default), or
-  // one channel folded onto both. Interfaces usually expose stereo pairs
-  // (line 1+2) even when only one jack is plugged in, so this lets the user
-  // pick the channel that actually carries signal. Set from the faceplate
-  // input-mode button (visible only when the source is actually stereo; see
-  // stereoInputDetected). Saved with the plugin/session state but not with
-  // presets: it's I/O routing, not tone.
-  enum class InputMode { Stereo = 0, Left = 1, Right = 2 };
+  // How a stereo source feeds the chain(s). Interfaces usually expose stereo
+  // pairs (line 1+2) even when only one jack is plugged in, and a DAW's
+  // stereo track may carry one guitar or two, so the user picks:
+  //  - Stereo (default): the natural routing for the chain mode. Mono chain:
+  //    the source is summed to mono, ½(L+R), the same fold a host applies
+  //    (a mono source on a stereo track, L == R, passes bit-identically).
+  //    Stereo chains: channel 0 feeds the Left chain, channel 1 the Right.
+  //  - DualMono: a mono chain runs each channel separately through its own
+  //    copy of the chain, as if the same blocks sat in both stereo lanes
+  //    (double-tracked guitars through one rig). Doubles the NAM work; with
+  //    multi-core the two voices run on separate cores (see NamEngine.h).
+  //    Only in effect with a mono chain on a rig that both supplies and
+  //    reproduces two channels (dualMonoEngaged); otherwise it behaves as
+  //    Stereo, so stereo chains see no difference between the two.
+  //  - Left / Right: one channel folded onto both.
+  // Set from the faceplate input-mode button (visible only when the source
+  // is actually stereo; see stereoInputDetected). Saved with the
+  // plugin/session state but not with presets: it's I/O routing, not tone.
+  enum class InputMode { Stereo = 0, Left = 1, Right = 2, DualMono = 3 };
   void setInputMode(InputMode mode);
   InputMode getInputMode() const { return static_cast<InputMode>(inputMode.load()); }
+  // Unknown strings (including "dual" read by an older build, which
+  // doesn't reach here) fall back to Stereo.
   static InputMode inputModeFromString(const juce::String& s) {
     if (s == "left") return InputMode::Left;
     if (s == "right") return InputMode::Right;
+    if (s == "dual") return InputMode::DualMono;
     return InputMode::Stereo;
   }
   static juce::String inputModeToString(InputMode mode) {
     switch (mode) {
       case InputMode::Left: return "left";
       case InputMode::Right: return "right";
+      case InputMode::DualMono: return "dual";
       case InputMode::Stereo: break;
     }
     return "stereo";
   }
+  // Modes that keep both source channels distinct (no fold onto one
+  // channel). A branched chain has a single mono source, so these are the
+  // modes it rejects (see setChainBranch).
+  static bool isStereoFeed(InputMode mode) {
+    return mode == InputMode::Stereo || mode == InputMode::DualMono;
+  }
+
+  // True while dual mono is actually in effect: the mode is selected, the
+  // chain is mono, and the rig both supplies and reproduces two channels.
+  // Atomics only, so the audio thread and getChainState can both ask.
+  bool dualMonoEngaged() const noexcept {
+    return getInputMode() == InputMode::DualMono &&
+           !stereoEnabled.load(std::memory_order_relaxed) &&
+           stereoInputDetected.load(std::memory_order_relaxed) &&
+           stereoOutputDetected.load(std::memory_order_relaxed);
+  }
+  // Diagnostics (the DSP tests pin the voice-count transitions): the voice
+  // count of a *loaded* NAM block's engine, 1 or 2 (see NamEngine.h); 0 for
+  // an unknown id, a non-NAM block, or a block still loading.
+  int namEngineVoiceCount(const std::string& blockId) const;
 
   // Editor window scale, 1.0 = the 1024x578 design size. Written by the
   // editor whenever it is resized and read back when a new editor opens, so
@@ -348,9 +427,9 @@ public:
   std::atomic<int> editorExtraHeight{36};
 
   // Which lane loadTone falls back to ("left"/"right") when no valid target
-  // insert id is supplied. The UI sets this before launching the Select flow
-  // so the choice survives the OAuth redirect. Not a view mode and not part
-  // of undo history.
+  // insert id is supplied. The UI sets it when an Add starts, so a tone
+  // picked later lands in the lane the user was working in. Not a view mode
+  // and not part of undo history.
   void setActiveEditChain(const juce::String& side);
   // Swap the Left and Right chains wholesale (stereo mode only). Undoable.
   bool swapChains();
@@ -369,7 +448,7 @@ public:
   // active preset { id, name } rides getChainState; it only ever changes
   // together with a revision bump. Preset files live in the shared user
   // presets folder (see PresetManager).
-  juce::var getPresetList() const;    // { presets: [{ id, name, factory }] }
+  juce::var getPresetList() const;    // { presets: [{ id, name, factory, category, favorite }], categories: [name] }
   juce::var savePreset(const juce::String& name);  // { id, name } or void var on failure
   bool loadPreset(const juce::String& presetId);   // undoable (chain part)
   bool renamePreset(const juce::String& presetId, const juce::String& newName);
@@ -378,21 +457,33 @@ public:
   // earlier). The custom order is user-facing truth: prev/next stepping and
   // MIDI program-change numbers follow it (see loadPresetAtIndex).
   bool movePreset(const juce::String& presetId, int delta);
+  // Categories, stars and bulk actions. Metadata only (none of it moves the
+  // list order or the loaded chain) except deletePresets/duplicatePresets.
+  bool addPresetCategory(const juce::String& name);
+  bool deletePresetCategory(const juce::String& name);
+  bool setPresetCategory(const juce::String& presetId, const juce::String& category);
+  bool movePresetsToCategory(const juce::StringArray& ids, const juce::String& category);
+  bool setPresetFavorite(const juce::String& presetId, bool isFavorite);
+  bool setPresetsFavorite(const juce::StringArray& ids, bool isFavorite);
+  juce::var duplicatePresets(const juce::StringArray& ids);  // [{ id, name, category, favorite, factory }]
+  bool deletePresets(const juce::StringArray& ids);          // true only when every id was removed
   // Back to the factory-default state: empty mono chain, every preset-managed
   // faceplate parameter at its default, no active preset. One undoable step,
   // mute-spliced like a preset load. Returns false (leaving the audio
   // untouched) when the state is already at default.
   bool resetToDefault();
 
-  // Category and bulk preset operations
-  bool addPresetCategory(const juce::String& name);
-  bool deletePresetCategory(const juce::String& name);
-  bool setPresetCategory(const juce::String& id, const juce::String& category);
-  bool movePresetsToCategory(const juce::StringArray& ids, const juce::String& category);
-  bool setPresetFavorite(const juce::String& id, bool isFavorite);
-  bool setPresetsFavorite(const juce::StringArray& ids, bool isFavorite);
-  juce::var duplicatePresets(const juce::StringArray& ids);
-  bool deletePresets(const juce::StringArray& ids);
+  // Where user presets are saved (Settings > Presets opens it).
+  juce::File getUserPresetsDir() const { return presetManager.userPresetsDir(); }
+
+  // Re-root the internal preset store at an explicit directory (tests use a
+  // temp dir so preset/program behavior can be driven without touching the
+  // user's shared preset folder; see PresetManager's baseDir constructor).
+  // Message thread only, before any preset call.
+  void setPresetStoreForTesting(const juce::File& baseDir) {
+    presetManager = PresetManager(baseDir);
+    hostProgramInfoCache.clear();
+  }
 
   // Tuner: enabled by the UI while the tuner screen is visible. Reads the raw
   // (pre-gain, pre-gate) input so gating never starves the pitch detector.
@@ -435,13 +526,9 @@ public:
   // log instead of guessed at.
   static juce::File getSettingsFile();
 
-  // Web Inspector preference (macOS): right-click -> Inspect Element on the
-  // plugin UI, off by default in release builds and flipped from Settings ->
-  // Diagnostics. Machine-wide (it's a debugging aid, not tone state), so it
-  // lives in the shared settings file. Applied to the live WKWebView by the
-  // editor (see EditorWebViewSetup::setWebInspectorEnabled).
-  static bool readPersistedWebInspectorEnabled();
-  static void persistWebInspectorEnabled(bool enabled);
+  // PropertiesFile options for the native UI's per-machine preferences
+  // (hint bar, PC numbers, cached session…); see plugin/ui/services/UiPrefs.h.
+  static juce::PropertiesFile::Options uiPreferencesOptions();
 
 private:
   // One chain of blocks. Two of these make up `lanes` (declared below).
@@ -478,6 +565,12 @@ private:
       block size times the current oversampling factor. */
   int chainDomainBlockSize() const noexcept;
 
+  /** The block size IR convolvers are prepared with right now: the base
+      block capped at kIrConvolverMaxBlockSize (see ChainBlock.h). */
+  int irConvolverBlockSize() const noexcept {
+    return irConvolverBlockSizeFor(chainBaseBlockSize());
+  }
+
   /** The effective chain rate: kChainBaseSampleRate × oversampling factor.
       Safe from any thread (the factor is atomic; it only changes inside the
       full re-prepare paths, never under the audio thread's feet). */
@@ -496,13 +589,23 @@ private:
     // IR convolvers are rate-independent and always built at the base rate.)
     int preparedBlockSize = 0;
 
+    // The block size the convolvers were prepared with (irConvolverBlockSize
+    // at prepare time). The apply step re-prepares them when the live value
+    // differs: a restore-time load sees the 4096 default before prepareToPlay
+    // reports the real host block, and would otherwise sit at the cap on a
+    // host that really runs 64.
+    int preparedIrBlockSize = 0;
+
     std::unique_ptr<NamEngine> namEngine;
 
     std::unique_ptr<juce::dsp::Convolution> convolverMono;
     std::unique_ptr<juce::dsp::Convolution> convolverStereo;
     int irNumChannels = 1;
     int irLengthBaseSamples = 0;  // base-rate kernel length (tail reporting)
-    bool irIsLong = false;        // short/long classification (see ChainBlock.h)
+    // Kernel length vs the short/long cutoff. The block's classification
+    // (ChainBlock::irIsLong) is settled at apply time, where the tone's gear
+    // can override this; see irIsLongFor in ProcessorModelLoader.cpp.
+    bool irIsLongByLength = false;
     float irNormalizationGainLinear = 1.0f;
   };
 
@@ -639,6 +742,16 @@ private:
   // chainSampleRate) and chain-domain block size. Holds no lock.
   void prepareChain(std::vector<std::unique_ptr<ChainBlock>>& blocks);
 
+  // (Re)design one block's rate-dependent linear stages (EQ biquads, spectrum
+  // analyzer) for the current chain rate. prepareChain covers the blocks that
+  // exist when the chain domain moves (prepareToPlay, oversampling changes);
+  // every path that brings a tone block into the chain mid-session must call
+  // this as well, or the block's EQ runs coefficients designed for the
+  // default 48 kHz inside an oversampled chain and every band lands at
+  // freq × factor (issue #212). Resets the filters' state and the analyzer's
+  // history. Caller holds chainMutex.
+  void prepareBlockForChainRate(ChainBlock& block);
+
   // Recompute the longest loaded IR across both lanes into irTailBaseSamples
   // (base-rate samples; IRs always convolve at the base rate, see
   // ChainBlock::irBaseRateIsland). Called wherever the set of live IR engines
@@ -766,6 +879,28 @@ private:
   juce::String activePresetId;
   juce::String activePresetName;
 
+  // Host program API internals (ProcessorPresets.cpp). The count is a hard
+  // constant: JUCE's VST3 wrapper sizes its program parameter once at
+  // construction, and a count that tracked the user-editable preset list
+  // would leave hosts stale (or kill the mechanism outright below two
+  // presets). 128 covers the MIDI program range; slots past the list end
+  // are inert.
+  static constexpr int kNumHostPrograms = 128;
+  // Message-thread work for a setCurrentProgram call from another thread
+  // (-1 = none, last one wins); drained in handleAsyncUpdate.
+  std::atomic<int> pendingHostProgram{-1};
+  // Load the program's preset (message thread). Empty slots are ignored;
+  // re-selecting the already-active preset is a no-op (hosts echo the
+  // program parameter back after every change and on session restore, and a
+  // reload would wipe knob tweaks made since the preset loaded).
+  void applyHostProgram(int index);
+  // Short-lived preset-list snapshot for getProgramName: hosts ask for all
+  // 128 names in a row and list() reads every preset file (factory presets
+  // embed model bytes), so names must not cost a folder scan each. Message
+  // thread only; preset mutations clear it so fresh names show immediately.
+  std::vector<PresetManager::Info> hostProgramInfoCache;
+  juce::uint32 hostProgramInfoCacheTime{0};
+
   // True when running as the standalone app with a mono input device selected.
   // Detected in prepareToPlay (device changes re-trigger it); processBlock then
   // duplicates channel 0 into channel 1 so the dry path is heard on both
@@ -788,8 +923,8 @@ private:
   const Lane& lane(ChainSide side) const { return lanes[static_cast<size_t>(laneIndex(side))]; }
 
   std::atomic<bool> stereoEnabled{false};
-  // Which lane loadTone inserts into. Set by the UI before launching the
-  // Select flow (the choice must survive the OAuth redirect); not a view mode.
+  // Which lane loadTone inserts into when the target insert id is stale.
+  // Set by the UI when an Add starts; not a view mode.
   ChainSide pendingAddSide{ChainSide::Left};
   juce::CriticalSection chainMutex;
 
@@ -876,6 +1011,10 @@ private:
   // Boundary latency in host samples (0 at a 48k host). Constant per host
   // rate; chain edits never change reported latency.
   int chainBoundaryLatency = 0;
+  // Reports boundary + pitch shift latency to the host. Message thread:
+  // prepareToPlay, and the pitch power / window parameter changes (the
+  // only runtime latency edges).
+  void updateLatency();
   // Second channel handed to the boundary when the host buffer is mono (the
   // boundary is a fixed 2-channel container). Silent in mono chain mode;
   // with stereo chains it becomes the Right lane's working channel: fed a
@@ -888,6 +1027,15 @@ private:
   // (a mono rig hears them summed; see processImageStage).
   int rtChainChannels = 2;
   bool rtStereoChains = false;
+  // Dual mono in effect for this callback: dualMonoEngaged() on a stereo
+  // buffer, resolved once at the top of processBlock (before the input
+  // fold, which keys on it). The lane runs its 2-channel buffer as two
+  // independent mono signals: NAM engines use their second voice instead
+  // of fanning out, stereo IRs convolve their left channel on both sides
+  // (as inside a stereo-mode lane), Spread stays idle (the output already
+  // is two real channels) and Balance trims the two voices against each
+  // other.
+  bool rtDualMono = false;
   // True when this callback's chain stage should fork the two lanes across
   // cores (see RtWorkerPool.h): multi-core enabled, workers healthy, stereo
   // chains active, and both sides of the parallel section actually carry
@@ -944,6 +1092,13 @@ private:
   NoiseGate inputGate;
   bool gateWasEnabled = true;
 
+  // Input-stage pitch shifter (post gate, host rate; see PitchShift.h). Runs
+  // while powered and through its power-off blend, then not at all, so a
+  // powered-off plugin stays bit-exact and zero-latency. The latency it
+  // adds is reported from the message thread (see updateLatency), never
+  // from processBlock.
+  PitchShift pitchShift;
+
   // Raw APVTS parameter atomics, resolved once in the constructor. The audio
   // thread reads these every block; getRawParameterValue is a string-keyed
   // map lookup and has no business on the RT path.
@@ -976,12 +1131,20 @@ private:
     std::atomic<float>* toneTreble = nullptr;
     std::atomic<float>* gateThreshold = nullptr;
     std::atomic<float>* gateEnabled = nullptr;
+    std::atomic<float>* gateRelease = nullptr;
+    std::atomic<float>* gateHold = nullptr;
+    std::atomic<float>* gateRange = nullptr;
     std::atomic<float>* toneEqEnabled = nullptr;
     std::atomic<float>* targetLoudness = nullptr;
     std::atomic<float>* calibrateInput = nullptr;
     std::atomic<float>* inputCalibrationLevel = nullptr;
     std::atomic<float>* osEnabled = nullptr;
     std::atomic<float>* osFactor = nullptr;
+    std::atomic<float>* pitchEnabled = nullptr;
+    std::atomic<float>* pitchSemitones = nullptr;
+    std::atomic<float>* pitchStep = nullptr;
+    std::atomic<float>* pitchTonality = nullptr;
+    std::atomic<float>* pitchWindow = nullptr;
   } paramRefs;
   void resolveParamRefs();
 
@@ -997,6 +1160,30 @@ private:
   void parameterChanged(const juce::String& parameterID, float newValue) override;
   void handleAsyncUpdate() override;
   void applyOversamplingSettings();
+
+  // NAM engine voice count the current mode requires (see NamEngine.h):
+  // two for a dual-mono mono chain, one otherwise. Deliberately keyed on
+  // the mode alone, not the rig: a rig change always comes through
+  // prepareToPlay, which re-prepares (prewarms) every engine, so a voice
+  // that idled on a mono rig never resumes with stale history. The loader
+  // builds this many voices; the apply path and the helper below enforce it.
+  int wantedNamVoices() const noexcept {
+    return getInputMode() == InputMode::DualMono && !stereoEnabled.load(std::memory_order_relaxed)
+               ? 2
+               : 1;
+  }
+  // Rebuild (from the in-memory model cache, off-thread) every loaded NAM
+  // engine whose voice count differs from wantedNamVoices(). Voices are
+  // fixed at build like the phase count, and an idle voice would resume
+  // with stale model history, so a mode change that moves the requirement
+  // rebuilds rather than toggling a dormant voice. Marks the blocks
+  // loading (`loaded` = false) exactly like applyOversamplingSettings, so
+  // callers hold a ChainEditFade and release it when the loads settle.
+  // Returns whether anything was queued. Caller holds chainMutex.
+  bool requeueNamEnginesForVoiceCount();
+  // Shared tail of the two above: queue a cache-first rebuild of `block`'s
+  // engine, marking it loading. Caller holds chainMutex.
+  void requeueLoadedNamEngine(ChainBlock& block);
 
   // Per-block cached values (refreshed once per processBlock from paramRefs).
   float cacheInputLevel = 0.5f;
@@ -1027,10 +1214,15 @@ private:
   float cacheTrebleTone = 5.0f;
   float cacheGateThreshold = -80.0f;
   bool cacheGateEnabled = true;
+  float cacheGateRelease = 50.0f;   // ms
+  float cacheGateHold = 20.0f;      // ms
+  float cacheGateRange = 80.0f;     // dB of attenuation when closed
   bool cacheToneEqEnabled = true;
   float cacheTargetLoudness = -18.0f;
   bool cacheCalibrateInput = false;
   float cacheInputCalibrationLevel = 12.0f;
+  bool cachePitchEnabled = false;
+  PitchShift::Params cachePitch;
 
   void updateEqCoefficients();
   void updateCachedParameters();
@@ -1059,6 +1251,10 @@ private:
   // written on the message thread, read wherever loadTone stamps a block.
   static double readPersistedNamSlimSizeDefault();
   std::atomic<double> namSlimSizeDefault{readPersistedNamSlimSizeDefault()};
+
+  // Constructor step: applyMachineDefaultParameters over the settings file,
+  // unless disabled for tests (see disableMachineDefaultParametersForTesting).
+  void seedMachineDefaultParameters();
 
   // Audio-callback load (timed around processBlock); ships to the UI as the
   // `cpu` field of getMeterLevels for the hint-bar readout.

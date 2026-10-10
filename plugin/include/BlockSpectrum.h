@@ -11,12 +11,12 @@
  * post-EQ output into a lock-free ring buffer, but only while `enabled` is
  * set, i.e. only while a UI EQ view for this block is actually open. All FFT /
  * smoothing work happens lazily on the message thread inside getSpectrum()
- * (the polled native function), throttled by a small cache interval.
+ * (polled by the UI's SpectrumFeed), throttled by a small cache interval.
  *
  * getSpectrum() returns kNumBins floats in dB (clamped kMinDb..0),
  * log-spaced from kMinFreqHz to kMaxFreqHz, the exact frequency mapping the
  * EQ graph uses for its x axis, so the UI can plot bins at uniform x spacing.
- * Constants are mirrored in ui/src/hooks/useBlockSpectrum.ts.
+ * Constants are mirrored in plugin/ui/services/SpectrumFeed.h.
  */
 class BlockSpectrum {
 public:
@@ -32,22 +32,36 @@ public:
   void setEnabled(bool shouldBeEnabled) { enabled.store(shouldBeEnabled); }
   bool isEnabled() const { return enabled.load(std::memory_order_relaxed); }
 
-  /** Real-time thread. Mono-sums up to two channels into the ring; no allocation. */
-  void pushSamples(const float* ch0, const float* ch1OrNull, int numSamples);
+  /** Real-time thread; no allocation. Default: mono-sums up to two channels
+      into one ring (the channels carry the same mono chain signal, or the
+      stereo image of one). `independent` (dual mono: two different takes)
+      keeps each channel in its own ring instead, and the analysis shows the
+      per-bin maximum of the two spectra: whatever is in excess on either
+      side, like the peak meters, rather than a sum that can hide one take's
+      resonance behind the other or cancel out-of-phase content. */
+  void pushSamples(const float* ch0, const float* ch1OrNull, int numSamples,
+                   bool independent = false);
 
   /** Message thread. Returns a var array of kNumBins dB values. */
   juce::var getSpectrum();
 
 private:
   void analyze();
+  /** Window the most recent kFftSize samples of `source` into fftData and
+      transform in place. */
+  void transformRing(const std::vector<float>& source, int endPos, std::vector<float>& fftData);
 
   static constexpr int kRingSize = 1 << 12;   // 4096 samples
   static constexpr int kFftOrder = 11;        // 2048-point FFT
   static constexpr int kFftSize = 1 << kFftOrder;
   static constexpr int kAnalysisIntervalMs = 30;
 
-  std::vector<float> ring;
+  // ring: the mono sum, or channel 0 when independent; ring1: channel 1,
+  // only written when independent. One write position serves both (they
+  // always advance together).
+  std::vector<float> ring, ring1;
   std::atomic<int> writePos{0};
+  std::atomic<bool> independentChannels{false};
   std::atomic<bool> enabled{false};
   double sampleRate = 48000.0;
 
@@ -55,6 +69,7 @@ private:
   juce::dsp::FFT fft{kFftOrder};
   std::vector<float> windowTable;   // Hann
   std::vector<float> fftData;       // 2 * kFftSize
+  std::vector<float> fftData1;      // 2 * kFftSize, channel 1 when independent
   std::vector<float> smoothedDb;    // kNumBins
   juce::int64 lastAnalysisMs = 0;
 };

@@ -5,7 +5,7 @@
      bake the shape in - unlike Windows/Linux, which take the full-bleed
      square plugin/icon/icon.png.
 
-     The mark is ui/public/t3k-mark.svg (36x12 viewBox), scaled to 640px
+     The mark is plugin/ui/assets/t3k-mark.svg (36x12 viewBox), scaled to 640px
      wide and centered on the chip.
 
      Regenerate the PNGs (plugin/icon/icon-macos.png at 1024,

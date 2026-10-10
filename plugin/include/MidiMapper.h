@@ -43,7 +43,10 @@
  *     drop that last kind entirely.
  *   - Note-on on any target → toggle (continuous flips 0 ↔ 1).
  *   - Program change n → onProgramChange(n), no mapping needed (the
- *     processor loads the nth preset in list order).
+ *     processor loads the nth preset in list order). Only raw-MIDI formats
+ *     deliver PC here (Standalone, AU, LV2, CLAP): VST3 strips PC from the
+ *     event stream, so there it arrives through the processor's host
+ *     program API (setCurrentProgram) instead, same list-order load.
  *
  * Threading: the audio thread applies mappings under a SpinLock try-lock
  * (skipping one buffer on the rare contended edit) and never mutates the map.
@@ -64,7 +67,7 @@ public:
   // Audio thread.
   void processMidi(const juce::MidiBuffer& midi);
 
-  // Message thread (native bridge).
+  // Message thread (the UI's calls).
   /** { channel, learnTargetId, mappings: [{ targetId, source, number }] } */
   juce::var getState() const;
   /** Global channel filter: 0 = omni, 1-16 = that channel only. */
@@ -90,8 +93,8 @@ public:
 
   // Message-thread hooks (set once by the owning processor / editor).
   /** Fired after any change to the map, channel filter or learn state. The
-      editor forwards it to the webview so the settings UI refreshes without
-      polling. */
+      editor forwards it to the UI (Backend::Listener::midiMapChanged) so the
+      settings page refreshes without polling. */
   std::function<void()> onChanged;
   /** Program change n arrived (post channel filter). */
   std::function<void(int program)> onProgramChange;

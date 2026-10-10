@@ -1,8 +1,8 @@
-#include "EditorWebViewSetup.h"
+#include "WindowKeyEvents.h"
 
 #if JUCE_IOS
 
-namespace EditorWebViewSetup {
+namespace HostKeys {
 
 // iOS has no host DAW to hand a transport keypress back to: the Standalone app
 // IS the host, and there is no AppKit event queue or NSResponder chain to post
@@ -11,19 +11,19 @@ namespace EditorWebViewSetup {
 // no-op rather than teaching the UI a second platform check.
 void forwardKeyToHost(void*, HostKey) {}
 
-}  // namespace EditorWebViewSetup
+}  // namespace HostKeys
 
 #else
 
 #import <AppKit/AppKit.h>
 
-namespace EditorWebViewSetup {
+namespace HostKeys {
 
-// The WKWebView is first responder once the user has clicked the plugin UI,
-// so every keypress lands in web content and the host DAW never sees it,
-// most painfully the transport keys Space (play/stop) and Enter (return to
-// start). The UI swallows both itself (preventDefault, so no caret scroll or
-// system beep) and calls this to hand the press to the host instead.
+// Our view is first responder once the user has clicked the plugin UI, so
+// every keypress lands in it and the host DAW never sees it, most painfully
+// the transport keys Space (play/stop) and Enter (return to start). The UI
+// swallows both itself (so nothing scrolls or beeps) and calls this to hand
+// the press to the host instead.
 void forwardKeyToHost(void* nsViewPtr, HostKey key) {
   NSView* view = (__bridge NSView*)nsViewPtr;
   NSWindow* window = [view window];
@@ -61,6 +61,6 @@ void forwardKeyToHost(void* nsViewPtr, HostKey key) {
   [NSApp postEvent:keyEvent(NSEventTypeKeyUp) atStart:NO];
 }
 
-}  // namespace EditorWebViewSetup
+}  // namespace HostKeys
 
 #endif  // JUCE_IOS

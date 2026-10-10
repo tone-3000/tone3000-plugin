@@ -2,11 +2,10 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 /**
- * Brand-dark theme for the few JUCE-drawn surfaces that remain in the
- * standalone app now that audio settings and banners are bespoke web UI: the
- * title-bar Options menu, the Save/Load-state file dialogs, and any JUCE
- * AlertWindow. The main UI (and the audio settings panel) is the WebView and
- * styles itself.
+ * Brand-dark theme for the few stock JUCE surfaces in the standalone app:
+ * the title-bar Options menu, the Save/Load-state file dialogs, and any JUCE
+ * AlertWindow. The plugin UI itself (including its audio settings page)
+ * paints its own chrome and never consults a LookAndFeel.
  *
  * Installed as the process default by the editor via SharedResourcePointer so
  * multiple plugin instances share one object; the destructor un-installs it

@@ -14,7 +14,7 @@ fi
 
 cmake --build build --target DspTests
 
-BIN=$(find build/test -type f -name DspTests | head -1)
+BIN=$(find build/test -type f \( -name DspTests -o -name DspTests.exe \) | head -1)
 if [ -z "$BIN" ]; then
   echo "DspTests binary not found under build/test" >&2
   exit 1

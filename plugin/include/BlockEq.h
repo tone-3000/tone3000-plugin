@@ -5,12 +5,13 @@
 #include <array>
 
 /**
- * Six-band parametric EQ, one per chain block. Runs post-block by default
- * (after the block's output gain + mix stage); the `pre` flag moves it
- * between the block's input gain and its model instead, shaping the signal
+ * Six-band parametric EQ, one per chain block. Runs on the block's wet
+ * signal by default (after the model, before the dry/wet mix, so the dry
+ * share of Mix stays untouched); the `pre` flag moves it between the
+ * block's input gain and its model instead, shaping the signal
  * that drives the amp/IR. Self-contained module: band parameters, biquad
- * coefficient math (RBJ cookbook, mirrored exactly by
- * ui/src/components/eqMath.ts so the drawn curve is the audio truth),
+ * coefficient math (RBJ cookbook, mirrored exactly by the editor's
+ * plugin/ui/core/EqMath so the drawn curve is the audio truth),
  * processing, and (de)serialization.
  *
  * Threading model: setters run on the message thread while `chainMutex` is
@@ -80,9 +81,9 @@ public:
   bool isEnabled() const { return enabled; }
 
   /** Message thread (under chainMutex). Position toggle: true = before the
-      block's model (after its input gain), false = after gain + mix
-      (default). Filter state resets on change; the EQ taps a different
-      signal point. */
+      block's model (after its input gain), false = after the model on the
+      wet path (default). Filter state resets on change; the EQ taps a
+      different signal point. */
   void setPre(bool shouldBePre);
   bool isPre() const { return pre; }
 

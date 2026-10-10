@@ -22,17 +22,14 @@ only the formats your DAW uses; one is enough.
 
 Runtime dependencies
 --------------------
-The plugin UI renders in the system WebKitGTK webview. If it is not
-installed, the plugin window will show a BLACK SCREEN.
+Required: libcurl (tone downloads), ALSA, FreeType. Present on almost
+every desktop install; `./install.sh --check` verifies and offers to
+install anything missing.
 
-Required: WebKitGTK 4.1 (or 4.0), GTK3, ALSA, FreeType.
-
-  Ubuntu / Debian:  sudo apt install libwebkit2gtk-4.1-0
-  Fedora:           sudo dnf install webkit2gtk4.1
-  Arch:             sudo pacman -S webkit2gtk-4.1
-  openSUSE:         sudo zypper install libwebkit2gtk-4_1-0
-  Atomic Fedora (Silverblue/Kinoite/Bazzite):
-                    sudo rpm-ostree install webkit2gtk4.1  (then reboot)
+  Ubuntu / Debian:  sudo apt install libcurl4 libasound2 libfreetype6
+  Fedora:           sudo dnf install libcurl alsa-lib freetype
+  Arch:             sudo pacman -S curl alsa-lib freetype2
+  openSUSE:         sudo zypper install libcurl4 alsa libfreetype6
 
 Troubleshooting
 ---------------

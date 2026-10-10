@@ -21,9 +21,8 @@ endif()
 set(PLUGIN_NAME "TONE3000")            # Name of the plugin (used in the UI)
 set(PLUGIN_CODE T3K0)                # Unique 4-letter code for the plugin
 
-# Version comes from the repo-root VERSION file (single source of truth;
-# bump with script/set-version.sh). Read here too so this directory still
-# configures standalone.
+# Version comes from the repo-root VERSION file (single source of truth).
+# Read here too so this directory still configures standalone.
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION" T3K_VERSION)
 string(STRIP "${T3K_VERSION}" T3K_VERSION)
 # Only when configured standalone. As a subdirectory the root CMakeLists
@@ -37,6 +36,10 @@ endif()
 project(TONE3000 VERSION ${T3K_VERSION})   # Set version of the plugin
 
 option(HEADLESS "Disable GUI (headless/embedded build)" OFF)
+# The UI's testbed app (plugin/ui/testbed: scenario captures, pixel compare,
+# --selftest, --bench) as part of this build; registers its self-tests with
+# ctest. Also configurable on its own: cmake -S plugin/ui/testbed -B build-ui.
+option(T3K_BUILD_UI_TESTBED "Build the UI testbed (UiTestbed) and register its self-tests" OFF)
 option(BUILD_AAX "Build AAX (Avid) format" ON)
 option(BUILD_LV2 "Build LV2 format (native Linux plugin standard)" ON)
 option(BUILD_CLAP "Build CLAP format (via clap-juce-extensions)" ON)
@@ -55,8 +58,6 @@ endif()
 
 # Build for Desktop or Embedded
 if (NOT HEADLESS)
-    set(JUCE_WEB_BROWSER_VALUE 1)               # Webview UI for Desktop
-    set(NEEDS_WEB_BROWSER_VALUE TRUE)           # enable, need browser for webview on linux
     list(APPEND _plugin_formats "Standalone")   # Add Standalone format
     # Enable AU (Apple) format on macOS
     if (APPLE AND NOT T3K_IOS)
@@ -70,14 +71,7 @@ if (NOT HEADLESS)
     endif()
     set(VST3_MANIFEST TRUE)                     # Create moduleinfo.json for VST3
     add_compile_definitions(HEADLESS=0)
-    if (WIN32)
-        set(NEEDS_WEBVIEW2_VALUE TRUE)
-    else()
-        set(NEEDS_WEBVIEW2_VALUE FALSE)
-    endif()
 else()
-    set(JUCE_WEB_BROWSER_VALUE 0)               # No Webview UI for Embedded
-    set(NEEDS_WEB_BROWSER_VALUE FALSE)          # disable, need browser for webview on linux
     find_package(JUCE CONFIG REQUIRED)          # maybe remove?
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF) # Disable LTO
     set(VST3_MANIFEST FALSE)                    # Maybe remove?
@@ -109,8 +103,9 @@ foreach(_nam_tool tools loadmodel benchmodel render benchmodel_bufsize bench_a2_
 endforeach()
 
 # NAM static library - built here (not in submodule) to keep submodule pristine.
-# Must be linked with -force_load/--whole-archive so static factory::Helper
-# initializers (ConvNet, LSTM, WaveNet) are not stripped.
+# Must be linked with -force_load/--whole-archive so the static
+# ConfigParserHelper registrations (WaveNet, LSTM, SlimmableContainer, ...)
+# are not stripped.
 set(NAM_SRC "${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/NAM")
 add_library(NAM STATIC
     ${NAM_SRC}/activations.cpp
@@ -132,6 +127,23 @@ target_include_directories(NAM PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerCore/Dependencies/nlohmann
 )
 target_compile_options(NAM PRIVATE -fPIC)
+# Hidden visibility, matching what JUCE sets on the plugin targets (NAM is a
+# separate target and gets none of that). Left visible, GCC exports the
+# header-inline ConfigParserRegistry singleton as STB_GNU_UNIQUE, which glibc
+# resolves process-wide even across RTLD_LOCAL dlopens: a host with two
+# formats installed (LV2 and VST3, say) shares one registry between both
+# binaries, each still runs its own static parser registrations, and the
+# duplicate-name throw escapes dlopen and aborts the host (issue #59).
+set_target_properties(NAM PROPERTIES
+    C_VISIBILITY_PRESET hidden
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN TRUE)
+# Second guard for the same bug (GCC-only flag; Clang never emits unique
+# symbols). It also keeps the .so dlclose'able: unique symbols pin a loaded
+# library NODELETE.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(NAM PRIVATE -fno-gnu-unique)
+endif()
 # A2 full / A2 lite models use the hand-optimized path when config matches (see NeuralAmpModelerCore).
 target_compile_definitions(NAM PRIVATE NAM_ENABLE_A2_FAST)
 
@@ -160,20 +172,38 @@ endif()
 #   story on iOS is the Files app. These two put the app's Documents folder in
 #   Files (UIFileSharingEnabled + LSSupportsOpeningDocumentsInPlace) so a user
 #   can drop captures in, and let juce::FileChooser open them in place.
+# - TARGETED_DEVICE_FAMILY: "2" is iPad only. JUCE defaults to "1,2"
+#   (iPhone + iPad), and App Store Connect reads the family from the binary,
+#   so with the default it demands iPhone screenshots before review and would
+#   let the app install on iPhones the layout was never sized for.
 # - IPAD_SCREEN_ORIENTATIONS: the faceplate is landscape by design. iPhone is
-#   out of scope for this PR, so no iPhone orientation list.
+#   out of scope, so no iPhone orientation list.
+# - REQUIRES_FULL_SCREEN: App Store validation refuses a landscape-only iPad
+#   app unless it opts out of multitasking with UIRequiresFullScreen
+#   (ITMS-90474). On iPadOS 26 the key no longer blocks windowing at runtime,
+#   so it changes nothing there; on older iPadOS it disables Split View, which
+#   the landscape faceplate never supported anyway.
+# - BUILD_VERSION: CFBundleVersion, which JUCE otherwise defaults to the
+#   marketing version. App Store Connect refuses a build number it has already
+#   seen for that marketing version, so with the default every upload after the
+#   first bounces. T3K_IOS_BUILD_NUMBER is a plain integer for CI to override.
 # The microphone and Bluetooth permission strings the plugin already declares
 # are the same keys iOS wants, so they are left in the shared block below.
 set(_t3k_ios_args "")
 if (T3K_IOS)
     set(T3K_IOS_BUNDLE_ID "com.TONE3000.TONE3000" CACHE STRING
         "Bundle identifier for the iOS app (override to sign under a personal team)")
+    set(T3K_IOS_BUILD_NUMBER "1" CACHE STRING
+        "CFBundleVersion for the iOS app: bump on every upload of one marketing version")
     set(_t3k_ios_args
         BUNDLE_ID "${T3K_IOS_BUNDLE_ID}"
+        BUILD_VERSION "${T3K_IOS_BUILD_NUMBER}"
         BACKGROUND_AUDIO_ENABLED TRUE
         FILE_SHARING_ENABLED TRUE
         DOCUMENT_BROWSER_ENABLED TRUE
+        TARGETED_DEVICE_FAMILY "2"
         IPAD_SCREEN_ORIENTATIONS UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        REQUIRES_FULL_SCREEN TRUE
     )
 endif()
 
@@ -181,7 +211,10 @@ endif()
 # target already rides in the binary and MinimumOSVersion, so merging a macOS
 # key there would just be noise in the plist.
 if (T3K_IOS)
-    set(_t3k_plist_to_merge "")
+    # The app's only encryption is standard HTTPS, which is exempt. Declaring
+    # that here answers App Store Connect's export-compliance question once
+    # instead of on every TestFlight upload.
+    set(_t3k_plist_to_merge PLIST_TO_MERGE "<plist version=\"1.0\"><dict><key>ITSAppUsesNonExemptEncryption</key><false/></dict></plist>")
 else()
     set(_t3k_plist_to_merge PLIST_TO_MERGE "<plist version=\"1.0\"><dict><key>LSMinimumSystemVersion</key><string>${CMAKE_OSX_DEPLOYMENT_TARGET}</string></dict></plist>")
 endif()
@@ -205,9 +238,7 @@ juce_add_plugin(${PROJECT_NAME}
     # sessions and presets). Never change it once released.
     LV2URI "https://www.tone3000.com/plugin"
     PRODUCT_NAME ${PROJECT_NAME}
-    NEEDS_WEB_BROWSER ${NEEDS_WEB_BROWSER_VALUE}
     VST3_AUTO_MANIFEST ${VST3_MANIFEST}
-    NEEDS_WEBVIEW2 ${NEEDS_WEBVIEW2_VALUE}
     MICROPHONE_PERMISSION_ENABLED TRUE
     MICROPHONE_PERMISSION_TEXT "TONE3000 needs microphone access for audio input processing."
     # Without this Info.plist key, macOS TCC kills the app the moment the
@@ -224,6 +255,66 @@ juce_add_plugin(${PROJECT_NAME}
     ICON_BIG "${_app_icon}"
 )
 
+# What App Store Connect checks on upload. Nothing here changes how the app
+# behaves; without it the upload is rejected or the icon goes missing.
+if (T3K_IOS)
+    # Apple's privacy manifest. An upload whose binary calls a "required
+    # reason" API the manifest does not declare is rejected with ITMS-91053.
+    # It belongs to the app target rather than the shared code, and iOS
+    # bundles are flat, so "Resources" is the bundle root.
+    set(_t3k_privacy "${CMAKE_CURRENT_SOURCE_DIR}/PrivacyInfo.xcprivacy")
+    target_sources(${PROJECT_NAME}_Standalone PRIVATE "${_t3k_privacy}")
+    set_source_files_properties("${_t3k_privacy}" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+
+    # The 1024 App Store icon must carry no alpha channel: with one, App Store
+    # Connect returns ITMS-90717 and the icon never appears in TestFlight.
+    # juceaide writes every icon RGBA no matter what the source is - its own
+    # opaque pass reallocates through the native image type, which is 32-bit
+    # ARGB on macOS - so the channel is dropped here, after juce_add_plugin
+    # generated the icon set and before actool compiles it into Assets.car.
+    # The pixels are already opaque; only the channel goes.
+    #
+    # The rewrite uses ImageIO through a Swift script rather than a tool from
+    # the package manager: every machine that can build this target has Swift
+    # and ImageIO, and the GitHub macOS runner does not ship ImageMagick.
+    #
+    # JUCE writes the icon set under the shared-code target's generated sources
+    # but in a folder named for the format target that owns the bundle.
+    get_target_property(_t3k_gen ${PROJECT_NAME} JUCE_GENERATED_SOURCES_DIRECTORY)
+    set(_t3k_iconset "${_t3k_gen}/${PROJECT_NAME}_Standalone/Images.xcassets/AppIcon.appiconset")
+    file(GLOB _t3k_icons "${_t3k_iconset}/*.png")
+    if (NOT _t3k_icons)
+        message(WARNING "iOS: no icon set at ${_t3k_iconset}. JUCE has moved it, so the icons "
+                        "keep their alpha channel and an App Store Connect upload is rejected "
+                        "with ITMS-90717.")
+    else()
+        execute_process(
+            COMMAND xcrun swift "${CMAKE_CURRENT_SOURCE_DIR}/../script/flatten-icon-alpha.swift"
+                    ${_t3k_icons}
+            RESULT_VARIABLE _t3k_rc
+            ERROR_VARIABLE _t3k_err)
+        if (_t3k_rc EQUAL 0)
+            message(STATUS "iOS: app icons flattened to opaque")
+        else()
+            message(WARNING "iOS: could not flatten the app icons (${_t3k_err}). They keep their "
+                            "alpha channel, and an App Store Connect upload is rejected with "
+                            "ITMS-90717.")
+        endif()
+    endif()
+
+    # juceaide never enlarges the source (RectanglePlacement::onlyReduceInSize),
+    # so anything under 1024 leaves the App Store icon sitting at its own size
+    # in the middle of a blank 1024 field. Width lives at byte 16 of a PNG.
+    file(READ "${_app_icon}" _t3k_png_head HEX LIMIT 20)
+    string(SUBSTRING "${_t3k_png_head}" 32 8 _t3k_png_width)
+    math(EXPR _t3k_png_width "0x${_t3k_png_width}")
+    if (_t3k_png_width LESS 1024)
+        message(WARNING "iOS: ${_app_icon} is ${_t3k_png_width}px wide. The App Store icon is "
+                        "1024x1024 and is not upscaled, so it will show the artwork at "
+                        "${_t3k_png_width}px on a blank field. Export the icon at 1024.")
+    endif()
+endif()
+
 target_sources(${PROJECT_NAME}
     PRIVATE
         include/BlockEq.h
@@ -239,6 +330,10 @@ target_sources(${PROJECT_NAME}
         src/StereoOffset.cpp
         include/AutoOffset.h
         src/AutoOffset.cpp
+        include/LegacyParamIds.h
+        src/LegacyParamIds.cpp
+        include/PresetFile.h
+        src/PresetFile.cpp
         include/PresetManager.h
         src/PresetManager.cpp
         include/Processor.h
@@ -255,32 +350,45 @@ target_sources(${PROJECT_NAME}
         src/NamEngine.cpp
         include/TunerDetector.h
         src/TunerDetector.cpp
+        include/PitchShift.h
+        src/PitchShift.cpp
 )
+
 # Include GUI for Desktop builds
 if (NOT HEADLESS)
     target_sources(${PROJECT_NAME}
         PRIVATE
-            include/Editor.h
-            src/Editor.cpp
-            include/EditorWebViewSetup.h
-            src/EditorWebViewSetup.cpp
             include/StandaloneAudioSettings.h
             src/StandaloneAudioSettings.cpp
+            include/WindowKeyEvents.h
     )
+    # The editor (plugin/ui, see plugin/docs/native-ui.md): the shared UI
+    # sources plus the processor-backed pieces only the plugin has.
+    include("${CMAKE_CURRENT_SOURCE_DIR}/ui/NativeUi.cmake")
+    t3k_add_native_ui(${PROJECT_NAME})
+    target_sources(${PROJECT_NAME}
+        PRIVATE
+            ui/backend/ProcessorBackend.h
+            ui/backend/ProcessorBackend.cpp
+            ui/NativeEditor.h
+            ui/NativeEditor.cpp
+    )
+    if (T3K_BUILD_UI_TESTBED AND NOT T3K_IOS)
+        add_subdirectory(ui/testbed)
+    endif()
     # OS microphone-permission shim: AVFoundation (ObjC++) on macOS, a
     # best-effort stub elsewhere (see AudioPermissions.h).
     target_sources(${PROJECT_NAME} PRIVATE include/AudioPermissions.h)
-    # Webview session clearing is platform-specific: WKWebsiteDataStore needs
-    # ObjC++ on Apple; elsewhere a best-effort JUCE fallback.
+    # iOS audio-route shim; header-only no-op on Windows and Linux.
+    target_sources(${PROJECT_NAME} PRIVATE include/IosAudioRoute.h)
     if (APPLE)
-        target_sources(${PROJECT_NAME} PRIVATE src/WebViewCookies.mm)
-        # Hover/cursor fix for DAW-hosted windows (see WindowMouseEvents.mm).
-        target_sources(${PROJECT_NAME} PRIVATE src/WindowMouseEvents.mm)
         # Space passthrough to the host DAW (see WindowKeyEvents.mm).
         target_sources(${PROJECT_NAME} PRIVATE src/WindowKeyEvents.mm)
         target_sources(${PROJECT_NAME} PRIVATE src/AudioPermissions.mm)
+        # AVAudioSession route query + the Bluetooth HFP opt-out (see
+        # IosAudioRoute.h).
+        target_sources(${PROJECT_NAME} PRIVATE src/IosAudioRoute.mm)
     else()
-        target_sources(${PROJECT_NAME} PRIVATE src/WebViewCookies.cpp)
         # Space passthrough to the host DAW (see WindowKeyEvents.cpp).
         target_sources(${PROJECT_NAME} PRIVATE src/WindowKeyEvents.cpp)
         if (UNIX)
@@ -290,6 +398,38 @@ if (NOT HEADLESS)
             target_link_libraries(${PROJECT_NAME} PRIVATE X11::X11)
         endif()
         target_sources(${PROJECT_NAME} PRIVATE src/AudioPermissions.cpp)
+    endif()
+endif()
+
+# iOS standalone state autosave. Apple-only because it is ObjC++; it compiles
+# to an empty stub on macOS and in headless builds, and Processor.cpp calls it
+# unconditionally, so it sits outside the GUI block above.
+if (APPLE)
+    target_sources(${PROJECT_NAME}
+        PRIVATE
+            include/StandaloneStateAutosave.h
+            src/StandaloneStateAutosave.mm
+    )
+else()
+    target_sources(${PROJECT_NAME}
+        PRIVATE
+            include/StandaloneStateAutosave.h
+            src/StandaloneStateAutosave.cpp
+    )
+endif()
+
+# Factory presets. Desktop installers lay these down outside the app: a shared
+# location on macOS and Windows (script/create-pkg.sh, the Inno Setup script),
+# the per-user Factory folder on Linux (script/installer/linux/install.sh).
+# iOS has no installer, so the app bundle carries them itself and
+# PresetManager::defaultSystemFactoryDir points at them there.
+if (T3K_IOS AND TARGET ${PROJECT_NAME}_Standalone)
+    file(GLOB _t3k_factory_presets "${CMAKE_CURRENT_SOURCE_DIR}/../resources/factory-presets/*.t3kpreset")
+    if (_t3k_factory_presets)
+        target_sources(${PROJECT_NAME}_Standalone PRIVATE ${_t3k_factory_presets})
+        set_source_files_properties(${_t3k_factory_presets} PROPERTIES
+            MACOSX_PACKAGE_LOCATION "Resources/FactoryPresets"
+            HEADER_FILE_ONLY TRUE)
     endif()
 endif()
 
@@ -320,8 +460,8 @@ target_link_libraries(${PROJECT_NAME}
         juce::juce_audio_processors
         juce::juce_gui_basics
         juce::juce_gui_extra
-        # NAM: force_load/whole-archive so static factory::Helper initializers
-        # (ConvNet, LSTM, WaveNet) are not stripped by the linker
+        # NAM: force_load/whole-archive so the static ConfigParserHelper
+        # registrations are not stripped by the linker
         # PLATFORM_ID is "iOS" (not "Darwin") when cross-compiling for iOS, so
         # both have to be listed or the iOS link drops every model architecture
         # and NAM loads fail with "No config parser registered for ...".
@@ -347,37 +487,14 @@ target_link_libraries(${PROJECT_NAME}
 # Ensure NAM is built before plugin (force_load path requires lib to exist)
 add_dependencies(${PROJECT_NAME} NAM)
 
-
-if (NOT HEADLESS)
-    # Add Webview GUI files as binary data (built by npm run build in ui/)
-    file(GLOB_RECURSE WEB_ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/webview/*.*")
-    # Fallback: CI configures before UI build; use placeholder so juce_add_binary_data succeeds.
-    # Reconfigure after "Build UI" step to pick up real assets.
-    if (NOT WEB_ASSETS)
-        file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/_webview_placeholder.txt" " ")
-        list(APPEND WEB_ASSETS "${CMAKE_CURRENT_BINARY_DIR}/_webview_placeholder.txt")
-    endif()
-
-    juce_add_binary_data(WebAssets
-    SOURCES ${WEB_ASSETS}
-    )
-
-    target_link_libraries(${PROJECT_NAME} PRIVATE WebAssets)
-    target_include_directories(${PROJECT_NAME}
-        PRIVATE ${WebAssets_BINARY_DIR}
-    )
-else()
-    # Generate a dummy BinaryData.h to avoid missing include errors
-    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/BinaryData.h" "// Empty stub for Embedded builds\n")
-    target_include_directories(${PROJECT_NAME}
-        PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
-    )
-endif()
-
-# These definitions are recommended by JUCE.
+# No browser engine anywhere in the plugin: the UI is drawn by JUCE, so
+# juce_gui_extra's WebBrowserComponent (and its WebKitGTK / WebView2 runtime
+# dependencies) stays out of the build. Likewise the vendored libwebp
+# (JUCE 9.0.3+): nothing here reads or writes WebP.
 target_compile_definitions(${PROJECT_NAME}
     PUBLIC
-        JUCE_WEB_BROWSER=${JUCE_WEB_BROWSER_VALUE}
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_WEBP=0
         JUCE_VST3_CAN_REPLACE_VST2=0
 )
 
@@ -401,15 +518,23 @@ else()
     target_compile_definitions(${PROJECT_NAME} PUBLIC JUCE_USE_CURL=0)
 endif()
 
-# Linux: stay on the classic core-X11 input path. JUCE 9 rewrote Linux input
-# around XInput2 (per-window XI2 registration, core ButtonPress/Motion events
-# discarded when XI2 >= 2.2 is present, which is every modern system). A missed
-# or racing XI2 registration leaves a window rendering but mouse-dead, seen
-# intermittently in the JUCE 9 standalone on Linux (resolved by relaunch). The
-# only feature XInput2 buys is multitouch, which this plugin doesn't use, so
-# disable the whole path and keep the battle-tested JUCE 8 behavior.
-if (UNIX AND NOT APPLE)
-    target_compile_definitions(${PROJECT_NAME} PUBLIC JUCE_USE_XINPUT=0)
+# Linux: compile JUCE's JACK backend into the standalone's device-type list
+# (the settings UI grows an "Audio Driver" picker automatically when more
+# than one backend exists). JUCE's ALSA backend opens the selected card
+# directly and exclusively: picking a USB interface's raw device steals the
+# whole card from PipeWire/PulseAudio, killing its other channels for every
+# other app until the audio server recovers (issue #125 - a Scarlett Solo's
+# mic dying system-wide while the app holds the guitar channel). The JACK
+# backend connects as a client instead, so on any PipeWire system
+# (pipewire-jack) or real JACK server the interface stays shared. libjack is
+# dlopened at runtime (libjack.so.0, JackNoStartServer) like curl above,
+# so this adds no runtime dependency: without a JACK server the
+# driver just lists no devices. Build hosts need the JACK headers
+# (libjack-jackd2-dev; CI installs it). The JACK client name defaults to
+# JucePlugin_Name ("TONE3000"). Gated on NOT HEADLESS so embedded
+# toolchains don't grow a header dependency.
+if (UNIX AND NOT APPLE AND NOT HEADLESS)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC JUCE_JACK=1)
 endif()
 
 # Use native macOS title bar for standalone app. On iOS there is no title bar
@@ -432,10 +557,6 @@ if (WIN32)
     # Prevent windows.h min/max macros from breaking std::min/std::max in AudioDSPTools and plugin code
     target_compile_definitions(${PROJECT_NAME} PUBLIC NOMINMAX)
     if (NOT HEADLESS)
-        target_compile_definitions(${PROJECT_NAME}
-            PUBLIC JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1  # This will enable WebView2 as the WebView backend on Windows
-        )
-
         # ASIO driver support in the standalone's audio settings. JUCE keeps
         # ASIO off by default because it needs Steinberg's ASIO SDK headers,
         # which are a separate (non-redistributable) download:

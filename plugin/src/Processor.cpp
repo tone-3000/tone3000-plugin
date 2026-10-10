@@ -1,8 +1,11 @@
 #include "Processor.h"
 #if !HEADLESS
-#include "Editor.h"
+#include "NativeEditor.h"
 #endif
+#include "StandaloneStateAutosave.h"
 #include <cmath>
+#include <mutex>
+#include <optional>
 #include <random>
 #include <cstring>
 #include <tuple>
@@ -11,6 +14,7 @@
 // so we can detect a mono input or output (see standaloneMonoInput /
 // standaloneMonoOutput).
 #if !HEADLESS && JucePlugin_Build_Standalone && ! JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP
+#include <juce_audio_utils/juce_audio_utils.h>
 #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
 #endif
 
@@ -38,16 +42,34 @@ TONE3000Processor::TONE3000Processor()
     juce::Logger::setCurrentLogger(new juce::FileLogger(getLogFile(), "TONE3000 JUCE Log"));
   }
 
+  // Heal the per-user app-data folder before anything writes to it: a
+  // root-owned folder fails every settings save and drop-stash write while
+  // reads keep working (github issue #76; see ensureWritableDir, which logs
+  // whatever it does). Once per process, like the stash GC below.
+  static std::once_flag appDataHealFlag;
+  std::call_once(appDataHealFlag,
+                 [] { ensureWritableDir(getSettingsFile().getParentDirectory()); });
+
   // One-line snapshot of everything read from the shared machine-wide
-  // settings file at construction, plus the file's own path: the first
-  // thing to check when a "settings/login don't persist" report comes in
-  // (wrong/unwritable path, or the file simply isn't there yet).
+  // settings file at construction, plus the file's own path and whether its
+  // folder can be written at all: the first things to check when a
+  // "settings/login don't persist" or "can't store dropped files" report
+  // comes in (wrong/unwritable path, or the file simply isn't there yet).
   juce::Logger::writeToLog(
       "[Processor] Settings file: " + getSettingsFile().getFullPathName() +
       " (exists=" + juce::String(getSettingsFile().existsAsFile() ? "yes" : "no") +
-      ") | multiCore=" + juce::String(multiCoreEnabled.load() ? "on" : "off"));
+      ") | multiCore=" + juce::String(multiCoreEnabled.load() ? "on" : "off") +
+      " | dataDir=" +
+      (getSettingsFile().getParentDirectory().hasWriteAccess() ? "writable" : "NOT WRITABLE"));
 
   resolveParamRefs();
+
+  // Seed the Settings-page parameters (calibration, oversampling) from the
+  // machine-wide defaults before the oversampling listeners attach: the
+  // chain isn't prepared yet, so there is nothing to re-rate, and
+  // prepareToPlay reads the factor fresh. A host restore that follows
+  // (setStateInformation) overrides whatever lands here.
+  seedMachineDefaultParameters();
 
   // Age out unused drop-loaded model stash files and sweep IR temp files
   // leaked by older builds (both no-ops after the process's first instance).
@@ -85,6 +107,12 @@ TONE3000Processor::TONE3000Processor()
   chainStageFunc = [this](float** inputs, float** outputs, int numFrames) {
     processOversampledChainStage(inputs, outputs, numFrames);
   };
+
+  // iOS standalone only: nothing else on that platform ever saves the plugin
+  // state, so the signal chain would not survive a relaunch (see
+  // StandaloneStateAutosave.h). A no-op everywhere else.
+  StandaloneStateAutosave::install();
+
   DBG("TONE3000Processor constructed");
 }
 
@@ -119,12 +147,20 @@ void TONE3000Processor::resolveParamRefs() {
   paramRefs.toneTreble = get("toneTreble");
   paramRefs.gateThreshold = get("gateThreshold");
   paramRefs.gateEnabled = get("gateEnabled");
+  paramRefs.gateRelease = get("gateRelease");
+  paramRefs.gateHold = get("gateHold");
+  paramRefs.gateRange = get("gateRange");
   paramRefs.toneEqEnabled = get("toneEqEnabled");
   paramRefs.targetLoudness = get("targetLoudness");
   paramRefs.calibrateInput = get("calibrateInput");
   paramRefs.inputCalibrationLevel = get("inputCalibrationLevel");
   paramRefs.osEnabled = get("osEnabled");
   paramRefs.osFactor = get("osFactor");
+  paramRefs.pitchEnabled = get("pitchEnabled");
+  paramRefs.pitchSemitones = get("pitchSemitones");
+  paramRefs.pitchStep = get("pitchStep");
+  paramRefs.pitchTonality = get("pitchTonality");
+  paramRefs.pitchWindow = get("pitchWindow");
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createParameterLayout() {
@@ -135,8 +171,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
 
   // Normalized 0..1 knob params get an explicit 1e-4 interval. The
   // (min, max, default) AudioParameterFloat constructor silently bakes a
-  // 0.01 interval into the range, and the webview slider relay snaps every
-  // UI-set value to that grid: 0.48 dB steps on the ±24 dB knobs, which
+  // 0.01 interval into the range, and convertFrom0to1 snaps every UI-set
+  // value to that grid: 0.48 dB steps on the ±24 dB knobs, which
   // mangled typed values (-4.0 landed on -3.8; GitHub issue #16). 1e-4
   // matches the UI's own text-entry/fine-drag rounding (KnobControl rounds
   // to 4 decimals), so the snap never moves a value the UI can produce.
@@ -144,6 +180,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
     return std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{id, versionHint}, id,
         juce::NormalisableRange<float>(0.0f, 1.0f, 0.0001f), defaultValue);
+  };
+
+  // Host text for the log-mapped real-unit ranges below (gate release,
+  // pitch tonality). A NormalisableRange with skew lambdas has no
+  // interval, and JUCE's default stringFromValue then prints seven
+  // decimals; a float near 20 kHz only carries about four, so
+  // text -> value -> text drifted in the last digits and clap-validator's
+  // param-conversions test failed. Whole units, like the UI's own readouts
+  // (KnobScale.h), round-trip exactly. Parsing stays JUCE's default
+  // (getFloatValue), so a typed "12.5" still lands on 12.5.
+  const auto wholeUnitText = [](const char* label) {
+    return juce::AudioParameterFloatAttributes()
+        .withLabel(label)
+        .withStringFromValueFunction([](float v, int) { return juce::String(juce::roundToInt(v)); });
   };
 
   layout.add(normParam("inputLevel", 1, 0.5f));
@@ -258,6 +308,62 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
       juce::ParameterID{"osFactor", 35}, "osFactor", juce::StringArray{"2x", "4x", "8x"}, 0,
       juce::AudioParameterChoiceAttributes().withAutomatable(false)));
 
+  // Gate advanced-panel deck (right-click the Gate group; see
+  // NoiseGate::Params for what each does and why the defaults are what they
+  // are). Stored in real units like the threshold, so hosts and preset
+  // files read ms / dB. Release rides a log map: the tight end (5-30 ms) is
+  // where the ear resolves differences, and a linear knob would spend most
+  // of its travel above 200 ms.
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"gateRelease", 36}, "gateRelease",
+      juce::NormalisableRange<float>(
+          5.0f, 500.0f,
+          [](float start, float end, float norm) { return start * std::pow(end / start, norm); },
+          [](float start, float end, float ms) {
+            return std::log(ms / start) / std::log(end / start);
+          }),
+      50.0f, wholeUnitText("ms")));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"gateHold", 37}, "gateHold", 0.0f, 200.0f, 20.0f));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"gateRange", 38}, "gateRange", 20.0f, 80.0f, 80.0f));
+
+  // Pitch shift (faceplate, right of the Gate group; see PitchShift.h). Off
+  // by default: powering it on is what adds latency, so a fresh chain stays
+  // transparent. The shift is a continuous float: with STEP on (the
+  // default) the processor rounds it to whole semitones on the way to the
+  // engine and the knob detents, with STEP off the knob sweeps smoothly
+  // like a whammy pedal (Shift-drag for fine control). Older builds stored
+  // these as transpose*; LegacyParamIds.h renames them on load.
+  layout.add(std::make_unique<juce::AudioParameterBool>(
+      juce::ParameterID{"pitchEnabled", 39}, "pitchEnabled", false));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"pitchSemitones", 40}, "pitchSemitones",
+      static_cast<float>(-PitchShift::kSemitoneRange), static_cast<float>(PitchShift::kSemitoneRange), 0.0f));
+  layout.add(std::make_unique<juce::AudioParameterBool>(
+      juce::ParameterID{"pitchStep", 41}, "pitchStep", true));
+  // Pitch advanced-panel deck, in real units like the gate deck's. The
+  // tonality limit rides a log map over the range where it does something
+  // on a guitar; its top end (20 kHz) is "off", the default: a pure shift.
+  // The window (the engine's delay buffer, 20 / 30 / 40 / 60 ms) is a
+  // 4-way choice and not automatable because, like the oversampling
+  // factor, changing it changes the reported latency.
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"pitchTonality", 42}, "pitchTonality",
+      juce::NormalisableRange<float>(
+          PitchShift::kTonalityMinHz, PitchShift::kTonalityOffHz,
+          [](float start, float end, float norm) { return start * std::pow(end / start, norm); },
+          [](float start, float end, float hz) {
+            return std::log(hz / start) / std::log(end / start);
+          }),
+      PitchShift::kTonalityOffHz, wholeUnitText("Hz")));
+  juce::StringArray windows;
+  for (const int ms : PitchShift::kWindowMs) windows.add(juce::String(ms) + " ms");
+  layout.add(std::make_unique<juce::AudioParameterChoice>(
+      juce::ParameterID{"pitchWindow", 43}, "pitchWindow", windows,
+      static_cast<int>(PitchShift::kDefaultWindow),
+      juce::AudioParameterChoiceAttributes().withAutomatable(false)));
+
   return layout;
 }
 
@@ -278,6 +384,13 @@ void TONE3000Processor::parameterChanged(const juce::String& parameterID, float 
     triggerAsyncUpdate();
     return;
   }
+  if (parameterID == "pitchEnabled" || parameterID == "pitchWindow") {
+    // The only runtime latency edges. Hosts want latency changes off the
+    // audio thread (VST3 restarts the component), so they ride the same
+    // deferral as the oversampling settings; updateLatency() there is
+    // idempotent, so a spurious run costs nothing.
+    triggerAsyncUpdate();
+  }
   // A preset-managed faceplate param moved, so getChainState's atDefault may
   // have flipped. Deferred like block-param drags: a real bump per change
   // would re-ship the whole chain state at knob-drag/automation rates.
@@ -286,6 +399,25 @@ void TONE3000Processor::parameterChanged(const juce::String& parameterID, float 
 
 void TONE3000Processor::handleAsyncUpdate() {
   applyOversamplingSettings();
+  updateLatency();
+
+  // A host called setCurrentProgram off the message thread: apply the
+  // deferred program change here (last one wins, like MidiMapper's PC path).
+  if (const int program = pendingHostProgram.exchange(-1); program >= 0)
+    applyHostProgram(program);
+}
+
+// Message thread. Boundary plus a powered pitch shifter's window; read from
+// the parameters, not the audio thread's engine, so a change is reported
+// exactly once and the report doesn't depend on a callback having run.
+void TONE3000Processor::updateLatency() {
+  int latency = chainBoundaryLatency;
+  if (paramRefs.pitchEnabled->load() >= 0.5f) {
+    const auto window =
+        PitchShift::windowFromIndex(static_cast<int>(std::lround(paramRefs.pitchWindow->load())));
+    latency += PitchShift::latencySamples(window, hostSampleRate);
+  }
+  setLatencySamples(latency);  // no-op (no host notification) when unchanged
 }
 
 // Message thread. Re-rates the whole chain domain after an osEnabled/osFactor
@@ -325,20 +457,54 @@ void TONE3000Processor::applyOversamplingSettings() {
 
   // IR blocks need nothing here: their convolvers run at the base rate
   // behind per-block islands (re-prepared by prepareChain above), so neither
-  // the kernel nor the tail report moves with the factor.
-  for (auto& l : lanes) {
-    for (auto& block : l) {
-      if (block->type == ChainBlockType::NAM && block->loaded && !block->modelLoading) {
-        // In-flight loads are left alone: the apply path's factor-drift guard
-        // re-queues them itself.
-        block->loaded = false;
-        block->modelLoading = true;
-        queueActiveModelLoad(*block);
-      }
-    }
-  }
+  // the kernel nor the tail report moves with the factor. In-flight NAM
+  // loads are left alone: the apply path's factor-drift guard re-queues
+  // them itself.
+  for (auto& l : lanes)
+    for (auto& block : l)
+      if (block->type == ChainBlockType::NAM && block->loaded && !block->modelLoading)
+        requeueLoadedNamEngine(*block);
 
   bumpChainRevision();
+}
+
+void TONE3000Processor::requeueLoadedNamEngine(ChainBlock& block) {
+  block.loaded = false;
+  block.modelLoading = true;
+  queueActiveModelLoad(block);
+}
+
+bool TONE3000Processor::requeueNamEnginesForVoiceCount() {
+  const int wanted = wantedNamVoices();
+  bool queued = false;
+  for (auto& l : lanes) {
+    for (auto& block : l) {
+      // In-flight loads are left alone: the apply path's voice-drift guard
+      // re-queues them itself (see applyPreparedModelToChainBlock).
+      if (block->type != ChainBlockType::NAM || !block->loaded || block->modelLoading ||
+          block->namEngine == nullptr || block->namEngine->getVoiceCount() == wanted)
+        continue;
+      requeueLoadedNamEngine(*block);
+      queued = true;
+    }
+  }
+  if (queued) {
+    juce::Logger::writeToLog("[Processor] NAM engines rebuilding for " + juce::String(wanted) +
+                             (wanted == 1 ? " voice" : " voices"));
+    bumpChainRevision();
+  }
+  return queued;
+}
+
+int TONE3000Processor::namEngineVoiceCount(const std::string& blockId) const {
+  juce::ScopedLock lock(chainMutex);
+  for (const auto& l : lanes)
+    for (const auto& block : l)
+      if (block->id == blockId)
+        return block->type == ChainBlockType::NAM && block->loaded && block->namEngine != nullptr
+                   ? block->namEngine->getVoiceCount()
+                   : 0;
+  return 0;
 }
 
 TONE3000Processor::~TONE3000Processor() {
@@ -396,22 +562,9 @@ double TONE3000Processor::getTailLengthSeconds() const {
   return std::max(irTailSeconds, dcBlockerTailSeconds);
 }
 
-int TONE3000Processor::getNumPrograms() {
-  return 1;
-}
-int TONE3000Processor::getCurrentProgram() {
-  return 0;
-}
-void TONE3000Processor::setCurrentProgram(int index) {
-  juce::ignoreUnused(index);
-}
-const juce::String TONE3000Processor::getProgramName(int index) {
-  juce::ignoreUnused(index);
-  return {};
-}
-void TONE3000Processor::changeProgramName(int index, const juce::String& newName) {
-  juce::ignoreUnused(index, newName);
-}
+// The host program API (getNumPrograms and friends) lives in
+// ProcessorPresets.cpp: it exposes the internal preset list as host programs,
+// which is the only route MIDI program changes can take in VST3 hosts.
 
 // #############################
 // PREPARE A SINGLE CHAIN
@@ -435,9 +588,10 @@ void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& b
     } else if (block->type == ChainBlockType::IR && block->convolverMono != nullptr) {
       // Convolvers always run at the base rate behind the block's island
       // (see ChainBlock::irBaseRateIsland), so their spec only tracks the
-      // base block size, never the oversampling factor.
+      // base block size (capped, see irConvolverBlockSizeFor), never the
+      // oversampling factor.
       juce::dsp::ProcessSpec spec{kChainBaseSampleRate,
-                                  static_cast<juce::uint32>(chainBaseBlockSize()), 2};
+                                  static_cast<juce::uint32>(irConvolverBlockSize()), 2};
       block->convolverMono->prepare(spec);
       if (block->convolverStereo != nullptr)
         block->convolverStereo->prepare(spec);
@@ -474,10 +628,14 @@ void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& b
     block->swapWetMuteGain.reset(chainRate, kWetFadeSeconds);
     block->swapWetMuteGain.setCurrentAndTargetValue(1.0f);
 
-    // Per-block EQ + spectrum analyzer need the sample rate for their math.
-    block->eq.prepare(chainRate);
-    block->spectrum.prepare(chainRate);
+    prepareBlockForChainRate(*block);
   }
+}
+
+void TONE3000Processor::prepareBlockForChainRate(ChainBlock& block) {
+  const double chainRate = chainSampleRate();
+  block.eq.prepare(chainRate);
+  block.spectrum.prepare(chainRate);
 }
 
 // See the declaration. Both lanes are scanned regardless of stereo mode:
@@ -579,19 +737,42 @@ void TONE3000Processor::updateStereoIoDetection() {
 }
 
 void TONE3000Processor::setInputMode(InputMode mode) {
-  if (mode == InputMode::Stereo) {
-    // An *active* branch has a single (mono) source; a stereo fold would
-    // silently drop the non-trunk channel. The UI hides the option; this
-    // guards MIDI/stale callers. A dormant branch (mono mode) doesn't
-    // constrain the fold; re-enabling stereo re-enforces it.
+  if (mode == getInputMode())
+    return;
+
+  // A change into or out of dual mono moves the NAM voice requirement, so
+  // the engines rebuild (see requeueNamEnginesForVoiceCount). Mute-splice
+  // the whole transition like an oversampling change: the fold, the
+  // stereo-IR routing and the Spread gate all flip under the held mute, and
+  // the chain glides back in once the rebuilt engines have landed. Other
+  // mode changes are a plain fold switch, as before. The fade is armed
+  // before the lock (the audio thread needs chainMutex to run it down) and
+  // only when needed: no fade, no dip for a Left ↔ Right pick.
+  const bool revoice = (mode == InputMode::DualMono) != (getInputMode() == InputMode::DualMono);
+  std::optional<ChainEditFade> fade;
+  if (revoice)
+    fade.emplace(*this);
+
+  bool rebuilding = false;
+  {
     juce::ScopedLock lock(chainMutex);
-    if (rtBranchTapIndex >= 0) {
-      DBG("setInputMode: stereo fold unavailable while the chain is branched");
+    if (isStereoFeed(mode) && rtBranchTapIndex >= 0) {
+      // An *active* branch has a single (mono) source; a stereo feed would
+      // silently drop the non-trunk channel. The UI hides the options; this
+      // guards MIDI/stale callers. A dormant branch (mono mode) doesn't
+      // constrain the fold; re-enabling stereo re-enforces it.
+      DBG("setInputMode: stereo feed unavailable while the chain is branched");
       return;
     }
+    inputMode.store(static_cast<int>(mode));
+    rebuilding = revoice && requeueNamEnginesForVoiceCount();
+    bumpChainRevision();
   }
-  inputMode.store(static_cast<int>(mode));
-  bumpChainRevision();
+  // Hold the mute until the rebuilt engines land (bounded), like a preset
+  // load; a chain with no NAM blocks has nothing to wait for and the fade
+  // releases at scope exit.
+  if (rebuilding)
+    fade->releaseWhenChainLoadsSettle();
   DBG("Input mode: " << inputModeToString(mode));
 }
 
@@ -699,8 +880,9 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     chainBoundaryLatency = 0;
   }
   // The oversampler is minimum-phase (zero reported latency), so the boundary
-  // remains the only latency source at any factor.
-  setLatencySamples(chainBoundaryLatency);
+  // and a powered pitch shifter are the only latency sources at any factor.
+  pitchShift.prepare(sampleRate, juce::jmax(1, samplesPerBlock));
+  updateLatency();
   DBG("Chain boundary " << (boundaryNeeded ? "engaged" : "bypassed")
       << " (latency: " << chainBoundaryLatency << " samples)");
 
@@ -771,7 +953,7 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     const bool isStereo = stereoEnabled.load();
     const bool stereoRig = stereoOutputDetected.load();
     const bool monoFold = isStereo && !stereoRig;
-    const bool applyBalance = isStereo || (cacheSpreadEnabled && stereoRig);
+    const bool applyBalance = isStereo || (cacheSpreadEnabled && stereoRig) || dualMonoEngaged();
     const auto g = imageMatrixGains(isStereo && !monoFold, monoFold,
                                     applyBalance ? cacheOutputBalance : 0.5f,
                                     cacheChainPanLeft, cacheChainPanRight,
@@ -938,6 +1120,9 @@ void TONE3000Processor::updateCachedParameters() {
   updateFloat(cacheMidTone, paramRefs.toneMid, true);
   updateFloat(cacheTrebleTone, paramRefs.toneTreble, true);
   updateFloat(cacheGateThreshold, paramRefs.gateThreshold);
+  updateFloat(cacheGateRelease, paramRefs.gateRelease);
+  updateFloat(cacheGateHold, paramRefs.gateHold);
+  updateFloat(cacheGateRange, paramRefs.gateRange);
   updateFloat(cacheTargetLoudness, paramRefs.targetLoudness);
   updateFloat(cacheInputCalibrationLevel, paramRefs.inputCalibrationLevel);
 
@@ -957,6 +1142,19 @@ void TONE3000Processor::updateCachedParameters() {
   cacheChainSoloRight = loadBool(paramRefs.chainSoloRight);
   cacheChainInvertLeft = loadBool(paramRefs.chainInvertLeft);
   cacheChainInvertRight = loadBool(paramRefs.chainInvertRight);
+
+  // Pitch shift, in the engine's units. STEP rounds the shift to whole
+  // semitones here, so the engine never sees the toggle and a host that
+  // automates the knob with STEP on still gets semitones. The choice's raw
+  // value is already denormalised (stored as a float); round so it lands
+  // exactly on its step. The tonality knob's top end means off.
+  cachePitchEnabled = loadBool(paramRefs.pitchEnabled);
+  const float semitones = paramRefs.pitchSemitones->load();
+  cachePitch.semitones = loadBool(paramRefs.pitchStep) ? std::round(semitones) : semitones;
+  const float tonalityHz = paramRefs.pitchTonality->load();
+  cachePitch.tonalityHz = tonalityHz < PitchShift::kTonalityOffHz ? tonalityHz : 0.0f;
+  cachePitch.window =
+      PitchShift::windowFromIndex(static_cast<int>(std::lround(paramRefs.pitchWindow->load())));
 }
 
 // ##########################
@@ -1021,7 +1219,7 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
       if (block->spectrum.isEnabled())
         block->spectrum.pushSamples(buffer.getReadPointer(0),
                                     numChannels > 1 ? buffer.getReadPointer(1) : nullptr,
-                                    numSamples);
+                                    numSamples, rtDualMono);
       continue;
     }
 
@@ -1056,7 +1254,7 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
 
       // EQ in the PRE position: between the block's input gain and its model,
       // shaping what drives the amp/IR. Skipped entirely when flat/bypassed
-      // (or in the default post position; see the post-block stage below).
+      // (or in the default post position; see the POST stage below).
       if (block->eq.isPre() && block->eq.isActive()) {
         block->eq.process(buffer);
         // Re-measure so the input meter still reads what the model receives.
@@ -1094,12 +1292,15 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
           }
         }
 
-        // Process with the NAM engine (handles mono conversion internally).
-        // With multi-core on, the engine forks its oversampling phase
-        // instances across the worker pool (rtPhasePool, resolved per
-        // callback); nested inside a lane fork this is the pool's supported
-        // one-deep nesting. Null = phases run serially on this thread.
-        block->namEngine->process(buffer, rtPhasePool);
+        // Process with the NAM engine: channel 0 through the model, fanned
+        // out to channel 1, or in dual mono (rtDualMono, a two-voice engine)
+        // each channel through its own voice. With multi-core on, the
+        // engine forks its voice × phase instances across the worker pool
+        // (rtPhasePool, resolved per callback); nested inside a lane fork
+        // this is the pool's supported one-deep nesting (dual mono never
+        // nests: it only runs in mono chain mode, which has no lane fork).
+        // Null = instances run serially on this thread.
+        block->namEngine->process(buffer, rtPhasePool, rtDualMono);
 
         // Post-model gain: calibrated hand-off OR loudness normalization,
         // never both; they have contradictory goals (reproduce the capture
@@ -1176,10 +1377,12 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
       try {
         // True-stereo only when: the IR file is stereo, the working buffer is stereo, and no
         // NAM block downstream would collapse the image back to mono. Otherwise apply the IR's
-        // left channel to every audio channel (convolverMono, Stereo::no).
+        // left channel to every audio channel (convolverMono, Stereo::no). Dual mono always
+        // takes the mono path: each channel is its own mono chain, and inside a stereo-mode
+        // lane (the definition of dual mono) a stereo IR convolves its left channel too.
         const bool noNamAfter = (idx > lastNamIndex);
         const bool useStereoIr = block->irNumChannels > 1 && numChannels > 1 && noNamAfter &&
-                                 block->convolverStereo != nullptr;
+                                 !rtDualMono && block->convolverStereo != nullptr;
         auto& convolver = useStereoIr ? *block->convolverStereo : *block->convolverMono;
 
         // Convolution runs at the base rate inside the block's island: when
@@ -1193,7 +1396,7 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
             [&convolver, numChannels](float* const* baseChannels, int baseFrames) {
               juce::dsp::AudioBlock<float> irBlock(baseChannels, static_cast<size_t>(numChannels),
                                                    static_cast<size_t>(baseFrames));
-              convolver.process(juce::dsp::ProcessContextReplacing<float>(irBlock));
+              processConvolverInChunks(convolver, irBlock);
             });
 
         // Unit-energy normalization, always on: an IR file's absolute level
@@ -1214,39 +1417,56 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
       }
     }
 
-    // Apply per-block output gain (centered at 0.5 == unity) and mix with dry
-    // Map normalized gain to linear: 0.5 -> 1.0, +/-0.5 -> +/-24 dB range.
-    // Short (cab-like) IR blocks carry a fixed -18 dB pad on top: cab files
-    // are peak-normalized to 0 dBFS and spectrally concentrated, far too hot
-    // at unity. Long (reverb-like) IRs get no pad; unit-energy
-    // normalization already puts them at ≈ dry level (see irIsLong in
-    // ChainBlock.h). The UI knob still reads relative dB (0 at center); the
-    // pad is invisible chain gain staging (see gainDbScale in knobScale.ts).
-    // Classified at load, so changes ride the engine-swap fade.
+    // EQ in the POST position (default): shapes the wet signal after the
+    // model, before the dry/wet mix, so the dry share of Mix passes
+    // untouched. Skipped entirely when flat/bypassed (the PRE position ran
+    // before the model).
+    if (!block->eq.isPre() && block->eq.isActive()) {
+      block->eq.process(buffer);
+    }
+
+    // Per-block output stage: blend the wet signal with dry, then apply Out
+    // Gain (centered at 0.5 == unity, ±24 dB) to the combined result. The
+    // knob is the block's output fader, not a wet trim, so it has to move
+    // the dry share of Mix too.
+    //
+    // Short (cab-like) IR blocks pad the wet term by a fixed -18 dB: cab
+    // files are peak-normalized to 0 dBFS and spectrally concentrated, far
+    // too hot at unity. The pad stays on the wet term, never the blend; at
+    // mix < 100% the dry share passes at its natural level. Long
+    // (reverb-like) IRs get no pad; unit-energy normalization already puts
+    // them at ≈ dry level (see irIsLong in ChainBlock.h). The UI knob still
+    // reads relative dB (0 at center); the pad is invisible chain gain
+    // staging (see gainDbScale in knobScale.ts). Classified at load, so pad
+    // steps land while the engine-swap fade holds the wet term silent.
     const float irOffsetDb =
         (block->type == ChainBlockType::IR && !block->irIsLong) ? -18.0f : 0.0f;
-    const float gainDb = (block->outputGainNormalized - 0.5f) * 48.0f + irOffsetDb;
-    const float targetLinear = juce::Decibels::decibelsToGain(gainDb);
-    block->outputGainSmoother.setTargetValue(targetLinear);
+    const float cabPadGain = juce::Decibels::decibelsToGain(irOffsetDb);
+    const float gainDb = (block->outputGainNormalized - 0.5f) * 48.0f;
+    block->outputGainSmoother.setTargetValue(juce::Decibels::decibelsToGain(gainDb));
     block->mixSmoother.setTargetValue(juce::jlimit(0.0f, 1.0f, block->mixNormalized));
 
     float blockOutputPeak = 0.0f;
     for (int i = 0; i < numSamples; ++i) {
       // wetFadeGain rides the mix (bypass-bound glides crossfade toward
-      // dry); swapWetMuteGain rides the wet term only (engine swaps dip the
-      // wet path to silence without exposing the dry input); see
-      // ChainBlock.h.
-      const float g = block->outputGainSmoother.getNextValue() *
-                      block->swapWetMuteGain.getNextValue();
-      const float m = block->mixSmoother.getNextValue() * block->wetFadeGain.getNextValue();
-      float wetL = buffer.getWritePointer(0)[i] * g;
+      // dry) and glides the post-mix Out Gain to unity in step, so a
+      // completed fade lands exactly on the skipped block's pass-through.
+      // swapWetMuteGain and the cab pad ride the wet term only, pre-mix
+      // (engine swaps dip the wet path to silence without exposing the dry
+      // input); see ChainBlock.h.
+      const float wetGain = block->swapWetMuteGain.getNextValue() * cabPadGain;
+      const float outGain = block->outputGainSmoother.getNextValue();
+      const float fade = block->wetFadeGain.getNextValue();
+      const float m = block->mixSmoother.getNextValue() * fade;
+      const float postGain = 1.0f + (outGain - 1.0f) * fade;
+      float wetL = buffer.getWritePointer(0)[i] * wetGain;
       float dryL = dryScratch.getReadPointer(0)[i];
-      buffer.getWritePointer(0)[i] = dryL * (1.0f - m) + wetL * m;
+      buffer.getWritePointer(0)[i] = (dryL * (1.0f - m) + wetL * m) * postGain;
       blockOutputPeak = std::max(blockOutputPeak, std::abs(buffer.getWritePointer(0)[i]));
       if (numChannels > 1) {
-        float wetR = buffer.getWritePointer(1)[i] * g;
+        float wetR = buffer.getWritePointer(1)[i] * wetGain;
         float dryR = dryScratch.getReadPointer(1)[i];
-        buffer.getWritePointer(1)[i] = dryR * (1.0f - m) + wetR * m;
+        buffer.getWritePointer(1)[i] = (dryR * (1.0f - m) + wetR * m) * postGain;
         blockOutputPeak = std::max(blockOutputPeak, std::abs(buffer.getWritePointer(1)[i]));
       }
     }
@@ -1261,28 +1481,20 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
         block->swapFadeDone.store(true);
     }
 
-    // EQ in the POST position (default): the last stage of the block, applied
-    // after gain + mix so it shapes exactly what leaves the block. Skipped
-    // entirely when flat/bypassed (the PRE position ran before the model).
-    if (!block->eq.isPre() && block->eq.isActive()) {
-      block->eq.process(buffer);
-      // The mix-loop peak is pre-EQ; re-measure so the meter reflects the
-      // block's true output.
-      blockOutputPeak = bufferPeak(buffer, numChannels, numSamples);
-    }
-
-    // Block output meter: post gain + mix + EQ, i.e. what this block hands to
-    // the next one in the chain.
+    // Block output meter: post EQ + mix + Out Gain, i.e. what this block
+    // hands to the next one in the chain.
     const float blockOutputDb =
         blockOutputPeak > 0.0f ? juce::Decibels::gainToDecibels(blockOutputPeak) : -60.0f;
     block->outputMeterDb.store(std::max(-60.0f, blockOutputDb));
 
     // Feed the EQ editor's analyzer with the block's final output, only while
-    // that block's EQ view is actually open in the UI.
+    // that block's EQ view is actually open in the UI. In dual mono the two
+    // channels are different takes, so the analyzer keeps them apart and
+    // shows the louder one per bin (see BlockSpectrum::pushSamples).
     if (block->spectrum.isEnabled())
       block->spectrum.pushSamples(buffer.getReadPointer(0),
                                   numChannels > 1 ? buffer.getReadPointer(1) : nullptr,
-                                  numSamples);
+                                  numSamples, rtDualMono);
   }
 }
 
@@ -1423,8 +1635,8 @@ void TONE3000Processor::processChainStage(float** inputs, float** outputs, int n
 //    matrix becomes the mono fold, ½(balL·L + balR·R) onto both channel
 //    pointers; solo and polarity keep working inside the sum, the pans are
 //    inert. Balance is forced center whenever it can't do anything (mono
-//    chain without a running spread), so a leftover Bal setting can't skew
-//    a dual-mono bus, matching the UI hiding the knob.
+//    chain with neither a running spread nor dual mono), so a leftover Bal
+//    setting can't skew a plain mono bus, matching the UI hiding the knob.
 void TONE3000Processor::processImageStage(float* chL, float* chR, int numFrames,
                                           bool stereoRig) {
   // Allocation-free stereo view over the two chain channels, for the
@@ -1432,7 +1644,10 @@ void TONE3000Processor::processImageStage(float* chL, float* chR, int numFrames,
   float* imageChannels[2] = {chL, chR};
   juce::AudioBuffer<float> image(imageChannels, 2, numFrames);
 
-  const bool spreadActive = cacheSpreadEnabled && stereoRig;
+  // Spread builds a stereo double from channel 0; in dual mono the chain
+  // already outputs two real channels, so it stays idle (the parameter keeps
+  // its value and the UI dims the group, as on a mono rig).
+  const bool spreadActive = cacheSpreadEnabled && stereoRig && !rtDualMono;
   const bool monoFold = rtStereoChains && !stereoRig;
 
   if (rtStereoChains) {
@@ -1479,7 +1694,10 @@ void TONE3000Processor::processImageStage(float* chL, float* chR, int numFrames,
   // re-polarizing inside the sum too. All four gains are smoothed so knob
   // moves AND the solo/invert/fold gating glide instead of stepping (pop).
   if (stereoRig || monoFold) {
-    const bool applyBalance = rtStereoChains || spreadActive;
+    // Balance trims the two things on the bus against each other: the two
+    // chains, Spread's two sides, or dual mono's two voices (the matrix is
+    // a diagonal L/R tilt there, like the Spread case: pan inactive).
+    const bool applyBalance = rtStereoChains || spreadActive || rtDualMono;
     const auto g = imageMatrixGains(rtStereoChains && !monoFold, monoFold,
                                     applyBalance ? cacheOutputBalance : 0.5f,
                                     cacheChainPanLeft, cacheChainPanRight,
@@ -1547,14 +1765,36 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   //   so mirror it.
   // - Input mode L/R on a stereo source: duplicate the chosen channel onto
   //   both, exactly like a host feeding a mono source to a stereo bus.
+  // - Stereo on a mono chain: sum to mono, ½(L+R), the host's own fold law
+  //   (a mono source on a stereo track, L == R, passes bit-identically; a
+  //   real stereo source reaches the chain whole instead of left-only).
+  //   Dual Mono folds the same way whenever it can't engage (mono rig; see
+  //   dualMonoEngaged), so the two modes only differ when both takes can
+  //   actually be processed and heard. With stereo chains neither folds:
+  //   channel 0 feeds the Left chain and channel 1 the Right.
+  // Dual mono is resolved once per callback, here, so the fold and the chain
+  // stage below always agree on it (a mode change landing between the two
+  // reads could otherwise fold the input and then run two voices on it).
+  rtDualMono = numChannels > 1 && dualMonoEngaged();
   if (numChannels > 1) {
     if (standaloneMonoInput.load()) {
       buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
     } else {
-      switch (static_cast<InputMode>(inputMode.load())) {
+      const auto mode = static_cast<InputMode>(inputMode.load());
+      const bool sumToMono =
+          !stereoEnabled.load() &&
+          (mode == InputMode::Stereo || (mode == InputMode::DualMono && !rtDualMono));
+      switch (mode) {
         case InputMode::Left: buffer.copyFrom(1, 0, buffer, 0, 0, numSamples); break;
         case InputMode::Right: buffer.copyFrom(0, 0, buffer, 1, 0, numSamples); break;
-        case InputMode::Stereo: break;
+        case InputMode::Stereo:
+        case InputMode::DualMono:
+          if (sumToMono) {
+            buffer.applyGain(0, 0, numSamples, 0.5f);
+            buffer.addFrom(0, 0, buffer, 1, 0, numSamples, 0.5f);
+            buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
+          }
+          break;
       }
     }
   }
@@ -1608,10 +1848,23 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   if (cacheGateEnabled) {
     if (!gateWasEnabled)
       inputGate.reset();
-    inputGate.setThresholdDb(cacheGateThreshold);
+    inputGate.setParams({cacheGateThreshold, cacheGateRelease, cacheGateHold, cacheGateRange});
     inputGate.process(buffer);
   }
   gateWasEnabled = cacheGateEnabled;
+
+  // Pitch shift (PitchShift.h): shifts the instrument before the chain, so
+  // the amp sees a down-tuned (or whammy-bent) guitar. After the gate so it
+  // decides on the real transients; before the auto-align probe below,
+  // whose sweep must never be shifted. Runs while powered and through the
+  // power-off blend; once that lands it is a bit-exact, zero-latency
+  // passthrough. The latency report rides the power parameter
+  // (updateLatency), not this path.
+  pitchShift.setEnabled(cachePitchEnabled);
+  if (pitchShift.isRunning()) {
+    pitchShift.setParams(cachePitch);
+    pitchShift.process(buffer);
+  }
 
   // #########################
   // Auto-align probe injection (see AutoOffset.h): while a measurement is
@@ -1657,6 +1910,7 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     // them, so a two-chain rig is heard in full instead of half.
     rtStereoChains = stereoEnabled.load();
     rtChainChannels = juce::jmin(numChannels, 2);
+    // rtDualMono was resolved up front, with the input fold.
 
     // One multi-core resolution per callback (under chainMutex): the phase
     // fork only needs the setting and live workers, while the lane fork
@@ -1824,7 +2078,7 @@ bool TONE3000Processor::hasEditor() const {
 // ##############
 juce::AudioProcessorEditor* TONE3000Processor::createEditor() {
 #if !HEADLESS
-  return new TONE3000Editor(*this);
+  return new t3k::ui::NativeEditor(*this);
 #else
   return nullptr;
 #endif

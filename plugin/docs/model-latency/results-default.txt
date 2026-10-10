@@ -1,0 +1,121 @@
+DI: neural-amp-modeler-wasm/ui/public/inputs/Power - Guitar.wav (48000 Hz, 4.00 s used, +0 dB)
+
+test/files/a2-amp-test.nam
+  loaded in 5.4 ms, loudness -14.13 dB
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 3.8 ms
+  time-domain  peak    5 smp (  5.349 smp =  0.111 ms)  onset    1 smp  normal   conf 0.511  peak-ratio   98.2  lobe-ratio  1.08 AMBIGUOUS  analyze  1.91 ms
+                 early lobe    2 smp INVERTED
+  gcc-phat     peak    5 smp (  4.937 smp =  0.103 ms)  onset    1 smp  normal   conf 0.511  peak-ratio   34.8  lobe-ratio  1.06 AMBIGUOUS  analyze  1.55 ms
+                 early lobe    2 smp INVERTED
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.63 ms
+  impulse      peak  206 smp (205.888 smp =  4.289 ms)  onset    3 smp  normal   conf 0.000  peak-ratio    1.0  lobe-ratio  1.01 AMBIGUOUS  analyze  0.00 ms
+                 early lobe   29 smp normal
+  time-domain correlation = est. impulse response, lags 0..23 (normalized):
+    +0.21 -0.37 -0.92 -0.49 +0.48 +1.00 +0.91 +0.51 +0.15 -0.03 -0.09 -0.08 -0.10 -0.13 -0.14 -0.15 -0.14 -0.13 -0.11 -0.09 -0.07 -0.06 -0.06 -0.05
+  click response, lags 0..23 (normalized):
+    +0.07 -0.08 +0.13 +0.71 +0.89 +0.81 +0.70 +0.62 +0.64 -0.50 -0.78 -0.58 -0.57 -0.43 -0.42 -0.37 -0.36 -0.34 -0.33 -0.33 -0.36 -0.37 -0.35 -0.36
+  DI render: a2-amp-test-power-guitar-aligned.wav (L = processor output, R = DI delayed 5 smp)
+
+test/files/a2-am-test-2.nam
+  loaded in 2.7 ms, loudness -17.48 dB
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 2.8 ms
+  time-domain  peak   17 smp ( 17.142 smp =  0.357 ms)  onset   17 smp  normal   conf 0.788  peak-ratio  122.1  lobe-ratio  1.42  analyze  1.23 ms
+  gcc-phat     peak   17 smp ( 17.282 smp =  0.360 ms)  onset   17 smp  normal   conf 0.788  peak-ratio   57.0  lobe-ratio  1.43  analyze  1.19 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.52 ms
+  impulse      peak   17 smp ( 17.336 smp =  0.361 ms)  onset   17 smp  normal   conf 0.000  peak-ratio    2.3  lobe-ratio  1.05 AMBIGUOUS  analyze  0.00 ms
+  time-domain correlation = est. impulse response, lags 0..23 (normalized):
+    -0.00 -0.02 +0.02 -0.02 +0.02 -0.00 -0.02 +0.04 -0.04 +0.02 +0.01 +0.00 +0.11 -0.02 +0.16 +0.03 +0.04 +1.00 +0.46 -0.70 -0.33 -0.12 -0.17 +0.01
+  click response, lags 0..23 (normalized):
+    +0.00 -0.01 +0.01 -0.01 +0.02 +0.00 +0.01 -0.02 +0.00 -0.05 +0.02 -0.11 -0.06 +0.02 +0.11 -0.22 +0.09 +1.00 +0.82 -0.78 -0.62 -0.96 -0.39 -0.58
+  DI render: a2-am-test-2-power-guitar-aligned.wav (L = processor output, R = DI delayed 17 smp)
+
+test/files/a2-amp-cab-test.nam
+  loaded in 4.5 ms, loudness -15.93 dB
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 2.7 ms
+  time-domain  peak   17 smp ( 17.300 smp =  0.360 ms)  onset   14 smp  normal   conf 0.399  peak-ratio    8.1  lobe-ratio  1.19  analyze  1.23 ms
+  gcc-phat     peak   18 smp ( 17.833 smp =  0.372 ms)  onset   14 smp  normal   conf 0.383  peak-ratio   15.7  lobe-ratio  1.89  analyze  1.33 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.53 ms
+  impulse      peak   23 smp ( 22.773 smp =  0.474 ms)  onset   16 smp  INVERTED conf 0.000  peak-ratio    7.7  lobe-ratio  1.44  analyze  0.00 ms
+  time-domain correlation = est. impulse response, lags 0..23 (normalized):
+    -0.06 -0.06 -0.06 -0.06 -0.06 -0.06 -0.06 -0.06 -0.04 -0.03 -0.02 -0.00 +0.04 +0.14 +0.32 +0.58 +0.84 +1.00 +0.96 +0.68 +0.24 -0.25 -0.64 -0.84
+  click response, lags 0..23 (normalized):
+    +0.00 +0.00 +0.00 +0.00 -0.00 -0.01 -0.01 -0.01 -0.01 -0.01 -0.00 +0.01 +0.02 +0.07 +0.15 +0.27 +0.37 +0.40 +0.30 +0.03 -0.33 -0.70 -0.94 -1.00
+  DI render: a2-amp-cab-test-power-guitar-aligned.wav (L = processor output, R = DI delayed 18 smp)
+
+plugin/NeuralAmpModelerCore/example_models/wavenet.nam
+  loaded in 0.6 ms, loudness -20.02 dB
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 0.3 ms
+  time-domain  peak   16 smp ( 16.454 smp =  0.343 ms)  onset   16 smp  normal   conf 0.652  peak-ratio  184.8  lobe-ratio  1.48  analyze  1.16 ms
+  gcc-phat     peak   17 smp ( 16.530 smp =  0.344 ms)  onset   16 smp  normal   conf 0.619  peak-ratio  120.8  lobe-ratio  1.63  analyze  1.27 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.05 ms
+  impulse      peak   17 smp ( 16.517 smp =  0.344 ms)  onset   16 smp  normal   conf 0.000  peak-ratio 78105355787.6  lobe-ratio  1.39  analyze  0.00 ms
+  time-domain correlation = est. impulse response, lags 0..23 (normalized):
+    -0.08 +0.02 +0.01 -0.03 +0.00 -0.04 +0.02 -0.01 -0.00 +0.00 -0.09 +0.08 -0.01 -0.03 +0.02 -0.04 +1.00 +0.95 -0.59 -0.20 +0.19 -0.68 -0.42 -0.01
+  click response, lags 0..23 (normalized):
+    -0.04 +0.08 -0.01 -0.01 +0.01 -0.04 -0.02 -0.00 +0.06 -0.00 -0.08 -0.00 +0.00 -0.01 -0.01 -0.00 +0.97 +1.00 -0.71 -0.14 +0.23 -0.72 -0.50 -0.00
+  DI render: wavenet-power-guitar-aligned.wav (L = processor output, R = DI delayed 17 smp)
+
+plugin/NeuralAmpModelerCore/example_models/A2.nam
+  loaded in 4.6 ms, loudness -26.38 dB
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 2.8 ms
+  time-domain  peak    3 smp (  2.591 smp =  0.054 ms)  onset    0 smp  INVERTED conf 0.458  peak-ratio   10.4  lobe-ratio  1.28  analyze  1.23 ms
+  gcc-phat     peak    3 smp (  2.838 smp =  0.059 ms)  onset    0 smp  INVERTED conf 0.458  peak-ratio   14.2  lobe-ratio  1.96  analyze  1.11 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.55 ms
+  impulse      peak    6 smp (  6.300 smp =  0.131 ms)  onset    2 smp  normal   conf 0.000  peak-ratio    1.9  lobe-ratio  1.39  analyze  0.00 ms
+  time-domain correlation = est. impulse response, lags 0..23 (normalized):
+    -0.40 -0.65 -0.96 -1.00 -0.59 +0.02 +0.47 +0.69 +0.78 +0.73 +0.49 +0.18 -0.05 -0.13 -0.11 -0.08 -0.05 -0.00 +0.04 +0.04 +0.00 -0.04 -0.05 -0.02
+  click response, lags 0..23 (normalized):
+    +0.00 -0.16 -0.46 -0.53 -0.05 +0.64 +1.00 +0.91 +0.72 +0.57 +0.21 -0.23 -0.44 -0.26 +0.02 +0.21 +0.28 +0.32 +0.31 +0.24 +0.11 -0.12 -0.29 -0.29
+  DI render: A2-power-guitar-aligned.wav (L = processor output, R = DI delayed 3 smp, inverted)
+
+plugin/NeuralAmpModelerCore/example_models/lstm.nam
+  loaded in 1.5 ms, loudness -37.84 dB
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 0.5 ms
+  time-domain  peak    0 smp (  0.000 smp =  0.000 ms)  onset    0 smp  normal   conf 0.985  peak-ratio  155.3  lobe-ratio  6.40  analyze  1.21 ms
+  gcc-phat     peak    0 smp (  0.081 smp =  0.002 ms)  onset    0 smp  normal   conf 0.985  peak-ratio  559.2  lobe-ratio  6.18  analyze  0.76 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.09 ms
+  impulse      peak    0 smp (  0.000 smp =  0.000 ms)  onset    0 smp  normal   conf 0.000  peak-ratio 1415.9  lobe-ratio 32.66  analyze  0.00 ms
+  time-domain correlation = est. impulse response, lags 0..23 (normalized):
+    +1.00 +0.37 -0.16 +0.07 -0.09 -0.04 -0.01 -0.08 +0.00 -0.06 -0.03 -0.02 -0.06 -0.01 -0.05 -0.02 -0.02 -0.04 -0.01 -0.04 -0.02 -0.02 -0.03 -0.00
+  click response, lags 0..23 (normalized):
+    +1.00 +0.18 +0.03 +0.01 +0.00 +0.00 +0.00 +0.00 +0.00 +0.00 +0.00 +0.00 +0.00 +0.00 +0.00 +0.00 +0.00 +0.00 +0.00 +0.00 +0.00 +0.00 +0.00 +0.00
+  DI render: lstm-power-guitar-aligned.wav (L = processor output, R = DI delayed 0 smp)
+
+test/files/cab-ir-test.wav
+  IR: 12000 taps used @ 48000 Hz
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 52.7 ms
+  time-domain  peak    2 smp (  2.172 smp =  0.045 ms)  onset    1 smp  normal   conf 0.447  peak-ratio    4.7  lobe-ratio  1.23  analyze  1.30 ms
+  gcc-phat     peak    1 smp (  1.397 smp =  0.029 ms)  onset    1 smp  normal   conf 0.345  peak-ratio    7.8  lobe-ratio  1.63  analyze  1.06 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 9.86 ms
+  impulse      peak    2 smp (  2.167 smp =  0.045 ms)  onset    1 smp  normal   conf 0.000  peak-ratio    4.0  lobe-ratio  1.21  analyze  0.00 ms
+  time-domain correlation = est. impulse response, lags 0..23 (normalized):
+    +0.22 +0.77 +1.00 +0.89 +0.81 +0.69 +0.24 -0.37 -0.68 -0.64 -0.52 -0.38 -0.09 +0.16 +0.14 -0.03 -0.14 -0.19 -0.23 -0.22 -0.08 +0.07 +0.11 +0.14
+  click response, lags 0..23 (normalized):
+    +0.29 +0.79 +1.00 +0.89 +0.83 +0.71 +0.30 -0.25 -0.54 -0.51 -0.40 -0.28 -0.02 +0.21 +0.19 +0.02 -0.08 -0.13 -0.17 -0.16 -0.04 +0.09 +0.12 +0.14
+  DI render: cab-ir-test-power-guitar-aligned.wav (L = processor output, R = DI delayed 1 smp)
+
+test/files/cab-ir-test-2.wav
+  IR: 12000 taps used @ 48000 Hz
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 52.0 ms
+  time-domain  peak   10 smp (  9.594 smp =  0.200 ms)  onset    7 smp  normal   conf 0.449  peak-ratio    5.9  lobe-ratio  1.26  analyze  1.11 ms
+  gcc-phat     peak   10 smp (  9.883 smp =  0.206 ms)  onset    7 smp  normal   conf 0.449  peak-ratio    7.4  lobe-ratio  2.30  analyze  1.12 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 9.54 ms
+  impulse      peak   10 smp (  9.585 smp =  0.200 ms)  onset    6 smp  normal   conf 0.000  peak-ratio    4.8  lobe-ratio  1.21  analyze  0.00 ms
+  time-domain correlation = est. impulse response, lags 0..23 (normalized):
+    -0.18 -0.17 -0.14 -0.12 -0.03 +0.12 +0.30 +0.55 +0.79 +0.98 +1.00 +0.78 +0.39 -0.02 -0.29 -0.37 -0.35 -0.28 -0.19 -0.05 +0.13 +0.21 +0.16 +0.10
+  click response, lags 0..23 (normalized):
+    -0.00 +0.01 +0.04 +0.05 +0.14 +0.26 +0.41 +0.62 +0.83 +0.98 +1.00 +0.81 +0.48 +0.12 -0.11 -0.18 -0.17 -0.12 -0.05 +0.06 +0.20 +0.26 +0.22 +0.15
+  DI render: cab-ir-test-2-power-guitar-aligned.wav (L = processor output, R = DI delayed 10 smp)
+
+test/files/reverb-ir-mono-test.wav
+  IR: 11025 taps used @ 44100 Hz
+  probe: linear sweep, 4410 samples + 441 tail @ 44100 Hz, ran through the processor in 43.6 ms
+  time-domain  peak  348 smp (348.287 smp =  7.898 ms)  onset  345 smp  INVERTED conf 0.371  peak-ratio    4.1  lobe-ratio  1.45  analyze  0.95 ms
+  gcc-phat     peak  348 smp (348.251 smp =  7.897 ms)  onset  345 smp  INVERTED conf 0.371  peak-ratio    4.3  lobe-ratio  1.50  analyze  1.20 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 9.26 ms
+  impulse      peak  348 smp (348.285 smp =  7.898 ms)  onset  345 smp  INVERTED conf 0.000  peak-ratio    3.9  lobe-ratio  1.40  analyze  0.00 ms
+  time-domain correlation = est. impulse response, lags 0..23 (normalized):
+    -0.00 -0.00 -0.00 -0.00 -0.00 -0.00 -0.00 -0.01 -0.02 -0.00 +0.04 +0.03 -0.03 -0.04 -0.01 -0.03 -0.01 +0.01 +0.00 +0.04 +0.01 +0.01 +0.01 +0.00
+  click response, lags 0..23 (normalized):
+    +0.00 -0.00 -0.00 +0.00 +0.00 +0.00 +0.00 -0.00 -0.01 +0.00 +0.04 +0.04 -0.03 -0.04 -0.01 -0.03 -0.00 +0.01 +0.01 +0.04 +0.02 +0.01 +0.01 +0.01
+  (DI rate 48000 != processor rate 44100, skipping DI render)

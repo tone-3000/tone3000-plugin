@@ -11,15 +11,16 @@ release-build/
 vs-build/
 output/
 .DS_Store
-plugin/webview/*
 xcode-build/
 .env
 .env.local
-.env.release
 TONE3000-CERTS/
 *.p12
 *.cer
 *.certSigningRequest
+*.p8
 
 # Private maintainer notes
 notes/
+build-ui/
+build-ui-release/

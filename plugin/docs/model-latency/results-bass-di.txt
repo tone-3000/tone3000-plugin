@@ -1,0 +1,31 @@
+DI: neural-amp-modeler-wasm/ui/public/inputs/Downtown - Bass.wav (48000 Hz, 4.00 s used, +0 dB)
+
+test/files/a2-amp-test.nam
+  loaded in 2.9 ms, loudness -14.13 dB
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 2.7 ms
+  time-domain  peak    5 smp (  5.349 smp =  0.111 ms)  onset    1 smp  normal   conf 0.511  peak-ratio   98.2  lobe-ratio  1.08 AMBIGUOUS  analyze  1.15 ms
+                 early lobe    2 smp INVERTED
+  gcc-phat     peak    5 smp (  4.937 smp =  0.103 ms)  onset    1 smp  normal   conf 0.511  peak-ratio   34.8  lobe-ratio  1.06 AMBIGUOUS  analyze  1.15 ms
+                 early lobe    2 smp INVERTED
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.54 ms
+  impulse      peak  206 smp (205.888 smp =  4.289 ms)  onset    3 smp  normal   conf 0.000  peak-ratio    1.0  lobe-ratio  1.01 AMBIGUOUS  analyze  0.00 ms
+                 early lobe   29 smp normal
+  DI render: a2-amp-test-downtown-bass-aligned.wav (L = processor output, R = DI delayed 5 smp)
+
+test/files/a2-am-test-2.nam
+  loaded in 2.8 ms, loudness -17.48 dB
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 3.2 ms
+  time-domain  peak   17 smp ( 17.142 smp =  0.357 ms)  onset   17 smp  normal   conf 0.788  peak-ratio  122.1  lobe-ratio  1.42  analyze  1.15 ms
+  gcc-phat     peak   17 smp ( 17.282 smp =  0.360 ms)  onset   17 smp  normal   conf 0.788  peak-ratio   57.0  lobe-ratio  1.43  analyze  1.09 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.50 ms
+  impulse      peak   17 smp ( 17.336 smp =  0.361 ms)  onset   17 smp  normal   conf 0.000  peak-ratio    2.3  lobe-ratio  1.05 AMBIGUOUS  analyze  0.00 ms
+  DI render: a2-am-test-2-downtown-bass-aligned.wav (L = processor output, R = DI delayed 17 smp)
+
+test/files/a2-amp-cab-test.nam
+  loaded in 2.8 ms, loudness -15.93 dB
+  probe: linear sweep, 4800 samples + 480 tail @ 48000 Hz, ran through the processor in 2.7 ms
+  time-domain  peak   17 smp ( 17.300 smp =  0.360 ms)  onset   14 smp  normal   conf 0.399  peak-ratio    8.1  lobe-ratio  1.19  analyze  1.24 ms
+  gcc-phat     peak   18 smp ( 17.833 smp =  0.372 ms)  onset   14 smp  normal   conf 0.383  peak-ratio   15.7  lobe-ratio  1.89  analyze  1.14 ms
+  click: 0.100 (-20 dBFS), 10 ms pre-roll, ran + analyzed in 0.70 ms
+  impulse      peak   23 smp ( 22.773 smp =  0.474 ms)  onset   16 smp  INVERTED conf 0.000  peak-ratio    7.7  lobe-ratio  1.44  analyze  0.00 ms
+  DI render: a2-amp-cab-test-downtown-bass-aligned.wav (L = processor output, R = DI delayed 18 smp)

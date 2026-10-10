@@ -10,20 +10,26 @@ pre-built installer, or see the
 [Plugin Guide](https://www.tone3000.com/guides/tone3000-plugin) for how to
 install, load tones, and use it.
 
-- **Load NAM and IR from TONE3000.** Click **+** to browse the catalog in the
-  plugin (OAuth 2.0 + PKCE via the
-  [TONE3000 Select flow](https://www.tone3000.com/api#select)). Pick a tone
-  and it lands in the chain with the right model or IR.
+- **Load NAM and IR from TONE3000.** Click **+** to search the catalog in
+  the plugin: text search, gear / format / tag / make / creator filters,
+  verified creators, your recently used, favorited and created tones, all
+  over the [TONE3000 API](https://www.tone3000.com/api) after a one-time
+  sign-in (OAuth 2.0 + PKCE). Pick a tone and it lands in the chain with the
+  right model or IR.
 - **Or load local files.** Drag a `.nam` file (A2 architecture), an IR
   `.wav`, or a folder of them onto a **+** slot, or right-click a tile and
   pick **Load File / Load Folder**; no account needed. Design notes in
   [`plugin/docs/local-models.md`](plugin/docs/local-models.md).
 - **Build a signal chain.** Multiple NAM and IR blocks, per-block EQ and
   gain/mix, drag to reorder, dual chains in stereo mode with branching,
-  undo/redo, and presets.
-- **Cross-platform.** One plugin on macOS, Windows, and Linux. The UI is a
-  React app rendered in a native WebView (WebView2 on Windows, WebKit
-  elsewhere).
+  undo/redo, and presets. Presets are plain files named after the preset
+  (Plugin Settings → Presets opens the folder), so they can be backed up or
+  copied between machines.
+- **Cross-platform.** One plugin on macOS, Windows, Linux, and iOS
+  (Standalone). The UI is JUCE/C++ (`plugin/ui/`), drawn natively on every
+  platform: no browser engine, no web runtime, nothing to install beside the
+  plugin (see [`plugin/ui/README.md`](plugin/ui/README.md) and the design
+  record in [`plugin/docs/native-ui.md`](plugin/docs/native-ui.md)).
 
 NAM processing comes from **NeuralAmpModelerCore** (in-tree), resampling from
 **AudioDSPTools** (in-tree), and tone browsing/loading from the
@@ -32,12 +38,10 @@ NAM processing comes from **NeuralAmpModelerCore** (in-tree), resampling from
 ## Prerequisites
 
 - [CMake](https://cmake.org/download/) 3.22+ and Git
-- Node.js and npm (the React UI is built after CMake has fetched JUCE)
 - **JUCE** is fetched automatically by CMake into `libs/`; no manual install
-- **Windows only:** [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)
-  runtime (`script/install-webview2.ps1` installs it). That is the native
-  browser the plugin UI runs in on Windows, not the TypeScript package
-  used to compile the UI.
+- A C++20 compiler: Xcode on macOS, MSVC on Windows, GCC or Clang on Linux
+  (plus the dev packages listed under
+  [Linux runtime dependencies](#linux-runtime-dependencies))
 
 ## Quick start
 
@@ -49,17 +53,17 @@ git submodule update --init --recursive
 
 ### 2. Configure CMake
 
-CMake downloads JUCE into `libs/` on first configure. The UI's
-`@juce-framework/webview` package is a `file:` dependency on that tree, so
-this step has to happen **before** `npm install`. Configure uses a
-placeholder for the embedded UI until you build it in the next step.
+CMake downloads JUCE into `libs/` on first configure.
 
 The default build includes the GUI targets (Standalone, VST3, AU, AAX, LV2,
 CLAP). Add `-DHEADLESS=ON` for headless/embedded builds; switch individual
 formats off with `-DBUILD_AAX=OFF`, `-DBUILD_LV2=OFF`, `-DBUILD_CLAP=OFF`.
 CLAP support comes from
 [clap-juce-extensions](https://github.com/free-audio/clap-juce-extensions),
-fetched at configure time.
+fetched at configure time. `-DT3K_BUILD_UI_TESTBED=ON` adds the UI testbed
+(`UiTestbed`: scenario captures, pixel diffs, `--selftest`, `--bench`) and
+registers its self-tests with ctest; see
+[`plugin/ui/README.md`](plugin/ui/README.md).
 
 ```sh
 cmake -B build -S . -DCMAKE_BUILD_TYPE=Release   # or Debug
@@ -75,51 +79,27 @@ cmake -B build -S . -DCMAKE_BUILD_TYPE=Release \
 If you switch CMake presets later, remove the `build` directory and
 reconfigure.
 
-### 3. Build the UI
+### 3. TONE3000 publishable key
 
-The plugin embeds the built React UI as binary data:
-
-```sh
-cd ui
-npm install
-npm run build
-cd ..
-```
-
-If `npm install` warns that esbuild's install script is not approved
-(`npm warn install-scripts ... esbuild`), run
-`npm install-scripts approve esbuild` and then `npm install` again. Vite
-needs that postinstall to download the esbuild binary.
-
-#### TONE3000 publishable key and redirect URIs
-
-The webview reads your TONE3000 publishable key at build time. Set it before
-the first build (or before running the dev server):
+The plugin reads your TONE3000 publishable key at configure time from a
+`.env` file at the repo root (`.env.local` overrides it and a variable in
+the configure environment overrides both; [`.env.example`](.env.example)
+documents every key). Set it before the first build, and reconfigure after
+changing it:
 
 ```sh
-# ui/.env (or pass on the command line for a single build)
-VITE_T3K_PUBLISHABLE_KEY=t3k_pub_your_key_here
+# .env
+T3K_PUBLISHABLE_KEY=t3k_pub_your_key_here
 # Optional: point at staging or self-hosted TONE3000
-# VITE_T3K_API_DOMAIN=https://staging.tone3000.com
+# T3K_API_DOMAIN=https://staging.tone3000.com
 ```
 
-Then, in TONE3000 > Settings > API Keys, register the redirect URIs the
-WebView uses. The OAuth flows run in the same single WebView that serves the
-main UI, so the redirect URI is just the page React already loads from:
-
-| Build         | Redirect URI                      |
-| ------------- | --------------------------------- |
-| Vite dev      | `http://localhost:5173/`          |
-| macOS / Linux | `juce://juce.backend/index.html`  |
-| Windows       | `https://juce.backend/index.html` |
-
-Localhost origins are auto-allowed during development, so only the JUCE
-entries need to be registered for release builds.
+Sign-in opens in the system browser and returns to the plugin through a
+loopback redirect on an ephemeral port (`http://localhost:<port>/`).
+Localhost redirect URIs are auto-allowed for publishable keys, so nothing
+needs registering in TONE3000 > Settings > API Keys.
 
 ### 4. Build the plugin
-
-Re-run the same `cmake -B build ...` command from step 2 so CMake picks up
-`plugin/webview/`, then compile:
 
 ```sh
 cmake --build build
@@ -141,10 +121,13 @@ To see `DBG()` output in Debug builds, run the binary directly so
 stdout/stderr reach your terminal (on macOS that is
 `TONE3000.app/Contents/MacOS/TONE3000`).
 
-**In a DAW:** copy the built plugin to your user plugin folder and rescan.
-`./script/install-plugin.sh VST3` (or `AU` / `AAX`) does the copy on macOS
-and Linux; pass `Debug` as the second argument for the Debug build. Artefacts
-land in `build/plugin/TONE3000_artefacts/<config>/<format>/`.
+**In a DAW:** `./script/install-plugin.sh VST3` (or `AU` / `AAX`) installs
+the built plugin and the factory presets on macOS and Linux to the same
+folders the official installers use (the macOS preset copy goes to
+`/Library` and asks for sudo); pass `Debug` as the second argument for the
+Debug build, then rescan in your DAW. Artefacts land in
+`build/plugin/TONE3000_artefacts/<config>/<format>/`; to copy one by hand
+instead, the usual folders are:
 
 | OS      | Format | Install to                                              |
 | ------- | ------ | ------------------------------------------------------- |
@@ -160,21 +143,32 @@ land in `build/plugin/TONE3000_artefacts/<config>/<format>/`.
 
 ## Linux runtime dependencies
 
-Windows links WebView2 statically and macOS uses the OS WKWebView, but the
-Linux build renders its UI in the system WebKitGTK, loaded dynamically at
-runtime. If it's missing, the plugin window is a black screen.
-
-Required: WebKitGTK 4.1 (or 4.0), GTK3, ALSA, FreeType.
-
-```sh
-sudo apt install libwebkit2gtk-4.1-0      # Ubuntu / Debian
-sudo dnf install webkit2gtk4.1            # Fedora
-sudo pacman -S webkit2gtk-4.1             # Arch
-sudo zypper install libwebkit2gtk-4_1-0   # openSUSE
-```
-
-The release tarball's `install.sh` checks for these automatically
+Required at run time: GTK3 (file dialogs), ALSA, fontconfig, X11, and libcurl
+(TONE3000 API and downloads; loaded lazily by SONAME, so no `-dev` package
+is needed on an end-user machine). All of these ship with every mainstream
+desktop distribution. The release tarball's `install.sh` checks for them
 (`./install.sh --check` to verify without installing).
+
+FreeType is deliberately not on that list: it is built from source (CPM,
+pinned in the root `CMakeLists.txt`) and linked statically into every Linux
+GUI binary, with its symbols kept local. Plugin hosts that bundle their own
+FreeType (the official Ardour / Mixbus builds ship a Debian-11-era copy in
+`/opt/<host>/lib`) would otherwise resolve our FreeType 2.13 imports against
+that older library and refuse to load the LV2 (`undefined symbol:
+FT_Get_Paint`, issue #181).
+
+Building needs the matching development packages; the list CI installs is
+in `.github/workflows/build.yml` (`libgtk-3-dev`, `libasound2-dev`,
+`libjack-jackd2-dev`, `libcurl4-openssl-dev`, and the X11 `-dev` set;
+`libfreetype6-dev` is only there as fontconfig's header dependency).
+
+Optional: a JACK server. The standalone's Audio Driver picker offers JACK
+next to ALSA (libjack is loaded at runtime; without a server the driver just
+lists no devices). On PipeWire systems (`pipewire-jack`), JACK is the
+recommended driver: the ALSA driver's raw hardware devices ("Direct hardware
+device without any conversions") open the card exclusively, which takes the
+whole interface away from every other app while the standalone runs. The
+JACK driver shares it.
 
 ## Audio processing
 
@@ -189,14 +183,15 @@ The full path in processing order (`TONE3000Processor::processBlock` in
 
 ```mermaid
 flowchart LR
-    IN([In]) --> IM["Input Mode *\n(stereo / L / R)"]
+    IN([In]) --> IM["Input Mode *\n(stereo / dual mono / L / R)"]
     IM --> IG["Input Level"]
     IG --> GATE["Noise Gate *"]
-    GATE --> RS(("⇅ 48k"))
+    GATE --> TR["Pitch Shift *"]
+    TR --> RS(("⇅ 48k"))
     RS --> OS(("×N ↑ *"))
     subgraph CHAINS["Tone chains, 48 kHz × oversampling factor"]
         direction LR
-        CL["Left chain\n(NAM / IR blocks)"]
+        CL["Left chain\n(NAM / IR blocks;\n2 voices in dual mono)"]
         CR["Right chain\n(stereo mode only)"]
     end
     OS --> CL
@@ -213,9 +208,65 @@ flowchart LR
 ```
 
 - **Input mode**: when a real stereo source feeds the plugin, a faceplate
-  button picks what enters the chain: both channels (default) or one channel
-  mirrored onto both. Saved with the session, not with presets; it's I/O
-  routing, not tone.
+  button picks how it enters the chain. Saved with the session, not with
+  presets; it's I/O routing, not tone.
+
+  | Row | Mono chain | Stereo chains |
+  |---|---|---|
+  | **Stereo SUM (L+R)** / **Stereo** (default) | ½(L+R) folded into the one chain | channel 1 → Left chain, channel 2 → Right chain |
+  | **Stereo Dual Mono (L&R)** | L and R each run their own copy of the chain | (not offered; a saved selection behaves as Stereo) |
+  | **Left** / **Right** | that channel feeds the chain | that channel feeds both chains |
+
+  Dual Mono answers the stereo-track case (a stereo synth or a doubled DI
+  through one amp rig) without duplicating the chain by hand: every NAM
+  block runs two voices of the model, a stereo IR convolves its left kernel
+  for both channels (the pair's spatial cue would otherwise collapse), the
+  tone stack, gate and DC blocker are per-channel already, and the two
+  voices leave as real L and R. Amp CPU doubles (the voices fork across
+  cores with Multi-core on; IR cost is unchanged) and the help text says so.
+  Spread stays idle (the chain already outputs two real channels), while
+  Balance and Auto Balance work as a trim between the two voices. The mode
+  engages only when the chain is mono, the source is stereo and the rig can
+  reproduce stereo; on a mono track or one-channel device it behaves as
+  Stereo SUM. Switching mode on a mono chain rebuilds its NAM engines from the
+  model cache under the same edit fade a chain edit uses, so the change is
+  a short mute rather than a click.
+- **Noise gate**: a downward expander on the input with a band-passed
+  sidechain and 5 dB of hysteresis, so pickup hum never chatters the gate.
+  The faceplate exposes the threshold; right-clicking the Gate group
+  (Ctrl-click on macOS, touch-and-hold on the knob) opens an advanced deck
+  with Release (5-500 ms, how fast the gate closes), Hold (0-200 ms, how
+  long it stays open after the signal drops) and Range (20-80 dB, how deep
+  it closes; 80 dB is a mute). Attack is fixed at 0.2 ms: with no
+  lookahead, a slower attack only softens pick transients.
+- **Pitch Shift**: a polyphonic pitch shifter on the clean DI, ahead of the
+  amp, so a `-2` plays a standard-tuned guitar as drop D through the whole
+  rig, and a MIDI expression pedal on the knob plays it like a whammy. Off
+  by default; the faceplate Pitch knob sets the shift, two octaves either
+  way (±24), and powering on is what adds latency. The knob is also hidden
+  by default: Plugin Settings → Effects picks which of Gate and Pitch Shift
+  the faceplate shows (view settings only; an effect that is switched on
+  always shows, so a preset that uses it stays reachable). Right-clicking
+  the group opens a deck with STEP (on by default: the knob snaps to whole
+  semitones, a transpose; off, it sweeps smoothly with Shift-drag for fine
+  control), Tonality (1-20 kHz, the
+  frequency above which the input bypasses the shifter, which keeps pick
+  noise and string squeak natural; Off at the top) and Buffer (the engine's
+  delay buffer, 20 / 30 / 40 / 60 ms; the tap's delay sweeps between a 2 ms
+  floor and the buffer end, so the latency reported to the host is the
+  midpoint, 11 / 16 / 21 / 31 ms). Power, Buffer and Tonality changes blend over
+  25 ms like the stereo image's, never click. The engine is a time-domain
+  correlation-spliced delay line with onset re-sync, so pick attacks pass
+  in a few ms whatever the buffer; the buffer sets the lowest note it holds
+  a full period of (20 ms is guitar-only, 30 ms, the default, covers bass)
+  and how often it splices. Two octaves up is as clean as one; two octaves
+  down is on pitch but grainy, a sub-octave effect rather than a clean
+  shift. Each splice crossfades for as long as the
+  material needs (30 ms on a single note, up to 120 ms on a chord, where
+  no lag lines every string up), so chords sustain without a periodic
+  chuff. The research behind it (benchmarks against a phase vocoder,
+  candidates, chords, the two-octave range, listening results) is recorded in
+  [`plugin/docs/pitch-shift.md`](plugin/docs/pitch-shift.md).
 - **Mono mode**: only the Left chain runs and the pan stage is skipped. With
   Spread on, the chain output becomes an ADT-style stereo double; see
   [`plugin/docs/stereo-image.md`](plugin/docs/stereo-image.md) for the design
@@ -235,7 +286,10 @@ flowchart LR
   NAM models or IRs carry different baked-in latency; the auto-align button
   mutes the output for under half a second, drives both chains with an
   identical internal sweep, and measures the lag and relative polarity from
-  the cross-correlation (`plugin/include/AutoOffset.h`). On a rig that can't
+  the cross-correlation (`plugin/include/AutoOffset.h`; the same probe
+  measured per model, with a dependency-free version for other
+  integrators, is written up in
+  [`plugin/docs/model-latency.md`](plugin/docs/model-latency.md)). On a rig that can't
   reproduce stereo (mono track, one-channel output device) both chains still
   run and are summed to mono at the output (½(L+R), the host's own mono-fold
   law), with balance/solo/Ø live inside the sum, pans inert, and a MONO chip
@@ -256,8 +310,8 @@ flowchart LR
   machine-wide) spreads independent chain work across a realtime worker
   pool. The two stereo chains process concurrently (the Right chain, or the
   branch lane when branched, on a worker while the audio thread processes
-  the other), and an oversampled NAM model's phase instances fork across
-  cores too. The forking thread can always steal jobs back and run them
+  the other), and a NAM model's instances (oversampling phases × dual-mono
+  voices) fork across cores too. The forking thread can always steal jobs back and run them
   inline, so the toggle is pure scheduling and the output is bit-identical
   either way (pinned by `test/src/multicore_tests.cpp`). Design notes in
   [`plugin/docs/multicore.md`](plugin/docs/multicore.md).
@@ -270,19 +324,62 @@ flowchart LR
     BIN -. dry .-> MIX
     BIG --> PEQ["6-band EQ *\n(PRE position)"]
     PEQ --> MODEL["NAM model / IR\n(+ calibration or\nloudness normalize)"]
-    MODEL --> BOG["Out Gain\n±24 dB"]
-    BOG --> MIX["Dry/Wet Mix"]
-    MIX --> BEQ["6-band EQ *\n(POST position)"]
-    BEQ --> BOUT([block out])
+    MODEL --> BEQ["6-band EQ *\n(POST position)"]
+    BEQ --> MIX["Dry/Wet Mix"]
+    MIX --> BOG["Out Gain\n±24 dB"]
+    BOG --> BOUT([block out])
 ```
 
-Each block's 6-band EQ runs in exactly one position: after the dry/wet mix
-(POST, the default) or between In Gain and the model (PRE), never both. A
-flat or bypassed EQ costs nothing on the audio thread.
+Each block's 6-band EQ runs in exactly one position: right after the model,
+before the dry/wet mix (POST, the default), or between In Gain and the model
+(PRE), never both. Either way the EQ only ever shapes the wet signal, never
+the mixed dry+wet output. Out Gain sits after the mix: it is the block's
+output fader and moves the whole blend, dry share included, at any Mix
+setting. A flat or bypassed EQ costs nothing on the audio thread.
 
 Meters tap the signal after input gain (input meters, pre-gate), after each
 block's In Gain plus its PRE-position EQ and after its final stage (block
 LEDs), and after output gain (output meters).
+
+### Settings and where they live
+
+Every setting belongs to exactly one of these stores, which decides what
+survives a new plugin instance, a new DAW, or a switch between the standalone
+and a plugin. The two machine-wide files and the presets folder share one
+app-data root: `~/Library/Application Support/TONE3000` on macOS,
+`%APPDATA%\TONE3000` on Windows, `~/.config/TONE3000` on Linux.
+
+- **Project state** (`getStateInformation`, `plugin/src/ProcessorState.cpp`).
+  Per instance: the DAW saves it in the project and hands it back only to
+  that instance; a freshly inserted plugin never sees it. Holds every host
+  parameter (faceplate knobs and power switches, calibration, oversampling),
+  the chain (blocks, per-block EQ / gains / normalization / NAM size, with
+  the model bytes embedded so the project reopens offline), the active
+  preset, the MIDI map, input mode and the window size. The standalone app
+  saves this same blob on quit and restores it on launch, which is why it
+  remembers the whole session and a DAW instance remembers nothing on its own.
+- **Presets** (files in the user presets folder; `plugin/src/ProcessorPresets.cpp`).
+  The chain plus the faceplate parameters that are *tone*: levels, tone
+  stack, gate, pitch shift, spread, align, pan, polarity. Deliberately not in
+  a preset: calibration (your interface, not the capture), oversampling,
+  solo, input mode, MIDI map, window size.
+- **Machine-wide processor settings** (`preferences.settings`). Read by every
+  new instance in every format and the standalone: multi-core processing,
+  the default NAM A2 size for new blocks, and the machine defaults for
+  calibration (on/off, dBu level) and oversampling (on/off, factor). The
+  last two are still host parameters, so a project reopens exactly as saved
+  and automation works; the file seeds a fresh instance, and changing one of
+  them in Plugin Settings updates the file (a host restore or automation
+  moving the same parameter does not).
+- **Machine-wide UI preferences** (`ui-preferences.settings`,
+  `plugin/ui/services/UiPrefs.h`). View toggles (Info Bar, which effects the
+  faceplate shows, the per-block size and normalization controls, preset PC
+  numbers), the TONE3000 sign-in, dismissed banners and update notices.
+  Merged across processes under a lock, so a DAW and the standalone never
+  overwrite each other's writes.
+- **Standalone only** (`TONE3000.settings`, JUCE's standalone holder). Audio
+  device, sample rate, buffer, channels, Hear Yourself, MIDI inputs, and the
+  saved session state above.
 
 ### DSP tests
 
@@ -297,6 +394,15 @@ IR assets in `test/files`:
   toggles, state round trips).
 - `multicore_tests.cpp`: parallel stereo output is bit-identical to serial,
   across topologies, host rates, and oversampling factors.
+- `gate_tests.cpp`: the noise gate's release / hold / range contracts, and
+  the compatibility of the first parameters added after launch (a state
+  saved before they existed lands on their defaults; presets carry them).
+- `pitch_shift_tests.cpp`: the pitch shifter's contracts (off is bit-exact and
+  latency-free, the reported latency matches the engine and tracks the
+  power switch alone, 0 st is a pure delay, a shift lands on pitch at unity
+  gain, a splice between unrelated taps holds the level, the tonality limit
+  passes highs unshifted, a pick attack re-syncs the tap, stereo shares one
+  tap, absent parameters in older state fall back to off).
 - `spread_tests.cpp`, `swap_fade_tests.cpp`, `branch_tests.cpp`, and friends
   cover the doubler, engine-swap fades, and chain routing.
 
@@ -325,11 +431,12 @@ Debug`.
 
 | Path            | Contents                                              |
 | --------------- | ----------------------------------------------------- |
-| `plugin/`       | C++ plugin: processor, DSP, editor, webview bridge; vendors NeuralAmpModelerCore and AudioDSPTools |
-| `plugin/docs/`  | Design docs (spread, oversampling, multi-core, local models) |
-| `ui/`           | React/TypeScript UI (see [ui/README.md](ui/README.md))|
+| `plugin/`       | C++ plugin: processor, DSP, presets, MIDI mapping; vendors NeuralAmpModelerCore and AudioDSPTools |
+| `plugin/ui/`    | The JUCE UI: views, widgets, services, testbed (see [plugin/ui/README.md](plugin/ui/README.md)) |
+| `plugin/docs/`  | Design docs (UI, spread, oversampling, multi-core, local models, pitch shift, model latency) |
 | `test/`         | GoogleTest DSP suite + test assets                    |
 | `script/`       | Build, packaging, and install helpers                 |
+| `tools/`        | Maintainer utilities, not built by default (`PresetTool` regenerates the shipped presets) |
 | `libs/`         | CPM-fetched dependencies (JUCE, GoogleTest, ...)      |
 | `design/`       | Figma exports and UI reference assets                 |
 
@@ -360,8 +467,17 @@ source). The CLAP build uses **clap-juce-extensions** and the **CLAP** SDK
   oversampled NAM processing; the chain oversampler's half-band
   allpass coefficients are adapted from its AudioDSPTools fork (MIT). See
   [`plugin/docs/oversampling.md`](plugin/docs/oversampling.md).
+- Pitch Shift started from a contribution by Vivek Radhakrishna
+  ([#133](https://github.com/tone-3000/tone3000-plugin/pull/133)) built on
+  [Signalsmith Stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch);
+  the shipped engine is the correlation-spliced delay line documented in
+  [`plugin/docs/pitch-shift.md`](plugin/docs/pitch-shift.md) (Eventide H949
+  de-glitch lineage; Juillerat et al.'s low-latency shifting papers and the
+  Signalsmith write-up
+  [Four Ways To Write A Pitch-Shifter](https://signalsmith-audio.co.uk/writing/2023/stretch-design/)
+  were the references).
 - [JUCE](https://juce.com): plugin framework, DSP building blocks, and the
-  WebView UI bridge.
+  UI toolkit.
 - [clap-juce-extensions](https://github.com/free-audio/clap-juce-extensions):
   the CLAP wrapper.
 - O. Das, ["An Open-Source Stereo Widening Plugin"](https://www.dafx.de/paper-archive/2024/papers/DAFx24_paper_92.pdf)
@@ -371,9 +487,11 @@ source). The CLAP build uses **clap-juce-extensions** and the **CLAP** SDK
   (108th AES Convention, 2000) and C. Knapp & G. Carter, "The Generalized
   Correlation Method for Estimation of Time Delay" (IEEE TASSP, 1976): the
   sweep probe and GCC-PHAT estimator behind auto-align.
-- [dnd-kit](https://dndkit.com), [lucide](https://lucide.dev), and
-  [react-knob-headless](https://github.com/satelllte/react-knob-headless) in
-  the UI.
+- [Roboto Mono](https://fonts.google.com/specimen/Roboto+Mono) and
+  [Arimo](https://fonts.google.com/specimen/Arimo) (Apache-2.0), embedded in
+  the UI; Arimo stands in for Arial where it isn't installed.
+- [lucide](https://lucide.dev) icons (ISC), embedded as SVG paths in
+  `plugin/ui/core/LucideIcons.h`.
 
 ## Links
 
@@ -382,8 +500,9 @@ source). The CLAP build uses **clap-juce-extensions** and the **CLAP** SDK
   installers for Mac, Windows, and Linux.
 - [Plugin Guide](https://www.tone3000.com/guides/tone3000-plugin): how to
   install, load tones, and use the plugin.
-- [TONE3000 API](https://www.tone3000.com/api): full API reference, including
-  the Select flow.
+- [TONE3000 API](https://www.tone3000.com/api): full API reference (the
+  browser uses `/tones/search`, `/tones/{downloaded,favorited,created}`,
+  `/tags`, `/makes` and `/users`).
 - [TONE3000 API examples](https://github.com/tone-3000/api): reference
   integrations, including the `tone3000-client.ts` this plugin's client is
   adapted from.
