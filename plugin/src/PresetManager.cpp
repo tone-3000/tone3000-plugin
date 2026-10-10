@@ -398,8 +398,9 @@ bool PresetManager::remove(const juce::String& id) const {
     return false;
 
   // Drop the preset's side-file state so a stale entry cannot resurface.
-  Meta meta = readMeta();
-  const bool hadState = meta.filed.erase(id) > 0 || meta.favorites.contains(id);
+  bool metaOk = true;
+  Meta meta = readMeta(&metaOk);
+  const bool hadState = metaOk && (meta.filed.erase(id) > 0 || meta.favorites.contains(id));
   if (hadState) {
     meta.favorites.removeString(id);
     if (!writeMeta(meta))
@@ -421,9 +422,11 @@ int PresetManager::indexOfCategory(const juce::StringArray& categories, const ju
   return -1;
 }
 
-PresetManager::Meta PresetManager::readMeta() const {
+PresetManager::Meta PresetManager::readMeta(bool* ok) const {
   Meta meta;
-  const auto parsed = juce::JSON::parse(metaFile().loadFileAsString());
+  const juce::String text = metaFile().loadFileAsString();
+  const auto parsed = juce::JSON::parse(text);
+  if (ok != nullptr) *ok = text.trim().isEmpty() || parsed.getDynamicObject() != nullptr;
   if (const auto* categories = parsed["categories"].getArray())
     for (const auto& item : *categories) {
       const juce::String name = item.toString().trim();
@@ -467,7 +470,9 @@ bool PresetManager::addCategory(const juce::String& rawName) const {
   const juce::String name = rawName.trim();
   if (name.isEmpty() || name.length() > kMaxCategoryNameLength)
     return false;
-  Meta meta = readMeta();
+  bool metaOk = true;
+  Meta meta = readMeta(&metaOk);
+  if (!metaOk) return false;
   if (indexOfCategory(meta.categories, name) >= 0)
     return false;
   meta.categories.add(name);
@@ -476,7 +481,9 @@ bool PresetManager::addCategory(const juce::String& rawName) const {
 }
 
 bool PresetManager::deleteCategory(const juce::String& rawName) const {
-  Meta meta = readMeta();
+  bool metaOk = true;
+  Meta meta = readMeta(&metaOk);
+  if (!metaOk) return false;
   const int index = indexOfCategory(meta.categories, rawName.trim());
   if (index < 0)
     return false;
@@ -495,7 +502,9 @@ bool PresetManager::setPresetCategory(const juce::String& id, const juce::String
 
 bool PresetManager::movePresetsToCategory(const juce::StringArray& ids,
                                           const juce::String& category) const {
-  Meta meta = readMeta();
+  bool metaOk = true;
+  Meta meta = readMeta(&metaOk);
+  if (!metaOk) return false;
   const juce::String trimmed = category.trim();
   juce::String canonical;
   if (trimmed.isNotEmpty()) {
@@ -534,7 +543,9 @@ bool PresetManager::setPresetsFavorite(const juce::StringArray& ids, bool isFavo
     if (known.count(id) == 0)
       return false;
 
-  Meta meta = readMeta();
+  bool metaOk = true;
+  Meta meta = readMeta(&metaOk);
+  if (!metaOk) return false;
   for (const auto& id : ids) {
     if (isFavorite)
       meta.favorites.addIfNotAlreadyThere(id);
@@ -580,9 +591,10 @@ PresetManager::Info PresetManager::duplicatePreset(const juce::String& id) const
   info.name = name;
   info.category = source->info.category;
   if (info.category.isNotEmpty()) {
-    Meta meta = readMeta();
+    bool metaOk = true;
+    Meta meta = readMeta(&metaOk);
     meta.filed[info.id] = info.category;
-    if (!writeMeta(meta))
+    if (!metaOk || !writeMeta(meta))
       info.category.clear();
   }
   return info;

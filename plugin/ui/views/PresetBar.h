@@ -1,8 +1,8 @@
 // Top-bar preset controls (port of PresetBar.tsx): ‹ name › pill, save and
 // New buttons, with two anchored panels: the save popover (name + save) and
-// the preset browser (search, user section with inline rename/delete,
-// TONE3000 factory section, and a reorder mode that swaps the row actions
-// for a grip and drag-and-drop).
+// the preset browser (views/preset/PresetBrowsePanel: favourites, user
+// categories, the TONE3000 factory section, drag-and-drop filing, reorder
+// and bulk-select modes).
 //
 // Pure view over PresetStore + the active preset from ChainStore. Prev/next
 // walk the list in its shown order (user section first, then factory, same
@@ -15,6 +15,8 @@
 #include "widgets/IconButton.h"
 
 namespace t3k::ui {
+
+class PresetBrowsePanel;
 
 class PresetBar : public juce::Component,
                   private PresetStore::Listener,
@@ -44,7 +46,6 @@ public:
 
 private:
   class SavePanel;
-  class BrowsePanel;
   class Chevron;
   class NameButton;
 
@@ -64,7 +65,7 @@ private:
   IconButton save_{Icon::Save, 28};
   IconButton newButton_{Icon::Plus, 28};
   std::unique_ptr<SavePanel> savePanel_;
-  std::unique_ptr<BrowsePanel> browsePanel_;
+  std::unique_ptr<PresetBrowsePanel> browsePanel_;
 };
 
 }  // namespace t3k::ui

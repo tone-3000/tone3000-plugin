@@ -814,4 +814,21 @@ TEST(PresetManagerTest, RemovePresetsReportsWhatWentAndClearsItsState) {
     }
 }
 
+TEST(PresetManagerTest, AnUnreadableMetaFileIsNeverOverwrittenByAWriter) {
+  TempPresetDir tmp;
+  PresetManager mgr(tmp.dir);
+  ASSERT_TRUE(mgr.addCategory("Rock"));
+  const auto p = mgr.save("A", makePreset("a"));
+  ASSERT_TRUE(mgr.setPresetFavorite(p.id, true));
+
+  const juce::File meta = tmp.dir.getChildFile("presets-meta.json");
+  ASSERT_TRUE(meta.existsAsFile());
+  const juce::String garbage = "{ not json";
+  ASSERT_TRUE(meta.replaceWithText(garbage));
+
+  EXPECT_FALSE(mgr.addCategory("Blues"));
+  EXPECT_FALSE(mgr.setPresetFavorite(p.id, false));
+  EXPECT_EQ(meta.loadFileAsString(), garbage);  // left for the user to repair, not wiped
+}
+
 }  // namespace

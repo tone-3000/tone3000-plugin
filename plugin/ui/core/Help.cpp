@@ -142,9 +142,22 @@ std::map<Key, String> buildTable() {
   t[Key::presetRename] = U("Rename: edit name. Enter: commit · Esc: cancel.");
   t[Key::presetDelete] = U("Delete: remove this preset.");
   t[Key::presetReorder] = U("Reorder: drag presets into a custom order. Prev/Next and MIDI follow it.");
-  t[Key::presetDrag] = U("Drag: move this preset within its section.");
+  t[Key::presetDrag] = U("Drag: drop into a category or Favourites. Reorder mode: drop on a preset to move it there.");
   t[Key::presetPcToggle] =
       U("MIDI PC: show each preset’s program change number. Prev/Next and PC follow the list order.");
+  t[Key::presetFavorite] = U("Favorite: star this preset to pin it in Favourites.");
+  t[Key::presetUnfavorite] = U("Unfavorite: unstar this preset to remove it from Favourites.");
+  t[Key::presetSelect] = U("Select: choose this preset for bulk actions (move, duplicate, delete).");
+  t[Key::presetDeselect] = U("Deselect: remove this preset from the selection.");
+  t[Key::presetMultiSelectToggle] =
+      U("Bulk Actions: select presets to move, duplicate, or delete them in bulk.");
+  t[Key::presetDeselectAll] = U("Deselect All: clear the selection.");
+  t[Key::bulkMove] = U("Move Presets: move the selected presets to another category.");
+  t[Key::bulkDuplicate] = U("Duplicate Presets: make copies of all selected presets.");
+  t[Key::bulkDelete] = U("Delete Presets: permanently delete all selected presets.");
+  t[Key::categoryCreate] = U("Create Category: add a new preset category.");
+  t[Key::categoryDelete] = U("Delete Category: presets in it return to Your Presets.");
+  t[Key::categoryToggle] = U("Category: click to collapse or expand.");
   t[Key::presetPc] = U("PC: the MIDI program change number that loads this preset.");
 
   // Tone browser

@@ -193,7 +193,10 @@ private:
     juce::StringArray favorites;                 // preset ids
   };
   juce::File metaFile() const;
-  Meta readMeta() const;
+  /** The side file; `ok` goes false when it exists but cannot be read as
+      an object, so a writer never overwrites a file it failed to understand
+      with an empty one. */
+  Meta readMeta(bool* ok = nullptr) const;
   bool writeMeta(const Meta& meta) const;
   static int indexOfCategory(const juce::StringArray& categories, const juce::String& name);
 
