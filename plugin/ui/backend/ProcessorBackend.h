@@ -67,6 +67,14 @@ public:
   bool renamePreset(const juce::String& presetId, const juce::String& newName) override;
   bool deletePreset(const juce::String& presetId) override;
   bool movePreset(const juce::String& presetId, int delta) override;
+  bool addPresetCategory(const juce::String& name) override;
+  bool deletePresetCategory(const juce::String& name) override;
+  bool setPresetCategory(const juce::String& presetId, const juce::String& category) override;
+  bool movePresetsToCategory(const juce::StringArray& ids, const juce::String& category) override;
+  bool setPresetFavorite(const juce::String& presetId, bool isFavorite) override;
+  bool setPresetsFavorite(const juce::StringArray& ids, bool isFavorite) override;
+  juce::var duplicatePresets(const juce::StringArray& ids) override;
+  bool deletePresets(const juce::StringArray& ids) override;
 
   juce::var getAudioDeviceState() override;
   juce::var setAudioDeviceType(const juce::String& typeName) override;

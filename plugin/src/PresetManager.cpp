@@ -232,6 +232,19 @@ std::vector<PresetManager::Entry> PresetManager::entries() const {
     });
   }
 
+  // Category + star state from the side file. A category the file no longer
+  // lists (hand-edited) reads as root rather than inventing a section.
+  const Meta meta = readMeta();
+  for (Entry& entry : presets) {
+    entry.info.favorite = meta.favorites.contains(entry.info.id);
+    const auto filed = meta.filed.find(entry.info.id);
+    if (!entry.info.factory && filed != meta.filed.end()) {
+      const int index = indexOfCategory(meta.categories, filed->second);
+      if (index >= 0)
+        entry.info.category = meta.categories[index];
+    }
+  }
+
   // Release-level line only when files were actually read and it was slow:
   // a warm scan never logs; a cold one on a slow disk (issue #169) says so
   // in the user's log next to whatever the host was doing at the time.
@@ -381,5 +394,226 @@ bool PresetManager::remove(const juce::String& id) const {
   if (!id.startsWith(kUserPrefix))
     return false;
   const juce::File file = fileForId(id);
-  return file != juce::File() && file.deleteFile();
+  if (file == juce::File() || !file.deleteFile())
+    return false;
+
+  // Drop the preset's side-file state so a stale entry cannot resurface.
+  bool metaOk = true;
+  Meta meta = readMeta(&metaOk);
+  const bool hadState = metaOk && (meta.filed.erase(id) > 0 || meta.favorites.contains(id));
+  if (hadState) {
+    meta.favorites.removeString(id);
+    if (!writeMeta(meta))
+      juce::Logger::writeToLog("[Presets] Could not clear category/star state for " + id);
+  }
+  return true;
+}
+
+// Categories, favourites, bulk operations
+
+juce::File PresetManager::metaFile() const {
+  return userDir.getChildFile("presets-meta.json");
+}
+
+int PresetManager::indexOfCategory(const juce::StringArray& categories, const juce::String& name) {
+  for (int i = 0; i < categories.size(); ++i)
+    if (categories[i].compareIgnoreCase(name) == 0)
+      return i;
+  return -1;
+}
+
+PresetManager::Meta PresetManager::readMeta(bool* ok) const {
+  Meta meta;
+  const juce::String text = metaFile().loadFileAsString();
+  const auto parsed = juce::JSON::parse(text);
+  if (ok != nullptr) *ok = text.trim().isEmpty() || parsed.getDynamicObject() != nullptr;
+  if (const auto* categories = parsed["categories"].getArray())
+    for (const auto& item : *categories) {
+      const juce::String name = item.toString().trim();
+      if (name.isNotEmpty() && indexOfCategory(meta.categories, name) < 0)
+        meta.categories.add(name);
+    }
+  meta.categories.sort(true);
+  if (const auto* filed = parsed["filed"].getDynamicObject())
+    for (const auto& property : filed->getProperties())
+      meta.filed[property.name.toString()] = property.value.toString();
+  if (const auto* favorites = parsed["favorites"].getArray())
+    for (const auto& item : *favorites)
+      meta.favorites.addIfNotAlreadyThere(item.toString());
+  return meta;
+}
+
+bool PresetManager::writeMeta(const Meta& meta) const {
+  if (!TONE3000Processor::ensureWritableDir(userDir))
+    return false;
+  juce::Array<juce::var> categories;
+  for (const auto& name : meta.categories)
+    categories.add(name);
+  juce::Array<juce::var> favorites;
+  for (const auto& id : meta.favorites)
+    favorites.add(id);
+  juce::DynamicObject::Ptr filed = new juce::DynamicObject();
+  for (const auto& [id, category] : meta.filed)
+    filed->setProperty(juce::Identifier(id), category);
+  juce::DynamicObject::Ptr root = new juce::DynamicObject();
+  root->setProperty("categories", categories);
+  root->setProperty("filed", juce::var(filed.get()));
+  root->setProperty("favorites", favorites);
+  return metaFile().replaceWithText(juce::JSON::toString(juce::var(root.get())));
+}
+
+juce::StringArray PresetManager::listCategories() const {
+  return readMeta().categories;
+}
+
+bool PresetManager::addCategory(const juce::String& rawName) const {
+  const juce::String name = rawName.trim();
+  if (name.isEmpty() || name.length() > kMaxCategoryNameLength)
+    return false;
+  bool metaOk = true;
+  Meta meta = readMeta(&metaOk);
+  if (!metaOk) return false;
+  if (indexOfCategory(meta.categories, name) >= 0)
+    return false;
+  meta.categories.add(name);
+  meta.categories.sort(true);
+  return writeMeta(meta);
+}
+
+bool PresetManager::deleteCategory(const juce::String& rawName) const {
+  bool metaOk = true;
+  Meta meta = readMeta(&metaOk);
+  if (!metaOk) return false;
+  const int index = indexOfCategory(meta.categories, rawName.trim());
+  if (index < 0)
+    return false;
+  const juce::String name = meta.categories[index];
+  meta.categories.remove(index);
+  // One write: the category and every filing under it go together, so there
+  // is no window where presets point at a deleted category.
+  for (auto it = meta.filed.begin(); it != meta.filed.end();)
+    it = it->second.compareIgnoreCase(name) == 0 ? meta.filed.erase(it) : std::next(it);
+  return writeMeta(meta);
+}
+
+bool PresetManager::setPresetCategory(const juce::String& id, const juce::String& category) const {
+  return movePresetsToCategory(juce::StringArray{id}, category);
+}
+
+bool PresetManager::movePresetsToCategory(const juce::StringArray& ids,
+                                          const juce::String& category) const {
+  bool metaOk = true;
+  Meta meta = readMeta(&metaOk);
+  if (!metaOk) return false;
+  const juce::String trimmed = category.trim();
+  juce::String canonical;
+  if (trimmed.isNotEmpty()) {
+    const int index = indexOfCategory(meta.categories, trimmed);
+    if (index < 0)
+      return false;
+    canonical = meta.categories[index];
+  }
+
+  std::set<juce::String> userIds;
+  for (const Info& info : list())
+    if (!info.factory)
+      userIds.insert(info.id);
+  for (const auto& id : ids)
+    if (userIds.count(id) == 0)
+      return false;  // all-or-nothing: no partial moves on a bad id
+
+  for (const auto& id : ids) {
+    if (canonical.isEmpty())
+      meta.filed.erase(id);
+    else
+      meta.filed[id] = canonical;
+  }
+  return writeMeta(meta);
+}
+
+bool PresetManager::setPresetFavorite(const juce::String& id, bool isFavorite) const {
+  return setPresetsFavorite(juce::StringArray{id}, isFavorite);
+}
+
+bool PresetManager::setPresetsFavorite(const juce::StringArray& ids, bool isFavorite) const {
+  std::set<juce::String> known;
+  for (const Info& info : list())
+    known.insert(info.id);
+  for (const auto& id : ids)
+    if (known.count(id) == 0)
+      return false;
+
+  bool metaOk = true;
+  Meta meta = readMeta(&metaOk);
+  if (!metaOk) return false;
+  for (const auto& id : ids) {
+    if (isFavorite)
+      meta.favorites.addIfNotAlreadyThere(id);
+    else
+      meta.favorites.removeString(id);
+  }
+  return writeMeta(meta);
+}
+
+PresetManager::Info PresetManager::duplicatePreset(const juce::String& id) const {
+  if (!id.startsWith(kUserPrefix))
+    return {};
+  const std::vector<Entry> all = entries();
+  const auto source = std::find_if(all.begin(), all.end(),
+                                   [&id](const Entry& entry) { return entry.info.id == id; });
+  if (source == all.end())
+    return {};
+  juce::ValueTree preset = presetfile::read(source->file);
+  if (!preset.isValid() || !TONE3000Processor::ensureWritableDir(userDir))
+    return {};
+
+  // Never reuse an existing user name: save() treats a same-name preset as an
+  // update, and a duplicate must not overwrite an earlier copy.
+  const juce::String base = "Copy-" + source->info.name;
+  juce::String name = base;
+  for (int n = 2;; ++n) {
+    const bool taken = std::any_of(all.begin(), all.end(), [&name](const Entry& entry) {
+      return !entry.info.factory && entry.info.name.compareIgnoreCase(name) == 0;
+    });
+    if (!taken)
+      break;
+    name = base + " " + juce::String(n);
+  }
+
+  const juce::String rawId = juce::Uuid().toString();
+  preset.setProperty("name", name, nullptr);
+  preset.setProperty("id", rawId, nullptr);
+  if (writeUserPreset(userDir, juce::File(), name, preset) == juce::File())
+    return {};
+
+  Info info;
+  info.id = kUserPrefix + rawId;
+  info.name = name;
+  info.category = source->info.category;
+  if (info.category.isNotEmpty()) {
+    bool metaOk = true;
+    Meta meta = readMeta(&metaOk);
+    meta.filed[info.id] = info.category;
+    if (!metaOk || !writeMeta(meta))
+      info.category.clear();
+  }
+  return info;
+}
+
+std::vector<PresetManager::Info> PresetManager::duplicatePresets(const juce::StringArray& ids) const {
+  std::vector<Info> out;
+  for (const auto& id : ids) {
+    Info copy = duplicatePreset(id);
+    if (copy.id.isNotEmpty())
+      out.push_back(std::move(copy));
+  }
+  return out;
+}
+
+juce::StringArray PresetManager::removePresets(const juce::StringArray& ids) const {
+  juce::StringArray removed;
+  for (const auto& id : ids)
+    if (remove(id))
+      removed.add(id);
+  return removed;
 }

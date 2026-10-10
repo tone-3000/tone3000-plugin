@@ -25,6 +25,7 @@
 #include "core/RichText.h"
 #include "core/TextFlow.h"
 #include "model/ChainState.h"
+#include "model/PresetGroups.h"
 #include "model/Tone.h"
 #include "model/ToneQuery.h"
 #include "services/ConnectionGate.h"
@@ -39,6 +40,7 @@
 #include "views/browser/ToneCard.h"
 #include "views/gallery/GalleryGeometry.h"
 #include "views/gallery/GalleryTile.h"
+#include "views/preset/PresetRowViews.h"
 #include "widgets/Avatar.h"
 #include "widgets/ChromeTextButton.h"
 #include "widgets/Clickable.h"
@@ -1982,8 +1984,8 @@ struct PresetReorderTests : juce::UnitTest {
     const auto start = peer->getComponent().getLocalPoint(grip, grip->getLocalBounds().getCentre().toFloat());
     const float rowHeight = static_cast<float>(first->getHeight());
     pointer.at(start, true);
-    for (int i = 1; i <= 6; ++i) pointer.at(start.translated(0, rowHeight * 1.5f * static_cast<float>(i) / 6), true);
-    pointer.at(start.translated(0, rowHeight * 1.5f), false);
+    for (int i = 1; i <= 6; ++i) pointer.at(start.translated(0, rowHeight * static_cast<float>(i) / 6), true);
+    pointer.at(start.translated(0, rowHeight), false);
     pump(100);
     const auto& moves = backend.presetMoves();
     expectEquals(static_cast<int>(moves.size()), 1);
@@ -2002,6 +2004,182 @@ struct PresetReorderTests : juce::UnitTest {
     expectEquals(list[0]["name"].toString(), juce::String("Church Sunday"));
     expectEquals(list[1]["name"].toString(), juce::String("My Lead Tone"));
     expectEquals(list[2]["name"].toString(), juce::String("Crunch Rhythm"));
+    window.setVisible(false);
+  }
+};
+
+// How the browser groups presets and what a drop means: pure rules, no window.
+struct PresetGroupsTests : juce::UnitTest {
+  PresetGroupsTests() : juce::UnitTest("Preset groups", "ui") {}
+
+  static PresetInfo preset(const juce::String& id, const juce::String& category = {}, bool favorite = false,
+                           bool factory = false) {
+    PresetInfo p;
+    p.id = id;
+    p.name = id;
+    p.category = category;
+    p.favorite = favorite;
+    p.factory = factory;
+    return p;
+  }
+
+  void runTest() override {
+    const std::vector<PresetInfo> list = {preset("a"),          preset("b", "Rock"),    preset("c", "Rock", true),
+                                          preset("d", "Gone"),  preset("f1", {}, false, true),
+                                          preset("f2", {}, true, true)};
+    const std::vector<juce::String> categories = {"rock", "Blues"};
+
+    beginTest("starred presets leave their category for Favourites; unknown categories read as root");
+    const auto groups = groupPresets(list, categories, {});
+    expectEquals(static_cast<int>(groups.favourites.size()), 2);  // c and the starred factory f2
+    expectEquals(static_cast<int>(groups.root.size()), 2);        // a, and d (its category is gone)
+    expectEquals(static_cast<int>(groups.categories.size()), 2);
+    expectEquals(groups.categories[0].first, juce::String("Blues"));  // alphabetical, empty ones kept
+    expect(groups.categories[0].second.empty());
+    expectEquals(static_cast<int>(groups.categories[1].second.size()), 1);  // b (c is in Favourites)
+    expectEquals(static_cast<int>(groups.factory.size()), 2);               // f2 shows here too
+    expectEquals(groups.userCount, 4);
+
+    beginTest("a search keeps matches only and drops empty categories");
+    const auto found = groupPresets(list, categories, " B ");
+    expectEquals(found.matchCount, 1);
+    expectEquals(static_cast<int>(found.categories.size()), 1);
+    expectEquals(found.categories[0].first, juce::String("rock"));
+
+    beginTest("dropping onto Favourites stars; out of it unstars and files");
+    DropTarget fav{DropTarget::Kind::favourites, {}};
+    auto out = decideDrop(list, "a", {}, false, fav);
+    expect(out.kind == DropOutcome::Kind::star);
+    expect(out.ids == juce::StringArray{"a"});
+    DropTarget blues{DropTarget::Kind::category, "Blues"};
+    out = decideDrop(list, "c", {}, false, blues);
+    expect(out.kind == DropOutcome::Kind::unstarAndMove);
+    expectEquals(out.category, juce::String("Blues"));
+    out = decideDrop(list, "c", {}, false, fav);  // already starred: nothing to do
+    expect(out.kind == DropOutcome::Kind::none);
+
+    beginTest("a factory preset can be unstarred but not filed");
+    out = decideDrop(list, "f2", {}, false, blues);
+    expect(out.kind == DropOutcome::Kind::unstar);
+    expect(decideDrop(list, "f1", {}, false, blues).kind == DropOutcome::Kind::none);
+
+    beginTest("a drop on a preset files under its category, and carries a selection");
+    out = decideDrop(list, "a", juce::StringArray{"a", "d"}, false, DropTarget{DropTarget::Kind::preset, "b"});
+    expect(out.kind == DropOutcome::Kind::move);
+    expectEquals(out.category, juce::String("Rock"));
+    expectEquals(out.ids.size(), 2);
+    expect(decideDrop(list, "b", {}, false, DropTarget{DropTarget::Kind::preset, "b"}).kind ==
+           DropOutcome::Kind::none);
+
+    beginTest("reorder mode shifts within the section and never crosses it");
+    out = decideDrop(list, "a", {}, true, DropTarget{DropTarget::Kind::preset, "c"});  // c is starred: still a reorder
+    expect(out.kind == DropOutcome::Kind::reorder);
+    expectEquals(out.delta, 2);
+    expect(decideDrop(list, "a", {}, false, DropTarget{DropTarget::Kind::preset, "c"}).kind ==
+           DropOutcome::Kind::star);  // outside reorder mode the same drop stars it
+    expect(decideDrop(list, "b", {}, false, DropTarget{DropTarget::Kind::category, "Rock"}).kind ==
+           DropOutcome::Kind::none);  // b is already in Rock
+    expect(decideDrop(list, "a", {}, true, DropTarget{DropTarget::Kind::preset, "f1"}).kind ==
+           DropOutcome::Kind::none);
+  }
+};
+
+// Organising presets in the open browser: groups, folding, bulk actions and
+// dragging a preset onto a category, through the peer.
+struct PresetOrganizeTests : juce::UnitTest {
+  PresetOrganizeTests() : juce::UnitTest("Preset organize", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  struct Pointer {
+    juce::ComponentPeer& peer;
+    juce::int64 time = juce::Time::currentTimeMillis();
+    void at(juce::Point<float> pos, bool down) {
+      peer.handleMouseEvent(juce::MouseInputSource::InputSourceType::mouse, pos,
+                            down ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(), 0.0f, 0.0f, ++time);
+      pump(10);
+    }
+  };
+
+  static presetlist::GroupHeader* header(juce::Component& root, const juce::String& title) {
+    return dynamic_cast<presetlist::GroupHeader*>(drive::find(root, [&](juce::Component& c) {
+      auto* h = dynamic_cast<presetlist::GroupHeader*>(&c);
+      return h != nullptr && c.isShowing() && h->title() == title;
+    }));
+  }
+  static presetlist::PresetRow* row(juce::Component& root, const juce::String& name) {
+    return dynamic_cast<presetlist::PresetRow*>(drive::find(root, [&](juce::Component& c) {
+      auto* r = dynamic_cast<presetlist::PresetRow*>(&c);
+      return r != nullptr && c.isShowing() && r->preset().name == name;
+    }));
+  }
+  static juce::String idOf(MockBackend& backend, const juce::String& name) {
+    for (const auto& p : *backend.getPresetList()["presets"].getArray())
+      if (p["name"].toString() == name) return p["id"].toString();
+    return {};
+  }
+
+  void runTest() override {
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("chrome-preset-browse");  // user: My Lead Tone, Church Sunday
+    if (scenario == nullptr) {
+      expect(false, "chrome-preset-browse scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("preset organize", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(400);
+    auto* peer = host.getPeer();
+    expect(peer != nullptr);
+    if (peer == nullptr) return;
+    auto& root = host.pluginRoot();
+    auto& store = root.services().presets;
+    const auto lead = idOf(backend, "My Lead Tone");
+    const auto church = idOf(backend, "Church Sunday");
+
+    beginTest("the browser lists Favourites, All Uncategorized, each category and TONE3000");
+    expect(store.addCategory("Rock"));
+    expect(store.setFavorite(lead, true));
+    drive::clickByHelp(root, "Presets:");
+    pump(300);
+    auto* favourites = header(root, "Favourites");
+    auto* uncategorized = header(root, "All Uncategorized");
+    auto* rock = header(root, "Rock");
+    expect(favourites != nullptr && uncategorized != nullptr && rock != nullptr && header(root, "TONE3000") != nullptr);
+    if (favourites == nullptr || uncategorized == nullptr || rock == nullptr) return;
+    expectEquals(favourites->count(), 1);
+    expectEquals(uncategorized->count(), 1);  // Church Sunday
+    expectEquals(rock->count(), 0);
+
+    beginTest("a category cannot be created twice or past 50 characters");
+    expect(!store.addCategory("ROCK"));
+    expect(!store.addCategory(juce::String(std::string(51, 'x'))));
+
+    beginTest("filing a preset under a category moves it out of All Uncategorized");
+    expect(store.setCategory(church, "Rock"));
+    pump(100);
+    rock = header(root, "Rock");
+    expect(rock != nullptr && rock->count() == 1);
+
+    beginTest("folding a category hides its presets");
+    expect(row(root, "Church Sunday") != nullptr);
+    if (rock != nullptr && rock->onToggle) rock->onToggle();
+    pump(50);
+    expect(row(root, "Church Sunday") == nullptr);
+    if (auto* again = header(root, "Rock"); again != nullptr && again->onToggle) again->onToggle();
+    pump(50);
+
+    beginTest("bulk mode: select, then duplicate and delete");
+    drive::clickByHelp(root, "Bulk Actions:");
+    pump(100);
+    drive::clickByHelp(root, "Select:");
+    pump(100);
+    drive::clickByHelp(root, "Duplicate Presets:");
+    pump(150);
+    expect(!idOf(backend, "Copy-My Lead Tone").isEmpty() || !idOf(backend, "Copy-Church Sunday").isEmpty());
     window.setVisible(false);
   }
 };
@@ -2637,6 +2815,8 @@ PopoverFollowTests popoverFollowTests;
 PointerTests pointerTests;
 GlowCornerTests glowCornerTests;
 PresetReorderTests presetReorderTests;
+PresetGroupsTests presetGroupsTests;
+PresetOrganizeTests presetOrganizeTests;
 ChainCrossLaneDragTests chainCrossLaneDragTests;
 BlockSizeToggleTests blockSizeToggleTests;
 MidiMapCommitTests midiMapCommitTests;

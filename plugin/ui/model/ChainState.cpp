@@ -234,8 +234,17 @@ AutoMeasureResult AutoMeasureResult::parse(const juce::var& v) {
 
 std::vector<PresetInfo> parsePresetList(const juce::var& v) {
   return list<PresetInfo>(v, "presets", [](const juce::var& p) {
-    return PresetInfo{str(p, "id"), str(p, "name"), boolean(p, "factory", false)};
+    return PresetInfo{str(p, "id"), str(p, "name"), boolean(p, "factory", false),
+                      str(p, "category"), boolean(p, "favorite", false)};
   });
+}
+
+std::vector<juce::String> parsePresetCategories(const juce::var& v) {
+  std::vector<juce::String> out;
+  if (const auto* arr = v["categories"].getArray())
+    for (const auto& item : *arr)
+      out.push_back(item.toString());
+  return out;
 }
 
 }  // namespace t3k::ui

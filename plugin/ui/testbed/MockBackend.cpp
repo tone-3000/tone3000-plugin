@@ -248,7 +248,104 @@ juce::var MockBackend::getBlockSpectrum(const std::string& blockId) {
   return bins;
 }
 
-juce::var MockBackend::getPresetList() { return obj({{"presets", presets_}}); }
+juce::var MockBackend::getPresetList() {
+  juce::Array<juce::var> categories;
+  for (const auto& c : categories_) categories.add(c);
+  return obj({{"presets", presets_}, {"categories", categories}});
+}
+
+juce::DynamicObject* MockBackend::findPreset(const juce::String& id) const {
+  if (const auto* all = presets_.getArray())
+    for (const auto& p : *all)
+      if (p["id"].toString() == id) return p.getDynamicObject();
+  return nullptr;
+}
+
+bool MockBackend::addPresetCategory(const juce::String& rawName) {
+  const auto name = rawName.trim();
+  if (name.isEmpty() || name.length() > 50) return false;
+  for (const auto& c : categories_)
+    if (c.compareIgnoreCase(name) == 0) return false;
+  categories_.add(name);
+  categories_.sort(true);
+  return true;
+}
+
+bool MockBackend::deletePresetCategory(const juce::String& name) {
+  for (int i = 0; i < categories_.size(); ++i) {
+    if (categories_[i].compareIgnoreCase(name.trim()) != 0) continue;
+    const auto removed = categories_[i];
+    categories_.remove(i);
+    if (const auto* all = presets_.getArray())
+      for (const auto& p : *all)
+        if (p["category"].toString().compareIgnoreCase(removed) == 0) p.getDynamicObject()->removeProperty("category");
+    return true;
+  }
+  return false;
+}
+
+bool MockBackend::setPresetCategory(const juce::String& presetId, const juce::String& category) {
+  return movePresetsToCategory(juce::StringArray{presetId}, category);
+}
+
+bool MockBackend::movePresetsToCategory(const juce::StringArray& ids, const juce::String& category) {
+  juce::String canonical;
+  if (category.trim().isNotEmpty()) {
+    for (const auto& c : categories_)
+      if (c.compareIgnoreCase(category.trim()) == 0) canonical = c;
+    if (canonical.isEmpty()) return false;
+  }
+  for (const auto& id : ids) {
+    const auto* p = findPreset(id);
+    if (p == nullptr || static_cast<bool>(p->getProperty("factory"))) return false;
+  }
+  for (const auto& id : ids) {
+    if (canonical.isEmpty()) findPreset(id)->removeProperty("category");
+    else findPreset(id)->setProperty("category", canonical);
+  }
+  return true;
+}
+
+bool MockBackend::setPresetFavorite(const juce::String& presetId, bool isFavorite) {
+  return setPresetsFavorite(juce::StringArray{presetId}, isFavorite);
+}
+
+bool MockBackend::setPresetsFavorite(const juce::StringArray& ids, bool isFavorite) {
+  for (const auto& id : ids)
+    if (findPreset(id) == nullptr) return false;
+  for (const auto& id : ids) findPreset(id)->setProperty("favorite", isFavorite);
+  return true;
+}
+
+juce::var MockBackend::duplicatePresets(const juce::StringArray& ids) {
+  juce::Array<juce::var> copies;
+  for (const auto& id : ids) {
+    const auto* source = findPreset(id);
+    if (source == nullptr || static_cast<bool>(source->getProperty("factory"))) continue;
+    const auto name = "Copy-" + source->getProperty("name").toString();
+    const auto newId = "user-copy-" + juce::String(presets_.getArray()->size()) + "-" + id;
+    auto copy = obj({{"id", newId}, {"name", name}, {"factory", false}, {"category", source->getProperty("category")}});
+    presets_.getArray()->insert(0, copy);
+    copies.add(copy);
+  }
+  return copies;
+}
+
+bool MockBackend::deletePresets(const juce::StringArray& ids) {
+  auto* all = presets_.getArray();
+  bool allGone = all != nullptr;
+  for (const auto& id : ids) {
+    bool removed = false;
+    for (int i = 0; all != nullptr && i < all->size(); ++i)
+      if ((*all)[i]["id"].toString() == id && !static_cast<bool>((*all)[i]["factory"])) {
+        all->remove(i);
+        removed = true;
+        break;
+      }
+    allGone = allGone && removed;
+  }
+  return allGone;
+}
 
 juce::var MockBackend::savePreset(const juce::String& name) {
   const juce::String id = "user-" + juce::String(juce::Time::currentTimeMillis());

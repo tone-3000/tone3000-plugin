@@ -448,7 +448,7 @@ public:
   // active preset { id, name } rides getChainState; it only ever changes
   // together with a revision bump. Preset files live in the shared user
   // presets folder (see PresetManager).
-  juce::var getPresetList() const;    // { presets: [{ id, name, factory }] }
+  juce::var getPresetList() const;    // { presets: [{ id, name, factory, category, favorite }], categories: [name] }
   juce::var savePreset(const juce::String& name);  // { id, name } or void var on failure
   bool loadPreset(const juce::String& presetId);   // undoable (chain part)
   bool renamePreset(const juce::String& presetId, const juce::String& newName);
@@ -457,6 +457,16 @@ public:
   // earlier). The custom order is user-facing truth: prev/next stepping and
   // MIDI program-change numbers follow it (see loadPresetAtIndex).
   bool movePreset(const juce::String& presetId, int delta);
+  // Categories, stars and bulk actions. Metadata only (none of it moves the
+  // list order or the loaded chain) except deletePresets/duplicatePresets.
+  bool addPresetCategory(const juce::String& name);
+  bool deletePresetCategory(const juce::String& name);
+  bool setPresetCategory(const juce::String& presetId, const juce::String& category);
+  bool movePresetsToCategory(const juce::StringArray& ids, const juce::String& category);
+  bool setPresetFavorite(const juce::String& presetId, bool isFavorite);
+  bool setPresetsFavorite(const juce::StringArray& ids, bool isFavorite);
+  juce::var duplicatePresets(const juce::StringArray& ids);  // [{ id, name, category, favorite, factory }]
+  bool deletePresets(const juce::StringArray& ids);          // true only when every id was removed
   // Back to the factory-default state: empty mono chain, every preset-managed
   // faceplate parameter at its default, no active preset. One undoable step,
   // mute-spliced like a preset load. Returns false (leaving the audio
