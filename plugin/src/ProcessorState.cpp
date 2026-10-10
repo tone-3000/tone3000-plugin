@@ -288,6 +288,7 @@ void TONE3000Processor::getStateInformation(juce::MemoryBlock& destData) {
   state.setProperty("inputMode", inputModeToString(getInputMode()), nullptr);
   state.setProperty("editorScale", editorScale.load(), nullptr);
   state.setProperty("editorExtraHeight", editorExtraHeight.load(), nullptr);
+  state.setProperty("libraryView", getLibraryView(), nullptr);
   state.appendChild(midiMapper.toValueTree(), nullptr);
 
   {
@@ -359,6 +360,7 @@ void TONE3000Processor::setStateInformation(const void* data, int sizeInBytes) {
   editorScale.store(static_cast<double>(state.getProperty("editorScale", 1.0)));
   // Default matches the UI's default-visible hint bar (see Processor.h).
   editorExtraHeight.store(static_cast<int>(state.getProperty("editorExtraHeight", 36)));
+  setLibraryView(state.getProperty("libraryView", "").toString());
 
   // A missing child clears the map; a project without mappings must not
   // inherit the previous session's.

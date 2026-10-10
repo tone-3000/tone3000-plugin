@@ -4,8 +4,11 @@
 #include <map>
 
 #include "Drive.h"
+#include "MockBackend.h"
 #include "views/PluginRoot.h"
+#include "views/library/LibraryDrawer.h"
 #include "views/browser/FilterChip.h"
+#include "views/gallery/ToneTile.h"
 #include "widgets/DbMeter.h"
 #include "widgets/DragScroller.h"
 
@@ -61,6 +64,152 @@ const std::map<juce::String, Drive>& drives() {
          clickByHelp(root, "Presets:");
          wait(300);
        }},
+      {"library-drawer",
+       [](PluginRoot& root, MockBackend&) {
+         auto& library = root.services().library;
+         clickByHelp(root, "Library:");
+         for (const auto* path : {"/Users/you/Documents/TONE3000/Library/tonehound/Captures",
+                                  "/Users/you/Library/Application Support/TONE3000/Presets",
+                                  "/Users/you/Library/Application Support/TONE3000/Presets/Setlist"})
+           library.setOpen(path, true);
+         wait(100);
+       }},
+      {"library-favorites",
+       [](PluginRoot& root, MockBackend&) {
+         auto& library = root.services().library;
+         clickByHelp(root, "Library:");
+         wait(200);  // the favorites fetch
+         for (const auto* path : {"/Users/you/Documents/TONE3000/Library/tonehound/Captures", "tone3000:favorites",
+                                  "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean"})
+           library.setOpen(path, true);
+         wait(100);
+       }},
+      {"library-search",
+       [](PluginRoot& root, MockBackend&) {
+         clickByHelp(root, "Library:");
+         fill(root, "Search library", "metal");
+         wait(100);
+       }},
+      {"library-add-pick",
+       [](PluginRoot& root, MockBackend&) {
+         // A tile's "Add to Library" opens the drawer itself.
+         root.services().library.beginAdd("blk-2");
+         root.services().library.setOpen("/Users/you/Documents/TONE3000/Library/tonehound/Captures", true);
+         wait(100);
+       }},
+      {"library-row-menu",
+       [](PluginRoot& root, MockBackend&) {
+         auto& library = root.services().library;
+         clickByHelp(root, "Library:");
+         library.setOpen("/Users/you/Documents/TONE3000/Library/tonehound/Captures", true);
+         library.setOpen("/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean", true);
+         wait(100);
+         if (auto* row = find(root, [](juce::Component& c) { return c.getTitle() == "Roland JC-40 - Clean"; }))
+           click(root, *row, /*right=*/true);
+         wait(200);
+       }},
+      {"library-detail",
+       [](PluginRoot& root, MockBackend&) {
+         wait(300);  // the card comes up
+         clickByHelp(root, "Library:");
+         wait(150);
+       }},
+      {"library-big",
+       [](PluginRoot& root, MockBackend& backend) {
+         // A linked-collection-sized folder: 5000 captures, scrolled to the
+         // middle. Rows exist only around the view; the bar shows where.
+         const juce::String folder = "D:/Music/Big collection";
+         juce::Array<juce::var> captures;
+         for (int i = 1; i <= 5000; ++i) {
+           auto* capture = new juce::DynamicObject();
+           const juce::String name = "Capture " + juce::String(i).paddedLeft('0', 4);
+           capture->setProperty("kind", "capture");
+           capture->setProperty("name", name);
+           capture->setProperty("path", folder + "/" + name + ".nam");
+           capture->setProperty("format", "nam");
+           capture->setProperty("editable", true);
+           captures.add(juce::var(capture));
+         }
+         auto* big = new juce::DynamicObject();
+         big->setProperty("kind", "folder");
+         big->setProperty("name", "Big collection");
+         big->setProperty("path", folder);
+         big->setProperty("type", "captures");
+         big->setProperty("mount", true);
+         big->setProperty("linked", true);
+         big->setProperty("writable", true);
+         big->setProperty("children", captures);
+         auto tree = juce::JSON::parse(juce::JSON::toString(backend.getLibrary(false)));
+         if (auto* halves = tree["libraries"][0]["children"][0]["children"].getArray()) halves->add(juce::var(big));
+         backend.setLibrary(tree);
+
+         auto& library = root.services().library;
+         clickByHelp(root, "Library:");
+         library.setOpen("/Users/you/Documents/TONE3000/Library/tonehound/Captures", true);
+         library.setOpen(folder, true);
+         wait(300);
+         auto* list = dynamic_cast<juce::Viewport*>(find(root, [](juce::Component& c) {
+           return dynamic_cast<DragScroller*>(&c) != nullptr && c.findParentComponentOfClass<LibraryDrawer>() != nullptr;
+         }));
+         if (list != nullptr) list->setViewPosition(0, 28 * 2500);
+         wait(150);
+       }},
+      {"library-keep",
+       [](PluginRoot& root, MockBackend&) {
+         // A real folder (the target must exist), named like a collection.
+         static const juce::File target = [] {
+           auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("High gain boosts");
+           dir.createDirectory();
+           return dir;
+         }();
+         wait(300);  // the card comes up
+         root.services().library.setKeepTarget(target.getFullPathName());
+         clickByHelp(root, "Library:");
+         wait(150);
+       }},
+      {"library-kept",
+       [](PluginRoot& root, MockBackend& backend) {
+         wait(300);  // the card comes up
+         // A local capture playing on the open block, kept into a folder.
+         static const juce::File dir = [] {
+           auto d = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("t3k-kept-scenario");
+           d.getChildFile("Savage Drive").createDirectory();
+           d.getChildFile("Keepers").createDirectory();
+           d.getChildFile("Savage Drive").getChildFile("Gain 7.nam").replaceWithText("{}");
+           return d;
+         }();
+         const auto original = dir.getChildFile("Savage Drive").getChildFile("Gain 7.nam");
+         const auto keepers = dir.getChildFile("Keepers");
+         keepers.getChildFile("Gain 7.nam").deleteFile();
+         auto chain = backend.getChainState(-1);
+         const auto blockId = root.services().prefs.session[UiPrefs::kDetailBlockId];
+         if (auto* lane = chain["chain"].getArray())
+           for (auto& item : *lane)
+             if (item["blockId"].toString() == blockId) {
+               auto* tone = item["tone"].getDynamicObject();
+               tone->setProperty("local", true);
+               tone->setProperty("title", "Savage Drive");
+               juce::DynamicObject::Ptr model = new juce::DynamicObject();
+               model->setProperty("id", 1);
+               model->setProperty("name", "Gain 7");
+               model->setProperty("model_url", juce::URL(original).toString(false));
+               model->setProperty("source_path", original.getFullPathName());
+               tone->setProperty("models", juce::Array<juce::var>{juce::var(model.get())});
+               item.getDynamicObject()->setProperty("activeModelId", 1);
+             }
+         backend.setChain(chain);
+         wait(200);
+         auto& library = root.services().library;
+         library.setKeepTarget(keepers.getFullPathName());
+         library.keep(blockId.toStdString());
+         wait(150);
+       }},
+      {"library-empty",
+       [](PluginRoot& root, MockBackend&) {
+         clickByHelp(root, "Library:");
+         root.services().library.setOpen("/Users/you/Documents/TONE3000/Library/My Library/Captures", true);
+         wait(100);
+       }},
       {"chrome-auto-balance",
        [](PluginRoot& root, MockBackend&) {
          clickByHelp(root, "Auto Balance");
@@ -108,6 +257,21 @@ const std::map<juce::String, Drive>& drives() {
       // tile click (the web dropped the seed before the chain arrived) only
       // re-opens it, leaving no hover behind once the gallery is gone.
       {"main-detail", [](PluginRoot&, MockBackend&) { wait(300); }},
+      {"main-drop-edge",
+       [](PluginRoot& root, MockBackend&) {
+         wait(200);
+         auto* tile = dynamic_cast<ToneTile*>(drive::find(root, [](juce::Component& c) {
+           return dynamic_cast<ToneTile*>(&c) != nullptr;
+         }));
+         if (tile != nullptr) tile->fileDragEnter({"C:/captures/Boost.nam"}, 2, tile->getHeight() / 2);
+         wait(100);
+       }},
+      {"main-detail-normalize",
+       [](PluginRoot& root, MockBackend&) {
+         wait(300);
+         root.services().prefs.setBool(UiPrefs::kShowBlockNormalizeControl, true);
+         wait(100);
+       }},
       {"load-detail-loading", [](PluginRoot&, MockBackend&) { wait(300); }},
       {"load-detail-failed", [](PluginRoot&, MockBackend&) { wait(300); }},
       {"main-detail-info",

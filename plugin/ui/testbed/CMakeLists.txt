@@ -17,6 +17,15 @@ if (NOT TARGET juce::juce_core)
     add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../libs/juce" juce EXCLUDE_FROM_ALL)
 endif()
 
+# libwebp (NativeUi.cmake) comes through CPM like the root project's
+# dependencies: set up here too when this project is configured on its own.
+if (NOT DEFINED LIB_DIR)
+    set(LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../libs")
+endif()
+if (NOT COMMAND CPMAddPackage)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/cpm.cmake")
+endif()
+
 juce_add_gui_app(UiTestbed PRODUCT_NAME "UiTestbed" COMPANY_NAME "TONE3000")
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../NativeUi.cmake")
@@ -45,6 +54,9 @@ target_sources(UiTestbed PRIVATE
     SelfTests.h
     SelfTests.cpp
 )
+
+# Plugin headers the UI shares with the processor side (LibraryState.h).
+target_include_directories(UiTestbed PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../include")
 
 target_compile_definitions(UiTestbed PRIVATE
     JUCE_WEB_BROWSER=0

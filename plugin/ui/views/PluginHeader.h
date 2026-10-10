@@ -1,5 +1,6 @@
-// Full-width top bar (port of PluginHeader.tsx): logo, preset controls,
-// stereo toggle, tuner, undo/redo and the account menu.
+// Full-width top bar (port of PluginHeader.tsx): logo, the Library drawer
+// toggle, preset controls, stereo toggle, tuner, undo/redo and the account
+// menu.
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -22,8 +23,10 @@ public:
   PresetBar& presetBar() { return presetBar_; }
 
   void setTunerShown(bool shown);
+  void setLibraryShown(bool shown);
 
   std::function<void(bool show)> onToggleTuner;
+  std::function<void(bool show)> onToggleLibrary;
   std::function<void(bool stereo)> onStereoToggle;
   std::function<void()> onUndo, onRedo, onOpenSettings, onLogin, onLogout;
 
@@ -44,6 +47,8 @@ private:
   PresetBar presetBar_;
   StereoModeToggle stereo_;
   IconButton tuner_;
+  IconButton library_{Icon::LibraryBig, 28};
+  bool libraryShown_ = false;
   IconButton undo_{Icon::Undo2, 28};
   IconButton redo_{Icon::Redo2, 28};
   AccountMenu account_;

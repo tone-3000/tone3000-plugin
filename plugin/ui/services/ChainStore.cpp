@@ -13,7 +13,20 @@ ChainStore::~ChainStore() { clock_.removeListener(this); }
 void ChainStore::refresh(bool force) {
   const auto res = backend_.getChainState(force ? -1 : state_.revision);
   if (!res.isObject() || ChainState::isUnchanged(res)) return;
-  state_ = ChainState::parse(res);
+  auto next = ChainState::parse(res);
+  // A block that now plays something else remembers what it played (A/B):
+  // another model, another folder's capture, another tone.
+  const auto playing = [](const ChainItem& block) -> juce::String {
+    if (!block.tone.local) return juce::String(block.tone.id) + ":" + juce::String(block.activeModelId);
+    for (const auto& m : block.tone.models)
+      if (m.id == block.activeModelId) return m.sourcePath.isNotEmpty() ? m.sourcePath : m.modelUrl;
+    return {};
+  };
+  for (const auto* block : next.toneBlocks())
+    if (const auto* was = state_.findBlock(block->blockId); was != nullptr && was->isTone())
+      if (const auto before = playing(*was); before.isNotEmpty() && before != playing(*block))
+        previous_[block->blockId] = *was;
+  state_ = std::move(next);
   listeners.call([this](Listener& l) { l.chainChanged(state_); });
 }
 
@@ -42,6 +55,18 @@ juce::String ChainStore::loadLocalTonePath(const juce::File& source, const std::
   return localLoadResult(run([&] { return backend_.loadLocalTonePath(source, targetId); }));
 }
 
+juce::String ChainStore::loadLocalToneInFolder(const juce::File& file, const std::string& targetId) {
+  return localLoadResult(run([&] { return backend_.loadLocalToneInFolder(file, targetId); }));
+}
+
+void ChainStore::loadLocalToneInFolderAsync(const juce::File& file, const std::string& targetId,
+                                            std::function<void(juce::String)> done) {
+  backend_.loadLocalToneInFolderAsync(file, targetId, scope_.wrap([this, done](juce::var result) {
+    const auto error = localLoadResult(run([&] { return result; }));
+    if (done) done(error);
+  }));
+}
+
 juce::String ChainStore::loadLocalToneUrls(const juce::Array<juce::URL>& sources,
                                            const std::string& targetId) {
   return localLoadResult(run([&] { return backend_.loadLocalToneUrls(sources, targetId); }));
@@ -51,8 +76,17 @@ bool ChainStore::swapTone(const std::string& blockId, const juce::String& toneJs
   return run([&] { return backend_.swapTone(blockId, toneJson); });
 }
 
+bool ChainStore::setLocalToneArt(const std::string& blockId, const juce::var& art) {
+  return run([&] { return backend_.setLocalToneArt(blockId, art); });
+}
+
 bool ChainStore::refreshToneMetadata(const juce::String& toneJson) {
   return run([&] { return backend_.refreshToneMetadata(toneJson); });
+}
+
+const ChainItem* ChainStore::previous(const std::string& blockId) const {
+  const auto it = previous_.find(blockId);
+  return it == previous_.end() ? nullptr : &it->second;
 }
 
 bool ChainStore::switchModel(const std::string& blockId, int modelId, const juce::var& model) {

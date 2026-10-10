@@ -22,6 +22,7 @@
 #include "BlockEqView.h"
 #include "ToneMeta.h"
 #include "core/AsyncScope.h"
+#include "core/BusyGrace.h"
 #include "model/ChainState.h"
 #include "model/Tone.h"
 #include "services/ParamBinding.h"
@@ -29,6 +30,7 @@
 #include "widgets/BusyOverlay.h"
 #include "widgets/ChromeIconButton.h"
 #include "widgets/ChromeTextButton.h"
+#include "widgets/ContextMenu.h"
 #include "widgets/DimGroup.h"
 #include "widgets/DotMeter.h"
 #include "widgets/Knob.h"
@@ -40,8 +42,21 @@
 
 namespace t3k::ui {
 
-class BlockCard : public juce::Component, private ToneSession::Listener, private UiPrefs::Listener {
+// Drops land on the open card too, the way they land on its tile: a
+// Library capture (with its folder's captures beside it), folder or tone, or
+// .nam / .wav files from the OS, swapped into this block in place, so a
+// capture can be tried without leaving the card.
+class BlockCard : public juce::Component,
+                  public juce::DragAndDropTarget,
+                  public juce::FileDragAndDropTarget,
+                  private ToneSession::Listener,
+                  private UiPrefs::Listener,
+                  private LibraryStore::KeepListener {
 public:
+  // A number (its model) or "a" (A/B) typed anywhere in the plugin with
+  // this card open and nothing else taking it (PluginRoot passes it on).
+  // True when it was one of those.
+  bool blockKey(const juce::KeyPress& key);
   // chainLayout.tsx: 16px-radius card, 45px chrome header, 275px padded
   // body (the last 2px hide under the border, so 273 show).
   static constexpr int kWidth = 800;
@@ -68,6 +83,17 @@ public:
 
   void paint(juce::Graphics& g) override;
   void paintOverChildren(juce::Graphics& g) override;
+
+  // Library rows (LibraryDrawer): items and captures folders.
+  bool isInterestedInDragSource(const SourceDetails& details) override;
+  void itemDragEnter(const SourceDetails&) override { setDropArmed(true); }
+  void itemDragExit(const SourceDetails&) override { setDropArmed(false); }
+  void itemDropped(const SourceDetails& details) override;
+  // OS files: the tile's file drop.
+  bool isInterestedInFileDrag(const juce::StringArray& files) override;
+  void fileDragEnter(const juce::StringArray&, int, int) override { setDropArmed(true); }
+  void fileDragExit(const juce::StringArray&) override { setDropArmed(false); }
+  void filesDropped(const juce::StringArray& files, int, int) override;
   void resized() override;
 
 private:
@@ -77,6 +103,7 @@ private:
   // ToneSession::Listener / UiPrefs::Listener
   void sessionChanged() override;
   void prefChanged(const juce::String& key) override;
+  void keepChanged() override;
 
   void buildHeader();
   void buildBody();
@@ -85,6 +112,8 @@ private:
   int layoutInfoBody(juce::Rectangle<int> body);
   Body body() const { return showEq_ ? Body::eq : showInfo_ ? Body::info : Body::tone; }
   void syncFromBlock();
+  void syncBusy();
+  void syncPicture();
   void syncHeader();
   void syncMeta();
   void syncModelSelect();
@@ -94,6 +123,13 @@ private:
 
   bool isNam() const { return block_.tone.isNam(); }
   bool isLocal() const { return block_.tone.local; }
+  // The TONE3000 tone the card stands for: the block's, or for a capture kept
+  // from one, that one (its info, stats, share, KEEP's menu); 0 for none.
+  int siteToneId() const { return isLocal() ? keptToneId_ : block_.tone.id; }
+  int keptToneId_ = 0;
+  int keptToneIdNow();
+  // block_.tone as the card shows it: a kept copy with its tone's stats.
+  ToneSummary shownTone() const;
   bool authenticated() const { return services_.session.authenticated(); }
   bool modelBusy() const { return block_.modelLoading || (!block_.loaded && !block_.loadFailed); }
   bool normalizeOverridden() const;
@@ -106,7 +142,17 @@ private:
   void fetchModels();
   void toggleFavorite();
   void switchModel(const juce::String& id);
+  // Once the card is clicked, the keyboard: a number picks that model (the
+  // picker's number entry), Left / Right step, "a" goes back to the model
+  // played before and again forth (A/B).
+  bool keyPressed(const juce::KeyPress& key) override;
+  void mouseDown(const juce::MouseEvent&) override;
+  void abSwitch();
+  std::string keyboardFor_;  // the block the card last took the keyboard for (on opening)
   void share();
+
+  void setDropArmed(bool armed);
+  bool dropArmed_ = false;
 
   Services& services_;
   ChainItem block_;
@@ -126,6 +172,8 @@ private:
   ChromeTextButton eq_{"EQ", help::Key::eqToggle};
   ChromeIconButton info_{Icon::Info, ChromeIconButton::Tone::plain, help::Key::toneInfo};
   ChromeIconButton share_{Icon::Share, ChromeIconButton::Tone::plain, help::Key::shareTone};
+  // Show in Library: a block playing a Library file.
+  ChromeIconButton reveal_{Icon::LibraryBig, ChromeIconButton::Tone::plain, help::Key::libraryShowBlock};
   ChromeIconButton swap_{Icon::ArrowLeftRight, ChromeIconButton::Tone::plain, help::Key::swapTone};
   ChromeIconButton remove_{Icon::Trash2, ChromeIconButton::Tone::plain, help::Key::removeBlock};
 
@@ -134,7 +182,8 @@ private:
   LiveDotMeter inMeter_, outMeter_;
   Knob in_, out_, mix_;
   juce::Component normalizeWrap_;
-  ChromeIconButton normalize_{Icon::Equal, ChromeIconButton::Tone::power, help::Key::blockNormalize};
+  // Labelled, not a glyph: a bare "=" read as decoration and went unfound.
+  ChromeTextButton normalize_{"NORM", help::Key::blockNormalize};
   juce::Component imageFrame_;
   ToneImage image_;
   LoadingDots loading_;
@@ -142,6 +191,35 @@ private:
   ToneMeta meta_;
   juce::Component selectWrap_;
   ModelSelect select_;
+  // Keep, beside the picker where models are auditioned: copies the playing
+  // model into the keep folder (lit while one is set), or without one
+  // asks for a Library folder (the tile menu's Add to Library).
+  ChromeTextButton keep_{"KEEP", help::Key::libraryKeep};
+  // A TONE3000 tone's other ways to keep (the capture, the whole tone).
+  ChromeIconButton keepMore_{Icon::ChevronDown, ChromeIconButton::Tone::plain, help::Key::libraryKeepMore};
+  std::unique_ptr<ContextMenu> keepMenu_;
+  void openKeepMenu();
+  // On the image of a block from a local file: set (change, remove) the
+  // picture of the folder it came from (LibraryStore's folder pictures).
+  class PictureButton : public Clickable {
+  public:
+    PictureButton();
+    void paintButton(juce::Graphics& g, bool over, bool down) override;
+  };
+  PictureButton picture_;
+  std::unique_ptr<ContextMenu> pictureMenu_;
+  void pictureClicked();
+  // Above Keep (the picker row stays as wide): a kept capture's way back to
+  // where it was kept from (SOURCE), or an original's way to the copies kept
+  // of it (KEPT; one: straight there, more: a menu of their folders).
+  ChromeTextButton original_{"SOURCE", help::Key::libraryOriginal};
+  ChromeTextButton kept_{"KEPT", help::Key::libraryKept};
+  // Above Source / Kept: the block's folder has captures it doesn't list
+  // (kept or copied in since it loaded): it reads the folder again.
+  ChromeTextButton refresh_{"REFRESH", help::Key::libraryRefreshBlock};
+  std::unique_ptr<ContextMenu> keptMenu_;
+  void syncKeepLinks();
+  void openKeptMenu();
   BusyOverlay infoBusy_{BusyOverlay::Align::centre};
   std::unique_ptr<BlockEqView> eqEditor_;
 
@@ -165,6 +243,7 @@ private:
   std::vector<Model> models_;
   bool modelsLoading_ = false;
   AsyncScope infoScope_, modelsScope_, favoriteScope_;
+  BusyGrace busyGrace_;
 };
 
 }  // namespace t3k::ui

@@ -4,9 +4,10 @@ namespace t3k::ui {
 
 HintBus::HintBus(UiPrefs& prefs) : prefs_(prefs) {}
 
-void HintBus::setHover(const juce::String& text) {
-  if (hover_ == text) return;
+void HintBus::setHover(const juce::String& text, const juce::String& icon) {
+  if (hover_ == text && hoverIcon_ == icon) return;
   hover_ = text;
+  hoverIcon_ = icon;
   listeners.call([](Listener& l) { l.hintChanged(); });
 }
 
@@ -39,7 +40,7 @@ void HintTracker::resolve(const juce::MouseEvent& e) {
   for (auto* c = e.eventComponent; c != nullptr && c != root_.getParentComponent();
        c = c->getParentComponent()) {
     if (c->getHelpText().isNotEmpty()) {
-      bus_.setHover(c->getHelpText());
+      bus_.setHover(c->getHelpText(), c->getProperties()[HintBus::kIconProperty].toString());
       return;
     }
   }

@@ -2,6 +2,8 @@
 
 #include "LegacyParamIds.h"
 
+#include <algorithm>
+
 // #############################
 // INTERNAL PRESETS
 // #############################
@@ -56,11 +58,7 @@ juce::var TONE3000Processor::getPresetList() const {
   return root.get();
 }
 
-juce::var TONE3000Processor::savePreset(const juce::String& rawName) {
-  const juce::String name = rawName.trim();
-  if (name.isEmpty())
-    return {};
-
+juce::ValueTree TONE3000Processor::capturePresetTree() {
   juce::ValueTree preset(PresetManager::kPresetTag);
   preset.setProperty("schemaVersion", 1, nullptr);
 
@@ -82,8 +80,10 @@ juce::var TONE3000Processor::savePreset(const juce::String& rawName) {
     }
   }
   preset.appendChild(params, nullptr);
+  return preset;
+}
 
-  const PresetManager::Info info = presetManager.save(name, preset);
+juce::var TONE3000Processor::presetSaved(const PresetManager::Info& info) {
   if (info.id.isEmpty())
     return {};
 
@@ -100,6 +100,37 @@ juce::var TONE3000Processor::savePreset(const juce::String& rawName) {
   return obj.get();
 }
 
+juce::var TONE3000Processor::savePreset(const juce::String& rawName) {
+  const juce::String name = rawName.trim();
+  if (name.isEmpty())
+    return {};
+
+  // Saving while a Library preset is active saves into its folder: tweak
+  // a setlist song, press save, and the setlist has it. A folder that takes
+  // no presets (an imported library is read-only) saves to the user folder,
+  // as before the Library.
+  juce::String currentId;
+  {
+    juce::ScopedLock lock(chainMutex);
+    currentId = activePresetId;
+  }
+  if (PresetManager::isFileId(currentId)) {
+    const juce::File folder =
+        juce::File(currentId.fromFirstOccurrenceOf(PresetManager::kFilePrefix, false, false))
+            .getParentDirectory();
+    if (folder.isDirectory() && library.takesPresets(folder))
+      return savePresetToFolder(folder, name);
+  }
+  return presetSaved(presetManager.save(name, capturePresetTree()));
+}
+
+juce::var TONE3000Processor::savePresetToFolder(const juce::File& folder, const juce::String& rawName) {
+  const juce::String name = rawName.trim();
+  if (name.isEmpty() || !library.takesPresets(folder))
+    return {};
+  return presetSaved(presetManager.saveInFolder(folder, name, capturePresetTree()));
+}
+
 bool TONE3000Processor::loadPresetAtIndex(int index) {
   const auto presets = presetManager.list();
   if (index < 0 || index >= static_cast<int>(presets.size()))
@@ -108,9 +139,7 @@ bool TONE3000Processor::loadPresetAtIndex(int index) {
 }
 
 bool TONE3000Processor::stepPreset(int delta) {
-  const auto presets = presetManager.list();
-  const int count = static_cast<int>(presets.size());
-  if (count == 0 || delta == 0)
+  if (delta == 0)
     return false;
 
   juce::String currentId;
@@ -118,20 +147,33 @@ bool TONE3000Processor::stepPreset(int delta) {
     juce::ScopedLock lock(chainMutex);
     currentId = activePresetId;
   }
-  int index = -1;
-  for (int i = 0; i < count; ++i) {
-    if (presets[static_cast<size_t>(i)].id == currentId) {
-      index = i;
-      break;
-    }
+
+  // A Library preset steps through its own folder; everything else (and a
+  // Library preset whose folder is gone or empty now) through the list.
+  std::vector<juce::String> ids;
+  if (PresetManager::isFileId(currentId)) {
+    const juce::File folder =
+        juce::File(currentId.fromFirstOccurrenceOf(PresetManager::kFilePrefix, false, false))
+            .getParentDirectory();
+    for (const auto& entry : presetManager.listFolder(folder))
+      ids.push_back(entry.info.id);
   }
+  if (ids.empty())
+    for (const auto& info : presetManager.list())
+      ids.push_back(info.id);
+
+  const int count = static_cast<int>(ids.size());
+  if (count == 0)
+    return false;
+  const auto found = std::find(ids.begin(), ids.end(), currentId);
+  const int index = found == ids.end() ? -1 : static_cast<int>(std::distance(ids.begin(), found));
 
   // Mirrors the preset bar's ‹ › buttons: wrap at the ends; with nothing
   // active (or a deleted preset), next starts at the first and previous at
   // the last.
   const int next = index < 0 ? (delta > 0 ? 0 : count - 1)
                              : ((index + delta) % count + count) % count;
-  return loadPreset(presets[static_cast<size_t>(next)].id);
+  return loadPreset(ids[static_cast<size_t>(next)]);
 }
 
 bool TONE3000Processor::loadPreset(const juce::String& presetId) {

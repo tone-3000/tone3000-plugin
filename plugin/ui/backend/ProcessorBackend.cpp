@@ -1,5 +1,6 @@
 #include "ProcessorBackend.h"
 
+#include "NamArchitecture.h"
 #include "WindowKeyEvents.h"
 
 namespace t3k::ui {
@@ -153,6 +154,115 @@ bool ProcessorBackend::deletePreset(const juce::String& presetId) {
 }
 bool ProcessorBackend::movePreset(const juce::String& presetId, int delta) {
   return processor_.movePreset(presetId, delta);
+}
+bool ProcessorBackend::stepPreset(int delta) { return processor_.stepPreset(delta); }
+juce::var ProcessorBackend::savePresetToFolder(const juce::File& folder, const juce::String& name) {
+  return processor_.savePresetToFolder(folder, name);
+}
+
+// Library
+void ProcessorBackend::setLibraryLocation(const juce::File& root, const juce::String& owner,
+                                          const juce::Array<juce::File>& linkedDirs) {
+  processor_.setLibraryLocation(root, owner, linkedDirs);
+}
+juce::String ProcessorBackend::libraryLinkProblem(const juce::File& dir) {
+  return processor_.libraryLinkProblem(dir);
+}
+juce::var ProcessorBackend::getLibrary(bool fresh, const std::atomic<bool>* stop) {
+  return processor_.getLibrary(fresh, stop);
+}
+juce::var ProcessorBackend::getSavedLibrary() { return processor_.getSavedLibrary(); }
+juce::String ProcessorBackend::libraryFolderNameProblem(const juce::String& name) {
+  return nam_arch::namedNotA2(name.trim())
+             ? juce::String("The Library hides folders named A1, REVyHI or xSTD (A1 captures): pick another name")
+             : juce::String();
+}
+juce::File ProcessorBackend::libraryCreateFolder(const juce::File& parent, const juce::String& name) {
+  return processor_.libraryCreateFolder(parent, name);
+}
+juce::File ProcessorBackend::libraryRename(const juce::File& item, const juce::String& name) {
+  return processor_.libraryRename(item, name);
+}
+bool ProcessorBackend::libraryRemove(const juce::File& item) { return processor_.libraryRemove(item); }
+juce::File ProcessorBackend::libraryMove(const juce::File& item, const juce::File& folder) {
+  return processor_.libraryMove(item, folder);
+}
+juce::File ProcessorBackend::libraryCopy(const juce::File& item, const juce::File& folder) {
+  return processor_.libraryCopy(item, folder);
+}
+juce::File ProcessorBackend::libraryAddTone(const juce::File& folder, const juce::var& ref) {
+  return processor_.libraryAddTone(folder, ref);
+}
+juce::File ProcessorBackend::libraryAddCapture(const juce::File& folder, const juce::File& source,
+                                               const juce::String& name) {
+  return processor_.libraryAddCapture(folder, source, name);
+}
+// The jobs' results come back through the processor (alive or not), never
+// this backend, which goes with the editor.
+void ProcessorBackend::loadLocalToneInFolderAsync(const juce::File& file, const std::string& targetInsertId,
+                                                  std::function<void(juce::var)> done) {
+  auto& processor = processor_;
+  processor.runLibraryJob([file](const LocalLibrary&) { return TONE3000Processor::prepareLocalToneInFolder(file); },
+                          [&processor, targetInsertId, done](juce::var prepared) {
+                            done(processor.finishLocalToneInFolder(prepared, targetInsertId));
+                          });
+}
+
+void ProcessorBackend::libraryImportFolderAsync(const juce::File& source, const juce::File& into,
+                                                std::function<void(juce::File)> done) {
+  processor_.runLibraryJob(
+      [source, into](const LocalLibrary& library) { return juce::var(library.importFolder(source, into).getFullPathName()); },
+      [done](juce::var landed) { done(landed.toString().isEmpty() ? juce::File() : juce::File(landed.toString())); });
+}
+
+void ProcessorBackend::libraryExportAsync(const juce::File& item, const juce::File& archive,
+                                          std::function<void(bool)> done) {
+  processor_.runLibraryJob([item, archive](const LocalLibrary& library) { return juce::var(library.exportArchive(item, archive)); },
+                           [done](juce::var ok) { done(static_cast<bool>(ok)); });
+}
+
+void ProcessorBackend::libraryShareAsync(const juce::File& item, const juce::File& archive, const juce::var& siteRefs,
+                                         std::function<void(juce::var)> done) {
+  processor_.runLibraryJob(
+      [item, archive, siteRefs](const LocalLibrary& library) { return library.shareArchive(item, archive, siteRefs); },
+      [done](juce::var summary) { done(summary); });
+}
+
+void ProcessorBackend::libraryMoveAsync(const juce::File& item, const juce::File& folder,
+                                        std::function<void(juce::File)> done) {
+  processor_.libraryMoveAsync(item, folder, std::move(done));
+}
+
+void ProcessorBackend::libraryCopyAsync(const juce::File& item, const juce::File& folder,
+                                        std::function<void(juce::File)> done) {
+  processor_.libraryCopyAsync(item, folder, std::move(done));
+}
+
+void ProcessorBackend::libraryRemoveAsync(const juce::File& item, std::function<void(bool)> done) {
+  processor_.libraryRemoveAsync(item, std::move(done));
+}
+
+void ProcessorBackend::libraryCopyFilesAsync(const juce::Array<juce::File>& files, const juce::File& folder,
+                                             std::function<void(juce::var)> done) {
+  processor_.libraryCopyFilesAsync(files, folder, std::move(done));
+}
+
+void ProcessorBackend::libraryImportAsync(const juce::File& archive, std::function<void(juce::File)> done) {
+  auto& processor = processor_;
+  processor.runLibraryJob(
+      [archive](const LocalLibrary& library) { return juce::var(library.importArchive(archive).getFullPathName()); },
+      [&processor, done](juce::var landed) {
+        const auto imported = landed.toString().isEmpty() ? juce::File() : juce::File(landed.toString());
+        processor.libraryImported(imported);
+        done(imported);
+      });
+}
+
+bool ProcessorBackend::libraryExport(const juce::File& item, const juce::File& archive) {
+  return processor_.libraryExport(item, archive);
+}
+juce::File ProcessorBackend::libraryImport(const juce::File& archive) {
+  return processor_.libraryImport(archive);
 }
 
 // Audio device settings (standalone only)

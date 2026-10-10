@@ -24,9 +24,12 @@ public:
     help::Key help;
     std::function<void()> onSelect;
     bool disabled = false;
+    // Replaces the help key's text when set (a row naming a path).
+    juce::String hint = {};
   };
 
   static constexpr int kWidth = 148;
+  static constexpr int kMaxWidth = 300;
   static constexpr int kPad = 6;
   // Visual-px nudge past the cursor tip.
   static constexpr int kCursorOffset = 6;

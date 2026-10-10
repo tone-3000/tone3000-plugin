@@ -15,6 +15,10 @@ namespace t3k::ui::inline_chrome {
 // middle` with 2px side margins.
 std::shared_ptr<const InlineBox> liteFullChip();
 
+// A block's text button (NORM) as it shows when on: an example of the
+// control, not one; middle-aligned like the LITE/FULL chip.
+std::shared_ptr<const InlineBox> textButton(const juce::String& label);
+
 // A Lucide glyph at `px` with 2px side margins, sitting 1px under the
 // baseline (`vertical-align: -1px`), drawn white.
 std::shared_ptr<const InlineBox> icon(Icon icon, float px = 12);

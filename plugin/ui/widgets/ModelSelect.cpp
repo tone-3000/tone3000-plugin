@@ -99,6 +99,8 @@ private:
     Row(const Option& option, bool active, bool divider)
         : Clickable(option.name), name_(option.name), active_(active), divider_(divider) {
       setMouseCursor(juce::MouseCursor::PointingHandCursor);
+      // The hint bar shows the whole name: a long one is clipped in the row.
+      setHelpText(option.name);
     }
     bool active() const { return active_; }
 
@@ -180,6 +182,48 @@ ModelSelect::ModelSelect()
   addAndMakeVisible(*trigger_);
   setSize(100, kHeight);
   syncSteppers();
+  // A click anywhere on it (its steppers and name are children) gives it the
+  // keyboard: numbers pick a model.
+  setWantsKeyboardFocus(true);
+  setTitle("Model");  // a Tab stop now: its screen-reader name
+  addMouseListener(this, true);
+}
+
+void ModelSelect::mouseDown(const juce::MouseEvent&) { grabKeyboardFocus(); }
+
+bool ModelSelect::keyPressed(const juce::KeyPress& key) {
+  if (options_.empty()) return false;
+  if (key.isKeyCode(juce::KeyPress::leftKey) || key.isKeyCode(juce::KeyPress::rightKey)) {
+    step(key.isKeyCode(juce::KeyPress::leftKey) ? -1 : +1);
+    return true;
+  }
+  const auto c = key.getTextCharacter();
+  if (c < '0' || c > '9' || key.getModifiers().isCommandDown() || key.getModifiers().isAltDown()) return false;
+  // Close together: one number ("2", "5": 25). After a pause, a new one.
+  constexpr juce::uint32 kPauseMs = 800;
+  const auto now = juce::Time::getMillisecondCounter();
+  if (now - lastDigitMs_ > kPauseMs) typed_ = 0;
+  lastDigitMs_ = now;
+  typed_ = typed_ * 10 + static_cast<int>(c - '0');
+  if (typed_ > 9999) typed_ = static_cast<int>(c - '0');
+  if (typed_ == 0) return true;
+  const int count = static_cast<int>(options_.size());
+  const auto id = options_[static_cast<size_t>(juce::jmin(typed_, count) - 1)].id;
+  if (onTyped) onTyped(juce::jmin(typed_, count), count);
+  // Picked once the number is whole: at once when no digit could make it a
+  // model here, else after the pause ("2" of 40 may become 25).
+  typedPick_.cancel();
+  const auto pick = [this, id] {
+    if (list_->isOpen()) list_->close();
+    if (onChange && id != value_) onChange(id);
+  };
+  if (typed_ * 10 > count) {
+    typed_ = 0;  // whole: the next digit starts another
+    pick();
+  } else {
+    typedPick_.start(static_cast<int>(kPauseMs), pick);
+  }
+  return true;
 }
 
 ModelSelect::~ModelSelect() = default;

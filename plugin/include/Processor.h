@@ -27,6 +27,9 @@
 #include "PitchShift.h"
 #include "Spread.h"
 #include "StereoOffset.h"
+#include "Library.h"
+
+#include <thread>
 #include "PresetManager.h"
 #include "TunerDetector.h"
 
@@ -80,8 +83,10 @@ public:
   // Chain management methods
   // Load a tone into an insert slot. `targetInsertId` is the insert block the
   // user clicked (the UI remembers it across the tone-select flow); the new
-  // tone block takes that slot's position. When the id is absent or
-  // stale (undone away mid-flow), the active lane's first insert is used.
+  // tone block takes that slot's position. It may also be "before:<blockId>"
+  // / "after:<blockId>" (kSlotBeforePrefix): the tone splices in beside that
+  // block, nothing else moving. When the id is absent or stale (undone away
+  // mid-flow), the active lane's first insert is used.
   std::string loadTone(const juce::String& toneJsonString,
                        const std::string& targetInsertId = {});
   // Load dropped local files (`files` = [{ name, data }], base64 bytes; one
@@ -107,6 +112,16 @@ public:
   // folder name. A single file must be .nam or .wav; title is the file
   // name. Same return contract as loadLocalTone.
   juce::var loadLocalTonePath(const juce::File& source, const std::string& targetInsertId = {});
+  /** One capture with its folder: the .nam/.wav files beside `file` (same
+      extension, no subfolders) load as one block titled after the folder,
+      starting on `file`, the rest a step away in the model picker. A folder
+      past the 300-file cap loads `file` alone. Same return contract. */
+  juce::var loadLocalToneInFolder(const juce::File& file, const std::string& targetInsertId = {});
+  // The same in two halves, so the files can be read and checked off the
+  // message thread: prepare (any thread; touches nothing of the instance),
+  // then finish (message thread: the block is made).
+  static juce::var prepareLocalToneInFolder(const juce::File& file);
+  juce::var finishLocalToneInFolder(const juce::var& prepared, const std::string& targetInsertId);
 
   /** URL sibling of loadLocalTonePath, for the iOS document picker.
       Files chosen from the Files app live outside the app sandbox and are
@@ -158,8 +173,21 @@ public:
   // longer exists, the same name under the current root is the same bytes.
   // A stored path that does exist is returned untouched, which is every
   // desktop case (the root never moves there). Empty File for a non-file URL.
+  // What's wrong with a local model's bytes ("" when nothing): a .nam must
+  // parse and be A2, a .wav must open as audio. Every local load checks it;
+  // the Library's downloads too, before anything is written.
+  static juce::String localModelProblem(const juce::String& filename, const void* data, size_t size);
+  // A Library rename or move took `from` (a file or a folder) to `to`:
+  // remembered for the process (any instance), so a later load of a path
+  // under `from` (an undo bringing a removed block back, a retry, a model
+  // switch) finds the file at its new place (resolveLocalModelFile).
+  static void noteLocalFilesMoved(const juce::File& from, const juce::File& to);
   static juce::File resolveLocalModelFile(const juce::File& stashRoot,
                                           const juce::String& modelUrl);
+  // Whether a file name is a stash copy's (<hex hash>-<size>.nam|.wav): only
+  // those are re-rooted by name (a file played in place that has gone is
+  // returned as is).
+  static bool isStashFileName(const juce::String& name);
   // The file name a URL names, percent-decoded. juce::URL::getFileName returns
   // the raw, still-escaped last path component, so a file picked as
   // "Deluxe Reverb 2.nam" reads back as "Deluxe%20Reverb%202.nam" and would
@@ -181,6 +209,21 @@ public:
   // changed, so an identical payload is a true no-op. Returns whether any
   // block changed.
   bool refreshToneMetadata(const juce::String& toneJsonString);
+  /** Artwork for a local block: the TONE3000 tone its folder matched (the
+      Library's ToneArt lookup). `art` is { image, username, avatar_url,
+      url }; the block's tone gains `images`, `user` and `url` and keeps
+      everything else (models, local). Optionally `block_title` retitles the
+      block, `gear` sets its gear (the matched tone's), and `clear` drops its
+      artwork first (a block playing a kept copy shows the original's folder). Saved with presets and state like any
+      tone field. False for an unknown or non-local block, or no change. */
+  bool setLocalToneArt(const std::string& blockId, const juce::var& art);
+  // A Library rename or move (or a file found where it went, see
+  // LibraryStore::findMovedFiles) took `from` (a file or a folder) to `to`:
+  // local blocks playing files from under it point at them under `to`
+  // (their model URLs, source paths and a picture there, so the UI and the
+  // saved state name the file where it is), and the move is noted for later
+  // loads (noteLocalFilesMoved).
+  void relinkLocalFiles(const juce::File& from, const juce::File& to);
   // Switch the block's active model. Native only stores the active model, so
   // `modelData` (JSON object with id/name/model_url, paged in from the API by
   // the UI) is required and becomes the tone's new sole stored model.
@@ -425,6 +468,8 @@ public:
   // hosts (LUNA) grant a post-open grow without re-laying-out their own
   // plugin-window chrome, which visibly misplaces it.
   std::atomic<int> editorExtraHeight{36};
+  juce::CriticalSection libraryViewLock;
+  juce::String libraryView;
 
   // Which lane loadTone falls back to ("left"/"right") when no valid target
   // insert id is supplied. The UI sets it when an Add starts, so a tone
@@ -466,12 +511,97 @@ public:
   // Where user presets are saved (Settings > Presets opens it).
   juce::File getUserPresetsDir() const { return presetManager.userPresetsDir(); }
 
+  // Step the active preset, wrapping at the ends: the preset bar's ‹ › and
+  // the MIDI "presetPrevious" / "presetNext" targets. A preset loaded from
+  // a Library folder steps through that folder (a setlist); otherwise the
+  // global list (user, then factory), the program-change order. With no
+  // active preset, a forward step starts at the first preset and a
+  // backward step at the last.
+  bool stepPreset(int delta);
+  // Save the current rig into a Library folder (same-name preset there is
+  // overwritten); { id, name } or a void var on failure. savePreset(name)
+  // does the same in the active preset's folder when that is a Library one.
+  juce::var savePresetToFolder(const juce::File& folder, const juce::String& name);
+
+  // The local Library (Library.h, ProcessorLibrary.cpp). The location is
+  // the UI's per-machine pref, pushed before every call. Edits that move or
+  // remove the active preset's file keep the active preset pointing at it
+  // (or clear it), so the pill, Save and folder stepping stay right.
+  void setLibraryLocation(const juce::File& root, const juce::String& owner,
+                          const juce::Array<juce::File>& linkedDirs = {});
+  juce::String libraryLinkProblem(const juce::File& dir) const { return library.linkProblem(dir); }
+  // Safe off the message thread (the UI scans on a worker: a linked capture
+  // collection can take a while): scans a copy of the location taken under
+  // libraryLock.
+  juce::var getLibrary(bool fresh = false, const std::atomic<bool>* stop = nullptr) const;
+  // A listing to show at once: the last one this process scanned (the
+  // prewarm at plugin load, an earlier drawer), else the one the last
+  // session saved (getLibrary keeps it in app data, rewritten only when it
+  // changes); void when there is none for this location. A big linked
+  // collection on a slow drive takes seconds to walk (cold, or spun down
+  // while the DAW sat idle): the drawer shows this at once, then
+  // getLibrary's checked listing. Off the message thread like getLibrary.
+  juce::var getSavedLibrary() const;
+  // Tests: act as a new session (nothing scanned yet, the file not read).
+  static void forgetLibraryScanForTesting();
+  // The Library drawer's view for this instance (the UI's JSON: open
+  // folders, selection, search, scroll, whether it is shown), saved with the
+  // project so it reopens where it was. Any thread.
+  juce::String getLibraryView() const {
+    const juce::ScopedLock lock(libraryViewLock);
+    return libraryView;
+  }
+  void setLibraryView(const juce::String& json) {
+    const juce::ScopedLock lock(libraryViewLock);
+    libraryView = json;
+  }
+  juce::File libraryCreateFolder(const juce::File& parent, const juce::String& name);
+  juce::File libraryRename(const juce::File& item, const juce::String& newName);
+  bool libraryRemove(const juce::File& item);
+  juce::File libraryMove(const juce::File& item, const juce::File& folder);
+  juce::File libraryCopy(const juce::File& item, const juce::File& folder);
+  juce::File libraryAddTone(const juce::File& folder, const juce::var& ref);
+  juce::File libraryImportFolder(const juce::File& source, const juce::File& into) const {
+    return library.importFolder(source, into);
+  }
+  juce::File libraryAddCapture(const juce::File& folder, const juce::File& source,
+                               const juce::String& name);
+  // Keeping a TONE3000 tone's capture: the model `blockId` plays, from the
+  // bytes it loaded, as a capture file `name` in `folder` (none when they
+  // aren't in memory: download it instead).
+  juce::File libraryKeepModel(const std::string& blockId, const juce::File& folder, const juce::String& name);
+  // A TONE3000 model downloaded into `folder` as `name` (.wav for an IR),
+  // off the message thread; `done` runs on the message thread with the file
+  // (none on a failure).
+  void libraryDownloadModel(const juce::String& modelUrl, bool ir, const juce::File& folder, const juce::String& name,
+                            std::function<void(juce::File)> done);
+  bool libraryExport(const juce::File& item, const juce::File& archive) const;
+  juce::File libraryImport(const juce::File& archive);
+  // After an import: a restored backup may have brought presets back into
+  // the user folder (the host's program list follows).
+  void libraryImported(const juce::File& imported);
+  // Slow Library work (a folder of captures checked, an import, an export)
+  // off the message thread: `work` runs on a worker against a copy of the
+  // Library (its location as it is now), `done` back on the message thread
+  // with its result, unless the instance has gone meanwhile.
+  void runLibraryJob(std::function<juce::var(const LocalLibrary&)> work, std::function<void(juce::var)> done);
+  // libraryMove / Copy / Remove with the file work on a library job (a move
+  // across drives is a copy): the active preset follows, and the scan hears
+  // of it, back on the message thread. Copy Files: dropped files into a
+  // folder ({ copied, skipped, last }).
+  void libraryMoveAsync(const juce::File& item, const juce::File& folder, std::function<void(juce::File)> done);
+  void libraryCopyAsync(const juce::File& item, const juce::File& folder, std::function<void(juce::File)> done);
+  void libraryRemoveAsync(const juce::File& item, std::function<void(bool)> done);
+  void libraryCopyFilesAsync(const juce::Array<juce::File>& files, const juce::File& folder,
+                             std::function<void(juce::var)> done);
+
   // Re-root the internal preset store at an explicit directory (tests use a
   // temp dir so preset/program behavior can be driven without touching the
   // user's shared preset folder; see PresetManager's baseDir constructor).
   // Message thread only, before any preset call.
   void setPresetStoreForTesting(const juce::File& baseDir) {
     presetManager = PresetManager(baseDir);
+    library.setUseTrash(false);
     hostProgramInfoCache.clear();
   }
 
@@ -543,7 +673,7 @@ private:
   juce::var finishLocalToneLoad(const juce::String& title,
                                 const juce::Array<juce::var>& stashedModels,
                                 const juce::String& firstError, int fileCount,
-                                const std::string& targetInsertId);
+                                const std::string& targetInsertId, int activeModelId = 0);
 
   /** Largest frame count the chain stage can see per boundary callback at the
       base rate: the host max block size converted to 48 kHz frames (and never
@@ -838,11 +968,6 @@ private:
   // factory; the same order the preset browser shows and numbers).
   // Out-of-range programs are ignored.
   bool loadPresetAtIndex(int index);
-  // Step the active preset through the list order, wrapping at the ends:
-  // the MIDI twin of the preset bar's ‹ › buttons (mapped "presetPrevious" /
-  // "presetNext" controls land here). With no active preset, a forward step
-  // starts at the first preset and a backward step at the last.
-  bool stepPreset(int delta);
   // Toggle the enabled flag of a lane's Nth tone block (0-based, insert
   // slots skipped). Positional so mappings survive tone swaps and preset
   // loads. No-op when the lane is shorter than N, and for the Right lane
@@ -862,8 +987,30 @@ private:
   // at its default. Ships as getChainState's `atDefault`, which greys the
   // top bar's New button. Caller must hold chainMutex.
   bool isChainAtDefault() const;
+  // The preset tree a save writes: chain snapshot + faceplate parameters.
+  juce::ValueTree capturePresetTree();
+  // A save landed: it is the active preset, and host program displays move.
+  juce::var presetSaved(const PresetManager::Info& info);
+  // The file behind the active preset (invalid with none, or when gone).
+  juce::File activePresetFile() const;
+  // A Library edit moved `from` (a preset file, or a folder holding one) to
+  // `to`: re-point the active preset when `activeFile` (its file before the
+  // edit) lived there, with the id its new place gives it. An invalid `to`
+  // means it is gone: the active preset is cleared, the chain kept.
+  void relinkActivePreset(const juce::File& activeFile, const juce::File& from, const juce::File& to);
+  // Host program names/numbers follow the user folder's list; refresh them
+  // when an edit touched it.
+  void libraryTouched(std::initializer_list<juce::File> files);
 
   PresetManager presetManager;
+  LocalLibrary library{presetManager};
+  // Scans the Library once in the background when the plugin loads (the
+  // location from the editor's prefs), so the first drawer open finds the
+  // listing cache warm. Joined (the scan cancelled) on destruction.
+  void prewarmLibrary();
+  std::thread libraryPrewarm;
+  // Guards `library`'s location against getLibrary's off-thread copy.
+  mutable juce::CriticalSection libraryLock;
   // Shown in the preset pill; guarded by chainMutex (written on the message
   // thread, read by getChainState).
   juce::String activePresetId;
@@ -1069,6 +1216,15 @@ private:
   
   // Thread pool for background model loading
   juce::ThreadPool loadingThreadPool;
+  // Library downloads (Download All Captures), one at a time. A finished
+  // one reports back on the message thread only while `downloadsAlive`
+  // (cleared first thing in the destructor), so a late result never
+  // touches a deleted instance.
+  juce::ThreadPool libraryDownloads{1};
+  std::shared_ptr<std::atomic<bool>> downloadsAlive = std::make_shared<std::atomic<bool>>(true);
+  // `bytes` as a capture file in the Library (see libraryKeepModel).
+  juce::File libraryWriteCapture(const juce::File& folder, const std::vector<uint8_t>& bytes, bool ir,
+                                 const juce::String& name);
 
   int maxBlockSize = 0;
   bool eqParamsDirty = true;

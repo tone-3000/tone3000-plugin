@@ -29,6 +29,8 @@ $UI --scenario main-mono [--live]            # interactive window on one scenari
 $UI --capture out [--ref beforeDir] [filter…] # 2x PNG per scenario (+ diff table against an earlier run); fails on unnamed Tab stops
 $UI --compare before.png after.png [diff.png] # one pair
 $UI --selftest                               # unit tests: pure logic + the focus policy in a real window
+$UI --selftest --fail-fast "Library kept" Hint   # just those groups, in that order; stop at the first failure
+$UI --selftest --no-pointer                  # skip the groups that need the window's focus (you're using the machine)
 $UI --bench [--seconds 10] [--json out.json] [phase…]   # CPU / memory under load (--list for the phases)
 ```
 
@@ -104,7 +106,8 @@ plugin/ui/
                       resampled once at device density), Wheel
   model/              juce::var → structs: ChainState, Tone, AudioDeviceState,
                       MidiMapState (VarReader); ToneQuery (the browser's
-                      filters → the API query string)
+                      filters → the API query string); Library (the tree
+                      and its row/filter logic)
   backend/            ui::Backend (everything the UI asks of the processor)
                       and ProcessorBackend over TONE3000Processor
   services/           Services (one bundle per editor) and its members
@@ -114,7 +117,7 @@ plugin/ui/
                       MidiMapStore, UiPrefs, HintBus, Toast, Banners,
                       ParamBinding, AutoMeasure, SpectrumFeed, TunerFeed,
                       ModelLoads, LocalFiles, ImageLoader, ConnectionGate,
-                      UpdateCheck, ToneLoadFlow, Zoom, Pointer (touch or
+                      UpdateCheck, ToneLoadFlow, LibraryStore, Zoom, Pointer (touch or
                       mouse, read off the input at run time); the TONE3000 stack:
                       HttpClient, OAuth (PKCE), LoopbackServer,
                       Tone3000Client, ToneSession / Tone3000Session
@@ -130,6 +133,7 @@ plugin/ui/
                       SignInScreen, …
     gallery/          ChainView, GalleryLane, ToneTile, AddTile, StereoPanRail
     block/            BlockDetail, BlockCard, BlockInfoPanel, BlockEqView
+    library/          LibraryDrawer (the Library side drawer; ../docs/library.md)
     browser/          ToneBrowser (the Select tone takeover: search + FilterBar over
                       the card grid, Paginator pinned under it), FilterBar /
                       FilterChip / FilterMenu, ToneCard, Paginator, BrowserPrompt

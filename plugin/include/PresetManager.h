@@ -59,6 +59,14 @@
  * file (new saves, first run) fall back to name order after the ordered
  * ones. List order is user-facing truth: the browser, prev/next stepping
  * and MIDI program-change numbers all follow it.
+ *
+ * Library folders (Library.h). Presets can also live in folders outside the
+ * flat list: subfolders of the user folder and the Library's own folders.
+ * They have no place in the list (program changes and the preset browser
+ * never see them) and are addressed by path, "file:<absolute path>", so a
+ * preset loaded from a Library folder is still an ordinary active preset.
+ * listFolder() lists one such folder for the Library and for folder-scoped
+ * prev/next stepping.
  */
 class PresetManager {
 public:
@@ -68,8 +76,19 @@ public:
     bool factory{false};
   };
 
+  // One preset in a folder listing: its Info plus the file behind it.
+  struct FolderEntry {
+    Info info;
+    juce::File file;
+  };
+
   static constexpr const char* kFileExtension = t3k::presetfile::kExtension;
   static constexpr const char* kPresetTag = t3k::presetfile::kTag;
+  static constexpr const char* kFilePrefix = "file:";
+
+  /** The path-addressed id of a preset file outside the list. */
+  static juce::String fileId(const juce::File& file) { return kFilePrefix + file.getFullPathName(); }
+  static bool isFileId(const juce::String& id) { return id.startsWith(kFilePrefix); }
 
   PresetManager();
 
@@ -112,6 +131,27 @@ public:
       global order can't disagree. Persists the whole current order. */
   bool move(const juce::String& id, int delta) const;
 
+  /** The presets directly inside `dir`. The user folder itself lists as
+      list()'s user section (same "user:" ids, same custom order), so the
+      Library's Presets folder and the preset browser agree on what is
+      active; any other folder lists in natural name order ("2" before
+      "10", so a numbered setlist reads in order) with "file:" ids. */
+  std::vector<FolderEntry> listFolder(const juce::File& dir) const;
+
+  /** The file behind any id ("user:", "factory:" or "file:"), or an
+      invalid File when it is gone. */
+  juce::File fileForId(const juce::String& id) const;
+
+  /** Save into a Library folder, with the same rules as save(): a preset
+      of the same name in `dir` is overwritten in place (keeping its id),
+      otherwise a new file named after the preset. Returns the preset's
+      "file:" id (or save()'s result when `dir` is the user folder). */
+  Info saveInFolder(const juce::File& dir, const juce::String& name, juce::ValueTree preset) const;
+
+  /** Rename a preset file outside the list: the name inside and the file
+      name both change. Returns the moved file, or an invalid File. */
+  juce::File renameFile(const juce::File& file, const juce::String& newName) const;
+
   /** presetfile::sanitizeStem, kept here for callers/tests of the store. */
   static juce::String sanitizeFileStem(const juce::String& name) {
     return t3k::presetfile::sanitizeStem(name);
@@ -133,15 +173,13 @@ private:
     std::set<juce::String> seen;
     int parsed{0};
   };
-  /** One directory's presets, name-sorted. Ids/names come from the cache
+  struct Cached;
+  /** One directory's presets, name-sorted. Ids/names come from `fileCache`
       when the file is unchanged. Caller holds cacheLock. */
   std::vector<Entry> scanDir(const juce::File& dir, const char* prefix, bool factory,
-                             ScanState& state) const;
+                             ScanState& state, std::map<juce::String, Cached>& fileCache) const;
   /** The merged, section-ordered list with file paths (list() minus paths). */
   std::vector<Entry> entries() const;
-  /** The file behind an id, or an invalid File. User Factory beats system
-      Factory for the same factory id. */
-  juce::File fileForId(const juce::String& id) const;
   /** Write `preset` for a user preset whose canonical filename is
       sanitizeStem(name): in place when `current` already has that stem,
       otherwise to a fresh unique file with `current` removed after the
@@ -167,6 +205,9 @@ private:
   };
   mutable juce::CriticalSection cacheLock;
   mutable std::map<juce::String, Cached> cache;  // full path -> entry
+  // listFolder()'s files, kept apart so the list scan's pruning never drops
+  // them (and the other way round). Pruned per folder as it is rescanned.
+  mutable std::map<juce::String, Cached> folderCache;
 
   juce::File userDir;
   juce::File factoryDir;        // user-local Factory/ (user overrides; the Linux tarball installs here)

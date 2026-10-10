@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include "views/gallery/GalleryGeometry.h"
 #include "core/CustomIcons.h"
 #include "core/Icons.h"
 #include "core/KnobScale.h"
@@ -21,6 +22,13 @@ constexpr int kImageRadius = 8;
 constexpr int kRailMeterLength = 160;
 constexpr int kRailGap = 12;
 constexpr int kNormalizeGap = 10;
+// Source / Kept above Keep.
+constexpr int kKeepLinkGap = 6;
+// KEEP's menu arrow (a TONE3000 tone), just right of it.
+constexpr int kKeepMoreWidth = 18;
+constexpr int kKeepMoreGap = 3;
+// The picture button on the image's corner.
+constexpr int kPictureButton = 28;
 constexpr int kInfoBottomPad = 24;
 constexpr int kEqPillPadX = 12, kEqPillPadY = 4, kEqPillGap = 16;
 constexpr int kSelectHeight = 36;
@@ -83,6 +91,7 @@ BlockCard::BlockCard(Services& services, const ChainItem& block, bool namDownstr
   calibrateInput_.onChange = [this] { syncHeader(); };
   services_.session.addListener(this);
   services_.prefs.addListener(this);
+  services_.library.addKeepListener(this);
 
   // Optimistic control values start from the block; native converges.
   enabled_ = block_.params.enabled;
@@ -94,13 +103,22 @@ BlockCard::BlockCard(Services& services, const ChainItem& block, bool namDownstr
 
   // Expand: orphan nothing yet, fetch the latest tone in the background
   // (metadata re-sync + info pre-warm).
-  if (!isLocal() && authenticated()) fetchInfo(/*background=*/true);
+  keptToneId_ = keptToneIdNow();
+  if (siteToneId() > 0 && authenticated()) fetchInfo(/*background=*/true);
   fetchModels();
 
   setSize(kWidth, kHeight);
+  // Which controls show (Normalize, Keep) is the body view's call; a fresh
+  // card must make it too, or they only appeared after an EQ / info toggle
+  // or a setting change.
+  setBodyView();
 }
 
 BlockCard::~BlockCard() {
+  if (keptMenu_ != nullptr) keptMenu_->close();  // it lives on the overlay layer
+  if (keepMenu_ != nullptr) keepMenu_->close();
+  if (pictureMenu_ != nullptr) pictureMenu_->close();
+  services_.library.removeKeepListener(this);
   services_.prefs.removeListener(this);
   services_.session.removeListener(this);
 }
@@ -158,6 +176,8 @@ void BlockCard::buildHeader() {
   addChildComponent(info_);
   share_.onClick = [this] { share(); };
   addChildComponent(share_);
+  reveal_.onClick = [this] { services_.library.showBlock(block_.blockId); };
+  addChildComponent(reveal_);
   swap_.onClick = [this] {
     if (onSwap) onSwap();
   };
@@ -183,7 +203,7 @@ void BlockCard::buildBody() {
     syncFromBlock();
   };
   normalizeWrap_.addAndMakeVisible(normalize_);
-  normalizeWrap_.setSize(theme::kIconBoxSize, theme::kIconBoxSize);
+  normalizeWrap_.setSize(normalize_.getWidth(), normalize_.getHeight());
   body_.addChildComponent(normalizeWrap_);
 
   image_.setCornerRadius(kImageRadius);
@@ -192,6 +212,8 @@ void BlockCard::buildBody() {
   retry_.onRetry = [this] { services_.modelLoads.retry(block_.blockId); };
   imageFrame_.addChildComponent(retry_);
   body_.addAndMakeVisible(imageFrame_);
+  picture_.onClick = [this] { pictureClicked(); };
+  imageFrame_.addChildComponent(picture_);
 
   meta_.onToggleFavorite = [this] { toggleFavorite(); };
   meta_.onHeightChanged = [this] { setSize(kWidth, preferredHeight()); };
@@ -203,20 +225,54 @@ void BlockCard::buildBody() {
   body_.addAndMakeVisible(meta_);
 
   select_.onChange = [this](const juce::String& id) { switchModel(id); };
+  select_.onTyped = [this](int position, int count) {
+    services_.toast.show(juce::String(position) + " / " + juce::String(count), Toast::Style::quiet);
+  };
+  setWantsKeyboardFocus(true);  // given by a click (mouseDown): numbers, A/B
+  setTitle("Block");             // a Tab stop now: its screen-reader name
+  addMouseListener(this, true);
   // Opening retries a failed list fetch, so a transient failure never sticks.
   select_.onOpen = [this] {
     if (!modelsLoading_ && models_.empty()) fetchModels();
   };
   selectWrap_.addAndMakeVisible(select_);
   body_.addAndMakeVisible(selectWrap_);
+  // Into the keep folder; with none, the Library asks where.
+  keep_.onClick = [this] { services_.library.keepAs(block_.blockId, LibraryStore::AddKind::keep); };
+  body_.addChildComponent(keep_);
+  keepMore_.setSize(kKeepMoreWidth, keep_.getHeight());
+  keepMore_.onClick = [this] { openKeepMenu(); };
+  body_.addChildComponent(keepMore_);
+  original_.onClick = [this] { services_.library.openOriginal(block_.blockId); };
+  kept_.onClick = [this] { openKeptMenu(); };
+  refresh_.onClick = [this] { services_.library.refreshBlock(block_.blockId); };
+  body_.addChildComponent(original_);
+  body_.addChildComponent(kept_);
+  body_.addChildComponent(refresh_);
 
   body_.addChildComponent(infoBusy_);
 }
 
 // Sync from native
 void BlockCard::setBlock(const ChainItem& block, bool namDownstream) {
-  const bool toneChanged = block.tone.id != block_.tone.id || block.tone.local != block_.tone.local;
+  // Opened on a block (a tile clicked): the keyboard comes here (numbers,
+  // A/B), unless something is being typed into (the Library's search).
+  if (block.blockId != keyboardFor_) {
+    keyboardFor_ = block.blockId;
+    juce::MessageManager::callAsync([safe = juce::Component::SafePointer<BlockCard>(this)] {
+      if (safe == nullptr || !safe->isShowing()) return;
+      if (dynamic_cast<juce::TextInputTarget*>(juce::Component::getCurrentlyFocusedComponent()) != nullptr) return;
+      safe->grabKeyboardFocus();
+    });
+  }
+  const int previousToneId = block_.tone.id;
+  const bool previousLocal = block_.tone.local;
+  const int keptBefore = keptToneId_;
   block_ = block;
+  keptToneId_ = keptToneIdNow();
+  // A switch within a folder of captures kept from one tone is no change.
+  const bool toneChanged = block.tone.id != previousToneId || block.tone.local != previousLocal ||
+                           keptToneId_ != keptBefore;
   namDownstream_ = namDownstream;
 
   // Params can change from outside (undo/redo, another editor window).
@@ -241,10 +297,120 @@ void BlockCard::setBlock(const ChainItem& block, bool namDownstream) {
     switchingModel_ = false;
     // With the info panel already open (swap from the detail view) the fetch
     // runs foreground so its loading / error UI behaves as before.
-    if (!isLocal() && authenticated()) fetchInfo(/*background=*/!showInfo_);
+    if (siteToneId() > 0 && authenticated()) fetchInfo(/*background=*/!showInfo_);
+    syncHeader();
     fetchModels();
   }
   syncFromBlock();
+  syncKeepLinks();
+}
+
+// One of Source / Kept (a kept copy that was kept again elsewhere goes
+// back first), only where Keep shows.
+void BlockCard::syncKeepLinks() {
+  const bool tone = keep_.isVisible();
+  const bool original = tone && services_.library.hasOriginal(block_.blockId);
+  const bool kept = tone && !original && !services_.library.keptCopies(block_.blockId).isEmpty();
+  const bool more = tone && siteToneId() > 0;  // KEEP's menu: TONE3000 tones (and captures kept from one)
+  const int fresh = tone ? services_.library.newInFolder(block_.blockId) : 0;
+  if (fresh > 0)
+    refresh_.setHelpText("Refresh: add the " + juce::String(fresh) + (fresh == 1 ? " capture" : " captures") +
+                         " new in this block's folder.");
+  if (original == original_.isVisible() && kept == kept_.isVisible() && more == keepMore_.isVisible() &&
+      (fresh > 0) == refresh_.isVisible())
+    return;
+  original_.setVisible(original);
+  kept_.setVisible(kept);
+  keepMore_.setVisible(more);
+  refresh_.setVisible(fresh > 0);
+  resized();
+}
+
+// Picture
+
+BlockCard::PictureButton::PictureButton() {
+  setHelpText(help::text(help::Key::libraryCardPicture));
+  setTitle("Picture");
+  setMouseCursor(juce::MouseCursor::PointingHandCursor);
+}
+
+void BlockCard::PictureButton::paintButton(juce::Graphics& g, bool over, bool) {
+  const auto box = getLocalBounds().toFloat();
+  g.setColour(theme::kBlack.withAlpha(over ? 0.8f : 0.6f));
+  g.fillEllipse(box);
+  Icons::draw(g, Icon::Image, box.reduced(box.getWidth() * 0.25f), over ? theme::kWhite : theme::kWhite.withAlpha(0.85f));
+}
+
+void BlockCard::pictureClicked() {
+  auto& library = services_.library;
+  const auto folder = library.pictureFolderFor(block_.blockId);
+  if (folder.isEmpty()) return;
+  if (library.pictureFor(folder) == juce::File()) return library.choosePicture(folder);
+  if (auto* old = pictureMenu_.release()) {
+    old->close();
+    juce::MessageManager::callAsync([old] { delete old; });
+  }
+  pictureMenu_ = std::make_unique<ContextMenu>(std::vector<ContextMenu::Item>{
+      {"Change Picture...", Icon::Image, help::Key::librarySetPicture, [this, folder] { services_.library.choosePicture(folder); }},
+      {"Remove Picture", Icon::X, help::Key::libraryRemovePicture, [this, folder] { services_.library.removePicture(folder); }},
+  });
+  pictureMenu_->openAtPoint(picture_, {0, picture_.getHeight()});
+}
+
+// The loading look (dimmed artwork, spinner) after a short grace, so a quick
+// switch (a local capture) leaves the picture as it is.
+void BlockCard::syncBusy() {
+  const bool busy = busyGrace_.shown(modelBusy(), [this] { syncBusy(); }) || block_.loadFailed;
+  image_.setAlpha(busy ? kImageBusyOpacity : 1.0f);
+  loading_.setVisible(busy && !block_.loadFailed);
+  retry_.setVisible(block_.loadFailed);
+}
+
+int BlockCard::keptToneIdNow() {
+  if (!isLocal()) return 0;
+  const auto site = services_.library.siteOriginalForBlock(block_.blockId);
+  return site ? site->toneId : 0;
+}
+
+// KEEP's menu (a TONE3000 tone): the capture, as KEEP does, or the whole
+// tone, as a reference or downloaded.
+void BlockCard::openKeepMenu() {
+  auto& library = services_.library;
+  const auto id = block_.blockId;
+  std::vector<ContextMenu::Item> items;
+  using Kind = LibraryStore::AddKind;
+  items.push_back({"Keep Capture", Icon::Download, help::Key::libraryKeepCapture,
+                   [&library, id] { library.keepAs(id, Kind::keep); }});
+  items.push_back({"Keep as Reference", Icon::Link, help::Key::libraryKeepTone,
+                   [&library, id] { library.keepAs(id, Kind::keepLink); }});
+  items.push_back({"Download All Captures", Icon::FolderPlus, help::Key::libraryDownloadTone,
+                   [&library, id] { library.keepAs(id, Kind::download); }, library.downloading()});
+  if (auto* old = keepMenu_.release()) {
+    old->close();
+    juce::MessageManager::callAsync([old] { delete old; });
+  }
+  keepMenu_ = std::make_unique<ContextMenu>(std::move(items));
+  keepMenu_->openAtPoint(keepMore_, {0, keepMore_.getHeight()});
+}
+
+void BlockCard::openKeptMenu() {
+  auto& library = services_.library;
+  const auto copies = library.keptCopies(block_.blockId);
+  if (copies.isEmpty()) return syncKeepLinks();
+  if (copies.size() == 1) return library.openKept(block_.blockId, copies.getFirst());
+  std::vector<ContextMenu::Item> items;
+  for (const auto& copy : copies) {
+    const auto folder = copy.getParentDirectory();
+    items.push_back({folder.getFileName(), Icon::FolderOpen, help::Key::libraryKept,
+                     [this, copy] { services_.library.openKept(block_.blockId, copy); }, false,
+                     copy.getFileName() + juce::String::fromUTF8(" \xc2\xb7 in ") + folder.getFullPathName()});
+  }
+  if (auto* old = keptMenu_.release()) {
+    old->close();
+    juce::MessageManager::callAsync([old] { delete old; });
+  }
+  keptMenu_ = std::make_unique<ContextMenu>(std::move(items));
+  keptMenu_->openAtPoint(kept_, {0, kept_.getHeight()});
 }
 
 void BlockCard::syncFromBlock() {
@@ -268,17 +434,15 @@ void BlockCard::syncFromBlock() {
   }
 
   const bool overridden = normalizeOverridden();
-  normalize_.setOn(normalizeOn_ && !overridden);
+  normalize_.setArmed(normalizeOn_ && !overridden);
   normalize_.setEnabled(!overridden);
   normalize_.setInterceptsMouseClicks(!overridden, false);
   normalizeWrap_.setHelpText(help::text(overridden ? help::Key::blockNormalizeOverridden : help::Key::blockNormalize));
   normalizeWrap_.setMouseCursor(juce::MouseCursor::NormalCursor);
 
   image_.setTone(block_.tone.image, block_.tone.gear, block_.tone.local);
-  const bool busy = modelBusy() || block_.loadFailed;
-  image_.setAlpha(busy ? kImageBusyOpacity : 1.0f);
-  loading_.setVisible(busy && !block_.loadFailed);
-  retry_.setVisible(block_.loadFailed);
+  syncPicture();
+  syncBusy();
 
   if (eqEditor_) {
     eqEditor_->setBands(block_.params.eq.bands);
@@ -343,20 +507,36 @@ void BlockCard::syncHeader() {
   eqView_->select(eqViewMode_ == BlockEqView::View::sliders ? 0 : 1);
   for (auto* c : std::initializer_list<juce::Component*>{&eqPower_, &preGroup_, eqView_.get()}) c->setVisible(showEq_);
 
-  info_.setVisible(!isLocal());
+  info_.setVisible(siteToneId() > 0);
   info_.setOpen(showInfo_);
-  share_.setVisible(!isLocal());
+  share_.setVisible(siteToneId() > 0);
+  reveal_.setVisible(services_.library.canShow(block_.blockId));
   layoutHeader(getLocalBounds().reduced(1).removeFromTop(kHeaderHeight));
 }
 
+ToneSummary BlockCard::shownTone() const {
+  auto tone = block_.tone;
+  if (!isLocal() || keptToneId_ <= 0 || !infoTone_ || infoTone_->id != keptToneId_) return tone;
+  // Kept from a TONE3000 tone: its stats, as on the tone's own card.
+  tone.local = false;
+  tone.publishedAt = infoTone_->publishedAt;
+  tone.downloadsCount = infoTone_->downloadsCount;
+  tone.favoritesCount = infoTone_->favoritesCount;
+  tone.modelsCount = infoTone_->modelsCount;
+  tone.a2ModelsCount = infoTone_->a2ModelsCount;
+  if (tone.url.isEmpty()) tone.url = infoTone_->url;
+  return tone;
+}
+
 void BlockCard::syncMeta() {
-  meta_.setTone(block_.tone);
+  const auto shown = shownTone();
+  meta_.setTone(shown);
   ToneMeta::Counts counts;
-  counts.downloads = block_.tone.downloadsCount;
+  counts.downloads = shown.downloadsCount;
   counts.favorites = favoritesCount();
   counts.favorited = favorited();
-  counts.models = block_.tone.catalogModelCount();
-  counts.favoriteToggle = authenticated();
+  counts.models = shown.catalogModelCount();
+  counts.favoriteToggle = authenticated() && siteToneId() > 0;
   meta_.setCounts(counts);
 
   BlockInfoPanel::State state;
@@ -400,8 +580,16 @@ void BlockCard::sessionChanged() {
   syncModelSelect();
 }
 
+void BlockCard::keepChanged() { setBodyView(); }
+
 void BlockCard::prefChanged(const juce::String& key) {
-  if (key == UiPrefs::kShowBlockSizeControl || key == UiPrefs::kShowBlockNormalizeControl) syncFromBlock();
+  if (key == UiPrefs::kShowBlockSizeControl || key == UiPrefs::kShowBlockNormalizeControl) {
+    syncFromBlock();
+    // Which controls show is the body view's call (the normalize button
+    // lives there): without this an open card kept the old set until it was
+    // rebuilt, so turning the setting on showed nothing.
+    setBodyView();
+  }
 }
 
 // Derived state
@@ -421,13 +609,13 @@ bool BlockCard::favorited() const {
 int BlockCard::favoritesCount() const {
   if (favoriteOverride_) return favoriteOverride_->count;
   if (infoTone_) return infoTone_->favoritesCount;
-  return block_.tone.favoritesCount;
+  return shownTone().favoritesCount;
 }
 
 juce::String BlockCard::tonePageUrl() const {
   if (infoTone_ && infoTone_->url.isNotEmpty()) return infoTone_->url;
   if (block_.tone.url.isNotEmpty()) return block_.tone.url;
-  return juce::String(config::kApiOrigin) + "/tones/" + juce::String(block_.tone.id);
+  return juce::String(config::kApiOrigin) + "/tones/" + juce::String(siteToneId());
 }
 
 // Views
@@ -450,7 +638,7 @@ void BlockCard::setShowInfo(bool show) {
   if (show) {
     showEq_ = false;
     showInfo_ = true;
-    if (authenticated() && (!infoTone_ || infoTone_->id != block_.tone.id)) fetchInfo(/*background=*/false);
+    if (authenticated() && (!infoTone_ || infoTone_->id != siteToneId())) fetchInfo(/*background=*/false);
   } else {
     showInfo_ = false;
   }
@@ -458,13 +646,30 @@ void BlockCard::setShowInfo(bool show) {
   if (onInfoVisible) onInfoVisible(showInfo_);
 }
 
+// The picture button: the tone view's artwork only (the info view shows a
+// smaller image it isn't laid out for), and not on a capture kept from a
+// TONE3000 tone (it wears the tone's artwork).
+void BlockCard::syncPicture() {
+  picture_.setVisible(LibraryStore::canReveal() && keptToneId_ == 0 && body() == Body::tone &&
+                      services_.library.pictureFolderFor(block_.blockId).isNotEmpty());
+}
+
 void BlockCard::setBodyView() {
   const auto view = body();
+  syncPicture();
   if (eqEditor_) eqEditor_->setVisible(view == Body::eq);
   for (auto* c : std::initializer_list<juce::Component*>{&inMeter_, &outMeter_, &in_, &out_, &mix_, &selectWrap_})
     c->setVisible(view == Body::tone);
   normalizeWrap_.setVisible(view == Body::tone && isNam() &&
                             services_.prefs.getBool(UiPrefs::kShowBlockNormalizeControl, false));
+  const auto keeping = services_.library.keepTargetName();
+  keep_.setVisible(view == Body::tone);
+  keep_.setArmed(keeping.isNotEmpty());
+  keep_.setHelpText(keeping.isNotEmpty()
+                        ? juce::String::fromUTF8("Keep: save the model this block plays into \xe2\x80\x9c") + keeping +
+                              juce::String::fromUTF8("\xe2\x80\x9d.")
+                        : help::text(help::Key::libraryKeep));
+  syncKeepLinks();
   imageFrame_.setVisible(view != Body::eq);
   meta_.setVisible(view != Body::eq);
   syncHeader();
@@ -515,7 +720,7 @@ void BlockCard::layoutHeader(juce::Rectangle<int> header) {
   // Right cluster, laid right to left; EQ stays rightmost in its pill so
   // opening grows left only.
   int right = row.getRight();
-  for (auto* b : std::initializer_list<juce::Component*>{&remove_, &swap_, &share_, &info_}) {
+  for (auto* b : std::initializer_list<juce::Component*>{&remove_, &swap_, &share_, &info_, &reveal_}) {
     if (!b->isVisible()) continue;
     centreAt(*b, right - b->getWidth());
     right -= b->getWidth() + kHeaderGap;
@@ -555,15 +760,14 @@ void BlockCard::layoutToneBody(juce::Rectangle<int> body) {
   // Out rail (right-aligned): the meter stays over the Out knob whether or
   // not the normalize button widens the bottom row to its left.
   const bool normalize = normalizeWrap_.isVisible();
-  const int outRailW = knobW + (normalize ? theme::kIconBoxSize + kNormalizeGap : 0);
+  const int outRailW = knobW + (normalize ? normalizeWrap_.getWidth() + kNormalizeGap : 0);
   const int outX = content.getRight() - outRailW;
   pinBottom(out_, content.getRight() - knobW, knobW, bottom);
   meterSlot = juce::Rectangle<int>(content.getRight() - knobW, content.getY(), knobW, out_.getY() - kRailGap - content.getY());
   outMeter_.setCentrePosition(meterSlot.getCentre());
   if (normalize) {
-    // Bottom-aligned with the knob, nudged up to centre on the knob face.
-    const int nudge = (knobW - theme::kIconBoxSize) / 2;
-    normalizeWrap_.setTopLeftPosition(outX, bottom - theme::kIconBoxSize - nudge);
+    // Centred on the knob face.
+    normalizeWrap_.setTopLeftPosition(outX, bottom - knobW / 2 - normalizeWrap_.getHeight() / 2);
     normalize_.setTopLeftPosition(0, 0);
   }
 
@@ -574,8 +778,24 @@ void BlockCard::layoutToneBody(juce::Rectangle<int> body) {
   // Centre column: artwork + meta on top, the picker spanning the bottom.
   const int centreX = x + knobW + kBodyGap;
   const int centreW = mixX - kBodyGap - centreX;
-  selectWrap_.setBounds(centreX, bottom - kSelectHeight, centreW, kSelectHeight);
+  // Keep takes the end of the picker row.
+  const int keepW = keep_.isVisible() ? keep_.getWidth() + kNormalizeGap +
+                                            (keepMore_.isVisible() ? keepMore_.getWidth() + kKeepMoreGap : 0)
+                                      : 0;
+  selectWrap_.setBounds(centreX, bottom - kSelectHeight, centreW - keepW, kSelectHeight);
   select_.setBounds(selectWrap_.getLocalBounds());
+  if (keep_.isVisible())
+    keep_.setTopLeftPosition(selectWrap_.getRight() + kNormalizeGap,
+                             selectWrap_.getY() + (kSelectHeight - keep_.getHeight()) / 2);
+  if (keepMore_.isVisible()) keepMore_.setTopLeftPosition(keep_.getRight() + kKeepMoreGap, keep_.getY());
+  const int linkY = keep_.getY() - kKeepLinkGap;
+  if (original_.isVisible()) original_.setTopLeftPosition(keep_.getX(), linkY - original_.getHeight());
+  if (kept_.isVisible()) kept_.setTopLeftPosition(keep_.getRight() - kept_.getWidth(), linkY - kept_.getHeight());
+  // Refresh above those (or where they'd be).
+  const int linksTop = original_.isVisible() ? original_.getY() - kKeepLinkGap
+                       : kept_.isVisible()   ? kept_.getY() - kKeepLinkGap
+                                             : linkY;
+  if (refresh_.isVisible()) refresh_.setTopLeftPosition(keep_.getRight() - refresh_.getWidth(), linksTop - refresh_.getHeight());
 
   const int metaX = centreX + kImageSize + kBodyGap;
   const int metaW = centreW - kImageSize - kBodyGap;
@@ -584,6 +804,8 @@ void BlockCard::layoutToneBody(juce::Rectangle<int> body) {
   imageFrame_.setBounds(centreX, content.getY() + (rowH - kImageSize) / 2, kImageSize, kImageSize);
   meta_.setBounds(metaX, content.getY() + (rowH - metaH) / 2, metaW, metaH);
   image_.setBounds(imageFrame_.getLocalBounds());
+  picture_.setBounds(imageFrame_.getWidth() - kPictureButton - 8, imageFrame_.getHeight() - kPictureButton - 8,
+                     kPictureButton, kPictureButton);
   loading_.setCentrePosition(imageFrame_.getLocalBounds().getCentre());
   retry_.setCentrePosition(imageFrame_.getLocalBounds().getCentre());
 }
@@ -622,6 +844,49 @@ void BlockCard::paintOverChildren(juce::Graphics& g) {
   g.setColour(theme::kBlack);
   g.fillPath(outside);
   paint::border(g, r, kRadius, theme::kBorder);
+  // A drag hovering: the tiles' file-drop outline.
+  if (dropArmed_) paint::dashedBorder(g, r.reduced(1), kRadius, gallery::kFileDropBorder, 2.0f);
+}
+
+// Drops (see the header)
+void BlockCard::setDropArmed(bool armed) {
+  if (dropArmed_ == armed) return;
+  dropArmed_ = armed;
+  repaint();
+}
+
+bool BlockCard::isInterestedInDragSource(const SourceDetails& details) {
+  const auto path = details.description.getProperty(LibraryStore::kDragKey, {}).toString();
+  const auto* node = services_.library.tree().find(path);
+  // Into this block: a capture, a tone, a captures folder. Not a preset (it
+  // replaces the whole chain; the preset bar and the drawer load those).
+  return node != nullptr && node->kind != LibraryNode::Kind::preset && (!node->isContainer() || node->loadsAsBlock());
+}
+
+void BlockCard::itemDropped(const SourceDetails& details) {
+  setDropArmed(false);
+  const auto path = details.description.getProperty(LibraryStore::kDragKey, {}).toString();
+  // Posted: the swap re-syncs this card.
+  juce::MessageManager::callAsync([self = juce::Component::SafePointer<BlockCard>(this), path] {
+    if (self == nullptr) return;
+    auto& library = self->services_.library;
+    if (const auto* node = library.tree().find(path)) library.use(*node, self->block_.blockId);
+  });
+}
+
+bool BlockCard::isInterestedInFileDrag(const juce::StringArray& files) {
+  for (const auto& path : files) {
+    const juce::File file(path);
+    if (file.isDirectory() || file.hasFileExtension(".nam;.wav")) return true;
+  }
+  return false;
+}
+
+void BlockCard::filesDropped(const juce::StringArray& files, int, int) {
+  setDropArmed(false);
+  juce::MessageManager::callAsync([self = juce::Component::SafePointer<BlockCard>(this), files] {
+    if (self != nullptr) self->services_.localFiles.drop(self->block_.blockId, files);
+  });
 }
 
 // TONE3000
@@ -633,7 +898,8 @@ void BlockCard::fetchInfo(bool background) {
     syncMeta();
     setSize(kWidth, preferredHeight());
   }
-  const int toneId = block_.tone.id;
+  const int toneId = siteToneId();
+  if (toneId <= 0) return;
   services_.session.getTone(
       toneId, infoScope_.wrap([this, background](Result<Tone> result) {
         if (!background) infoLoading_ = false;
@@ -642,7 +908,8 @@ void BlockCard::fetchInfo(bool background) {
           if (!favoriteBusy_) {
             infoTone_ = *result;
             // Best-effort: native no-ops when nothing changed server-side.
-            services_.chain.refreshToneMetadata(juce::JSON::toString(infoTone_->raw, true));
+            // Not onto a kept copy: it is a file of its own.
+            if (!isLocal()) services_.chain.refreshToneMetadata(juce::JSON::toString(infoTone_->raw, true));
           }
         } else if (background) {
           // Silent by design (offline, API down, tone deleted): the cached
@@ -684,12 +951,13 @@ void BlockCard::toggleFavorite() {
   favoriteBusy_ = true;
   syncMeta();
 
-  const int toneId = block_.tone.id;
+  const int toneId = siteToneId();
+  if (toneId <= 0) return;
   auto finish = favoriteScope_.wrap([this, next, nextCount](Result<Tone> base) {
     favoriteBusy_ = false;
     if (base) {
       infoTone_ = base->withFavorite(next, nextCount);
-      services_.chain.refreshToneMetadata(juce::JSON::toString(infoTone_->raw, true));
+      if (!isLocal()) services_.chain.refreshToneMetadata(juce::JSON::toString(infoTone_->raw, true));
     } else {
       juce::Logger::writeToLog("Failed to update favorite: " + base.error);
       favoriteOverride_.reset();
@@ -707,6 +975,58 @@ void BlockCard::toggleFavorite() {
         else
           services_.session.getTone(toneId, finish);
       }));
+}
+
+void BlockCard::mouseDown(const juce::MouseEvent&) {
+  // A click anywhere on the card gives it the keyboard (numbers, A/B), unless
+  // what was clicked took it for itself (a text field, the model picker:
+  // they run first, and a key they don't use still comes up to the card).
+  if (auto* focused = getCurrentlyFocusedComponent(); focused != nullptr && isParentOf(focused)) return;
+  grabKeyboardFocus();
+}
+
+bool BlockCard::blockKey(const juce::KeyPress& key) {
+  if (key.getModifiers().isCommandDown() || key.getModifiers().isAltDown() || key.getModifiers().isCtrlDown())
+    return false;
+  const auto c = key.getTextCharacter();
+  if (c == 'a' || c == 'A') {
+    abSwitch();
+    return true;
+  }
+  if (c >= '0' && c <= '9') return select_.keyPressed(key);  // what the picker does with them
+  return false;
+}
+
+bool BlockCard::keyPressed(const juce::KeyPress& key) {
+  if (blockKey(key)) return true;
+  // Left / Right step, once the card itself has the keyboard (elsewhere they
+  // scroll the screen).
+  if (key.isKeyCode(juce::KeyPress::leftKey) || key.isKeyCode(juce::KeyPress::rightKey)) return select_.keyPressed(key);
+  return false;
+}
+
+void BlockCard::abSwitch() {
+  const auto* before = services_.chain.previous(block_.blockId);
+  if (before == nullptr) return;
+  // Another model of the tone it plays: switched as the picker does.
+  if (block_.tone.local && before->tone.local) {
+    juce::String file;
+    for (const auto& m : before->tone.models)
+      if (m.id == before->activeModelId) file = m.sourcePath;
+    for (const auto& m : block_.tone.models)
+      if (file.isNotEmpty() && m.sourcePath == file) {
+        if (m.id != block_.activeModelId) switchModel(juce::String(m.id));
+        return;
+      }
+  } else if (!block_.tone.local && !before->tone.local && before->tone.id == block_.tone.id) {
+    for (const auto& m : models_)
+      if (m.id == before->activeModelId) {
+        switchModel(juce::String(m.id));
+        return;
+      }
+  }
+  // Another folder's capture, another tone: loaded into this block again.
+  services_.library.abSwitch(block_.blockId);
 }
 
 void BlockCard::switchModel(const juce::String& idText) {
@@ -744,9 +1064,7 @@ void BlockCard::switchModel(const juce::String& idText) {
 }
 
 void BlockCard::share() {
-  services_.backend.copyToClipboard(block_.tone.url.isNotEmpty()
-                                        ? block_.tone.url
-                                        : juce::String(config::kApiOrigin) + "/tones/" + juce::String(block_.tone.id));
+  services_.backend.copyToClipboard(tonePageUrl());
   services_.toast.show("Link Copied");
 }
 

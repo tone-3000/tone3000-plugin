@@ -134,8 +134,8 @@ std::map<Key, String> buildTable() {
   t[Key::stereoMode] = U("Stereo: independent Left/Right chains.");
 
   // Presets
-  t[Key::presetPrev] = U("Previous Preset: step back through the list.");
-  t[Key::presetNext] = U("Next Preset: step forward through the list.");
+  t[Key::presetPrev] = U("Previous Preset: step back through the list, or the Library folder the preset came from.");
+  t[Key::presetNext] = U("Next Preset: step forward through the list, or the Library folder the preset came from.");
   t[Key::presetBrowse] = U("Presets: browse factory and user presets.");
   t[Key::presetSave] = U("Save Preset: store the current chain. Same name: overwrite.");
   t[Key::presetNew] = U("New: clear the chain and reset every control to its default.");
@@ -146,6 +146,79 @@ std::map<Key, String> buildTable() {
   t[Key::presetPcToggle] =
       U("MIDI PC: show each preset’s program change number. Prev/Next and PC follow the list order.");
   t[Key::presetPc] = U("PC: the MIDI program change number that loads this preset.");
+
+  // Library drawer
+  t[Key::library] = U("Library: your presets, captures and tones, and the libraries you imported.");
+  t[Key::libraryClose] = U("Close: hide the Library.");
+  t[Key::librarySearch] = U("Search: filter every library by name.");
+  t[Key::libraryMenu] = U("More: link or import folders, import a library file, set the Library folder, missing files.");
+  t[Key::libraryLibrary] = U("Your library: your captures, presets, favorites and linked folders. Right-click for more.");
+  t[Key::librarySite] = U("TONE3000: the factory presets and the captures TONE3000 published.");
+  t[Key::librarySiteCaptures] = U("Captures: tones TONE3000 published. Double-click to try one; drag it into yours to keep it.");
+  t[Key::librarySitePresets] = U("Presets: the factory presets that come with the plugin.");
+  t[Key::libraryLocal] = U("Local: captures made by others, on this computer, and the folders you linked.");
+  t[Key::libraryMoveUp] = U("Move Up: list this library higher. You can also drag it.");
+  t[Key::libraryMoveDown] = U("Move Down: list this library lower. You can also drag it.");
+  t[Key::librarySetPicture] = U("Set Picture: an image for this folder, shown on blocks loaded from it.");
+  t[Key::libraryCardPicture] = U("Picture: set the image for this capture's folder, shown on blocks loaded from it.");
+  t[Key::libraryRemovePicture] = U("Remove Picture: go back to the TONE3000 artwork, if there is any.");
+  t[Key::libraryOtherLibrary] = U("Imported library: read-only. Drag or right-click to copy things into yours.");
+  t[Key::libraryFolder] = U("Folder: click to open \xc2\xb7 drag onto a block to load all its captures \xc2\xb7 right-click: more.");
+  t[Key::libraryPreset] = U("Preset: double-click to load. Prev/Next then step through this folder.");
+  t[Key::libraryTone] = U("TONE3000 tone: double-click to try it in the chain \xc2\xb7 drag onto a slot or block.");
+  t[Key::libraryCapture] = U("Capture: double-click to try it \xc2\xb7 type a number to jump in its folder \xc2\xb7 drag onto a block.");
+  t[Key::libraryAddBlock] = U("Add to Library: save this tone in a Library folder.");
+  t[Key::libraryPickFolder] = U("Choose a folder: click Add here on one of your folders.");
+  t[Key::libraryAddHere] = U("Add here: put the tone in this folder.");
+  t[Key::libraryCancelAdd] = U("Cancel: don\xe2\x80\x99t add the tone.");
+  t[Key::libraryNewFolder] = U("New Folder: make a folder here.");
+  t[Key::librarySaveRig] = U("Save Here: save the current chain as a preset in this folder.");
+  t[Key::libraryRename] = U("Rename: change the name. The file is renamed too.");
+  t[Key::libraryDelete] = U("Delete: move it to the trash.");
+  t[Key::libraryCopyToMine] = U("Copy to Mine: make your own copy that you can change.");
+  t[Key::libraryExport] = U("Export Backup: save everything to a .t3klibrary file. Import it to restore.");
+  t[Key::libraryShare] = U("Export for Sharing: TONE3000 captures go as links. Local-only models are not exported.");
+  t[Key::libraryImport] = U("Import File: add a .t3klibrary file. A newer copy of a library replaces the older one.");
+  t[Key::libraryKeepHere] = U("Keep Here: make this the folder KEEP saves to.");
+  t[Key::libraryMissing] = U("Files the Library uses were moved or deleted outside the plugin.");
+  t[Key::libraryChooseBlock] = U("More than one block plays this: choose the one to replace, or add a new block.");
+  t[Key::libraryShowMissing] = U("Show the missing files: find them, download them again, or forget them.");
+  t[Key::libraryFindMissing] = U("Find: choose the folder the files are in now.");
+  t[Key::libraryDownloadMissing] = U("Download Again: get this capture from TONE3000 again, in the same place.");
+  t[Key::libraryHideMissing] = U("Hide: until more files go missing. The list stays in the ... menu.");
+  t[Key::libraryForgetMissing] = U("Forget: stop looking for files you deleted on purpose.");
+  t[Key::libraryStopKeeping] = U("Stop: KEEP asks for a folder again. What you kept stays.");
+  t[Key::libraryKeeping] = U("Keeping here: KEEP on a block card saves the model it plays into this folder.");
+  t[Key::libraryKeep] = U("Keep: save the model this block plays into your Library.");
+  t[Key::libraryOriginal] = U("Source: load the capture this one was kept from.");
+  t[Key::libraryKept] = U("Kept: load the copy you kept of this capture.");
+  t[Key::libraryRefreshBlock] = U("Refresh: add the captures new in this block's folder.");
+  t[Key::libraryGoOriginal] = U("Go to Source: show the capture this one was kept from.");
+  t[Key::libraryGoKept] = U("Go to Kept: show the copy you kept of this capture.");
+  t[Key::libraryOwnFolder] = U("Put in Own Folder: move this into a new folder named after it.");
+  t[Key::libraryShowBlock] = U("Show in Library: open the Library on the file this block plays.");
+  t[Key::libraryOpenSite] = U("Open on TONE3000: open this tone's page in your browser.");
+  t[Key::libraryKeepMore] = U("More ways to keep this tone: one capture, a reference, or all its captures.");
+  t[Key::libraryKeepCapture] = U("Keep Capture: save the capture this block plays as a file.");
+  t[Key::libraryKeepTone] = U("Keep as Reference: save a small file that plays this tone from TONE3000.");
+  t[Key::libraryDownloadTone] = U("Download All Captures: save every capture of this tone into a new folder.");
+  t[Key::libraryLoadOriginal] = U("Load Source: load the TONE3000 tone this capture came from.");
+  t[Key::libraryLoadFolder] = U("Load as Block: one block with all this folder's captures; switch them in its picker.");
+  t[Key::libraryImportFolder] = U("Import Folder: copy a folder of captures into the Library.");
+  t[Key::libraryChooseRoot] = U("Set Folder: choose where the Library is stored.");
+  t[Key::libraryReveal] = U("Reveal: show it in your file browser.");
+  t[Key::libraryRefresh] = U("Refresh: read the Library folder from disk again.");
+  t[Key::libraryUse] = U("Load: put it in the chain.");
+  t[Key::libraryLink] = U("Link Folder: show a folder from elsewhere in the Library. Nothing is copied.");
+  t[Key::libraryUnlink] = U("Unlink: remove this folder from the Library. Its files are not touched.");
+  t[Key::libraryFavorites] = U("Favorites: your TONE3000 favorites. Drop a tone here to favorite it.");
+  t[Key::libraryFavorite] = U("Favorite: double-click to try it \xc2\xb7 drag into a folder to keep a copy \xc2\xb7 right-click: more.");
+  t[Key::libraryUnfavorite] = U("Unfavorite: remove it from your TONE3000 favorites.");
+  t[Key::libraryAudition] = U("Load: try it in the chain, in place of the block of the same kind.");
+  t[Key::libraryAddNew] = U("Add as Block: add it as a new block at the end of the chain.");
+  t[Key::libraryCapturesRoot] = U("Captures: the captures you made yourself.");
+  t[Key::libraryPresetsRoot] = U("Presets: your rigs. Folders here are setlists: Prev/Next steps through them.");
+  t[Key::libraryLinked] = U("Linked folder: files that stay where they are. Changes here change those files.");
 
   // Tone browser
   t[Key::browserSearch] = U("Search: find tones on TONE3000 by title, gear, tags or creator.");
@@ -190,6 +263,8 @@ std::map<Key, String> buildTable() {
   t[Key::retryLoad] = U("Retry: re-download this model.");
   t[Key::swapTone] = U("Swap: replace this tone, keeping its slot.");
   t[Key::removeBlock] = U("Remove: delete this block.");
+  t[Key::addBefore] = U("Add Before: browse TONE3000 for a block in front of this one (or drop on its left edge).");
+  t[Key::addAfter] = U("Add After: browse TONE3000 for a block right after this one (or drop on its right edge).");
   t[Key::panLeft] = knobDesktop("Pan L", "Left chain, hard left ↔ center.");
   t[Key::panRight] = knobDesktop("Pan R", "Right chain, center ↔ hard right.");
   t[Key::panLink] = U("Link Pans: mirror both pan knobs.");
@@ -278,7 +353,7 @@ const String& text(Key key) {
 String toneTile(const String& title) {
   return kTouch ? title + U(". Tap: open · drag: reorder · touch and hold: menu.")
                 : title + U(". Click: open · drag: reorder · ") + alt("drag") +
-                      ": duplicate · right-click: copy / load file.";
+                      ": duplicate · right-click: copy / load file / add before or after · drop on an edge: add there.";
 }
 
 String bandType(const String& label) { return label + ": band curve shape."; }

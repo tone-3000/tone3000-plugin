@@ -70,6 +70,22 @@ private:
   static constexpr const char* kStandInId = "__duplicate-stand-in__";
 
   void chainChanged(const ChainState& state) override;
+
+  // Drops between and around the tiles (a tile takes its own): the nearest
+  // boundary between two tiles in the lane under the point gets the new
+  // block, before the tone on its right or after the one on its left
+  // (between two empty slots, the slot fills). The bar marks it, for these
+  // and for a tile's edge drops alike.
+  struct GapDrop {
+    ChainSide side;
+    int boundary;  // 0: before the first tile, n: after the last
+    std::string target;
+  };
+  std::optional<GapDrop> gapAt(juce::Point<int> inColumn);
+  void showDropMark(ChainSide side, int boundary);
+  void clearDropMark();
+  void tileDropEdge(GalleryTile& tile, std::optional<bool> after) override;
+
   void syncFromNative();
   void applyLanes();
   void layoutColumn();

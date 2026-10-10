@@ -13,6 +13,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
+
 #if !JUCE_WINDOWS
 #include <sys/stat.h>  // chmod, for the unwritable-directory heal test
 #include <unistd.h>    // geteuid: root ignores permission bits, so that leg skips
@@ -258,6 +260,113 @@ TEST(LocalLoadTest, PathLoadsFolderMajorityExtensionInNaturalOrder) {
   dir.deleteRecursively();
 }
 
+TEST(LocalLoadTest, CaptureInFolderLoadsItsSiblingsStartingOnIt) {
+  // A capture picked in the Library: its folder's files of the same kind
+  // (no subfolders, no other extension) as one block, starting on it.
+  const juce::File dir =
+      juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("t3k-infolder-test");
+  dir.deleteRecursively();
+  ASSERT_TRUE(dir.getChildFile("Sub").createDirectory());
+  ASSERT_TRUE(testFile("a2-amp-test.nam").copyFileTo(dir.getChildFile("gain 2.nam")));
+  ASSERT_TRUE(testFile("a2-amp-cab-test.nam").copyFileTo(dir.getChildFile("gain 10.nam")));
+  ASSERT_TRUE(testFile("a2-am-test-2.nam").copyFileTo(dir.getChildFile("Sub").getChildFile("other.nam")));
+  ASSERT_TRUE(testFile("cab-ir-test.wav").copyFileTo(dir.getChildFile("cab.wav")));
+
+  TONE3000Processor proc;
+  const juce::var res = proc.loadLocalToneInFolder(dir.getChildFile("gain 10.nam"));
+  EXPECT_TRUE(res["error"].isVoid()) << res["error"].toString().toStdString();
+  ASSERT_TRUE(waitForChainLoaded(proc));
+
+  const juce::var block = firstToneBlock(proc);
+  EXPECT_EQ(block["tone"]["title"].toString(), juce::String("t3k-infolder-test"));
+  ASSERT_EQ(block["tone"]["models"].size(), 2)
+      << "models: " << juce::JSON::toString(block["tone"]["models"]).toStdString();
+  // The picker's natural order is kept; the picked capture is the active one.
+  EXPECT_EQ(block["tone"]["models"][0]["name"].toString(), juce::String("gain 2"));
+  EXPECT_EQ(block["tone"]["models"][1]["name"].toString(), juce::String("gain 10"));
+  EXPECT_EQ(static_cast<int>(block["activeModelId"]), static_cast<int>(block["tone"]["models"][1]["id"]));
+  // Each model remembers the file it came from (the Library's kept links).
+  EXPECT_EQ(block["tone"]["models"][1]["source_path"].toString(),
+            dir.getChildFile("gain 10.nam").getFullPathName());
+  // The hint is used once, never persisted with the tone.
+  EXPECT_FALSE(block["tone"].hasProperty("active_model_id"));
+
+  // Alone in its folder (by kind): a plain one-file block.
+  TONE3000Processor single;
+  ASSERT_TRUE(single.loadLocalToneInFolder(dir.getChildFile("cab.wav"))["error"].isVoid());
+  ASSERT_TRUE(waitForChainLoaded(single));
+  EXPECT_EQ(firstToneBlock(single)["tone"]["title"].toString(), juce::String("cab"));
+  EXPECT_EQ(firstToneBlock(single)["tone"]["models"].size(), 1);
+
+  dir.deleteRecursively();
+}
+
+// Natural order by name, extension aside: "4" before "4.5" before "10".
+TEST(LocalLoadTest, FolderModelsSortByNameWithoutTheExtension) {
+  const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("t3k-natural-order");
+  dir.deleteRecursively();
+  ASSERT_TRUE(dir.createDirectory().wasOk());
+  // Different files: identical bytes would share an id and drop all but one.
+  ASSERT_TRUE(testFile("a2-amp-test.nam").copyFileTo(dir.getChildFile("Gain 4.5.nam")));
+  ASSERT_TRUE(testFile("a2-amp-cab-test.nam").copyFileTo(dir.getChildFile("Gain 10.nam")));
+  ASSERT_TRUE(testFile("a2-am-test-2.nam").copyFileTo(dir.getChildFile("Gain 4.nam")));
+  TONE3000Processor proc;
+  const juce::var res = proc.loadLocalTonePath(dir);
+  ASSERT_TRUE(res["error"].isVoid()) << res["error"].toString().toStdString();
+  const juce::var models = firstToneBlock(proc)["tone"]["models"];
+  juce::StringArray names;
+  for (int i = 0; i < models.size(); ++i) names.add(models[i]["name"].toString());
+  EXPECT_EQ(names.joinIntoString("|"), juce::String("Gain 4|Gain 4.5|Gain 10"));
+  dir.deleteRecursively();
+}
+
+TEST(LocalLoadTest, LocalToneArtAddsTheMatchedPhotoAndCreator) {
+  TONE3000Processor proc;
+  const juce::var res = proc.loadLocalTonePath(testFile("a2-amp-test.nam"));
+  ASSERT_TRUE(res["error"].isVoid());
+  ASSERT_TRUE(waitForChainLoaded(proc));
+  const std::string blockId = res["blockId"].toString().toStdString();
+
+  juce::DynamicObject::Ptr art = new juce::DynamicObject();
+  art->setProperty("image", "https://img.example/amp.jpg");
+  art->setProperty("username", "83ennui");
+  art->setProperty("url", "https://www.tone3000.com/tones/42");
+  EXPECT_TRUE(proc.setLocalToneArt(blockId, juce::var(art.get())));
+  EXPECT_FALSE(proc.setLocalToneArt(blockId, juce::var(art.get())));  // no change the second time
+
+  const juce::var tone = firstToneBlock(proc)["tone"];
+  EXPECT_EQ(tone["images"][0].toString(), juce::String("https://img.example/amp.jpg"));
+  EXPECT_EQ(tone["user"]["username"].toString(), juce::String("83ennui"));
+  EXPECT_TRUE(static_cast<bool>(tone["local"]));  // still the local files
+  EXPECT_EQ(tone["title"].toString(), juce::String("a2-amp-test"));
+
+  EXPECT_FALSE(proc.setLocalToneArt("no-such-block", juce::var(art.get())));
+
+  // A kept copy shows its original's folder: retitled, the old artwork gone.
+  juce::DynamicObject::Ptr look = new juce::DynamicObject();
+  look->setProperty("block_title", "Fuzz Face");
+  look->setProperty("clear", true);
+  EXPECT_TRUE(proc.setLocalToneArt(blockId, juce::var(look.get())));
+  const juce::var shown = firstToneBlock(proc)["tone"];
+  EXPECT_EQ(shown["title"].toString(), juce::String("Fuzz Face"));
+  EXPECT_EQ(shown["images"].size(), 0);  // the summary always carries the key
+  EXPECT_TRUE(shown["user"]["username"].toString().isEmpty());
+  EXPECT_FALSE(proc.setLocalToneArt(blockId, juce::var(look.get())));  // nothing left to change
+
+  // The matched tone's gear wins over the file's metadata.
+  juce::DynamicObject::Ptr matched = new juce::DynamicObject();
+  matched->setProperty("image", "https://img.example/head.jpg");
+  matched->setProperty("gear", "amp");
+  EXPECT_TRUE(proc.setLocalToneArt(blockId, juce::var(matched.get())));
+  EXPECT_EQ(firstToneBlock(proc)["tone"]["gear"].toString(), juce::String("amp"));
+
+  // Gear alone (a file name's say, nothing else changing) still lands.
+  juce::DynamicObject::Ptr gearOnly = new juce::DynamicObject();
+  gearOnly->setProperty("gear", "pedal");
+  EXPECT_TRUE(proc.setLocalToneArt(blockId, juce::var(gearOnly.get())));
+  EXPECT_EQ(firstToneBlock(proc)["tone"]["gear"].toString(), juce::String("pedal"));
+}
+
 TEST(LocalLoadTest, PathRejectsBadInputs) {
   TONE3000Processor proc;
 
@@ -280,6 +389,70 @@ TEST(LocalLoadTest, PathRejectsBadInputs) {
   // Rejected loads must not leave a block behind.
   EXPECT_TRUE(firstToneBlock(proc).isVoid());
   dir.deleteRecursively();
+}
+
+// A file on a desktop disk plays where it is: its model_url is the file
+// itself, nothing is copied into the stash, and the file keeps its dates
+// (the stash's liveness stamp is for stash copies only).
+TEST(LocalLoadTest, DiskFilesPlayInPlace) {
+#if JUCE_IOS
+  GTEST_SKIP() << "iOS keeps a copy: its pickers' files are only readable once";
+#endif
+  const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                             .getChildFile("t3k-in-place-" + juce::Uuid().toString());
+  ASSERT_TRUE(dir.createDirectory().wasOk());
+  const juce::File first = dir.getChildFile("Gain 1.nam"), second = dir.getChildFile("Gain 2.nam");
+  ASSERT_TRUE(testFile("a2-amp-test.nam").copyFileTo(first));
+  ASSERT_TRUE(testFile("a2-amp-cab-test.nam").copyFileTo(second));
+  const juce::Time old = juce::Time::getCurrentTime() - juce::RelativeTime::days(30);
+  for (const auto& f : {first, second})
+    ASSERT_TRUE(f.setLastModificationTime(old));
+
+  TONE3000Processor proc;
+  const juce::var res = proc.loadLocalTonePath(dir);
+  ASSERT_TRUE(res["error"].isVoid()) << res["error"].toString().toStdString();
+  ASSERT_TRUE(waitForChainLoaded(proc));
+  const juce::var block = firstToneBlock(proc);
+  ASSERT_EQ(block["tone"]["models"].size(), 2);
+  EXPECT_EQ(juce::URL(block["tone"]["models"][0]["model_url"].toString()).getLocalFile(), first);
+  const juce::var other = block["tone"]["models"][1];
+  EXPECT_EQ(juce::URL(other["model_url"].toString()).getLocalFile(), second);
+
+  // A switch reads the other file from where it is too.
+  ASSERT_TRUE(proc.switchModel(block["blockId"].toString().toStdString(), static_cast<int>(other["id"]), other));
+  ASSERT_TRUE(waitForChainLoaded(proc));
+  EXPECT_EQ(static_cast<int>(firstToneBlock(proc)["activeModelId"]), static_cast<int>(other["id"]));
+  for (const auto& f : {first, second})
+    EXPECT_LT(std::abs((f.getLastModificationTime() - old).inSeconds()), 2.0) << "the user's file keeps its date";
+  dir.deleteRecursively();
+}
+
+// A download that came back as an error page isn't a model: the check every
+// local load runs (and the Library's downloads before writing) says so.
+TEST(LocalLoadTest, ErrorPagesAreNotModels) {
+  const juce::String page = "<html><body>401 Unauthorized</body></html>";
+  EXPECT_TRUE(TONE3000Processor::localModelProblem("m.nam", page.toRawUTF8(), page.getNumBytesAsUTF8()).isNotEmpty());
+  EXPECT_TRUE(TONE3000Processor::localModelProblem("m.wav", page.toRawUTF8(), page.getNumBytesAsUTF8()).isNotEmpty());
+  juce::MemoryBlock a2;
+  ASSERT_TRUE(testFile("a2-amp-test.nam").loadFileAsData(a2));
+  EXPECT_TRUE(TONE3000Processor::localModelProblem("m.nam", a2.getData(), a2.getSize()).isEmpty());
+}
+
+// Only a stash copy's name says which bytes it holds: a file played in place
+// that has gone stays gone, never re-rooted onto a same-named stash file.
+TEST(LocalLoadTest, OnlyStashNamesReRoot) {
+  EXPECT_TRUE(TONE3000Processor::isStashFileName("deadbeef-4096.nam"));
+  EXPECT_TRUE(TONE3000Processor::isStashFileName("0123abcd-77.wav"));
+  for (const char* name : {"DI.nam", "Gain 1.nam", "deadbeef.nam", "deadbeef-4096.txt", "DEADBEEF-1.nam", "-12.nam"})
+    EXPECT_FALSE(TONE3000Processor::isStashFileName(name)) << name;
+
+  const juce::File tmp = juce::File::getSpecialLocation(juce::File::tempDirectory);
+  const juce::File root = tmp.getChildFile("t3k-stash-" + juce::Uuid().toString());
+  ASSERT_TRUE(root.createDirectory());
+  ASSERT_TRUE(root.getChildFile("DI.nam").replaceWithText("someone else's DI"));
+  const juce::File gone = tmp.getChildFile("t3k-gone-" + juce::Uuid().toString()).getChildFile("DI.nam");
+  EXPECT_EQ(TONE3000Processor::resolveLocalModelFile(root, juce::URL(gone).toString(false)), gone);
+  root.deleteRecursively();
 }
 
 // The stash path a block persists as its model_url is absolute, and the tone

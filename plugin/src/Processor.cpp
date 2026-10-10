@@ -108,6 +108,10 @@ TONE3000Processor::TONE3000Processor()
     processOversampledChainStage(inputs, outputs, numFrames);
   };
 
+#if !HEADLESS
+  prewarmLibrary();  // not in the test build: it would scan the machine's real Library
+#endif
+
   // iOS standalone only: nothing else on that platform ever saves the plugin
   // state, so the signal chain would not survive a relaunch (see
   // StandaloneStateAutosave.h). A no-op everywhere else.
@@ -508,6 +512,13 @@ int TONE3000Processor::namEngineVoiceCount(const std::string& blockId) const {
 }
 
 TONE3000Processor::~TONE3000Processor() {
+  // Library downloads first: none reports back from here on, and queued
+  // ones never start (one mid-fetch finishes, bounded by its timeouts).
+  downloadsAlive->store(false);
+  libraryDownloads.removeAllJobs(false, 0);
+  library.cancelScans();
+  if (libraryPrewarm.joinable())
+    libraryPrewarm.join();
   parameters.removeParameterListener("osEnabled", this);
   parameters.removeParameterListener("osFactor", this);
   for (const auto& paramId : presetParameterIds())

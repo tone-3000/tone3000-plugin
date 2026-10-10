@@ -19,13 +19,26 @@ public:
 
   ~Toast() override { stopTimer(); }
 
+  // solid: the white pill (the app's confirmations). quiet: white text in a
+  // white outline, for the Library's frequent ones (Kept in, Moved to).
+  enum class Style { solid, quiet };
+
   // "" when nothing is showing.
   const juce::String& message() const { return message_; }
+  Style style() const { return style_; }
 
-  // Flash a message; auto-dismisses after a moment.
-  void show(const juce::String& message) { set(message, kShowMs); }
-  // Pin a message until the next show/clear (auto-measure "Listening").
-  void pin(const juce::String& message) { set(message, 0); }
+  // Flash a message; auto-dismisses after a moment (a long one, a summary,
+  // stays up long enough to read: up to 6 s).
+  void show(const juce::String& message, Style style = Style::solid) {
+    style_ = style;
+    set(message, juce::jlimit(kShowMs, 6000, message.length() * 55));
+  }
+  // Pin a message until the next show/clear (auto-measure "Listening"; the
+  // Library's work under way, "Importing...").
+  void pin(const juce::String& message, Style style = Style::solid) {
+    style_ = style;
+    set(message, 0);
+  }
   // Take a pinned message down with no follow-up (cancel, timeout).
   void clear() { set({}, 0); }
 
@@ -42,6 +55,7 @@ private:
   void timerCallback() override { clear(); }
 
   juce::String message_;
+  Style style_ = Style::solid;
   juce::ListenerList<Listener> listeners;
 };
 

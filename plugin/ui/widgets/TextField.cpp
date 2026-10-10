@@ -24,6 +24,7 @@ TextField::TextField() : border_(theme::kBorder) {
   editor_.setColour(juce::CaretComponent::caretColourId, theme::kWhite);
   editor_.setMouseCursor(juce::MouseCursor::IBeamCursor);
   editor_.addListener(this);
+  editor_.down = [this] { return onDown && onDown(); };
   setViewportIgnoreDragFlag(true);  // a drag on text selects it; the list or page around it stays put
   setFontSize(13.0f);
   addAndMakeVisible(editor_);

@@ -5,6 +5,7 @@
 
 #include "GalleryGeometry.h"
 #include "core/Fonts.h"
+#include "core/Icons.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
 #include "widgets/Popover.h"
@@ -50,8 +51,59 @@ private:
 // The lanes column inside the scroller: both lanes (the branch lane indented
 // past the trunk prefix) and the two-lane elbow of an active branch, drawn
 // with the same lines as the ghost rail.
-class ChainView::Column : public juce::Component {
+class ChainView::Column : public juce::Component,
+                          public juce::FileDragAndDropTarget,
+                          public juce::DragAndDropTarget {
 public:
+  explicit Column(ChainView& view) : view_(view) {}
+
+  // Gap drops (see ChainView::gapAt): OS files and Library rows.
+  bool isInterestedInFileDrag(const juce::StringArray&) override { return true; }
+  void fileDragEnter(const juce::StringArray&, int x, int y) override { hover({x, y}); }
+  void fileDragMove(const juce::StringArray&, int x, int y) override { hover({x, y}); }
+  void fileDragExit(const juce::StringArray&) override { view_.clearDropMark(); }
+  void filesDropped(const juce::StringArray& files, int x, int y) override {
+    view_.clearDropMark();
+    if (const auto gap = view_.gapAt({x, y})) view_.services_.localFiles.drop(gap->target, files);
+  }
+  bool isInterestedInDragSource(const SourceDetails& details) override {
+    const auto* node = view_.services_.library.tree().find(libraryPath(details));
+    // An item or a captures folder; a preset replaces the chain, no gap for it.
+    return node != nullptr && node->kind != LibraryNode::Kind::preset && (!node->isContainer() || node->loadsAsBlock());
+  }
+  void itemDragEnter(const SourceDetails& details) override { hover(details.localPosition); }
+  void itemDragMove(const SourceDetails& details) override { hover(details.localPosition); }
+  void itemDragExit(const SourceDetails&) override { view_.clearDropMark(); }
+  void itemDropped(const SourceDetails& details) override {
+    view_.clearDropMark();
+    const auto gap = view_.gapAt(details.localPosition);
+    if (!gap) return;
+    // Posted: the load rebuilds the lanes.
+    juce::MessageManager::callAsync([safe = juce::Component::SafePointer<Column>(this), path = libraryPath(details),
+                                     target = gap->target] {
+      if (safe == nullptr) return;
+      auto& library = safe->view_.services_.library;
+      if (const auto* node = library.tree().find(path)) library.use(*node, target);
+    });
+  }
+
+  // The insertion bar, in the gap where the new block goes.
+  void setMark(std::optional<juce::Rectangle<float>> mark) {
+    if (mark == mark_) return;
+    mark_ = mark;
+    repaint();
+  }
+  void paintOverChildren(juce::Graphics& g) override {
+    if (!mark_) return;
+    const auto bar = *mark_;
+    g.setColour(gallery::kFileDropBorder.withAlpha(1.0f));
+    g.fillRoundedRectangle(bar, bar.getWidth() / 2);
+    const auto glyph = juce::Rectangle<float>(kMarkGlyph, kMarkGlyph).withCentre(bar.getCentre());
+    g.setColour(theme::kBlack);
+    g.fillEllipse(glyph.expanded(4));
+    Icons::draw(g, Icon::Plus, glyph, gallery::kFileDropBorder.withAlpha(1.0f));
+  }
+
   struct BranchLayout {
     ChainSide trunkSide;
     int indent;
@@ -74,14 +126,25 @@ public:
   void setLanesTop(int y) { lanesTop_ = static_cast<float>(y); }
 
 private:
+  static constexpr float kMarkGlyph = 16.0f;
+  static juce::String libraryPath(const SourceDetails& details) {
+    return details.description.getProperty(LibraryStore::kDragKey, {}).toString();
+  }
+  void hover(juce::Point<int> p) {
+    if (const auto gap = view_.gapAt(p)) view_.showDropMark(gap->side, gap->boundary);
+    else view_.clearDropMark();
+  }
+
+  ChainView& view_;
   float lanesTop_ = 0;
+  std::optional<juce::Rectangle<float>> mark_;
 };
 
 ChainView::ChainView(Services& services)
     : services_(services),
       rail_(services),
       scroller_(std::make_unique<DragScroller>(DragScroller::Axis::horizontal)),
-      column_(std::make_unique<Column>()),
+      column_(std::make_unique<Column>(*this)),
       left_(services, ChainSide::left),
       right_(services, ChainSide::right) {
   addChildComponent(rail_);
@@ -220,6 +283,47 @@ void ChainView::layoutColumn() {
     restorePending_ = false;
     const int saved = services_.prefs.session[UiPrefs::kChainScroll].getIntValue();
     if (saved > 0) scroller_->setViewPosition(saved, 0);
+  }
+}
+
+// Gap drops (see the header)
+std::optional<ChainView::GapDrop> ChainView::gapAt(juce::Point<int> p) {
+  const int tile = tileSize();
+  const int step = tile + gallery::kTileGap;
+  for (const auto side : {ChainSide::left, ChainSide::right}) {
+    if (side == ChainSide::right && !stereo()) continue;
+    const auto& lane = this->lane(side);
+    const auto& items = lane.items();
+    const int n = static_cast<int>(items.size());
+    const auto row = lane.getBounds();
+    if (n == 0 || p.y < row.getY() - gallery::kLaneGap / 2 || p.y > row.getBottom() + gallery::kLaneGap / 2) continue;
+    const int k = juce::jlimit(0, n, juce::roundToInt((p.x - row.getX() + gallery::kTileGap / 2.0f) / step));
+    const ChainItem* left = k > 0 ? &items[static_cast<size_t>(k - 1)] : nullptr;
+    const ChainItem* right = k < n ? &items[static_cast<size_t>(k)] : nullptr;
+    std::string target;
+    if (right != nullptr && !right->isInsert) target = slotBefore(right->blockId);
+    else if (left != nullptr && !left->isInsert) target = slotAfter(left->blockId);
+    else target = (right != nullptr ? right : left)->blockId;  // between empty slots: fill one
+    return GapDrop{side, k, target};
+  }
+  return std::nullopt;
+}
+
+void ChainView::showDropMark(ChainSide side, int boundary) {
+  const auto& lane = this->lane(side);
+  constexpr float kBarWidth = 8.0f;
+  const float x = lane.getX() + boundary * static_cast<float>(tileSize() + gallery::kTileGap) - gallery::kTileGap / 2.0f;
+  column_->setMark(juce::Rectangle<float>(x - kBarWidth / 2, static_cast<float>(lane.getY()), kBarWidth,
+                                          static_cast<float>(lane.getHeight())));
+}
+
+void ChainView::clearDropMark() { column_->setMark(std::nullopt); }
+
+void ChainView::tileDropEdge(GalleryTile& tile, std::optional<bool> after) {
+  if (!after) return clearDropMark();
+  for (const auto side : {ChainSide::left, ChainSide::right}) {
+    const int index = lane(side).indexOf(tile.blockId());
+    if (index != -1) return showDropMark(side, index + (*after ? 1 : 0));
   }
 }
 

@@ -76,6 +76,9 @@ struct ToneModelRef {
   int id = 0;
   juce::String name;
   juce::String modelUrl;  // local tones only
+  // Local tones loaded from a file on disk: that file (the block plays a
+  // stash copy of it). Empty for drops that came as bytes.
+  juce::String sourcePath;
 };
 
 struct ToneUserRef {
@@ -105,6 +108,14 @@ struct ToneSummary {
   int catalogModelCount() const;
   bool isNam() const { return format.equalsIgnoreCase("nam"); }
 };
+
+// Load targets that open a new slot beside a block instead of naming an
+// insert slot (the processor's kSlotBeforePrefix / kSlotAfterPrefix): a drop
+// on a tone tile's edge, or its Add Before / Add After. Anything that takes
+// an insert id for a load (ChainStore::loadTone, the local-file loads, the
+// tone browser's add flow) takes these too.
+inline std::string slotBefore(const std::string& blockId) { return "before:" + blockId; }
+inline std::string slotAfter(const std::string& blockId) { return "after:" + blockId; }
 
 struct ChainItem {
   std::string blockId;

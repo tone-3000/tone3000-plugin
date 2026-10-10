@@ -48,6 +48,15 @@ public:
   void setJson(const juce::String& key, const juce::var& value);
   void remove(const juce::String& key);
 
+  // A bulky JSON value (one of the Library's caches: thousands of entries)
+  // kept apart: in a file of its own beside the prefs file (<key>.json),
+  // parsed once and read again only when that file changes (another editor,
+  // another host). The shared prefs file stays small, so the merge every
+  // write does stays cheap, and readers don't re-parse per call. A value
+  // already in the prefs file moves over on first use. getJson hands back
+  // the parsed value itself: copy it to change it, then setJson.
+  void storeApart(const juce::String& key);
+
   // Editor-lifetime values.
   std::map<juce::String, juce::String> session;
 
@@ -58,6 +67,9 @@ public:
   static constexpr const char* kShowHints = "t3k.showHints";
   static constexpr const char* kShowBlockNormalizeControl = "t3k.showBlockNormalizeControl";
   static constexpr const char* kShowBlockSizeControl = "t3k.showBlockSizeControl";
+  // In the Library, a number typed loads the capture it jumps to (off: it is
+  // only selected, Enter loads). On by default.
+  static constexpr const char* kLibraryNumberLoads = "t3k.libraryNumberLoads";
   // Faceplate effect groups (view only; a powered effect shows regardless).
   static constexpr const char* kShowGateControl = "t3k.showGateControl";
   static constexpr const char* kShowPitchControl = "t3k.showPitchControl";
@@ -83,6 +95,16 @@ private:
   juce::PropertiesFile* file_;
   juce::InterProcessLock* lock_;
   std::map<juce::String, juce::String> memory_;
+
+  struct Apart {
+    juce::var value;             // parsed
+    juce::int64 stamp = -1;      // the file's modified time + size when read
+    bool loaded = false;
+  };
+  mutable std::map<juce::String, Apart> apart_;
+  bool isApart(const juce::String& key) const { return apart_.count(key) != 0; }
+  juce::File apartFile(const juce::String& key) const;
+  static juce::int64 stampOf(const juce::File& file);
   juce::ListenerList<Listener> listeners;
 };
 

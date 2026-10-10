@@ -1,6 +1,7 @@
 #include "InlineChrome.h"
 
 #include "core/Theme.h"
+#include "widgets/ChromeTextButton.h"
 #include "widgets/SegmentedText.h"
 #include "widgets/form/FormStyle.h"
 
@@ -26,6 +27,21 @@ std::shared_ptr<const InlineBox> liteFullChip() {
     juce::Graphics::ScopedSaveState state(g);
     g.setOrigin(juce::roundToInt(area.getX() + kMarginX), juce::roundToInt(area.getY()));
     chip->paintEntireComponent(g, false);
+  };
+  return box;
+}
+
+std::shared_ptr<const InlineBox> textButton(const juce::String& label) {
+  auto button = std::make_shared<ChromeTextButton>(label, help::Key::blockNormalize);
+  button->setArmed(true);
+  auto box = std::make_shared<InlineBox>();
+  box->width = button->getWidth() + 2 * kMarginX;
+  box->height = static_cast<float>(button->getHeight());
+  box->descent = box->height / 2 - form::kBodyPx * kArialXHeight / 2;
+  box->paint = [button](juce::Graphics& g, juce::Rectangle<float> area) {
+    juce::Graphics::ScopedSaveState state(g);
+    g.setOrigin(juce::roundToInt(area.getX() + kMarginX), juce::roundToInt(area.getY()));
+    button->paintEntireComponent(g, false);
   };
   return box;
 }

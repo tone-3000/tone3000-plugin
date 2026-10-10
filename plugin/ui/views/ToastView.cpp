@@ -29,6 +29,11 @@ void ToastView::toastChanged() {
   const bool showing = toast_.message().isNotEmpty();
   setVisible(showing);
   if (!showing) return;
+  // Placed afresh for each message, as on its first: one the same width as
+  // the last ("8 / 40", "3 / 40") would otherwise keep its bounds, and the
+  // old text would stay drawn (and an explicit repaint() here lost the toast
+  // altogether in a host's window, 2026-10-08).
+  setBounds({});
   layout();
   help::announce(toast_.message());
 }
@@ -44,7 +49,16 @@ void ToastView::layout() {
 }
 
 void ToastView::paint(juce::Graphics& g) {
-  paint::fill(g, getLocalBounds().toFloat(), kRadius, theme::kWhite);
+  const auto box = getLocalBounds().toFloat();
+  if (toast_.style() == Toast::Style::quiet) {
+    // Dark enough behind to read over the chain, the outline carrying it.
+    paint::fill(g, box, kRadius, theme::kBlack.withAlpha(0.85f));
+    paint::border(g, box.reduced(0.5f), kRadius, theme::kWhite, 1.0f);
+    paint::text(g, toast_.message(), getLocalBounds(), Fonts::sans(16, false), theme::kWhite,
+                juce::Justification::centred);
+    return;
+  }
+  paint::fill(g, box, kRadius, theme::kWhite);
   paint::text(g, toast_.message(), getLocalBounds(), Fonts::sans(16, true), theme::kBlack,
               juce::Justification::centred);
 }

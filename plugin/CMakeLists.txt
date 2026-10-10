@@ -336,6 +336,9 @@ target_sources(${PROJECT_NAME}
         src/PresetFile.cpp
         include/PresetManager.h
         src/PresetManager.cpp
+        include/Library.h
+        src/Library.cpp
+        src/NamArchitecture.cpp
         include/Processor.h
         src/Processor.cpp
         include/MidiMapper.h
@@ -343,6 +346,7 @@ target_sources(${PROJECT_NAME}
         src/ProcessorChain.cpp
         src/ProcessorHistory.cpp
         src/ProcessorPresets.cpp
+        src/ProcessorLibrary.cpp
         src/ProcessorState.cpp
         src/ProcessorModelLoader.cpp
         include/ChainDomain.h

@@ -70,6 +70,7 @@ private:
   FieldRow midi_;
   MidiMapSection midiSection_;
 
+  ToggleRow libraryNumberLoads_;
   FieldRow presets_;
   FormButton openPresets_;
   FormBox openPresetsBox_;

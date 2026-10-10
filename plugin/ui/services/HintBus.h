@@ -22,8 +22,13 @@ public:
 
   // Current help line ("" = nothing hovered).
   juce::String current() const { return pinned_.isNotEmpty() ? pinned_ : hover_; }
+  // An icon to show before it ("" = none): "gear:<id>", "capture", "ir",
+  // "preset", "folder" or "library". A hinted component sets it as its
+  // kIconProperty (the Library's rows do).
+  juce::String currentIcon() const { return pinned_.isNotEmpty() ? juce::String() : hoverIcon_; }
+  static constexpr const char* kIconProperty = "t3kHintIcon";
 
-  void setHover(const juce::String& text);
+  void setHover(const juce::String& text, const juce::String& icon = {});
   void pin(const juce::String& text);
   void unpin(const juce::String& text);
 
@@ -36,7 +41,7 @@ public:
 
 private:
   UiPrefs& prefs_;
-  juce::String hover_, pinned_;
+  juce::String hover_, hoverIcon_, pinned_;
   juce::ListenerList<Listener> listeners;
 };
 

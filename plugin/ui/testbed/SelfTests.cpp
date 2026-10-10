@@ -16,6 +16,7 @@
 
 #include "Drive.h"
 #include "Host.h"
+#include "core/BusyGrace.h"
 #include "core/Design.h"
 #include "core/Fonts.h"
 #include "core/Help.h"
@@ -25,20 +26,36 @@
 #include "core/RichText.h"
 #include "core/TextFlow.h"
 #include "model/ChainState.h"
+#include "model/Library.h"
+#include "views/ChainScreen.h"
+#include "views/block/BlockCard.h"
+#include "views/library/LibraryDrawer.h"
+#include "widgets/ModelSelect.h"
+#include "views/HintBar.h"
+#include "views/ToastView.h"
+#include "LibraryState.h"
+#include "widgets/ContextMenu.h"
+#include "widgets/TextField.h"
 #include "model/Tone.h"
 #include "model/ToneQuery.h"
 #include "services/ConnectionGate.h"
+#include "services/HintBus.h"
 #include "services/LoopbackServer.h"
 #include "services/OAuth.h"
+#include "services/PictureFile.h"
 #include "services/Pointer.h"
 #include "services/Tone3000Client.h"
+#include "services/ToneArt.h"
 #include "services/UiPrefs.h"
 #include "services/UpdateCheck.h"
 #include "views/browser/FilterChip.h"
 #include "views/browser/Paginator.h"
 #include "views/browser/ToneCard.h"
+#include "views/gallery/AddTile.h"
 #include "views/gallery/GalleryGeometry.h"
+#include "views/gallery/GalleryLane.h"
 #include "views/gallery/GalleryTile.h"
+#include "views/gallery/ToneTile.h"
 #include "widgets/Avatar.h"
 #include "widgets/ChromeTextButton.h"
 #include "widgets/Clickable.h"
@@ -452,6 +469,23 @@ struct UiPrefsTests : juce::UnitTest {
     a.prefs.set(UiPrefs::kTokens, "B");
     expect(a.heard.isEmpty());
 
+    beginTest("a bulky value lives apart: its own file, read again when it changes, moved out of the prefs");
+    {
+      const juce::String key = "t3k.testBulky";
+      a.prefs.setJson(key, juce::var(juce::Array<juce::var>{1, 2}));  // an older build: in the prefs file
+      a.prefs.storeApart(key);
+      b.prefs.storeApart(key);
+      const auto apart = file.getSiblingFile(key + ".json");
+      expect(apart.existsAsFile(), "moved to its own file");
+      Host fresh(file, lock);
+      expect(fresh.prefs.get(key).isEmpty(), "and out of the prefs file");
+      expectEquals(b.prefs.getJson(key).size(), 2);
+      a.prefs.setJson(key, juce::var(juce::Array<juce::var>{1, 2, 3}));
+      expectEquals(b.prefs.getJson(key).size(), 3, "another host's write is read again");
+      b.prefs.remove(key);
+      expect(!apart.existsAsFile() && a.prefs.getJson(key).isVoid());
+    }
+
     file.deleteFile();
   }
 };
@@ -805,6 +839,1576 @@ struct ToneModelTests : juce::UnitTest {
   }
 };
 
+struct LibraryModelTests : juce::UnitTest {
+  LibraryModelTests() : juce::UnitTest("Library", "ui") {}
+
+  static juce::String names(const std::vector<LibraryRow>& rows) {
+    juce::StringArray out;
+    for (const auto& row : rows) out.add(juce::String(row.depth) + ":" + row.node->name);
+    return out.joinIntoString("|");
+  }
+
+  void runTest() override {
+    const auto tree = LibraryTree::parse(juce::JSON::parse(R"({
+      "root": "/L", "owner": "tonehound",
+      "libraries": [
+        {"kind": "library", "name": "tonehound", "path": "/L/tonehound", "mine": true, "writable": true, "children": [
+          {"kind": "folder", "name": "Presets", "path": "/P", "mount": true, "writable": true, "children": [
+            {"kind": "folder", "name": "Metal", "path": "/P/Metal", "editable": true, "writable": true, "children": [
+              {"kind": "preset", "name": "BE100 1", "path": "/P/Metal/BE100 1.t3kpreset", "id": "file:/P/Metal/BE100 1.t3kpreset", "editable": true}
+            ]},
+            {"kind": "preset", "name": "Clean", "path": "/P/Clean.t3kpreset", "id": "user:1", "editable": true}
+          ]},
+          {"kind": "folder", "name": "Favorites", "path": "/L/tonehound/Favorites", "editable": true, "writable": true, "children": [
+            {"kind": "tone", "name": "Plexi - Crunch", "path": "/L/tonehound/Favorites/Plexi - Crunch.t3ktone",
+             "ref": {"format": "t3ktone", "tone": {"id": 42, "title": "Plexi", "gear": "amp", "user": {"username": "kenji"}}, "model": {"id": 7, "name": "Crunch"}}},
+            {"kind": "capture", "name": "my ir", "path": "/L/tonehound/Favorites/my ir.wav", "format": "ir"}
+          ]}
+        ]},
+        {"kind": "library", "name": "awesomeuser", "path": "/L/awesomeuser", "removable": true, "children": [
+          {"kind": "folder", "name": "Metal Rigs", "path": "/L/awesomeuser/Metal Rigs", "children": []}
+        ]}
+      ]})"));
+
+    beginTest("parses the node kinds and the tone reference");
+    expectEquals(static_cast<int>(tree.libraries.size()), 2);
+    expect(tree.mine() != nullptr && tree.mine()->mine);
+    const auto* mount = tree.find("/P");
+    expect(mount != nullptr && mount->mount && mount->writable && !mount->editable);
+    const auto* ref = tree.find("/L/tonehound/Favorites/Plexi - Crunch.t3ktone");
+    expect(ref != nullptr && ref->kind == LibraryNode::Kind::tone);
+    expectEquals(ref->tone.toneId, 42);
+    expectEquals(ref->tone.modelId, 7);
+    expectEquals(ref->tone.creator, juce::String("kenji"));
+    expect(!tree.find("/L/tonehound/Favorites/my ir.wav")->nam);
+    expectEquals(tree.parentOf("/P/Metal")->path, juce::String("/P"));
+    expect(tree.parentOf("/L/tonehound") == nullptr);
+
+    beginTest("a linked folder carries its flags");
+    const auto linked = LibraryNode::parse(juce::JSON::parse(
+        R"({"kind": "folder", "name": "NAM", "path": "D:/NAM", "mount": true, "linked": true, "missing": true})"));
+    expect(linked.linked && linked.missing && linked.mount && !linked.editable);
+
+    beginTest("without a filter, only open containers show their children");
+    expectEquals(names(libraryRows(tree, {}, {})), juce::String("0:tonehound|0:awesomeuser"));
+    expectEquals(names(libraryRows(tree, {"/L/tonehound", "/P"}, {})),
+                 juce::String("0:tonehound|1:Presets|2:Metal|2:Clean|1:Favorites|0:awesomeuser"));
+
+    beginTest("a matching folder brings everything in it; a matching item its folders");
+    expectEquals(names(libraryRows(tree, {}, "metal")),
+                 juce::String("0:tonehound|1:Presets|2:Metal|3:BE100 1|0:awesomeuser|1:Metal Rigs"));
+    expectEquals(names(libraryRows(tree, {}, "be100")), juce::String("0:tonehound|1:Presets|2:Metal|3:BE100 1"));
+    for (const auto& row : libraryRows(tree, {}, "be100"))
+      if (row.node->isContainer()) expect(row.open, "filtered containers show open");
+
+    beginTest("of the matching folders only the first shows open, until another is opened");
+    {
+      const auto two = LibraryTree::parse(juce::JSON::parse(R"({"root": "/L", "libraries": [
+        {"kind": "library", "name": "me", "path": "/L/me", "children": [
+          {"kind": "folder", "name": "Bogner Ecstasy", "path": "/L/me/E", "children": [
+            {"kind": "capture", "name": "Clean", "path": "/L/me/E/Clean.nam"}]},
+          {"kind": "folder", "name": "Amps", "path": "/L/me/A", "children": [
+            {"kind": "folder", "name": "Bogner Uberschall", "path": "/L/me/A/U", "children": [
+              {"kind": "capture", "name": "Lead", "path": "/L/me/A/U/Lead.nam"}]},
+            {"kind": "capture", "name": "Bogner Shiva", "path": "/L/me/A/Shiva.nam"}]}
+        ]}]})"));
+      // The folder holding matches shows open; the second matching folder closed.
+      expectEquals(names(libraryRows(two, {}, "bogner")),
+                   juce::String("0:me|1:Bogner Ecstasy|2:Clean|1:Amps|2:Bogner Uberschall|2:Bogner Shiva"));
+      expectEquals(names(libraryRows(two, {}, "bogner", {}, {}, {"/L/me/A/U"})),
+                   juce::String("0:me|1:Bogner Ecstasy|2:Clean|1:Amps|2:Bogner Uberschall|3:Lead|2:Bogner Shiva"));
+      expectEquals(names(libraryRows(two, {}, "bogner", {"/L/me/E"})),
+                   juce::String("0:me|1:Bogner Ecstasy|1:Amps|2:Bogner Uberschall|2:Bogner Shiva"),
+                   "the first closed: the others stay as they were");
+    }
+
+    beginTest("every word must match; library names alone don't");
+    expectEquals(names(libraryRows(tree, {}, "plexi crunch")),
+                 juce::String("0:tonehound|1:Favorites|2:Plexi - Crunch"));
+    expect(libraryRows(tree, {}, "plexi clean").empty());
+    expect(libraryRows(tree, {}, "awesomeuser").empty());
+
+    beginTest("the gear filter: only those kinds, with their folders, everywhere");
+    expectEquals(names(libraryRows(tree, {}, {}, {}, {"amp"})),
+                 juce::String("0:tonehound|1:Favorites|2:Plexi - Crunch"));
+    expectEquals(names(libraryRows(tree, {}, {}, {}, {"preset"})),
+                 juce::String("0:tonehound|1:Presets|2:Metal|3:BE100 1|2:Clean"));
+    expectEquals(names(libraryRows(tree, {}, {}, {}, {"amp", "preset"})),
+                 juce::String("0:tonehound|1:Presets|2:Metal|3:BE100 1|2:Clean|1:Favorites|2:Plexi - Crunch"));
+    expect(libraryRows(tree, {}, {}, {}, {"pedal"}).empty(), "nothing of that kind: nothing listed");
+    // With the search too: both must hold (a matching folder's items still by kind).
+    expectEquals(names(libraryRows(tree, {}, "metal", {}, {"preset"})),
+                 juce::String("0:tonehound|1:Presets|2:Metal|3:BE100 1"));
+    expect(libraryRows(tree, {}, "metal", {}, {"amp"}).empty());
+  }
+};
+
+// Pictures in a format JUCE can't read (WebP) decode through the bundled
+// libwebp.
+struct PictureFileTests : juce::UnitTest {
+  PictureFileTests() : juce::UnitTest("Picture file", "ui") {}
+  void runTest() override {
+    beginTest("a WebP decodes");
+    // A 1x1 lossless WebP.
+    juce::MemoryOutputStream bytes;
+    juce::Base64::convertFromBase64(bytes, "UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==");
+    const juce::TemporaryFile temp(".webp");
+    temp.getFile().replaceWithData(bytes.getData(), bytes.getDataSize());
+    const auto image = picture_file::load(temp.getFile());
+    expect(image.isValid(), "decoded");
+    expectEquals(image.getWidth(), 1);
+    expect(picture_file::patterns().contains("*.webp"));
+  }
+};
+
+// A quick load (a local model switch) never shows the loading look; a slow
+// one gets it after the grace.
+struct BusyGraceTests : juce::UnitTest {
+  BusyGraceTests() : juce::UnitTest("Busy grace", "ui") {}
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+  void runTest() override {
+    beginTest("a load waits out the grace before it shows; a quick one never does");
+    BusyGrace grace;
+    int shows = 0;
+    const auto show = [&] { ++shows; };
+    expect(!grace.shown(true, show), "not at once");
+    expect(!grace.shown(false, show), "done in a blink: nothing shown");
+    pump(BusyGrace::kGraceMs + 100);
+    expectEquals(shows, 0, "the finished load's wait went with it");
+
+    expect(!grace.shown(true, show), "a slow one starts waiting");
+    expect(!grace.shown(true, show), "a re-sync while waiting doesn't restart the wait");
+    pump(BusyGrace::kGraceMs + 100);
+    expectEquals(shows, 1, "the view is told once the grace is up");
+    expect(grace.shown(true, show), "and now it shows");
+    expect(!grace.shown(false, show), "until the load is done");
+    expect(!grace.shown(true, show), "the next load waits again");
+  }
+};
+
+// The small Library features: Show in Library (a block's file, the drawer
+// opened on it), the selection following a step (follow), Enter in the
+// search loading the first match, and "My Library" taking the username
+// once someone is signed in.
+struct LibraryFeatureTests : juce::UnitTest {
+  LibraryFeatureTests() : juce::UnitTest("Library features", "ui") {}
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("main-detail");  // signed in (as "tonehound"), a block open
+    if (scenario == nullptr) {
+      expect(false, "main-detail scenario missing");
+      return;
+    }
+    const juce::TemporaryFile scratch;
+    const auto root = scratch.getFile();
+    const auto amps = root.getChildFile("tonehound").getChildFile("Captures").getChildFile("Amps");
+    amps.createDirectory();
+    const auto plexi = amps.getChildFile("Plexi.nam"), jcm = amps.getChildFile("Wobblytone.nam");
+    plexi.replaceWithText("{}");
+    jcm.replaceWithText("{}");
+    // A capture kept before links existed: the same file in a linked folder.
+    const auto collection = root.getChildFile("Collection");
+    collection.createDirectory();
+    const auto savageOriginal = collection.getChildFile("Savage.nam"), savageCopy = amps.getChildFile("Savage.nam");
+    savageOriginal.replaceWithText(R"({"savage": 1})");
+    savageCopy.replaceWithText(R"({"savage": 1})");
+
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("library features", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(300);
+    auto& pluginRoot = host.pluginRoot();
+    auto& library = pluginRoot.services().library;
+    auto& prefs = pluginRoot.services().prefs;
+    const std::string blockId = scenario->data["sessionStorage"]["t3k.detailBlockId"].toString().toStdString();
+
+    // A library holding the two captures.
+    const auto node = [](const juce::String& kind, const juce::File& f, juce::Array<juce::var> kids = {}) {
+      auto* o = new juce::DynamicObject();
+      o->setProperty("kind", kind);
+      o->setProperty("name", f.getFileNameWithoutExtension());
+      o->setProperty("path", f.getFullPathName());
+      o->setProperty("type", "captures");
+      o->setProperty("editable", true);
+      o->setProperty("children", kids);
+      return juce::var(o);
+    };
+    prefs.set(LibraryStore::kRootPref, root.getFullPathName());
+    auto* tree = new juce::DynamicObject();
+    tree->setProperty("root", root.getFullPathName());
+    // Enough takes that the list scrolls.
+    juce::Array<juce::var> captures{node("capture", plexi), node("capture", jcm), node("capture", savageCopy)};
+    const auto take = [&amps](int n) { return amps.getChildFile("Take " + juce::String(n).paddedLeft('0', 2) + ".nam"); };
+    for (int n = 0; n < 100; ++n) {
+      take(n).replaceWithText("{}");  // on disk too: a load reads it
+      captures.add(node("capture", take(n)));
+    }
+    captures.getReference(0).getDynamicObject()->setProperty("gear", "amp");  // Plexi: an amp
+    auto linked = node("folder", collection, {node("capture", savageOriginal)});
+    linked.getDynamicObject()->setProperty("linked", true);
+    tree->setProperty("libraries", juce::Array<juce::var>{node("library", root.getChildFile("tonehound"),
+                                                               {node("folder", amps, captures), linked})});
+    backend.setLibrary(juce::var(tree));
+    library.refresh(/*fresh=*/true);
+    pump(300);
+
+    // The open block plays Plexi from that folder.
+    auto chain = juce::JSON::parse(juce::JSON::toString(scenario->data["chain"]));
+    chain.getDynamicObject()->setProperty("revision", 700);
+    if (auto* lane = chain["chain"].getArray())
+      for (auto& item : *lane)
+        if (item["blockId"].toString().toStdString() == blockId) {
+          juce::DynamicObject::Ptr model = new juce::DynamicObject();
+          model->setProperty("id", 1);
+          model->setProperty("name", "Plexi");
+          model->setProperty("model_url", juce::URL(plexi).toString(false));
+          model->setProperty("source_path", plexi.getFullPathName());
+          juce::DynamicObject::Ptr tone = new juce::DynamicObject();
+          tone->setProperty("id", 0);
+          tone->setProperty("local", true);
+          tone->setProperty("title", "Amps");
+          tone->setProperty("format", "nam");
+          tone->setProperty("gear", "amp");
+          tone->setProperty("models", juce::Array<juce::var>{juce::var(model.get())});
+          item.getDynamicObject()->setProperty("tone", juce::var(tone.get()));
+          item.getDynamicObject()->setProperty("activeModelId", 1);
+        }
+    backend.setChain(chain);
+    pump(200);
+
+    beginTest("Show in Library opens the drawer on the block's file");
+    expect(library.canShow(blockId));
+    pluginRoot.setLibraryShown(false);
+    library.showBlock(blockId);
+    pump(300);
+    expect(pluginRoot.libraryShown(), "the drawer opened");
+    expectEquals(library.selected(), plexi.getFullPathName(), "on its file");
+    expect(library.isOpen(amps.getFullPathName()), "its folder open");
+
+    beginTest("an amp tried replaces the amp, a pedal or an IR never; the first KEEP's folder is where KEEP keeps");
+    expect(library.auditionTargetForTesting("nam", "amp") == blockId, "an amp goes into the open amp");
+    expect(library.auditionTargetForTesting("nam", "amp-cab") == blockId, "an amp and cab too");
+    expect(library.auditionTargetForTesting("nam", "pedal") != blockId, "a pedal doesn't");
+    expect(library.auditionTargetForTesting("ir") != blockId, "an IR doesn't");
+    expect(library.auditionTargetForTesting("nam") == blockId, "gear not known: a capture over a capture");
+    {
+      // No card open, nothing auditioned yet (a project just opened): the
+      // chain's own amp is the one an amp replaces.
+      const auto open = prefs.session[UiPrefs::kDetailBlockId];
+      prefs.session.erase(UiPrefs::kDetailBlockId);
+      expect(library.auditionTargetForTesting("nam", "amp") == blockId, "the chain's amp");
+      expect(library.auditionTargetForTesting("nam", "pedal") != blockId, "a pedal: not the amp");
+      prefs.session[UiPrefs::kDetailBlockId] = open;
+    }
+    library.stopKeeping();
+    library.beginAdd(blockId, LibraryStore::AddKind::keep);
+    library.finishAdd(amps.getFullPathName());
+    pump(200);
+    expectEquals(library.keepTarget(), amps.getFullPathName(), "no second pick");
+    library.stopKeeping();
+
+    beginTest("the selection follows quietly, a search that hides it staying");
+    library.filter = "plexi";
+    library.follow(jcm.getFullPathName());
+    expectEquals(library.selected(), jcm.getFullPathName());
+    expectEquals(library.filter, juce::String("plexi"), "the search stays");
+    library.filter.clear();
+
+    beginTest("the list scrolls for a followed row only when it leaves the view");
+    {
+      auto* list = dynamic_cast<juce::Viewport*>(drive::find(pluginRoot, [](juce::Component& c) {
+        return dynamic_cast<DragScroller*>(&c) != nullptr && c.findParentComponentOfClass<LibraryDrawer>() != nullptr;
+      }));
+      expect(list != nullptr, "the drawer's list");
+      if (list != nullptr) {
+        const auto rowIn = [&](int n) -> juce::Rectangle<int> {  // in the list's view, empty if not built
+          const auto title = take(n).getFileNameWithoutExtension();
+          auto* row = drive::find(pluginRoot, [&title](juce::Component& c) {
+            return c.getTitle() == title && c.findParentComponentOfClass<LibraryDrawer>() != nullptr;
+          });
+          return row == nullptr ? juce::Rectangle<int>() : list->getLocalArea(row, row->getLocalBounds());
+        };
+        const auto inView = [&](int n) {
+          const auto r = rowIn(n);
+          return !r.isEmpty() && r.getY() >= 0 && r.getBottom() <= list->getHeight();
+        };
+        // Far below: centred.
+        library.follow(take(60).getFullPathName());
+        pump(100);
+        expect(inView(60), "a far row comes into view");
+        expect(std::abs(rowIn(60).getCentreY() - list->getHeight() / 2) <= 28, "centred");
+        // Back to the top, then one step at a time past the bottom edge.
+        library.follow(take(0).getFullPathName());
+        pump(100);
+        expect(inView(0));
+        juce::String wrong;
+        bool scrolled = false;
+        for (int n = 1; n < 40; ++n) {
+          const int before = list->getViewPositionY();
+          library.follow(take(n).getFullPathName());
+          pump(20);
+          const int by = list->getViewPositionY() - before;
+          scrolled = scrolled || by != 0;
+          if (!inView(n) || by < 0 || by > 28)  // the first one past the edge may be partly in view
+            wrong << " Take " << n << ": by " << by << (inView(n) ? "" : " (out of view)") << ";";
+        }
+        expect(wrong.isEmpty(), "each step stays in view, the list still or moving a row at most:" + wrong);
+        expect(scrolled, "the steps went past the bottom edge");
+      }
+    }
+
+    beginTest("a copy found by its bytes keeps its link through a rescan");
+    {
+      expect(library.knownOriginalOf(savageCopy.getFullPathName()) == juce::File(), "not worked out yet");
+      expect(library.originalOf(savageCopy.getFullPathName()) == savageOriginal, "found by name and bytes");
+      expectEquals(prefs.getJson(LibraryStore::kKeptPref)[juce::Identifier(savageCopy.getFullPathName())].toString(),
+                   savageOriginal.getFullPathName(), "and recorded as its link");
+      library.refresh(/*fresh=*/true);
+      pump(300);
+      expect(library.knownOriginalOf(savageCopy.getFullPathName()) == savageOriginal, "still kept after the rescan");
+    }
+
+    beginTest("Export for Sharing hands over the captures whose folder is a TONE3000 tone, no others");
+    {
+      const auto low = [](const juce::File& f) { return juce::Identifier(f.getFullPathName().toLowerCase()); };
+      auto* art = new juce::DynamicObject();
+      auto* match = new juce::DynamicObject();
+      match->setProperty("id", 42);
+      match->setProperty("title", "Amps Tone");
+      match->setProperty("username", "someone");
+      match->setProperty("gear", "amp");  // a current entry (one without is asked again)
+      art->setProperty(low(amps), juce::var(match));
+      // The linked folder and everything above it: known misses (no requests).
+      for (auto f = collection; f != f.getParentDirectory(); f = f.getParentDirectory()) {
+        auto* miss = new juce::DynamicObject();
+        miss->setProperty("miss", true);
+        art->setProperty(low(f), juce::var(miss));
+      }
+      prefs.setJson(ToneArt::kCachePref, juce::var(art));
+      library.shareItemTo(root.getChildFile("tonehound").getFullPathName(), root.getChildFile("shared.t3klibrary"));
+      pump(500);
+      const auto& refs = backend.shareRefs();
+      expectEquals(static_cast<int>(refs[juce::Identifier(plexi.getFullPathName())]["tone"]["id"]), 42, "a matched folder's");
+      expect(!refs.hasProperty(juce::Identifier(savageOriginal.getFullPathName())), "not the unmatched one");
+      expect(!library.sharing(), "done");
+    }
+
+    beginTest("Export for Sharing asks about a folder never looked up, one at a time, and Cancel stops it");
+    {
+      // A folder whose captures name their creator; nothing about it cached.
+      plexi.replaceWithText(R"({"metadata": {"modeled_by": "someone"}})");
+      prefs.remove(ToneArt::kCachePref);
+      juce::StringArray statuses;
+      const auto drawerHook = library.onShareStatus;
+      library.onShareStatus = [&] {
+        statuses.add(library.shareStatus());
+        if (drawerHook) drawerHook();
+      };
+      library.shareItemTo(root.getChildFile("tonehound").getFullPathName(), root.getChildFile("shared2.t3klibrary"));
+      for (int i = 0; i < 60 && library.sharing(); ++i) pump(50);
+      expect(statuses.contains("Checking folders on TONE3000: 1 of 1"), statuses.joinIntoString(" / "));
+      expect(!library.sharing() && library.shareStatus().isEmpty(), "done, the strip gone");
+      library.onShareStatus = drawerHook;
+
+      prefs.remove(ToneArt::kCachePref);
+      const auto shares = backend.libraryEdits().size();
+      library.shareItemTo(root.getChildFile("tonehound").getFullPathName(), root.getChildFile("shared3.t3klibrary"));
+      library.cancelShare();
+      pump(500);
+      expect(!library.sharing() && library.shareStatus().isEmpty(), "cancelled");
+      expectEquals(static_cast<int>(backend.libraryEdits().size()), static_cast<int>(shares), "nothing exported");
+    }
+
+    beginTest("another capture of the folder the block plays just switches its model");
+    {
+      // The block plays the folder: Plexi and Wobblytone.
+      auto both = juce::JSON::parse(juce::JSON::toString(chain));
+      both.getDynamicObject()->setProperty("revision", 701);
+      if (auto* lane = both["chain"].getArray())
+        for (auto& item : *lane)
+          if (item["blockId"].toString().toStdString() == blockId) {
+            auto* second = new juce::DynamicObject();
+            second->setProperty("id", 2);
+            second->setProperty("name", "Wobblytone");
+            second->setProperty("model_url", juce::URL(jcm).toString(false));
+            second->setProperty("source_path", jcm.getFullPathName());
+            item["tone"]["models"].getArray()->add(juce::var(second));
+          }
+      backend.setChain(both);
+      pump(200);
+      const auto loadsBefore = backend.lastLocalLoadFile();
+      if (const auto* node = library.tree().find(jcm.getFullPathName())) library.use(*node);
+      pump(100);
+      expect(backend.lastSwitch().first == blockId && backend.lastSwitch().second == 2, "its model switched");
+      expect(backend.lastLocalLoadFile() == loadsBefore, "no folder read again");
+
+      // The block on model 2 now (the processor's answer): it remembers 1,
+      // and "a" on its card goes back there (A/B).
+      if (auto* lane = both["chain"].getArray())
+        for (auto& item : *lane)
+          if (item["blockId"].toString().toStdString() == blockId) item.getDynamicObject()->setProperty("activeModelId", 2);
+      both.getDynamicObject()->setProperty("revision", 703);
+      backend.setChain(both);
+      pump(200);
+      const auto* before = pluginRoot.services().chain.previous(blockId);
+      expect(before != nullptr && before->activeModelId == 1, "remembers the model it left");
+      auto* card = dynamic_cast<BlockCard*>(
+          drive::find(pluginRoot, [](juce::Component& c) { return dynamic_cast<BlockCard*>(&c) != nullptr; }));
+      expect(card != nullptr, "the block's card");
+      if (card != nullptr) {
+        static_cast<juce::Component*>(card)->keyPressed(juce::KeyPress('a', 0, 'a'));
+        pump(100);
+        expect(backend.lastSwitch().first == blockId && backend.lastSwitch().second == 1, "a: back to model 1");
+      }
+      // On model 1 now: "a" typed in the Library drawer goes forth to 2.
+      if (auto* lane = both["chain"].getArray())
+        for (auto& item : *lane)
+          if (item["blockId"].toString().toStdString() == blockId) item.getDynamicObject()->setProperty("activeModelId", 1);
+      both.getDynamicObject()->setProperty("revision", 704);
+      backend.setChain(both);
+      pump(200);
+      auto* drawer = dynamic_cast<LibraryDrawer*>(
+          drive::find(pluginRoot, [](juce::Component& c) { return dynamic_cast<LibraryDrawer*>(&c) != nullptr; }));
+      expect(drawer != nullptr, "the drawer");
+      if (drawer != nullptr) {
+        expect(static_cast<juce::Component*>(drawer)->keyPressed(juce::KeyPress('a', 0, 'a')), "the drawer takes a");
+        pump(100);
+        expect(backend.lastSwitch().first == blockId && backend.lastSwitch().second == 2, "a in the drawer: forth to 2");
+      }
+      // Typed with the focus anywhere else in the plugin (the EQ, nowhere):
+      // the open card's still.
+      if (auto* focused = juce::Component::getCurrentlyFocusedComponent()) focused->giveAwayKeyboardFocus();
+      expect(pluginRoot.keyPressed(juce::KeyPress('2', 0, '2')), "a number from anywhere");
+      expectEquals(pluginRoot.services().toast.message(), juce::String("2 / 2"), "the card's model picker took it");
+      chain.getDynamicObject()->setProperty("revision", 702);
+      backend.setChain(chain);  // back to Plexi alone
+      pump(200);
+    }
+
+    beginTest("the arrow keys walk the list once a row was clicked");
+    {
+      auto* drawer = dynamic_cast<LibraryDrawer*>(
+          drive::find(pluginRoot, [](juce::Component& c) { return dynamic_cast<LibraryDrawer*>(&c) != nullptr; }));
+      expect(drawer != nullptr, "the drawer");
+      if (drawer != nullptr) {
+        const auto key = [drawer](int code) { return drawer->keyPressed(juce::KeyPress(code)); };
+        library.select(plexi.getFullPathName());
+        expect(key(juce::KeyPress::downKey));
+        expect(library.selected() != plexi.getFullPathName() &&
+                   juce::File(library.selected()).getParentDirectory() == amps,
+               "down: the next capture");
+        key(juce::KeyPress::upKey);
+        expectEquals(library.selected(), plexi.getFullPathName(), "up: back");
+        key(juce::KeyPress::leftKey);
+        expectEquals(library.selected(), amps.getFullPathName(), "left: up to its folder");
+        key(juce::KeyPress::leftKey);
+        pump(50);
+        expect(!library.isOpen(amps.getFullPathName()), "left again: closed");
+        key(juce::KeyPress::rightKey);
+        pump(50);
+        expect(library.isOpen(amps.getFullPathName()), "right: open");
+        // Enter on the folder, closed: open, on its first capture (loaded;
+        // the block already plays it, so nothing more to see).
+        key(juce::KeyPress::leftKey);
+        pump(50);
+        expect(!library.isOpen(amps.getFullPathName()), "closed again");
+        key(juce::KeyPress::returnKey);
+        pump(100);
+        expect(library.isOpen(amps.getFullPathName()), "enter: open");
+        expectEquals(library.selected(), plexi.getFullPathName(), "enter: on its first capture");
+      }
+    }
+
+    beginTest("a folder's picture comes back with its capture after a TONE3000 tone had the block");
+    {
+      const auto png = root.getChildFile("cover.png");
+      {
+        juce::Image image(juce::Image::RGB, 4, 4, true);
+        juce::FileOutputStream out(png);
+        juce::PNGImageFormat().writeImageToStream(image, out);
+      }
+      library.setPicture(amps.getFullPathName(), png);
+      pump(100);
+      const auto url = juce::URL(library.pictureFor(amps.getFullPathName())).toString(false);
+      expectEquals(backend.localToneLook(blockId)["image"].toString(), url, "the picture is on the block");
+      // A TONE3000 tone takes the block, then the same capture comes back.
+      auto site = juce::JSON::parse(juce::JSON::toString(scenario->data["chain"]));
+      site.getDynamicObject()->setProperty("revision", 710);
+      backend.setChain(site);
+      pump(200);
+      backend.forgetLocalToneLook(blockId);  // the capture loads again: a tone with no artwork
+      chain.getDynamicObject()->setProperty("revision", 711);
+      backend.setChain(chain);
+      pump(200);
+      expectEquals(backend.localToneLook(blockId)["image"].toString(), url, "and on it again");
+      library.removePicture(amps.getFullPathName());
+      pump(100);
+    }
+
+    beginTest("two blocks of a part, neither pointed at: it asks which, and remembers");
+    {
+      // A second local amp in the chain, on another block.
+      auto two = juce::JSON::parse(juce::JSON::toString(chain));
+      two.getDynamicObject()->setProperty("revision", 720);
+      std::string second;
+      if (auto* lane = two["chain"].getArray()) {
+        juce::var amp;
+        for (auto& item : *lane)
+          if (item["blockId"].toString().toStdString() == blockId) amp = item;
+        for (auto& item : *lane)
+          if (item["blockId"].toString().toStdString() != blockId && second.empty() && amp.isObject()) {
+            second = item["blockId"].toString().toStdString();
+            const auto keepId = item["blockId"];
+            item = juce::JSON::parse(juce::JSON::toString(amp));
+            item.getDynamicObject()->setProperty("blockId", keepId);
+          }
+      }
+      backend.setChain(two);
+      pump(200);
+      const auto open = prefs.session[UiPrefs::kDetailBlockId];
+      prefs.session.erase(UiPrefs::kDetailBlockId);
+      library.forgetAuditionForTesting();
+      const auto choices = library.auditionChoicesForTesting("nam", "amp");
+      expectEquals(static_cast<int>(choices.size()), 2, "both amps offered");
+      // Picked (the drawer's menu, answered here): that block, then remembered.
+      std::string asked;
+      const auto drawerAsks = library.chooseBlock;
+      library.chooseBlock = [&](const std::vector<std::string>& blocks, std::function<void(const std::string&)> pick) {
+        asked = blocks.back();
+        pick(blocks.back());
+      };
+      if (const auto* node = library.tree().find(plexi.getFullPathName())) library.use(*node);
+      pump(200);
+      expect(!asked.empty(), "it asked");
+      expect(library.auditionChoicesForTesting("nam", "amp").empty(), "and doesn't again");
+      expect(library.auditionTargetForTesting("nam", "amp") == asked, "the one picked");
+      library.chooseBlock = drawerAsks;
+      prefs.session[UiPrefs::kDetailBlockId] = open;
+      chain.getDynamicObject()->setProperty("revision", 721);
+      backend.setChain(chain);
+      pump(200);
+    }
+
+    beginTest("a capture of another matched folder swapped in wears that folder's artwork");
+    {
+      const auto vox = root.getChildFile("tonehound").getChildFile("Captures").getChildFile("Vox");
+      vox.createDirectory();
+      const auto voxCapture = vox.getChildFile("Vox 1.nam");
+      voxCapture.replaceWithText("{}");
+      const auto match = [](int id, const juce::String& title, const juce::String& image) {
+        auto* o = new juce::DynamicObject();
+        o->setProperty("id", id);
+        o->setProperty("title", title);
+        o->setProperty("image", image);
+        o->setProperty("username", "someone");
+        o->setProperty("gear", "amp");
+        return juce::var(o);
+      };
+      auto* cache = new juce::DynamicObject();
+      cache->setProperty(juce::Identifier(vox.getFullPathName().toLowerCase()), match(2, "Vox Tone", "https://img/vox.jpg"));
+      prefs.setJson(ToneArt::kCachePref, juce::var(cache));
+      // The Vox folder's capture swapped into the block (the processor's answer).
+      auto swapped = juce::JSON::parse(juce::JSON::toString(chain));
+      swapped.getDynamicObject()->setProperty("revision", 730);
+      if (auto* lane = swapped["chain"].getArray())
+        for (auto& item : *lane)
+          if (item["blockId"].toString().toStdString() == blockId) {
+            auto model = item["tone"]["models"][0];
+            model.getDynamicObject()->setProperty("source_path", voxCapture.getFullPathName());
+            model.getDynamicObject()->setProperty("model_url", juce::URL(voxCapture).toString(false));
+            item["tone"].getDynamicObject()->setProperty("title", "Vox");
+          }
+      backend.forgetLocalToneLook(blockId);
+      backend.setChain(swapped);
+      pump(300);
+      expectEquals(backend.localToneLook(blockId)["image"].toString(), juce::String("https://img/vox.jpg"));
+      expectEquals(backend.localToneLook(blockId)["block_title"].toString(), juce::String("Vox Tone"));
+      chain.getDynamicObject()->setProperty("revision", 731);
+      backend.setChain(chain);
+      pump(200);
+      prefs.remove(ToneArt::kCachePref);
+
+      // Back on Plexi: "a" plays the Vox folder's capture again, in this block
+      // (A/B across folders).
+      if (auto* card = dynamic_cast<BlockCard*>(
+              drive::find(pluginRoot, [](juce::Component& c) { return dynamic_cast<BlockCard*>(&c) != nullptr; }))) {
+        static_cast<juce::Component*>(card)->keyPressed(juce::KeyPress('a', 0, 'a'));
+        pump(300);
+        expectEquals(backend.lastLocalLoadFile().getFullPathName(), voxCapture.getFullPathName(), "a: the other folder's capture");
+        expectEquals(juce::String(backend.lastLocalLoadTarget()), juce::String(blockId), "into the same block");
+      } else {
+        expect(false, "the block's card");
+      }
+    }
+
+    beginTest("a number typed jumps to that capture in the folder and loads it");
+    {
+      auto* drawer = dynamic_cast<LibraryDrawer*>(
+          drive::find(pluginRoot, [](juce::Component& c) { return dynamic_cast<LibraryDrawer*>(&c) != nullptr; }));
+      // By value: a load rescans, and the new tree replaces the one read here.
+      juce::StringArray inFolder;
+      if (const auto* folder = library.tree().find(amps.getFullPathName()))
+        for (const auto& child : folder->children) inFolder.add(child.path);
+      expect(drawer != nullptr && inFolder.size() >= 25);
+      if (drawer != nullptr && inFolder.size() >= 25) {
+        const auto nth = [&inFolder](int n) { return inFolder[n - 1]; };
+        const auto type = [drawer](char digit) { drawer->keyPressed(juce::KeyPress(digit, 0, static_cast<juce::juce_wchar>(digit))); };
+        library.select(plexi.getFullPathName());
+        type('5');
+        expectEquals(library.selected(), nth(5), "5: the fifth");
+        {
+          // The toast says where, on screen: shown, sized, drawn with its text.
+          auto* toastView = dynamic_cast<ToastView*>(
+              drive::find(pluginRoot, [](juce::Component& c) { return dynamic_cast<ToastView*>(&c) != nullptr; }));
+          expect(toastView != nullptr, "the toast view");
+          if (toastView != nullptr) {
+            expectEquals(pluginRoot.services().toast.message(), juce::String("5 / 103"));
+            expect(toastView->isShowing(), "showing");
+            expect(!toastView->getBounds().isEmpty(), "sized: " + toastView->getBounds().toString());
+            const auto shot = toastView->createComponentSnapshot(toastView->getLocalBounds());
+            int bright = 0;
+            for (int y = 0; y < shot.getHeight(); ++y)
+              for (int x = 0; x < shot.getWidth(); ++x) bright += shot.getPixelAt(x, y).getBrightness() > 0.8f ? 1 : 0;
+            expect(bright > 20, "its text drawn (" + juce::String(bright) + " bright pixels)");
+            // On top: its layer is above every visible sibling covering it.
+            auto* layer = toastView->getParentComponent();
+            auto* top = layer != nullptr ? layer->getParentComponent() : nullptr;
+            juce::StringArray over;
+            if (top != nullptr) {
+              const auto where = top->getLocalArea(toastView, toastView->getLocalBounds());
+              for (int i = top->getIndexOfChildComponent(layer) + 1; i < top->getNumChildComponents(); ++i)
+                if (auto* c = top->getChildComponent(i); c->isVisible() && c->getBounds().intersects(where))
+                  over.add(juce::String(typeid(*c).name()) + " " + c->getBounds().toString());
+            }
+            expect(over.isEmpty(), "on top, not under: " + over.joinIntoString(", "));
+          }
+        }
+        pump(1000);  // 50 may follow: loaded after the pause
+        expectEquals(backend.lastLocalLoadFile().getFullPathName(), nth(5), "and loaded");
+        pump(900);
+        type('2');
+        type('5');
+        expectEquals(library.selected(), nth(25), "2, 5: the 25th");
+        pump(1000);
+        expectEquals(backend.lastLocalLoadFile().getFullPathName(), nth(25));
+        prefs.setBool(UiPrefs::kLibraryNumberLoads, false);
+        pump(900);
+        type('7');
+        pump(1000);
+        expectEquals(library.selected(), nth(7), "setting off: selected");
+        expectEquals(backend.lastLocalLoadFile().getFullPathName(), nth(25), "not loaded");
+        prefs.setBool(UiPrefs::kLibraryNumberLoads, true);
+      }
+    }
+
+    beginTest("Enter in the search loads the first match");
+    drive::submit(pluginRoot, "Search library", "wobbly");  // nothing else in the Library is called that
+    pump(200);
+    expectEquals(backend.lastLocalLoadFile().getFullPathName(), jcm.getFullPathName(), "the match loaded");
+    drive::fill(pluginRoot, "Search library", "");
+    pump(250);
+
+    beginTest("a block whose file moved away is found by its name and bytes, and re-pointed");
+    {
+      juce::MemoryBlock bytes;
+      expect(plexi.loadFileAsData(bytes));
+      const int id = library_state::localModelId(bytes.getData(), bytes.getSize());
+      // The block names Plexi where it was (a project saved before its folder
+      // was renamed): the Library has it in Amps, with the same bytes.
+      const auto playsFrom = [&](const juce::File& file, int modelId, int revision) {
+        auto moved = juce::JSON::parse(juce::JSON::toString(chain));
+        moved.getDynamicObject()->setProperty("revision", revision);
+        if (auto* lane = moved["chain"].getArray())
+          for (auto& item : *lane)
+            if (item["blockId"].toString().toStdString() == blockId) {
+              // An older project's block: its file only in the model URL.
+              auto model = item["tone"]["models"][0];
+              model.getDynamicObject()->setProperty("id", modelId);
+              model.getDynamicObject()->removeProperty("source_path");
+              model.getDynamicObject()->setProperty("model_url", juce::URL(file).toString(false));
+              item.getDynamicObject()->setProperty("activeModelId", modelId);
+            }
+        backend.setChain(moved);
+        pump(200);
+      };
+      const auto gone = root.getChildFile("Old Amps").getChildFile("Plexi.nam");
+      const auto before = backend.relinks().size();
+      playsFrom(gone, id, 770);
+      expectEquals(static_cast<int>(backend.relinks().size()), static_cast<int>(before) + 1, "re-pointed once");
+      if (backend.relinks().size() > before) {
+        // Its whole folder is gone: the folder, re-pointed to where it went.
+        expect(backend.relinks().back().first == gone.getParentDirectory(), backend.relinks().back().first.getFullPathName());
+        expect(backend.relinks().back().second == amps, backend.relinks().back().second.getFullPathName());
+      }
+      // A file of that name with other bytes isn't it.
+      playsFrom(root.getChildFile("Older Amps").getChildFile("Plexi.nam"), id + 1, 771);
+      expectEquals(static_cast<int>(backend.relinks().size()), static_cast<int>(before) + 1, "not another capture with its name");
+
+      // The same bytes in two places (Savage is in the linked collection and
+      // kept in Amps): the folder holding all the block's missing files wins.
+      {
+        juce::MemoryBlock savageBytes;
+        expect(savageCopy.loadFileAsData(savageBytes));
+        const int savageId = library_state::localModelId(savageBytes.getData(), savageBytes.getSize());
+        const auto mix = root.getChildFile("Old Mix");
+        auto two = juce::JSON::parse(juce::JSON::toString(chain));
+        two.getDynamicObject()->setProperty("revision", 773);
+        if (auto* lane = two["chain"].getArray())
+          for (auto& item : *lane)
+            if (item["blockId"].toString().toStdString() == blockId) {
+              juce::Array<juce::var> models;
+              for (const auto& [name, modelId] : {std::pair<const char*, int>{"Savage.nam", savageId}, {"Plexi.nam", id}}) {
+                auto* m = new juce::DynamicObject();
+                m->setProperty("id", modelId);
+                m->setProperty("name", juce::File(name).getFileNameWithoutExtension());
+                m->setProperty("source_path", mix.getChildFile(name).getFullPathName());
+                m->setProperty("model_url", juce::URL(mix.getChildFile(name)).toString(false));
+                models.add(juce::var(m));
+              }
+              item["tone"].getDynamicObject()->setProperty("models", models);
+              item.getDynamicObject()->setProperty("activeModelId", savageId);
+            }
+        backend.setChain(two);
+        pump(200);
+        expect(!backend.relinks().empty() && backend.relinks().back().first == mix &&
+                   backend.relinks().back().second == amps,
+               "to Amps, which holds both: " + (backend.relinks().empty() ? juce::String() : backend.relinks().back().second.getFullPathName()));
+      }
+      chain.getDynamicObject()->setProperty("revision", 772);
+      backend.setChain(chain);  // back to Plexi alone
+      pump(200);
+    }
+
+    beginTest("REFRESH shows when the block's folder has captures it doesn't list, and reads it again");
+    {
+      // The block lists Plexi alone; Amps holds a hundred more.
+      backend.setChain(chain);
+      pump(200);
+      expect(library.newInFolder(blockId) > 0, "new captures in its folder");
+      auto* refresh = drive::byHelpPrefix(pluginRoot, "Refresh:");
+      expect(refresh != nullptr && refresh->isShowing(), "REFRESH on the card");
+      if (refresh != nullptr) {
+        drive::click(pluginRoot, *refresh);
+        pump(200);
+        expectEquals(backend.lastLocalLoadFile().getFullPathName(), plexi.getFullPathName(), "the folder read again, on Plexi");
+        expectEquals(juce::String(backend.lastLocalLoadTarget()), juce::String(blockId), "into this block");
+      }
+    }
+
+    beginTest("SOURCE of a copy kept from a TONE3000 tone prefers your own download of that tone");
+    {
+      const auto make = [&](const juce::String& rel) {
+        const auto f = root.getChildFile(rel);
+        f.getParentDirectory().createDirectory();
+        f.replaceWithText("{}");
+        return f;
+      };
+      const auto copy = make("Keepers/Boost.nam");
+      const auto download = make("Downloads/Boost Tone/Boost - High.nam");
+      make("Downloads/Boost Tone/Boost - Low.nam");
+      const auto single = make("Elsewhere/Boost - High.nam");
+      const auto link = [](int model) {
+        auto* tone = new juce::DynamicObject();
+        tone->setProperty("id", 4242);
+        tone->setProperty("title", "Boost Tone");
+        auto* m = new juce::DynamicObject();
+        m->setProperty("id", model);
+        auto* o = new juce::DynamicObject();
+        o->setProperty("tone", juce::var(tone));
+        o->setProperty("model", juce::var(m));
+        return juce::var(o);
+      };
+      const auto before = prefs.getJson(LibraryStore::kKeptPref);
+      auto* index = new juce::DynamicObject();
+      index->setProperty(juce::Identifier(copy.getFullPathName()), link(9));
+      index->setProperty(juce::Identifier(download.getFullPathName()), link(9));
+      index->setProperty(juce::Identifier(root.getChildFile("Downloads/Boost Tone/Boost - Low.nam").getFullPathName()), link(10));
+      index->setProperty(juce::Identifier(single.getFullPathName()), link(9));
+      prefs.setJson(LibraryStore::kKeptPref, juce::var(index));
+      expect(library.localSiteOriginal(copy.getFullPathName()) == download,
+             "the whole download, not the single copy: " + library.localSiteOriginal(copy.getFullPathName()).getFullPathName());
+      prefs.setJson(LibraryStore::kKeptPref, before);
+    }
+
+    beginTest("Down in the search goes to the first capture shown, the keyboard with it");
+    {
+      library.select({});
+      drive::fill(pluginRoot, "Search library", "wobbly");  // no pause waited: Down applies it
+      auto* editor = dynamic_cast<juce::TextEditor*>(drive::find(pluginRoot, [](juce::Component& c) {
+        auto* e = dynamic_cast<juce::TextEditor*>(&c);
+        return e != nullptr && e->getText() == "wobbly";
+      }));
+      expect(editor != nullptr, "the search field");
+      if (editor != nullptr) {
+        expect(static_cast<juce::Component*>(editor)->keyPressed(juce::KeyPress(juce::KeyPress::downKey)), "taken");
+        pump(50);
+        expectEquals(library.selected(), jcm.getFullPathName(), "the match selected");
+        auto* drawer = dynamic_cast<LibraryDrawer*>(
+            drive::find(pluginRoot, [](juce::Component& c) { return dynamic_cast<LibraryDrawer*>(&c) != nullptr; }));
+        expect(drawer != nullptr && drawer->hasKeyboardFocus(false), "the list has the keyboard");
+        // "s" from the list: back to the search.
+        if (drawer != nullptr) {
+          expect(static_cast<juce::Component*>(drawer)->keyPressed(juce::KeyPress('s', 0, 's')), "s taken");
+          expect(editor->hasKeyboardFocus(false), "s: the search has the keyboard");
+        }
+      }
+      drive::fill(pluginRoot, "Search library", "");
+      pump(250);
+    }
+
+    beginTest("a library still called My Library takes the username once signed in");
+    {
+      // A location with no "tonehound" folder in the way.
+      const auto fresh = root.getChildFile("Elsewhere");
+      prefs.set(LibraryStore::kRootPref, fresh.getFullPathName());
+      prefs.set(LibraryStore::kOwnerPref, "My Library");
+      fresh.getChildFile("My Library").createDirectory();
+      // The block plays a capture in it, wearing its folder's picture (kept
+      // in that library's .t3kpictures).
+      const auto mine = fresh.getChildFile("My Library");
+      const auto cabs = mine.getChildFile("Captures").getChildFile("Cabs");
+      cabs.createDirectory();
+      const auto cab = cabs.getChildFile("Cab.nam");
+      cab.replaceWithText("{}");
+      auto playsCab = juce::JSON::parse(juce::JSON::toString(chain));
+      playsCab.getDynamicObject()->setProperty("revision", 760);
+      if (auto* lane = playsCab["chain"].getArray())
+        for (auto& item : *lane)
+          if (item["blockId"].toString().toStdString() == blockId) {
+            auto model = item["tone"]["models"][0];
+            model.getDynamicObject()->setProperty("source_path", cab.getFullPathName());
+            model.getDynamicObject()->setProperty("model_url", juce::URL(cab).toString(false));
+          }
+      backend.forgetLocalToneLook(blockId);
+      backend.setChain(playsCab);
+      pump(200);
+      library.setPicture(cabs.getFullPathName(), root.getChildFile("cover.png"));
+      pump(100);
+      const auto wornFile = [&] { return juce::URL(backend.localToneLook(blockId)["image"].toString()).getLocalFile(); };
+      expect(wornFile().isAChildOf(mine) && wornFile().existsAsFile(), "the picture, in My Library");
+
+      const auto edits = backend.libraryEdits().size();
+      library.refresh();
+      pump(200);
+      expectEquals(prefs.get(LibraryStore::kOwnerPref), juce::String("tonehound"));
+      expect(backend.libraryEdits().size() > edits && backend.libraryEdits()[edits].op == "rename", "renamed");
+      // The picture went with the library, and the block wears it from there.
+      const auto renamed = fresh.getChildFile("tonehound");
+      expect(wornFile().isAChildOf(renamed) && wornFile().existsAsFile(),
+             "the block's picture followed: " + wornFile().getFullPathName());
+      expect(library.pictureFor(renamed.getChildFile("Captures").getChildFile("Cabs").getFullPathName()).existsAsFile(),
+             "the folder's picture, under its new name");
+      chain.getDynamicObject()->setProperty("revision", 761);
+      backend.setChain(chain);  // back to Plexi alone
+      pump(200);
+    }
+    pluginRoot.setLibraryShown(false);
+    window.setVisible(false);
+  }
+};
+
+// What the Library keeps by path follows a move or rename and goes with a
+// delete: folder pictures (and their files), the library order, open
+// folders, kept links. A link to a copy on a drive that isn't plugged in
+// stays. A pending "Add here" goes with its block.
+struct LibraryPathTests : juce::UnitTest {
+  LibraryPathTests() : juce::UnitTest("Library paths", "ui") {}
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("main-detail");
+    if (scenario == nullptr) {
+      expect(false, "main-detail scenario missing");
+      return;
+    }
+    const juce::TemporaryFile scratch;
+    const auto root = scratch.getFile();
+    const auto amps = root.getChildFile("Amps"), moved = root.getChildFile("Moved Amps");
+    amps.createDirectory();
+    MockBackend backend(scenario->data);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    pump(300);
+    auto& library = host.pluginRoot().services().library;
+    auto& prefs = host.pluginRoot().services().prefs;
+
+    beginTest("a rename or move takes the folder's picture, its place in the order and its open state along");
+    const auto png = root.getChildFile("cover.png");
+    {
+      juce::Image image(juce::Image::RGB, 4, 4, true);
+      juce::FileOutputStream out(png);
+      juce::PNGImageFormat().writeImageToStream(image, out);
+    }
+    library.setPicture(amps.getFullPathName(), png);
+    const auto picture = library.pictureFor(amps.getFullPathName());
+    expect(picture.existsAsFile(), "set");
+    prefs.setJson(LibraryStore::kOrderPref, juce::Array<juce::var>{amps.getFullPathName(), root.getFullPathName()});
+    library.setOpen(amps.getFullPathName(), true);
+    library.remapPathsForTesting(amps.getFullPathName(), moved.getFullPathName());
+    expect(library.pictureFor(moved.getFullPathName()) == picture, "the picture follows");
+    expect(library.pictureFor(amps.getFullPathName()) == juce::File(), "and isn't left at the old path");
+    expectEquals(prefs.getJson(LibraryStore::kOrderPref)[0].toString(), moved.getFullPathName(), "same place in the order");
+    expect(library.isOpen(moved.getFullPathName()) && !library.isOpen(amps.getFullPathName()), "still open, where it went");
+
+    beginTest("a delete takes its picture (and the file), its kept links and its open state");
+    const auto copy = moved.getChildFile("Lead.nam");
+    library.rememberKeptForTesting(copy, root.getChildFile("Source").getChildFile("Lead.nam").getFullPathName());
+    library.forgetPathsForTesting(moved.getFullPathName());
+    expect(library.pictureFor(moved.getFullPathName()) == juce::File());
+    expect(!picture.existsAsFile(), "the picture's file goes");
+    expect(!prefs.getJson(LibraryStore::kKeptPref).hasProperty(juce::Identifier(copy.getFullPathName())), "its links go");
+    expect(!library.isOpen(moved.getFullPathName()));
+
+    beginTest("keeping while a drive is unplugged leaves that drive's links alone");
+    {
+      prefs.remove(LibraryStore::kKeptPref);
+      // A drive that isn't there (any platform: a folder that doesn't exist).
+      const auto away = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                            .getChildFile("t3k-unplugged-" + juce::Uuid().toString());
+      const auto unplugged = away.getChildFile("Kept").getChildFile("Plexi.nam");
+      library.rememberKeptForTesting(unplugged, away.getChildFile("Plexi.nam").getFullPathName());
+      const auto here = root.getChildFile("Kept"), gone = here.getChildFile("Deleted.nam");
+      here.createDirectory();
+      library.rememberKeptForTesting(gone, root.getChildFile("x.nam").getFullPathName());
+      const auto now = here.getChildFile("New.nam");
+      now.replaceWithText("{}");
+      library.rememberKeptForTesting(now, root.getChildFile("y.nam").getFullPathName());
+      const auto links = prefs.getJson(LibraryStore::kKeptPref);
+      expect(links.hasProperty(juce::Identifier(unplugged.getFullPathName())), "the unplugged drive's link stays");
+      expect(links.hasProperty(juce::Identifier(gone.getFullPathName())), "a copy gone stays too (Find Missing Files)");
+      expect(links.hasProperty(juce::Identifier(now.getFullPathName())));
+      prefs.remove(LibraryStore::kKeptPref);
+    }
+
+    beginTest("a pending Add here goes with its block");
+    {
+      const std::string blockId = scenario->data["sessionStorage"]["t3k.detailBlockId"].toString().toStdString();
+      library.beginAdd(blockId);
+      pump(50);
+      expect(library.pendingAdd().has_value());
+      auto chain = juce::JSON::parse(juce::JSON::toString(scenario->data["chain"]));
+      chain.getDynamicObject()->setProperty("revision", 900);
+      if (auto* lane = chain["chain"].getArray())
+        for (int i = lane->size(); --i >= 0;)
+          if ((*lane)[i]["blockId"].toString().toStdString() == blockId) lane->remove(i);
+      backend.setChain(chain);
+      pump(200);
+      expect(!library.pendingAdd().has_value(), "cancelled");
+    }
+  }
+};
+
+// The library state (LibraryState.h): kept links, folder pictures and the
+// keep folder written into the library's own file, and read back by an
+// install that has none of them (prefs wiped), also from where the Library
+// was moved to.
+struct LibraryStateTests : juce::UnitTest {
+  LibraryStateTests() : juce::UnitTest("Library state", "ui") {}
+
+  void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
+    namespace ls = library_state;
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("main-detail");
+    if (scenario == nullptr) {
+      expect(false, "main-detail scenario missing");
+      return;
+    }
+    const juce::TemporaryFile scratch;
+    const auto root = scratch.getFile().getChildFile("Library");
+    const auto own = root.getChildFile("tonehound");
+    const auto amps = own.getChildFile("Captures").getChildFile("Amps");
+    const auto kept = own.getChildFile("Captures").getChildFile("Kept");
+    amps.createDirectory();
+    kept.createDirectory();
+    for (const auto& f : {amps.getChildFile("Plexi.nam"), kept.getChildFile("Plexi.nam"), kept.getChildFile("Site.nam")})
+      f.replaceWithText("{}");
+    const auto png = scratch.getFile().getChildFile("cover.png");
+    {
+      juce::Image image(juce::Image::RGB, 4, 4, true);
+      juce::FileOutputStream out(png);
+      juce::PNGImageFormat().writeImageToStream(image, out);
+    }
+    const auto site = juce::JSON::parse(R"({"tone":{"id":5,"title":"Site Tone"},"model":{"id":7,"name":"Clean"}})");
+    const auto at = [](const juce::String& key, const juce::File& base) { return juce::Identifier(base.getChildFile(key).getFullPathName()); };
+    const auto use = [](UiPrefs& prefs, const juce::File& at) {
+      prefs.set(LibraryStore::kRootPref, at.getFullPathName());
+      prefs.set(LibraryStore::kOwnerPref, "tonehound");
+    };
+
+    MockBackend backend(scenario->data);
+    {
+      ScaledHost host(backend, *scenario, fixtures.root);
+      auto& library = host.pluginRoot().services().library;
+      use(host.pluginRoot().services().prefs, root);
+
+      beginTest("kept links, a folder picture and the keep folder are written into the library");
+      library.rememberKeptForTesting(kept.getChildFile("Plexi.nam"), amps.getChildFile("Plexi.nam").getFullPathName());
+      library.rememberKeptForTesting(kept.getChildFile("Site.nam"), site);
+      library.setPicture(amps.getFullPathName(), png);
+      library.setKeepTarget(kept.getFullPathName());
+      {
+        // Captures' folders in your order (dropped between them).
+        auto* order = new juce::DynamicObject();
+        order->setProperty(juce::Identifier(own.getChildFile("Captures").getFullPathName().toLowerCase()),
+                           juce::Array<juce::var>{"Kept", "Amps"});
+        host.pluginRoot().services().prefs.setJson(LibraryStore::kFolderOrderPref, juce::var(order));
+      }
+      library.saveState();
+      const auto state = ls::read(own);
+      expectEquals(state["folders"]["captures"][0].toString(), juce::String("Kept"), "the folder order, relative");
+      expectEquals(state["kept"]["Captures/Kept/Plexi.nam"]["source"].toString(), juce::String("Captures/Amps/Plexi.nam"));
+      expectEquals(static_cast<int>(state["kept"]["Captures/Kept/Site.nam"]["tone"]["id"]), 5);
+      const auto picture = state["pictures"]["captures/amps"].toString();
+      expect(picture.isNotEmpty() && ls::picturesOf(own).getChildFile(picture).existsAsFile(), "the picture is in the library");
+      expect(library.pictureFor(amps.getFullPathName()).isAChildOf(own), "and shown from there");
+      expectEquals(state["keep"].toString(), juce::String("tonehound/Captures/Kept"));
+    }
+
+    beginTest("an install with none of it reads it back");
+    {
+      ScaledHost host(backend, *scenario, fixtures.root);
+      auto& library = host.pluginRoot().services().library;
+      auto& prefs = host.pluginRoot().services().prefs;
+      use(prefs, root);
+      expect(library.loadStateForTesting(), "something to read");
+      const auto links = prefs.getJson(LibraryStore::kKeptPref);
+      expectEquals(links[at("Captures/Kept/Plexi.nam", own)].toString(), amps.getChildFile("Plexi.nam").getFullPathName());
+      expect(library.siteOriginalOf(kept.getChildFile("Site.nam").getFullPathName()).has_value(), "the TONE3000 link");
+      expect(library.pictureFor(amps.getFullPathName()).existsAsFile(), "the picture");
+      expectEquals(library.keepTarget(), kept.getFullPathName());
+      const auto orders = prefs.getJson(LibraryStore::kFolderOrderPref);
+      expectEquals(orders[juce::Identifier(own.getChildFile("Captures").getFullPathName().toLowerCase())][1].toString(),
+                   juce::String("Amps"), "the folder order");
+      expect(!library.loadStateForTesting(), "read once, until it changes");
+    }
+
+    beginTest("a Library moved elsewhere finds it all where it went");
+    {
+      const auto movedRoot = scratch.getFile().getChildFile("Moved");
+      expect(root.copyDirectoryTo(movedRoot));
+      const auto movedOwn = movedRoot.getChildFile("tonehound");
+      ScaledHost host(backend, *scenario, fixtures.root);
+      auto& library = host.pluginRoot().services().library;
+      auto& prefs = host.pluginRoot().services().prefs;
+      use(prefs, movedRoot);
+      library.loadStateForTesting();
+      const auto links = prefs.getJson(LibraryStore::kKeptPref);
+      expectEquals(links[at("Captures/Kept/Plexi.nam", movedOwn)].toString(),
+                   movedOwn.getChildFile("Captures/Amps/Plexi.nam").getFullPathName());
+      expect(library.siteOriginalOf(movedOwn.getChildFile("Captures/Kept/Site.nam").getFullPathName()).has_value());
+      expect(library.pictureFor(movedOwn.getChildFile("Captures/Amps").getFullPathName()).isAChildOf(movedOwn));
+      expectEquals(library.keepTarget(), movedOwn.getChildFile("Captures/Kept").getFullPathName());
+
+      beginTest("a folder moved by mistake is missing, then found where it went");
+      const auto movedAmps = movedOwn.getChildFile("Captures/Amps");
+      const auto old = movedOwn.getChildFile("Captures/Old");
+      old.createDirectory();
+      expect(movedAmps.moveFileTo(old.getChildFile("Amps")));
+      library.checkMissingForTesting();
+      using Kind = LibraryStore::Missing::Kind;
+      const auto listed = [&](const juce::String& path, Kind kind) -> const LibraryStore::Missing* {
+        for (const auto& entry : library.missing())
+          if (entry.path == path && entry.kind == kind) return &entry;
+        return nullptr;
+      };
+      const auto* original = listed(movedAmps.getChildFile("Plexi.nam").getFullPathName(), Kind::original);
+      expect(original != nullptr, "the original a copy was kept from");
+      expect(original != nullptr && original->other == movedOwn.getChildFile("Captures/Kept/Plexi.nam").getFullPathName(),
+             "naming the copy");
+      expect(listed(movedAmps.getFullPathName().toLowerCase(), Kind::picture) != nullptr, "the folder with a picture");
+      expectEquals(static_cast<int>(library.missing().size()), 2, "nothing else");
+      expect(!library.missingNoticeShown(), "an original or a picture's folder gone: in the list only");
+      expectEquals(library.findMissing(old), 2, "found in the folder it went into");
+      expect(library.missing().empty());
+      expectEquals(prefs.getJson(LibraryStore::kKeptPref)[at("Captures/Kept/Plexi.nam", movedOwn)].toString(),
+                   old.getChildFile("Amps/Plexi.nam").getFullPathName(), "the copy's link");
+      expect(library.pictureFor(old.getChildFile("Amps").getFullPathName()).existsAsFile(), "the picture");
+
+      beginTest("the moved folder itself can be picked too, renamed: its picture comes along");
+      const auto renamed = movedOwn.getChildFile("Captures/Plexi stuff");
+      expect(old.getChildFile("Amps").moveFileTo(renamed));
+      library.checkMissingForTesting();
+      // Picked for that file (its name alone is enough then).
+      expectEquals(library.findMissing(renamed, old.getChildFile("Amps/Plexi.nam").getFullPathName()), 2,
+                   "the file, and the folder its picture is for");
+      expectEquals(prefs.getJson(LibraryStore::kKeptPref)[at("Captures/Kept/Plexi.nam", movedOwn)].toString(),
+                   renamed.getChildFile("Plexi.nam").getFullPathName());
+      expect(library.pictureFor(renamed.getFullPathName()).existsAsFile(), "the picture, by the files found in it");
+
+      beginTest("a capture kept from TONE3000 that went missing downloads again, still linked");
+      {
+        const std::string blockId = scenario->data["sessionStorage"]["t3k.detailBlockId"].toString().toStdString();
+        const auto* block = host.pluginRoot().services().chain.state().findBlock(blockId);
+        expect(block != nullptr && !block->tone.local, "a TONE3000 block");
+        if (block != nullptr) {
+          auto ref = juce::JSON::parse(R"({"tone":{},"model":{}})");
+          ref["tone"].getDynamicObject()->setProperty("id", block->tone.id);
+          ref["tone"].getDynamicObject()->setProperty("title", block->tone.title);
+          ref["tone"].getDynamicObject()->setProperty("format", block->tone.format);
+          ref["model"].getDynamicObject()->setProperty("id", block->activeModelId);
+          // Its folder went too.
+          const auto gone = movedOwn.getChildFile("Captures/Kept/Gone/Site Again.nam");
+          library.rememberKeptForTesting(gone, ref);
+          library.checkMissingForTesting();
+          const auto* entry = listed(gone.getFullPathName(), Kind::copy);
+          expect(entry != nullptr && entry->site, "listed as from TONE3000");
+          expect(library.missingNoticeShown(), "a kept copy gone: the notice");
+          library.hideMissingNotice();
+          library.checkMissingForTesting();
+          expect(!library.missingNoticeShown(), "hidden, and it stays hidden");
+          library.downloadMissing({gone.getFullPathName()});
+          juce::MessageManager::getInstance()->runDispatchLoopUntil(600);
+          expect(gone.existsAsFile(), "downloaded where it was");
+          expect(library.siteOriginalOf(gone.getFullPathName()).has_value(), "still linked to its tone");
+          expect(listed(gone.getFullPathName(), Kind::copy) == nullptr, "not missing anymore");
+        }
+      }
+
+      beginTest("deleted for good: Forget drops them");
+      renamed.getChildFile("Plexi.nam").deleteFile();
+      library.checkMissingForTesting();
+      expect(!library.missing().empty());
+      library.forgetMissing();
+      expect(library.missing().empty());
+      expect(!prefs.getJson(LibraryStore::kKeptPref).hasProperty(at("Captures/Kept/Plexi.nam", movedOwn)), "that link went");
+      expect(library.siteOriginalOf(movedOwn.getChildFile("Captures/Kept/Site.nam").getFullPathName()).has_value(),
+             "the others stay");
+
+      beginTest("a link removed on another machine goes here too; this machine's linked folders stay its own");
+      {
+        library.saveState();  // this instance has the file as it is now
+        const auto siteKey = movedOwn.getChildFile("Captures/Kept/Site.nam").getFullPathName();
+        const auto mine = scratch.getFile().getChildFile("My collection");
+        mine.createDirectory();
+        prefs.setJson(LibraryStore::kLinksPref, juce::Array<juce::var>{mine.getFullPathName()});
+        library.saveState();
+        // The other machine: forgot the TONE3000 copy, linked its own folder.
+        auto elsewhere = ls::read(movedOwn);
+        elsewhere["kept"].getDynamicObject()->removeProperty("Captures/Kept/Site.nam");
+        elsewhere.getDynamicObject()->setProperty("links", juce::Array<juce::var>{"Z:/Their collection"});
+        expect(ls::write(movedOwn, elsewhere));
+        library.loadStateForTesting();
+        expect(!prefs.getJson(LibraryStore::kKeptPref).hasProperty(juce::Identifier(siteKey)), "the removal came through");
+        expectEquals(prefs.getJson(LibraryStore::kLinksPref)[0].toString(), mine.getFullPathName(), "links stay this machine's");
+      }
+    }
+  }
+};
+
+// A block's model picker takes numbers once clicked: digits close together
+// make one, picked at once when no more could follow; Left / Right step.
+struct ModelSelectNumberTests : juce::UnitTest {
+  ModelSelectNumberTests() : juce::UnitTest("Model picker numbers", "ui") {}
+  void runTest() override {
+    ModelSelect select;
+    std::vector<ModelSelect::Option> options;
+    for (int i = 1; i <= 30; ++i) options.push_back({juce::String(100 + i), "Model " + juce::String(i)});
+    select.setOptions(options);
+    select.setValue("101");
+    juce::String picked;
+    select.onChange = [&](const juce::String& id) {
+      picked = id;
+      select.setValue(id);
+    };
+    const auto type = [&](char digit) { select.keyPressed(juce::KeyPress(digit, 0, static_cast<juce::juce_wchar>(digit))); };
+    const auto pump = [](int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); };
+
+    beginTest("2, 5: the 25th, at once (no 250th)");
+    type('2');
+    expect(picked.isEmpty(), "2 may become 25: waits");
+    type('5');
+    expectEquals(picked, juce::String("125"));
+
+    beginTest("then 7: a new number, the 7th");
+    type('7');
+    expectEquals(picked, juce::String("107"));
+
+    beginTest("3 alone: after the pause");
+    type('3');
+    pump(1000);
+    expectEquals(picked, juce::String("103"));
+
+    beginTest("Right / Left step");
+    select.keyPressed(juce::KeyPress(juce::KeyPress::rightKey));
+    expectEquals(picked, juce::String("104"));
+    select.keyPressed(juce::KeyPress(juce::KeyPress::leftKey));
+    expectEquals(picked, juce::String("103"));
+  }
+};
+ModelSelectNumberTests modelSelectNumberTests;
+
+// Every Library hint fits the hint bar on one line (it is cut off, not
+// wrapped), with a Library item's icon before it.
+struct LibraryTextTests : juce::UnitTest {
+  LibraryTextTests() : juce::UnitTest("Library text", "ui") {}
+  void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("main-detail");
+    if (scenario == nullptr) {
+      expect(false, "main-detail scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    HintBar bar(host.pluginRoot().services());
+    bar.setSize(design::kWidth, design::kHintHeight);
+    const auto room = static_cast<float>(bar.textWidthWithIcon());
+
+    beginTest("every Library hint fits the hint bar");
+    juce::StringArray tooLong;
+    for (int k = static_cast<int>(help::Key::library); k <= static_cast<int>(help::Key::libraryAddHere); ++k) {
+      const auto& text = help::text(static_cast<help::Key>(k));
+      if (Fonts::width(Fonts::sans(13), text) > room) tooLong.add(text);
+    }
+    expect(tooLong.isEmpty(), "too long: " + tooLong.joinIntoString(" | "));
+  }
+};
+
+// Keeping a TONE3000 tone: KEEP keeps the capture it plays (a file linked to
+// the tone and model); its menu keeps the whole tone, as a reference or
+// downloaded.
+struct SiteKeepTests : juce::UnitTest {
+  SiteKeepTests() : juce::UnitTest("Library keep TONE3000", "ui") {}
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("main-detail");  // a TONE3000 block's card is open
+    if (scenario == nullptr) {
+      expect(false, "main-detail scenario missing");
+      return;
+    }
+    const juce::TemporaryFile scratch;
+    const auto keepers = scratch.getFile().getChildFile("Keepers");
+    keepers.createDirectory();
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("site keep", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(400);
+    auto& pluginRoot = host.pluginRoot();
+    auto& library = pluginRoot.services().library;
+    auto& prefs = pluginRoot.services().prefs;
+    const std::string blockId = scenario->data["sessionStorage"]["t3k.detailBlockId"].toString().toStdString();
+    const auto* block = pluginRoot.services().chain.state().findBlock(blockId);
+    if (block == nullptr || block->tone.local) {
+      expect(false, "a TONE3000 block");
+      return;
+    }
+    const int toneId = block->tone.id, modelId = block->activeModelId;
+    const auto title = block->tone.title;
+    library.setKeepTarget(keepers.getFullPathName());
+
+    beginTest("KEEP keeps the capture a TONE3000 tone plays, linked to the tone and model");
+    juce::File copy;
+    {
+      expect(library.keep(blockId));
+      pump(100);
+      const auto& edits = backend.libraryEdits();
+      expect(!edits.empty() && edits.back().op == "keepModel", "from the bytes in memory");
+      if (!edits.empty()) copy = edits.back().result;
+      expect(copy.isAChildOf(keepers), "into the keep folder");
+      expect(copy.getFileNameWithoutExtension().contains(block->tone.models.front().name), "named for its model");
+      const auto site = library.siteOriginalOf(copy.getFullPathName());
+      expect(site.has_value(), "linked to the tone");
+      if (site) {
+        expectEquals(site->toneId, toneId);
+        expectEquals(site->modelId, modelId);
+      }
+      expect(library.originalOf(copy.getFullPathName()) == juce::File(), "no file original");
+      expectEquals(library.keptCopies(blockId).size(), 1, "the tone's card offers Kept");
+    }
+
+    beginTest("not in memory: it downloads the model instead");
+    {
+      backend.setModelsInMemory(false);
+      const auto before = backend.downloads().size();
+      library.keep(blockId);
+      pump(300);
+      expectEquals(backend.downloads().size() - before, 1);
+      expect(!backend.libraryEdits().empty() && backend.libraryEdits().back().op == "download");
+      backend.setModelsInMemory(true);
+    }
+
+    beginTest("Download Whole Tone: every model, into a folder named after the tone, each linked");
+    {
+      const auto before = backend.downloads().size();
+      library.keepAs(blockId, LibraryStore::AddKind::download);
+      for (int i = 0; i < 40 && (library.downloading() || backend.downloads().size() == before); ++i) pump(50);
+      expect(!library.downloading(), "done");
+      const auto got = backend.downloads().size() - before;
+      expect(got > 1, "all the tone's models (" + juce::String(got) + ")");
+      juce::File folder;
+      for (const auto& edit : backend.libraryEdits())
+        if (edit.op == "createFolder" && edit.result.getParentDirectory() == keepers) folder = edit.result;
+      expect(folder.isDirectory(), "a folder in the keep folder");
+      expectEquals(folder.getFileName(), juce::File::createLegalFileName(title));
+      int linked = 0;
+      for (const auto& file : folder.findChildFiles(juce::File::findFiles, false))
+        if (const auto site = library.siteOriginalOf(file.getFullPathName()); site && site->toneId == toneId) ++linked;
+      expectEquals(linked, got, "each linked to its model");
+
+      // One deleted: downloading again fills it back into the same folder.
+      const auto files = folder.findChildFiles(juce::File::findFiles, false);
+      if (!files.isEmpty()) files.getFirst().deleteFile();
+      const auto again = backend.downloads().size();
+      library.keepAs(blockId, LibraryStore::AddKind::download);
+      for (int i = 0; i < 40 && (library.downloading() || backend.downloads().size() == again); ++i) pump(50);
+      expectEquals(static_cast<int>(backend.downloads().size() - again), 1, "only the missing one");
+      expectEquals(folder.findChildFiles(juce::File::findFiles, false).size(), files.size(), "back in the same folder");
+    }
+
+    beginTest("a capture kept from a TONE3000 tone plays as the tone, with Source");
+    {
+      auto chain = juce::JSON::parse(juce::JSON::toString(scenario->data["chain"]));
+      chain.getDynamicObject()->setProperty("revision", 500);
+      if (auto* lane = chain["chain"].getArray())
+        for (auto& item : *lane)
+          if (item["blockId"].toString().toStdString() == blockId) {
+            juce::DynamicObject::Ptr model = new juce::DynamicObject();
+            model->setProperty("id", 1);
+            model->setProperty("name", copy.getFileNameWithoutExtension());
+            model->setProperty("model_url", juce::URL(copy).toString(false));
+            model->setProperty("source_path", copy.getFullPathName());
+            juce::DynamicObject::Ptr tone = new juce::DynamicObject();
+            tone->setProperty("id", 0);
+            tone->setProperty("local", true);
+            tone->setProperty("title", keepers.getFileName());
+            tone->setProperty("format", "nam");
+            tone->setProperty("models", juce::Array<juce::var>{juce::var(model.get())});
+            item.getDynamicObject()->setProperty("tone", juce::var(tone.get()));
+            item.getDynamicObject()->setProperty("activeModelId", 1);
+          }
+      backend.setChain(chain);
+      pump(300);
+      expect(library.hasOriginal(blockId));
+      expectEquals(backend.localToneArt(blockId)["block_title"].toString(), title, "the tone's title");
+      auto* original = drive::byHelpPrefix(pluginRoot, "Source:");
+      expect(original != nullptr && original->isShowing(), "Source shows");
+      // The same face as the tone's own card.
+      const auto showing = [&](const char* prefix) {
+        auto* c = drive::byHelpPrefix(pluginRoot, prefix);
+        return c != nullptr && c->isShowing();
+      };
+      expect(showing("Info:"), "Info, as on the tone's card");
+      expect(showing("Share:"), "Share too");
+      expect(showing("More ways"), "and KEEP's menu");
+      expect(!showing("Picture:"), "no folder picture: it wears the tone's");
+      // Its menu acts for its tone: Keep as Link writes the tone's link.
+      library.keepAs(blockId, LibraryStore::AddKind::keepLink);
+      pump(100);
+      expect(!backend.libraryEdits().empty() && backend.libraryEdits().back().op == "addTone",
+             "the source tone's link, not a copy of the file");
+    }
+
+    beginTest("a move keeps the TONE3000 link as it is");
+    {
+      const auto moved = keepers.getChildFile("Moved");
+      moved.createDirectory();
+      const auto to = moved.getChildFile(copy.getFileName());
+      copy.moveFileTo(to);
+      library.remapKeptForTesting(copy.getFullPathName(), to.getFullPathName());
+      const auto site = library.siteOriginalOf(to.getFullPathName());
+      expect(site.has_value() && site->toneId == toneId, "still linked to the tone");
+    }
+
+    beginTest("with no keep folder, each way asks for a folder (kept from then on), then lands there its way");
+    {
+      using Kind = LibraryStore::AddKind;
+      library.stopKeeping();
+      // Back on the TONE3000 tone (Source from the kept copy): KEEP's menu stays.
+      backend.setChain(juce::JSON::parse(juce::JSON::toString(scenario->data["chain"])));
+      pump(200);
+      auto* more = drive::byHelpPrefix(pluginRoot, "More ways");
+      expect(more != nullptr && more->isShowing(), "the menu arrow follows the tone");
+      const auto picked = keepers.getChildFile("Picked");
+      picked.createDirectory();
+      const auto landsAs = [&](Kind kind) {
+        library.stopKeeping();  // the folder picked becomes the keep folder: ask each time here
+        library.keepAs(blockId, kind);
+        pump(50);
+        expect(library.pendingAdd().has_value() && library.pendingKind() == kind, "it asks where");
+        const auto edits = backend.libraryEdits().size();
+        library.finishAdd(picked.getFullPathName());
+        for (int i = 0; i < 40 && library.downloading(); ++i) pump(50);
+        pump(100);
+        expect(!library.pendingAdd().has_value());
+        expectEquals(library.keepTarget(), picked.getFullPathName(), "and keeps there from now on");
+        return backend.libraryEdits().size() > edits ? backend.libraryEdits()[edits].op : juce::String();
+      };
+      expectEquals(landsAs(Kind::keep), juce::String("keepModel"), "Keep: the capture");
+      expectEquals(landsAs(Kind::keepLink), juce::String("addTone"), "Keep as Link: the tone's link");
+      expectEquals(landsAs(Kind::download), juce::String("createFolder"), "Download: a folder of its captures");
+    }
+
+    beginTest("a menu is as wide as its longest label");
+    {
+      ContextMenu narrow({{"Load", Icon::ArrowRight, help::Key::libraryKeepMore, {}}});
+      ContextMenu wide({{"Download All Captures from a long-named tone", Icon::FolderPlus, help::Key::libraryKeepMore, {}}});
+      expectEquals(narrow.getWidth(), ContextMenu::kWidth);
+      expect(wide.getWidth() > ContextMenu::kWidth && wide.getWidth() <= ContextMenu::kMaxWidth);
+    }
+
+    library.stopKeeping();
+    prefs.remove(LibraryStore::kKeptPref);
+    window.setVisible(false);
+  }
+};
+
+// The hint bar's icon rides the hover hint; a pinned hint (a drag) has none.
+struct HintIconTests : juce::UnitTest {
+  HintIconTests() : juce::UnitTest("Hint icon", "ui") {}
+  void runTest() override {
+    UiPrefs prefs;  // in memory
+    HintBus bus(prefs);
+    beginTest("hover carries the icon; a pin hides it");
+    bus.setHover(juce::String::fromUTF8("Plexi gain 3  \xc2\xb7  in NAM"), "gear:amp");
+    expectEquals(bus.currentIcon(), juce::String("gear:amp"));
+    bus.pin("Gain: 3.5");
+    expect(bus.currentIcon().isEmpty());
+    bus.unpin("Gain: 3.5");
+    expectEquals(bus.currentIcon(), juce::String("gear:amp"));
+    bus.setHover("Undo", {});
+    expect(bus.currentIcon().isEmpty());
+  }
+};
+
+// The Library drawer's folder rows, in a real window: presses enter
+// through the peer as the OS delivers them, so click counting, the context
+// menu's outside-press dismissal and the rows' rebuild-on-change are what
+// is under test. A right-click (its menu, then a press elsewhere) must leave
+// the rows working: folders still open and close.
+struct LibraryDrawerTests : juce::UnitTest {
+  LibraryDrawerTests() : juce::UnitTest("Library drawer", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+  static juce::Component* row(juce::Component& root, const juce::String& title) {
+    return drive::find(root, [&title](juce::Component& c) {
+      return c.getTitle() == title && c.findParentComponentOfClass<LibraryDrawer>() != nullptr;
+    });
+  }
+  // A press + release at the component's centre through the peer, `gapMs`
+  // after the last one (the default too far apart to count as a double-click).
+  static void press(juce::ComponentPeer& peer, juce::Component* target, bool right = false, int gapMs = 1000) {
+    if (target == nullptr) return;
+    const auto pos = peer.getComponent().getLocalPoint(target, target->getLocalBounds().getCentre().toFloat());
+    static juce::int64 now = juce::Time::currentTimeMillis();
+    now += gapMs;
+    using Type = juce::MouseInputSource::InputSourceType;
+    const auto button = right ? juce::ModifierKeys::rightButtonModifier : juce::ModifierKeys::leftButtonModifier;
+    peer.handleMouseEvent(Type::mouse, pos, juce::ModifierKeys(), 0.0f, 0.0f, now);
+    peer.handleMouseEvent(Type::mouse, pos, button, 0.0f, 0.0f, now + 1);
+    peer.handleMouseEvent(Type::mouse, pos, juce::ModifierKeys(), 0.0f, 0.0f, now + 2);
+    pump(60);
+  }
+
+  void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("library-drawer");
+    if (scenario == nullptr) {
+      expect(false, "library-drawer scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("library drawer", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(400);
+    auto* peer = host.getPeer();
+    if (peer == nullptr) {
+      expect(false, "no window peer");
+      return;
+    }
+    auto& root = host.pluginRoot();
+    auto& library = root.services().library;
+    root.setLibraryShown(true);
+    pump(300);
+    const juce::String captures = "/Users/you/Documents/TONE3000/Library/tonehound/Captures";
+    const juce::String clean = captures + "/Clean";
+    library.setOpen(captures, true);
+    pump(100);
+
+    beginTest("a click opens and closes a folder");
+    press(*peer, row(root, "Clean"));
+    expect(library.isOpen(clean), "opened");
+    press(*peer, row(root, "Clean"));
+    expect(!library.isOpen(clean), "closed");
+
+    beginTest("two quick clicks open then close (not a double-click)");
+    press(*peer, row(root, "Clean"));
+    press(*peer, row(root, "Clean"), false, 120);
+    expect(!library.isOpen(clean), "closed again");
+
+    beginTest("after a right-click and its menu, folders still open and close");
+    press(*peer, row(root, "Crunch"), /*right=*/true);
+    expect(drive::find(root, [](juce::Component& c) { return dynamic_cast<ContextMenu*>(&c) != nullptr; }) != nullptr,
+           "the menu opened");
+    press(*peer, row(root, "Clean"));  // also dismisses the menu
+    expect(library.isOpen(clean), "the press that dismissed the menu still opens");
+    press(*peer, row(root, "Clean"));
+    expect(!library.isOpen(clean), "and the next one closes");
+    press(*peer, row(root, "Clean"));
+    expect(library.isOpen(clean), "and again");
+
+    beginTest("waiting for a folder, a click still opens and closes; Add here adds");
+    library.setOpen(clean, false);
+    pump(50);
+    library.beginAdd("blk-1");
+    pump(100);
+    press(*peer, row(root, "Clean"));
+    expect(library.isOpen(clean), "the click opened the folder, it did not take the tone");
+    expect(library.pendingAdd().has_value(), "still waiting");
+    auto* addHere = drive::find(root, [](juce::Component& c) {
+      auto* parent = c.getParentComponent();
+      return c.getTitle() == "Add here" && parent != nullptr && parent->getTitle() == "Clean";
+    });
+    if (addHere == nullptr)  // named by its text, not a title
+      addHere = drive::find(root, [](juce::Component& c) {
+        auto* button = dynamic_cast<juce::Button*>(&c);
+        auto* parent = c.getParentComponent();
+        return button != nullptr && button->getButtonText() == "Add here" && parent != nullptr &&
+               parent->getTitle() == "Clean";
+      });
+    expect(addHere != nullptr, "Clean offers Add here");
+    if (auto* button = dynamic_cast<juce::Button*>(addHere)) button->triggerClick();
+    pump(150);
+    expect(!library.pendingAdd().has_value(), "added and done");
+    expect(!backend.libraryEdits().empty() && backend.libraryEdits().back().result.isAChildOf(juce::File(clean)),
+           "into Clean");
+
+    beginTest("folders close while searching too");
+    drive::fill(root, "Search library", "clean");
+    pump(250);  // the search runs once typing pauses
+    expect(row(root, "Roland JC-40 - Clean") != nullptr, "the match shows inside its folder");
+    press(*peer, row(root, "Clean"));
+    expect(row(root, "Roland JC-40 - Clean") == nullptr, "closed: its contents are hidden");
+    press(*peer, row(root, "Clean"));
+    expect(row(root, "Roland JC-40 - Clean") != nullptr, "and open again");
+    drive::fill(root, "Search library", "");
+    pump(250);
+
+    beginTest("a right-click on the folder itself, then clicks on it");
+    press(*peer, row(root, "Clean"), /*right=*/true);
+    press(*peer, &root.services().library == nullptr ? nullptr : row(root, "Crunch"));  // away: dismiss
+    const bool before = library.isOpen(clean);
+    press(*peer, row(root, "Clean"));
+    expect(library.isOpen(clean) != before, "the folder still toggles");
+    window.setVisible(false);
+  }
+};
+
 struct ReadoutTests : juce::UnitTest {
   ReadoutTests() : juce::UnitTest("Readouts", "ui") {}
   void runTest() override {
@@ -1080,6 +2684,7 @@ struct FocusPolicyTests : juce::UnitTest {
   }
 
   void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
     const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
     const auto* scenario = fixtures.find("main-stereo");  // stereo input: the Input Mode menu button shows
     if (scenario == nullptr) {
@@ -1308,6 +2913,7 @@ struct SettingsKeyboardTests : juce::UnitTest {
   SettingsKeyboardTests() : juce::UnitTest("Settings keyboard", "ui") {}
 
   void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
     using KP = juce::KeyPress;
     LiveScenario live(*this, "settings-system");  // standalone: the long System page
     if (!live.ok) return;
@@ -1661,6 +3267,7 @@ struct TouchScrollTests : juce::UnitTest {
   };
 
   void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
     const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
     const auto* scenario = fixtures.find("browser-search");
     if (scenario == nullptr) {
@@ -1767,6 +3374,1014 @@ struct PopoverFollowTests : juce::UnitTest {
     pump(50);
     expect(!panel.isOpen() && !menu.isOpen());
     expectEquals(dismissed, 1);
+  }
+};
+
+// The Per-Block Normalization setting reveals the block card's Normalize
+// button on a card that is already open, not only on the next one built.
+struct BlockNormalizeSettingTests : juce::UnitTest {
+  BlockNormalizeSettingTests() : juce::UnitTest("Block normalize setting", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("main-detail");  // a NAM block's card is open
+    if (scenario == nullptr) {
+      expect(false, "main-detail scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("block normalize", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(400);
+    auto& root = host.pluginRoot();
+    auto& prefs = root.services().prefs;
+    const auto button = [&root] {
+      auto* c = drive::byHelpPrefix(root, "Normalize:");
+      return c != nullptr && c->isShowing();
+    };
+
+    beginTest("the button shows on the open card as soon as the setting is on");
+    prefs.setBool(UiPrefs::kShowBlockNormalizeControl, false);
+    pump(50);
+    expect(!button(), "hidden while the setting is off");
+    prefs.setBool(UiPrefs::kShowBlockNormalizeControl, true);
+    pump(50);
+    expect(button(), "shown without reopening the card");
+    prefs.setBool(UiPrefs::kShowBlockNormalizeControl, false);
+    pump(50);
+    expect(!button(), "and hidden again");
+
+    beginTest("a card opened with the setting already on shows it at once");
+    prefs.setBool(UiPrefs::kShowBlockNormalizeControl, true);
+    auto* chain = dynamic_cast<ChainScreen*>(drive::find(root, [](juce::Component& c) {
+      return dynamic_cast<ChainScreen*>(&c) != nullptr;
+    }));
+    expect(chain != nullptr);
+    if (chain != nullptr) {
+      chain->returnToGallery();
+      pump(100);
+      // A brand-new card, opened the way a user does: a click on its tile.
+      if (auto* tile = drive::find(root, [](juce::Component& c) {
+            auto* t = dynamic_cast<GalleryTile*>(&c);
+            return t != nullptr && t->blockId() == "blk-2";
+          }))
+        drive::click(root, *tile);
+      pump(200);
+    }
+    expect(button(), "Normalize on the fresh card");
+    // Keep too: the same body-view call places it.
+    auto* keep = drive::byHelpPrefix(root, "Keep:");
+    expect(keep != nullptr && keep->isShowing(), "Keep on the fresh card");
+    window.setVisible(false);
+  }
+};
+
+// Keeping: a block card's Keep (beside its model picker) asks for a folder
+// until a keep folder is set, then copies the model the block plays into it.
+struct KeepTargetTests : juce::UnitTest {
+  KeepTargetTests() : juce::UnitTest("Library keep", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("main-detail");  // the Vox block's card is open
+    if (scenario == nullptr) {
+      expect(false, "main-detail scenario missing");
+      return;
+    }
+    const juce::TemporaryFile scratch;
+    const auto target = scratch.getFile();
+    target.createDirectory();
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("keep", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(400);
+    auto& root = host.pluginRoot();
+    auto& library = root.services().library;
+    const auto keep = [&root]() -> juce::Button* {
+      auto* c = drive::byHelpPrefix(root, "Keep:");
+      return c != nullptr && c->isShowing() ? dynamic_cast<juce::Button*>(c) : nullptr;
+    };
+
+    const auto armed = [&keep] {
+      auto* button = dynamic_cast<ChromeTextButton*>(keep());
+      return button != nullptr && button->isArmed();
+    };
+
+    beginTest("Keep is on the card; without a target it asks for a folder");
+    library.stopKeeping();
+    pump(50);
+    expect(keep() != nullptr && !armed());
+    if (auto* button = keep()) button->triggerClick();
+    pump(100);
+    expect(library.pendingAdd().has_value(), "the Library asks where to put it");
+    library.cancelAdd();
+    root.setLibraryShown(false);
+    pump(50);
+
+    beginTest("Keep Here lights Keep");
+    library.setKeepTarget(target.getFullPathName());
+    pump(50);
+    expect(keep() != nullptr && armed());
+
+    beginTest("Keep copies the playing model into the target");
+    if (auto* button = keep()) button->triggerClick();
+    pump(100);
+    const auto& edits = backend.libraryEdits();
+    // A TONE3000 tone: the capture it plays, as a file (Library keep TONE3000).
+    expect(!edits.empty() && edits.back().op == "keepModel", "the playing capture was written");
+    if (!edits.empty()) expect(edits.back().result.isAChildOf(target), "into the keep folder");
+
+    beginTest("Stop puts Keep back to asking");
+    library.stopKeeping();
+    pump(50);
+    expect(keep() != nullptr && !armed());
+    window.setVisible(false);
+    target.deleteRecursively();
+  }
+};
+
+// Kept links: a capture kept from a block remembers its original, so the
+// card offers Kept on the original (one copy: straight there) and Source
+// on the copy.
+struct KeepLinkTests : juce::UnitTest {
+  KeepLinkTests() : juce::UnitTest("Library kept links", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("main-detail");  // a block's card is open
+    if (scenario == nullptr) {
+      expect(false, "main-detail scenario missing");
+      return;
+    }
+    const juce::TemporaryFile scratch;
+    const auto root = scratch.getFile();
+    const auto pedal = root.getChildFile("Big Muff"), best = root.getChildFile("Best"), more = root.getChildFile("More");
+    for (const auto& dir : {pedal, best, more}) dir.createDirectory();
+    const auto original = pedal.getChildFile("drive 5.nam");
+    original.replaceWithText("{}");
+
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("kept links", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(400);
+    auto& pluginRoot = host.pluginRoot();
+    auto& library = pluginRoot.services().library;
+    const std::string blockId = scenario->data["sessionStorage"]["t3k.detailBlockId"].toString().toStdString();
+
+    // The open block plays a local capture loaded from `from`.
+    int revision = 100;  // each call a new one, or the store sees no change
+    // ...or a folder of them, `active` (0-based) the one playing.
+    const auto playAll = [&](const juce::Array<juce::File>& files, int active) {
+      auto chain = juce::JSON::parse(juce::JSON::toString(scenario->data["chain"]));
+      chain.getDynamicObject()->setProperty("revision", revision += 10);
+      if (auto* lane = chain["chain"].getArray())
+        for (auto& item : *lane)
+          if (item["blockId"].toString().toStdString() == blockId) {
+            juce::Array<juce::var> models;
+            for (int i = 0; i < files.size(); ++i) {
+              juce::DynamicObject::Ptr model = new juce::DynamicObject();
+              model->setProperty("id", i + 1);
+              model->setProperty("name", files[i].getFileNameWithoutExtension());
+              model->setProperty("model_url", juce::URL(files[i]).toString(false));  // Keep copies from it
+              model->setProperty("source_path", files[i].getFullPathName());
+              models.add(juce::var(model.get()));
+            }
+            juce::DynamicObject::Ptr tone = new juce::DynamicObject();
+            tone->setProperty("id", 0);
+            tone->setProperty("local", true);
+            tone->setProperty("title", files[0].getParentDirectory().getFileName());
+            tone->setProperty("format", "nam");
+            tone->setProperty("models", models);
+            item.getDynamicObject()->setProperty("tone", juce::var(tone.get()));
+            item.getDynamicObject()->setProperty("activeModelId", active + 1);
+          }
+      backend.setChain(chain);
+      pump(150);
+    };
+    const auto play = [&](const juce::File& from) { playAll({from}, 0); };
+    // A block saved before blocks recorded their file: no source_path.
+    const auto playLegacy = [&](const juce::File& from) {
+      playAll({from}, 0);
+      auto chain = backend.getChainState(-1);
+      if (auto* lane = chain["chain"].getArray())
+        for (auto& item : *lane)
+          if (item["blockId"].toString().toStdString() == blockId)
+            if (auto* m = item["tone"]["models"][0].getDynamicObject()) m->removeProperty("source_path");
+      backend.setChain(chain);
+      pump(150);
+    };
+    const auto button = [&](const char* hint) -> juce::Button* {
+      auto* c = drive::byHelpPrefix(pluginRoot, hint);
+      return c != nullptr && c->isShowing() ? dynamic_cast<juce::Button*>(c) : nullptr;
+    };
+
+    beginTest("Keep names the copy as the original file, dots and all");
+    {
+      const auto dotted = pedal.getChildFile("Gain 7.5.nam");
+      dotted.replaceWithText("{}");
+      play(dotted);
+      library.setKeepTarget(more.getFullPathName());
+      expect(library.keep(blockId));
+      expectEquals(backend.libraryEdits().back().result.getFileName(), juce::String("Gain 7.5.nam"));
+      backend.libraryEdits().back().result.deleteFile();
+      library.stopKeeping();
+      pluginRoot.services().prefs.remove(LibraryStore::kKeptPref);
+    }
+
+    beginTest("a local block's card has a picture button for its folder");
+    {
+      play(original);
+      expectEquals(library.pictureFolderFor(blockId), pedal.getFullPathName());
+      auto* button = drive::find(pluginRoot, [](juce::Component& c) { return c.getTitle() == "Picture"; });
+      expect(button != nullptr && button->isShowing(), "on the image");
+    }
+
+    beginTest("an original nobody kept offers neither");
+    play(original);
+    expect(button("Kept:") == nullptr && button("Source:") == nullptr);
+
+    // Keep into `folder`; the copy it made, or none.
+    const auto keepInto = [&](const juce::File& folder) -> juce::File {
+      library.setKeepTarget(folder.getFullPathName());
+      const auto edits = backend.libraryEdits().size();
+      expect(library.keep(blockId), "Keep copies");
+      pump(50);
+      return backend.libraryEdits().size() == edits ? juce::File() : backend.libraryEdits().back().result;
+    };
+
+    beginTest("Keep links the copy: the original's card offers Kept");
+    const auto copy = keepInto(best);
+    expect(copy.isAChildOf(best), "copied into the keep folder");
+    expect(button("Kept:") != nullptr, "Kept shows");
+    expect(button("Source:") == nullptr);
+
+    beginTest("one copy: Kept goes straight there");
+    if (auto* kept = button("Kept:")) kept->triggerClick();
+    pump(100);
+    expectEquals(backend.lastLocalLoadFile().getFullPathName(), copy.getFullPathName());
+    expectEquals(juce::String(backend.lastLocalLoadTarget()), juce::String(blockId));
+
+    beginTest("the copy's card offers Source, which loads the original");
+    play(copy);
+    expect(button("Source:") != nullptr, "Source shows");
+    expectEquals(backend.localToneArt(blockId)["block_title"].toString(), juce::String("Big Muff"),
+                 "the block takes the original's folder name, not the keep folder's");
+    expect(button("Kept:") == nullptr);
+    if (auto* back = button("Source:")) back->triggerClick();
+    pump(100);
+    expectEquals(backend.lastLocalLoadFile().getFullPathName(), original.getFullPathName());
+
+    beginTest("two copies: Kept asks which (nothing loads yet)");
+    play(original);
+    expect(keepInto(more).isAChildOf(more));
+    expectEquals(library.keptCopies(blockId).size(), 2);
+    const auto before = backend.lastLocalLoadFile();
+    if (auto* kept = button("Kept:")) kept->triggerClick();
+    pump(100);
+    expectEquals(backend.lastLocalLoadFile().getFullPathName(), before.getFullPathName());
+
+    beginTest("a copy that is gone drops out");
+    copy.deleteFile();
+    expectEquals(library.keptCopies(blockId).size(), 1);
+
+    beginTest("no link: the same file in a linked collection is the original");
+    {
+      const auto linked = root.getChildFile("Collection"), mine = root.getChildFile("Mine");
+      const auto theirs = linked.getChildFile("Fuzz Face").getChildFile("Gain 3.nam");
+      const auto ours = mine.getChildFile("Gain 3.nam");
+      theirs.getParentDirectory().createDirectory();
+      mine.createDirectory();
+      theirs.replaceWithText("{\"same\": true}");
+      ours.replaceWithText("{\"same\": true}");
+      const auto node = [](const juce::String& kind, const juce::File& f, juce::Array<juce::var> kids = {},
+                           bool isLinked = false) {
+        auto* o = new juce::DynamicObject();
+        o->setProperty("kind", kind);
+        o->setProperty("name", f.getFileNameWithoutExtension());
+        o->setProperty("path", f.getFullPathName());
+        o->setProperty("type", "captures");
+        o->setProperty("linked", isLinked);
+        o->setProperty("children", kids);
+        return juce::var(o);
+      };
+      auto* tree = new juce::DynamicObject();
+      tree->setProperty("root", root.getFullPathName());
+      tree->setProperty("libraries",
+                        juce::Array<juce::var>{node(
+                            "library", root,
+                            {node("folder", linked,
+                                  {node("folder", theirs.getParentDirectory(), {node("capture", theirs)})}, true),
+                             node("folder", mine, {node("capture", ours)})})});
+      backend.setLibrary(juce::var(tree));
+      library.refresh(/*fresh=*/true);
+      pump(300);
+      play(ours);
+      expectEquals(library.keptFrom(blockId).getFullPathName(), theirs.getFullPathName());
+      expect(button("Source:") != nullptr, "Source shows without a recorded link");
+      expectEquals(backend.localToneArt(blockId)["block_title"].toString(), juce::String("Fuzz Face"));
+      play(theirs);
+      expectEquals(library.keptCopies(blockId).size(), 1);
+      expect(button("Kept:") != nullptr, "and Kept on the collection's file");
+
+      beginTest("Go to Source shows it in the Library: its folders open, it selected");
+      library.focus(theirs.getFullPathName());
+      expect(library.openPaths().count(linked.getFullPathName()) != 0, "the linked folder opened");
+      expect(library.openPaths().count(theirs.getParentDirectory().getFullPathName()) != 0, "and its folder");
+      expectEquals(library.selected(), theirs.getFullPathName());
+      expectEquals(library.takeFocus(), theirs.getFullPathName());
+
+      beginTest("copy, Source, then Kept: the name follows, never the keep folder's");
+      play(ours);  // the copy: shown as its original's folder
+      expectEquals(backend.localToneArt(blockId)["block_title"].toString(), juce::String("Fuzz Face"));
+      const int before = backend.localToneArtCalls();
+      play(theirs);  // Source: a new tone, nothing to restore over it
+      expectEquals(backend.localToneArtCalls(), before, "the original's own title stays");
+      play(ours);  // Kept again
+      expectEquals(backend.localToneArt(blockId)["block_title"].toString(), juce::String("Fuzz Face"));
+
+      beginTest("switching models in a keep folder: the artwork follows, and comes back");
+      {
+        // Native's way: a look change bumps the chain, which re-enters
+        // the store mid-update. The original's artwork is already known.
+        backend.setArtBumpsChain(true);
+        auto* cache = new juce::DynamicObject();
+        auto* fuzz = new juce::DynamicObject();
+        fuzz->setProperty("id", 7);
+        fuzz->setProperty("title", "Fuzz Face");
+        fuzz->setProperty("image", "https://img.example/fuzz.jpg");
+        fuzz->setProperty("gear", "pedal");
+        cache->setProperty(juce::Identifier(theirs.getParentDirectory().getFullPathName().toLowerCase()), juce::var(fuzz));
+        pluginRoot.services().prefs.setJson(ToneArt::kCachePref, juce::var(cache));
+        const auto other = mine.getChildFile("Clean 1.nam");  // nothing it was kept from
+        other.replaceWithText("{\"other\": true}");
+        const auto image = [&] { return backend.localToneArt(blockId)["image"].toString(); };
+
+        playAll({ours, other}, 0);
+        expectEquals(image(), juce::String("https://img.example/fuzz.jpg"));
+        playAll({ours, other}, 1);  // the picker steps to the one with no original
+        expect(static_cast<bool>(backend.localToneArt(blockId)["clear"]), "its look goes");
+        expectEquals(backend.localToneArt(blockId)["block_title"].toString(), juce::String("Mine"));
+        playAll({ours, other}, 0);  // and back
+        expectEquals(image(), juce::String("https://img.example/fuzz.jpg"), "the artwork is back");
+        beginTest("a block restored with the project gets its folder's look, no Library load needed");
+        playAll({other}, 0);  // the block now plays from Mine: nothing cached for it
+        backend.setArtBumpsChain(false);
+        play(theirs);  // the Fuzz Face folder's own capture: its cached artwork
+        expectEquals(image(), juce::String("https://img.example/fuzz.jpg"));
+        expectEquals(backend.localToneArt(blockId)["block_title"].toString(), juce::String("Fuzz Face"));
+
+        beginTest("no TONE3000 match: a generic folder's block takes its capture's name and tagged gear");
+        {
+          const auto di = root.getChildFile("Stack").getChildFile("DI");
+          di.createDirectory();
+          const auto capture = di.getChildFile("[AMP] Big Amp - DI.nam");
+          capture.replaceWithText("{}");
+          play(capture);
+          expectEquals(backend.localToneArt(blockId)["block_title"].toString(), juce::String("[AMP] Big Amp - DI"));
+          expectEquals(backend.localToneArt(blockId)["gear"].toString(), juce::String("amp"));
+        }
+
+        beginTest("a kept copy's name gives its gear too, over a matched tone's");
+        {
+          const auto rig = root.getChildFile("Fuzz Rig");
+          rig.createDirectory();
+          const auto source = rig.getChildFile("[AMP] Fuzz Rig - DI.nam");
+          source.replaceWithText("{\"rig\": true}");
+          const auto copy = mine.getChildFile(source.getFileName());
+          source.copyFileTo(copy);
+          {
+            auto links = pluginRoot.services().prefs.getJson(LibraryStore::kKeptPref);
+            if (links.getDynamicObject() == nullptr) links = juce::var(new juce::DynamicObject());
+            links.getDynamicObject()->setProperty(juce::Identifier(copy.getFullPathName()), source.getFullPathName());
+            pluginRoot.services().prefs.setJson(LibraryStore::kKeptPref, links);
+          }
+          auto* rigArt = new juce::DynamicObject();
+          rigArt->setProperty("id", 8);
+          rigArt->setProperty("title", "Fuzz Rig");
+          rigArt->setProperty("image", "https://img.example/rig.jpg");
+          rigArt->setProperty("gear", "full-rig");
+          auto* cached = new juce::DynamicObject();
+          cached->setProperty(juce::Identifier(rig.getFullPathName().toLowerCase()), juce::var(rigArt));
+          pluginRoot.services().prefs.setJson(ToneArt::kCachePref, juce::var(cached));
+          play(copy);
+          expectEquals(backend.localToneArt(blockId)["image"].toString(), juce::String("https://img.example/rig.jpg"));
+          expectEquals(backend.localToneArt(blockId)["gear"].toString(), juce::String("amp"),
+                       "the name's, not the matched tone's full rig");
+          copy.deleteFile();
+        }
+
+        beginTest("an older block with no recorded file finds it by name and bytes (KEPT comes back)");
+        playLegacy(theirs);
+        expectEquals(library.keptCopies(blockId).size(), 1);
+        expect(button("Kept:") != nullptr, "Kept shows for it");
+        pluginRoot.services().prefs.remove(ToneArt::kCachePref);
+      }
+
+      beginTest("a folder picture dresses its blocks; Remove Picture takes it back");
+      {
+        const auto other = mine.getChildFile("Clean 1.nam");
+        const auto png = root.getChildFile("cover.png");
+        {
+          juce::Image image(juce::Image::RGB, 4, 4, true);
+          juce::FileOutputStream out(png);
+          juce::PNGImageFormat().writeImageToStream(image, out);
+        }
+        play(other);
+        library.setPicture(mine.getFullPathName(), png);
+        const auto picture = library.pictureFor(mine.getFullPathName());
+        expect(picture.existsAsFile() && picture != png, "a copy of its own");
+        expectEquals(backend.localToneArt(blockId)["image"].toString(), juce::URL(picture).toString(false));
+        library.removePicture(mine.getFullPathName());
+        expect(library.pictureFor(mine.getFullPathName()) == juce::File());
+        expect(!picture.existsAsFile(), "its copy goes too");
+        expect(backend.localToneArt(blockId)["image"].toString() != juce::URL(picture).toString(false),
+               "the block lets it go");
+      }
+    }
+
+    beginTest("Put in Own Folder: a folder named as the capture, the capture in it, its kept link along");
+    {
+      const auto mine = root.getChildFile("Own");
+      const auto capture = mine.getChildFile("[AMP] Lead 4.5 - DI.nam");
+      const auto source = root.getChildFile("Elsewhere").getChildFile(capture.getFileName());
+      mine.createDirectory();
+      capture.replaceWithText("{}");
+      const auto node = [](const juce::String& kind, const juce::File& f, juce::Array<juce::var> kids = {}) {
+        auto* o = new juce::DynamicObject();
+        o->setProperty("kind", kind);
+        o->setProperty("name", f.getFileNameWithoutExtension());
+        o->setProperty("path", f.getFullPathName());
+        o->setProperty("type", "captures");
+        o->setProperty("editable", true);
+        o->setProperty("writable", kind != "capture");
+        o->setProperty("children", kids);
+        return juce::var(o);
+      };
+      auto* tree = new juce::DynamicObject();
+      tree->setProperty("root", root.getFullPathName());
+      tree->setProperty("libraries", juce::Array<juce::var>{node(
+                                         "library", root, {node("folder", mine, {node("capture", capture)})})});
+      backend.setLibrary(juce::var(tree));
+      library.refresh(/*fresh=*/true);
+      pump(300);
+      {
+        auto links = juce::var(new juce::DynamicObject());
+        links.getDynamicObject()->setProperty(juce::Identifier(capture.getFullPathName()), source.getFullPathName());
+        pluginRoot.services().prefs.setJson(LibraryStore::kKeptPref, links);
+      }
+      const auto before = backend.libraryEdits().size();
+      expect(library.putInOwnFolder(capture.getFullPathName()));
+      const auto& edits = backend.libraryEdits();
+      expectEquals(static_cast<int>(edits.size() - before), 2, "a folder, then the move");
+      if (edits.size() >= before + 2) {
+        const auto folder = edits[before].result;
+        expectEquals(edits[before].op, juce::String("createFolder"));
+        expectEquals(folder.getFileName(), juce::String("[AMP] Lead 4.5 - DI"), "the whole file name, dots and all");
+        expect(folder.getParentDirectory() == mine, "beside it");
+        expectEquals(edits[before + 1].op, juce::String("move"));
+        const auto moved = edits[before + 1].result;
+        expect(moved.getParentDirectory() == folder, "into it");
+        const auto links = pluginRoot.services().prefs.getJson(LibraryStore::kKeptPref);
+        expectEquals(links.getProperty(juce::Identifier(moved.getFullPathName()), {}).toString(),
+                     source.getFullPathName(), "the kept link follows the file");
+      }
+    }
+
+    library.stopKeeping();
+    pluginRoot.services().prefs.remove(LibraryStore::kKeptPref);
+    window.setVisible(false);
+    root.deleteRecursively();
+  }
+};
+
+// The libraries as listed: TONE3000's (your site favorites as Captures, the
+// plugin's presets as Presets), yours, then imported ones, in your order.
+struct LibraryArrangeTests : juce::UnitTest {
+  LibraryArrangeTests() : juce::UnitTest("Library arrangement", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("library-drawer");
+    if (scenario == nullptr) {
+      expect(false, "library-drawer scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("library order", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(300);
+    auto& root = host.pluginRoot();
+    auto& library = root.services().library;
+    root.services().prefs.remove(LibraryStore::kOrderPref);
+    library.refresh(/*fresh=*/true);
+    pump(300);
+    const auto names = [&] {
+      juce::StringArray out;
+      for (const auto& l : library.tree().libraries) out.add(l.name);
+      return out.joinIntoString("|");
+    };
+
+    auto& prefs = root.services().prefs;
+    const auto sections = [&](const LibraryNode* l) {
+      juce::StringArray out;
+      if (l != nullptr)
+        for (const auto& c : l->children) out.add(c.name);
+      return out.joinIntoString("|");
+    };
+
+    beginTest("every library is a user's: its sections listed only with something in them");
+    const auto& libraries = library.tree().libraries;
+    expect(libraries.size() >= 2);
+    if (libraries.size() < 2) return;
+    // Yours first, then TONE3000 (then anyone else's).
+    expect(!libraries[0].site && libraries[0].mine, "yours on top");
+    expect(libraries[1].site && libraries[1].name == "TONE3000");
+    // TONE3000: its account's tones (once a search found some), the factory presets.
+    const bool accountTones = prefs.getJson(LibraryStore::kSiteTonesPref).size() > 0;
+    expectEquals(sections(&libraries[1]), juce::String(accountTones ? "Captures|Presets" : "Presets"));
+    const auto* mine = library.tree().mine();
+    expect(mine != nullptr && !mine->site, "yours is still yours");
+    // Yours: no favorites here, so no Favorites; the linked folder is under Local.
+    expectEquals(sections(mine), juce::String("Captures|Presets|Local"));
+    const LibraryNode* local = nullptr;
+    if (mine != nullptr)
+      for (const auto& c : mine->children)
+        if (c.local) local = &c;
+    expect(local != nullptr && !local->children.empty() && local->children[0].linked, "links live in Local");
+    expect(library.capturesRoot() != nullptr && library.presetsRoot() != nullptr &&
+               !library.capturesRoot()->path.startsWith("tone3000:") &&
+               !library.presetsRoot()->path.startsWith("tone3000:"),
+           "your halves are yours");
+    // (By value: the refreshes below replace the tree these point into.)
+    const auto mineName = mine != nullptr ? mine->name : juce::String();
+    const auto minePath = mine != nullptr ? mine->path : juce::String();
+
+    beginTest("a capture's gear comes from its folder's TONE3000 match over its metadata");
+    {
+      const juce::String plexi = "D:/Music/NAM Captures/Plexi 1987";
+      auto* match = new juce::DynamicObject();
+      match->setProperty("image", "https://img/plexi.jpg");
+      match->setProperty("gear", "amp");
+      auto* cache = new juce::DynamicObject();
+      cache->setProperty(juce::Identifier(plexi.toLowerCase()), juce::var(match));
+      prefs.setJson(ToneArt::kCachePref, juce::var(cache));
+      library.refresh();
+      pump(300);
+      const auto* capture = library.tree().find(plexi + "/Plexi gain 3.nam");
+      expect(capture != nullptr && capture->gear == "amp", capture != nullptr ? capture->gear : juce::String("missing"));
+      prefs.remove(ToneArt::kCachePref);
+      library.refresh();
+      pump(300);
+    }
+
+    beginTest("Favorites shows once you have some, and goes when you don't");
+    {
+      auto* tone = new juce::DynamicObject();
+      tone->setProperty("id", 101);
+      tone->setProperty("title", "Plexi");
+      auto* ref = new juce::DynamicObject();
+      ref->setProperty("format", "t3ktone");
+      ref->setProperty("tone", juce::var(tone));
+      prefs.setJson(LibraryStore::kFavoritesPref, juce::Array<juce::var>{juce::var(ref)});
+      library.refresh();
+      pump(300);
+      expectEquals(sections(library.tree().mine()), juce::String("Captures|Favorites|Presets|Local"));
+      prefs.setJson(LibraryStore::kFavoritesPref, juce::Array<juce::var>());
+      library.refresh();
+      pump(300);
+      expectEquals(sections(library.tree().mine()), juce::String("Captures|Presets|Local"));
+    }
+
+    beginTest("an empty section isn't listed, but things still land in it");
+    {
+      const auto saved = backend.getLibrary(false);
+      const auto node = [](const char* kind, const char* name, const char* path, const char* type,
+                           juce::Array<juce::var> kids = {}) {
+        auto* o = new juce::DynamicObject();
+        o->setProperty("kind", kind);
+        o->setProperty("name", name);
+        o->setProperty("path", path);
+        o->setProperty("type", type);
+        o->setProperty("mount", true);
+        o->setProperty("writable", true);
+        o->setProperty("children", kids);
+        return juce::var(o);
+      };
+      auto* tree = new juce::DynamicObject();
+      tree->setProperty("root", "/L");
+      auto mineVar = node("library", "me", "/L/me", "",
+                          {node("folder", "Captures", "/L/me/Captures", "captures"),
+                           node("folder", "Presets", "/L/me/Presets", "presets",
+                                {node("preset", "Rig", "/L/me/Presets/Rig.t3kpreset", "")})});
+      mineVar.getDynamicObject()->setProperty("mine", true);
+      tree->setProperty("libraries", juce::Array<juce::var>{mineVar});
+      backend.setLibrary(juce::var(tree));
+      library.refresh(/*fresh=*/true);
+      pump(300);
+      expectEquals(sections(library.tree().mine()), juce::String("Presets"), "no Captures listed while empty");
+      expect(library.capturesRoot() != nullptr && library.capturesRoot()->path == "/L/me/Captures",
+             "but it is still where captures go");
+      LibraryNode capture;
+      capture.kind = LibraryNode::Kind::capture;
+      expectEquals(library.halfFor(capture), juce::String("/L/me/Captures"));
+      backend.setLibrary(saved);
+      library.refresh(/*fresh=*/true);
+      pump(300);
+    }
+
+    beginTest("Move Up / Down reorders, and the order outlives a rescan");
+    expect(!library.canMoveLibrary(minePath, -1), "nothing above the top");
+    library.moveLibrary(minePath, 1);
+    expect(names().startsWith("TONE3000|" + mineName), names());
+    library.refresh(/*fresh=*/true);
+    pump(300);
+    expect(names().startsWith("TONE3000|" + mineName), "kept after a rescan: " + names());
+    library.moveLibraryBefore(minePath, LibraryStore::kSitePath);  // a drag onto it
+    expect(names().startsWith(mineName + "|TONE3000"), names());
+
+    beginTest("a change while a scan runs isn't undone when the scan lands");
+    library.refresh(/*fresh=*/true);  // in flight...
+    library.moveLibrary(minePath, 1);  // ...when the arrangement changes (as favorites or TONE3000's tones landing do)
+    pump(300);
+    expect(names().startsWith("TONE3000|" + mineName), "the scan arranged with what is current: " + names());
+
+    beginTest("folders go in your order (dropped between folders), and keep it through a rescan and a rename");
+    {
+      prefs.remove(LibraryStore::kFolderOrderPref);
+      library.refresh(/*fresh=*/true);
+      pump(300);
+      const auto folders = [&] {
+        juce::StringArray out;
+        if (const auto* captures = library.capturesRoot())
+          for (const auto& c : captures->children)
+            if (c.kind == LibraryNode::Kind::folder) out.add(c.name);
+        return out.joinIntoString("|");
+      };
+      const auto pathOf = [&](const juce::String& name) {
+        if (const auto* captures = library.capturesRoot())
+          for (const auto& c : captures->children)
+            if (c.name == name) return c.path;
+        return juce::String();
+      };
+      expectEquals(folders(), juce::String("Clean|Crunch|High gain"), "natural order to start");
+      expect(library.canPlaceBeside(pathOf("High gain"), pathOf("Clean")), "two folders of one folder");
+      expect(!library.canPlaceBeside(library.capturesRoot()->path, library.presetsRoot()->path), "a library's sections stay");
+      library.placeFolder(pathOf("High gain"), pathOf("Clean"), /*after=*/false);
+      pump(50);
+      expectEquals(folders(), juce::String("High gain|Clean|Crunch"), "before Clean");
+      library.placeFolder(pathOf("Clean"), pathOf("Crunch"), /*after=*/true);
+      pump(50);
+      expectEquals(folders(), juce::String("High gain|Crunch|Clean"), "after Crunch");
+      library.refresh(/*fresh=*/true);
+      pump(300);
+      expectEquals(folders(), juce::String("High gain|Crunch|Clean"), "through a rescan");
+      // Renamed: its place under its new name (the mock's tree keeps the old one).
+      const auto capturesKey = library.capturesRoot()->path.toLowerCase();
+      library.rename(pathOf("Crunch"), "Crunchy");
+      pump(100);
+      juce::StringArray stored;
+      const auto orders = prefs.getJson(LibraryStore::kFolderOrderPref);  // held: the list points into it
+      if (const auto* list = orders[juce::Identifier(capturesKey)].getArray())
+        for (const auto& n : *list) stored.add(n.toString());
+      expectEquals(stored.joinIntoString("|"), juce::String("High gain|Crunchy|Clean"), "renamed in place");
+      prefs.remove(LibraryStore::kFolderOrderPref);
+      library.refresh(/*fresh=*/true);
+      pump(300);
+    }
+
+    beginTest("the view is this instance's: a new editor opens it where it was");
+    {
+      const auto pick = library.capturesRoot() != nullptr ? library.capturesRoot()->path : juce::String();
+      library.setOpen(LibraryStore::kSitePath, false);
+      library.setOpen(pick, true);
+      library.select(pick);
+      library.setScroll(140);
+      library.setShown(true);
+      ScaledHost again(backend, *scenario, fixtures.root);  // the editor reopened on the same instance
+      auto& reopened = again.pluginRoot().services().library;
+      expect(!reopened.isOpen(LibraryStore::kSitePath), "closed stays closed");
+      expect(reopened.isOpen(pick), "open stays open");
+      expectEquals(reopened.selected(), pick);
+      expectEquals(reopened.savedScroll(), 140);
+      expect(reopened.savedShown(), "and the drawer comes back up");
+    }
+
+    root.services().prefs.remove(LibraryStore::kOrderPref);
+    window.setVisible(false);
+  }
+};
+
+// ToneArt: which TONE3000 tone a local folder came from, asked once per
+// folder. Matching cases are from a real linked collection.
+struct ToneArtTests : juce::UnitTest {
+  ToneArtTests() : juce::UnitTest("ToneArt", "ui") {}
+
+  // Signed in; every search answers with `page` and is counted.
+  struct SearchSession : ScriptedSession {
+    TonePage page;
+    int searches = 0;
+    bool authenticated() const override { return true; }
+    void searchTones(const ToneQuery&, int, int, Reply<TonePage> reply) override {
+      ++searches;
+      reply(Result<TonePage>::ok(page));
+    }
+  };
+
+  static Tone tone(int id, const char* title, const char* username, const char* image = "https://img/x.jpg") {
+    auto* user = new juce::DynamicObject();
+    user->setProperty("username", username);
+    auto* obj = new juce::DynamicObject();
+    obj->setProperty("id", id);
+    obj->setProperty("title", title);
+    obj->setProperty("user", juce::var(user));
+    juce::Array<juce::var> images;
+    if (*image != 0) images.add(image);
+    obj->setProperty("images", images);
+    obj->setProperty("url", "https://www.tone3000.com/tones/" + juce::String(id));
+    obj->setProperty("gear", "amp");
+    return Tone::parse(juce::var(obj));
+  }
+
+  void runTest() override {
+    beginTest("title and creator must both match, punctuation and case aside");
+    const std::vector<Tone> results{tone(1, "Bogner Ecstasy (Other)", "83ennui"),
+                                    tone(2, "Bogner Ecstasy \"83K Mod\" [FULL] (LiveSPICE2NAM)", "83ennui"),
+                                    tone(3, "Bogner Ecstasy \"83K Mod\" [FULL] (LiveSPICE2NAM)", "someoneelse")};
+    const auto bogner = ToneArt::pick(results, "Bogner Ecstasy _83K Mod_ [FULL] (LiveSPICE2NAM)", "83ennui");
+    expect(bogner && bogner->toneId == 2);
+    expect(!ToneArt::pick(results, "Bogner Ecstasy _83K Mod_ [FULL] (LiveSPICE2NAM)", "nobody"));
+
+    beginTest("a creator spelled like a display name still matches the username");
+    expect(ToneArt::pick({tone(7, "Mesa Mark V", "slamminmofo")}, "Mesa Mark V", "SLAMMIN MOFO").has_value());
+
+    beginTest("without a creator only an exact title counts");
+    expect(ToneArt::pick({tone(8, "Fender Bandmaster", "x")}, "1964 Fender Bandmaster", "") == std::nullopt);
+    expect(ToneArt::pick({tone(9, "1964 Fender Bandmaster", "x")}, "1964 Fender Bandmaster", "").has_value());
+
+    beginTest("a match with no image is no use");
+    expect(!ToneArt::pick({tone(10, "Mesa Mark V", "slamminmofo", "")}, "Mesa Mark V", "slamminmofo"));
+
+    beginTest("one search per folder, ever: hits and misses are cached");
+    SearchSession session;
+    session.page.data = {tone(2, "Bogner Ecstasy \"83K Mod\" [FULL] (LiveSPICE2NAM)", "83ennui")};
+    UiPrefs prefs;
+    ToneArt art(session, prefs);
+    const auto captures = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("captures");
+    const auto folder = captures.getChildFile("Bogner Ecstasy _83K Mod_ [FULL] (LiveSPICE2NAM)");
+    const auto generic = folder.getChildFile("favorites");
+    std::optional<ToneArt::Art> got;
+    int answers = 0;
+    auto record = [&](std::optional<ToneArt::Art> a) { got = a; ++answers; };
+    // "favorites" misses, its parent matches: two searches, both remembered.
+    art.lookup({generic, folder}, "83ennui", record);
+    for (int i = 0; i < 40 && answers == 0; ++i) juce::MessageManager::getInstance()->runDispatchLoopUntil(100);
+    expect(got && got->toneId == 2, "found through the folder above");
+    expectEquals(session.searches, 2);
+    art.lookup({generic, folder}, "83ennui", record);
+    expect(got && got->toneId == 2);
+    expectEquals(session.searches, 2, "answered from the cache");
+
+    beginTest("the match brings its gear (the site's, over a file's metadata), cached too");
+    expectEquals(got ? got->gear : juce::String(), juce::String("amp"));
+    expectEquals(got ? got->toVar()["gear"].toString() : juce::String(), juce::String("amp"));
+
+    beginTest("a match cached before gear was is asked once more");
+    {
+      auto cache = prefs.getJson(ToneArt::kCachePref);
+      auto entry = cache[juce::Identifier(folder.getFullPathName().toLowerCase())];
+      if (auto* o = entry.getDynamicObject()) o->removeProperty("gear");
+      prefs.setJson(ToneArt::kCachePref, cache);
+      answers = 0;
+      art.lookup({folder}, "83ennui", record);
+      for (int i = 0; i < 40 && answers == 0; ++i) juce::MessageManager::getInstance()->runDispatchLoopUntil(100);
+      expectEquals(session.searches, 3);
+      expectEquals(got ? got->gear : juce::String(), juce::String("amp"));
+    }
+
+    beginTest("the creator search's words: the first two, the creator's name left out");
+    expectEquals(ToneArt::leadingWords("Bogner Uberschall Rev Blue (E34L) — Amp Head", "2dor"),
+                 juce::String("Bogner Uberschall"));
+    expectEquals(ToneArt::leadingWords("2DOR Fortin Evil Pumpkin 6CA7 EL34 -- A2 Ready", "2dor"),
+                 juce::String("Fortin Evil"));
+
+    beginTest("a tone's models are the folder's files: half of them, or five");
+    {
+      const auto models = [](std::initializer_list<const char*> names) {
+        std::vector<Model> out;
+        for (const auto* n : names) out.push_back({0, n, {}, {}});
+        return out;
+      };
+      const juce::StringArray four{ToneArt::normalized("[AMP] UBER.BLUE-Mar412-LEAD Basher - DI"),
+                                   ToneArt::normalized("[AMP] UBER.BLUE-Mar412-CLEAN Cookie - DI"), "a", "b"};
+      expect(ToneArt::modelsMatch(four, models({"[AMP] UBER.BLUE-Mar412-LEAD Basher - DI",
+                                                "[AMP] UBER.BLUE-Mar412-CLEAN Cookie - DI", "other"})));
+      expect(!ToneArt::modelsMatch(four, models({"[AMP] UBER.BLUE-Mar412-LEAD Basher - DI", "other"})), "one of four");
+      expect(!ToneArt::modelsMatch({}, models({"x"})), "no files");
+    }
+
+    beginTest("a renamed folder: its creator's tone whose models are its files, cached; an old miss asked again");
+    {
+      // Title searches find nothing; the creator search finds two of 2dor's
+      // tones, and the second one's models are the folder's files.
+      struct CreatorSession : ScriptedSession {
+        int searches = 0, modelLists = 0;
+        juce::StringArray creators;
+        bool authenticated() const override { return true; }
+        void searchTones(const ToneQuery& query, int, int, Reply<TonePage> reply) override {
+          ++searches;
+          TonePage page;
+          if (!query.creators.empty()) {
+            creators.add(query.creators.front() + ": " + query.text);
+            page.data = {tone(40, "Bogner Ecstasy", "2dor"), tone(41, "Bogner Uberschall", "2dor")};
+          }
+          reply(Result<TonePage>::ok(page));
+        }
+        void listToneModels(int toneId, const juce::String&, Reply<std::vector<Model>> reply) override {
+          ++modelLists;
+          std::vector<Model> models;
+          if (toneId == 41)
+            for (const auto* n : {"[AMP] Basher - DI", "[AMP] Cookie - DI", "[AMP] Noon - DI"}) models.push_back({0, n, {}, {}});
+          reply(Result<std::vector<Model>>::ok(std::move(models)));
+        }
+      } creatorSession;
+      UiPrefs creatorPrefs;
+      ToneArt byFiles(creatorSession, creatorPrefs);
+      const juce::TemporaryFile scratch;
+      const auto pack = scratch.getFile().getChildFile("Bogner Uberschall Rev Blue (E34L) — Amp Head");
+      pack.createDirectory();
+      for (const auto* n : {"[AMP] Basher - DI.nam", "[AMP] Cookie - DI.nam", "[AMP] Noon - DI.nam"})
+        pack.getChildFile(n).replaceWithText("{}");
+      // A miss cached before this search was: asked again.
+      {
+        auto* miss = new juce::DynamicObject();
+        miss->setProperty("miss", true);
+        auto* cache = new juce::DynamicObject();
+        cache->setProperty(juce::Identifier(pack.getFullPathName().toLowerCase()), juce::var(miss));
+        creatorPrefs.setJson(ToneArt::kCachePref, juce::var(cache));
+      }
+      std::optional<ToneArt::Art> found;
+      int done = 0;
+      byFiles.lookup({pack}, "2dor", [&](std::optional<ToneArt::Art> a) { found = a; ++done; });
+      for (int i = 0; i < 80 && done == 0; ++i) juce::MessageManager::getInstance()->runDispatchLoopUntil(100);
+      expect(found && found->toneId == 41, "the tone whose models are the files");
+      expectEquals(creatorSession.creators.joinIntoString(" / "), juce::String("2dor: Bogner Uberschall"));
+      expectEquals(creatorSession.searches, 2, "the title search, then the creator's");
+      expectEquals(creatorSession.modelLists, 2, "the first candidate checked, then the second");
+      done = 0;
+      byFiles.lookup({pack}, "2dor", [&](std::optional<ToneArt::Art> a) { found = a; ++done; });
+      expect(done == 1 && found && found->toneId == 41, "cached");
+      expectEquals(creatorSession.searches, 2, "nothing asked again");
+      scratch.getFile().deleteRecursively();
+    }
+  }
+};
+
+// Drops on an open block card: what the Library drawer can drag there, and
+// OS capture files, but nothing that isn't a capture.
+struct BlockCardDropTests : juce::UnitTest {
+  BlockCardDropTests() : juce::UnitTest("Block card drops", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("library-detail");  // a card open, a Library beside it
+    if (scenario == nullptr) {
+      expect(false, "library-detail scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("card drops", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(400);
+    auto& root = host.pluginRoot();
+    root.setLibraryShown(true);
+    pump(300);
+    auto* card = dynamic_cast<BlockCard*>(drive::find(root, [](juce::Component& c) {
+      return dynamic_cast<BlockCard*>(&c) != nullptr;
+    }));
+    expect(card != nullptr, "a block card is open");
+    if (card == nullptr) return;
+    const auto drag = [card](const juce::String& path) {
+      auto* desc = new juce::DynamicObject();
+      desc->setProperty(LibraryStore::kDragKey, path);
+      return juce::DragAndDropTarget::SourceDetails(juce::var(desc), card, {});
+    };
+    const juce::String captures = "/Users/you/Documents/TONE3000/Library/tonehound/Captures";
+
+    beginTest("takes a capture, a tone and a captures folder from the Library");
+    expect(card->isInterestedInDragSource(drag(captures + "/Clean/Studio 412 SM57.wav")));
+    expect(card->isInterestedInDragSource(drag(captures + "/Clean/Roland JC-40 - Clean.t3ktone")));
+    expect(card->isInterestedInDragSource(drag(captures + "/Clean")));
+
+    beginTest("not a presets folder or something the Library doesn't have");
+    expect(!card->isInterestedInDragSource(drag("/Users/you/Library/Application Support/TONE3000/Presets/Setlist")));
+    expect(!card->isInterestedInDragSource(drag("/nowhere/at/all.nam")));
+
+    beginTest("OS files: captures and folders, not other files");
+    expect(card->isInterestedInFileDrag({"C:/x/amp.nam"}));
+    expect(card->isInterestedInFileDrag({"C:/x/cab.WAV"}));
+    expect(!card->isInterestedInFileDrag({"C:/x/notes.txt"}));
+    window.setVisible(false);
+  }
+};
+
+// A tone tile's edge drops (plugin/docs/chain-slots.md): the outer 30%
+// add a new block beside it, the middle swaps; an empty slot has no edges.
+struct ChainSlotTileTests : juce::UnitTest {
+  ChainSlotTileTests() : juce::UnitTest("Chain slot tiles", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("main-mono");
+    if (scenario == nullptr) {
+      expect(false, "main-mono scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("chain slots", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(400);
+    auto& root = host.pluginRoot();
+    auto* tone = dynamic_cast<ToneTile*>(drive::find(root, [](juce::Component& c) {
+      return dynamic_cast<ToneTile*>(&c) != nullptr;
+    }));
+    auto* add = dynamic_cast<AddTile*>(drive::find(root, [](juce::Component& c) {
+      return dynamic_cast<AddTile*>(&c) != nullptr;
+    }));
+    expect(tone != nullptr && add != nullptr, "the chain shows a tone tile and an empty slot");
+    if (tone == nullptr || add == nullptr) return;
+    using Edge = GalleryTile::DropEdge;
+    const int w = tone->getWidth();
+    const auto id = tone->blockId();
+
+    beginTest("a tone tile's outer edges add beside it; the middle swaps");
+    expect(tone->edgeAt(1) == Edge::before);
+    expect(tone->edgeAt(w / 2) == Edge::none);
+    expect(tone->edgeAt(w - 2) == Edge::after);
+    expectEquals(juce::String(tone->dropTarget(Edge::before)), juce::String(slotBefore(id)));
+    expectEquals(juce::String(tone->dropTarget(Edge::after)), juce::String(slotAfter(id)));
+    expectEquals(juce::String(tone->dropTarget(Edge::none)), juce::String(id));
+
+    beginTest("an empty slot has no edges: a drop anywhere fills it");
+    expect(add->edgeAt(1) == Edge::none);
+    expect(add->edgeAt(add->getWidth() - 2) == Edge::none);
+
+    beginTest("a file dropped on an edge loads into a new slot there");
+    tone->filesDropped({"C:/x/amp.nam"}, 1, 10);
+    expectEquals(juce::String(backend.lastLocalLoadTarget()), juce::String(slotBefore(id)));
+    tone->filesDropped({"C:/x/amp.nam"}, w - 2, 10);
+    expectEquals(juce::String(backend.lastLocalLoadTarget()), juce::String(slotAfter(id)));
+    tone->filesDropped({"C:/x/amp.nam"}, w / 2, 10);
+    expectEquals(juce::String(backend.lastLocalLoadTarget()), juce::String(id));
+
+    beginTest("the gaps take drops too: between two blocks, and before the first");
+    {
+      auto* lane = dynamic_cast<GalleryLane*>(drive::find(root, [](juce::Component& c) {
+        return dynamic_cast<GalleryLane*>(&c) != nullptr;
+      }));
+      auto* column = lane != nullptr ? dynamic_cast<juce::FileDragAndDropTarget*>(lane->getParentComponent()) : nullptr;
+      expect(column != nullptr, "the lanes' column takes file drops");
+      if (lane != nullptr && column != nullptr && lane->items().size() >= 2) {
+        const auto first = lane->items()[0].blockId, second = lane->items()[1].blockId;
+        const int y = lane->getY() + lane->getHeight() / 2;
+        const int between = lane->getX() + lane->tileSize() + gallery::kTileGap / 2;
+        column->filesDropped({"C:/x/amp.nam"}, between, y);
+        expectEquals(juce::String(backend.lastLocalLoadTarget()), juce::String(slotBefore(second)));
+        column->filesDropped({"C:/x/amp.nam"}, lane->getX() - 10, y);  // the margin before the chain
+        expectEquals(juce::String(backend.lastLocalLoadTarget()), juce::String(slotBefore(first)));
+      }
+    }
+
+    window.setVisible(false);
   }
 };
 
@@ -1939,6 +4554,7 @@ struct PresetReorderTests : juce::UnitTest {
   }
 
   void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
     const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
     const auto* scenario = fixtures.find("chrome-preset-browse");  // two user presets, three factory
     if (scenario == nullptr) {
@@ -2035,6 +4651,7 @@ struct ChainCrossLaneDragTests : juce::UnitTest {
   }
 
   void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
     const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
     const auto* scenario = fixtures.find("main-stereo");  // L: l1 l2 ins / R: r1 r2 ins
     if (scenario == nullptr) {
@@ -2137,6 +4754,7 @@ struct BlockSizeToggleTests : juce::UnitTest {
   }
 
   void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
     const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
     const auto* scenario = fixtures.find("main-detail");
     if (scenario == nullptr) {
@@ -2201,6 +4819,7 @@ struct MidiMapCommitTests : juce::UnitTest {
   }
 
   void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
     const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
     const auto* scenario = fixtures.find("settings-midi-empty");
     if (scenario == nullptr) {
@@ -2291,6 +4910,7 @@ struct KnobReadoutTests : juce::UnitTest {
   }
 
   void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
     const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
     const auto* scenario = fixtures.find("main-stereo");
     if (scenario == nullptr) {
@@ -2379,6 +4999,7 @@ struct FaceplateEffectsTests : juce::UnitTest {
   }
 
   void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
     const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
     const auto* scenario = fixtures.find("main-mono");
     if (scenario == nullptr) {
@@ -2527,6 +5148,7 @@ struct FaceplateDualMonoTests : juce::UnitTest {
   }
 
   void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
     const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
     {
       const auto* scenario = fixtures.find("chrome-input-mode");  // mono chain, stereo source
@@ -2653,15 +5275,93 @@ DragScrollerTests dragScrollerTests;
 UiPrefsTests uiPrefsTests;
 Tone3000ClientTests tone3000ClientTests;
 ToneModelTests toneModelTests;
+LibraryModelTests libraryModelTests;
+HintIconTests hintIconTests;
+PictureFileTests pictureFileTests;
+BusyGraceTests busyGraceTests;
+LibraryFeatureTests libraryFeatureTests;
+LibraryPathTests libraryPathTests;
+SiteKeepTests siteKeepTests;
+LibraryDrawerTests libraryDrawerTests;
+LibraryStateTests libraryStateTests;
+LibraryTextTests libraryTextTests;
+BlockNormalizeSettingTests blockNormalizeSettingTests;
+KeepTargetTests keepTargetTests;
+KeepLinkTests keepLinkTests;
+LibraryArrangeTests libraryArrangeTests;
+ToneArtTests toneArtTests;
+BlockCardDropTests blockCardDropTests;
+ChainSlotTileTests chainSlotTileTests;
 ToneQueryTests toneQueryTests;
 ReadoutTests readoutTests;
 
 }  // namespace
 
-int runSelfTests() {
-  juce::UnitTestRunner runner;
+namespace {
+
+// Stops at the first failing group when asked to.
+struct SelfTestRunner : juce::UnitTestRunner {
+  bool failFast = false;
+  // Each test as it starts, at once: a crash names the test it was in (the
+  // summary comes only at the end).
+  void logMessage(const juce::String& message) override {
+    if (message.startsWith("Starting test")) std::cerr << message << std::endl;
+  }
+  bool shouldAbortTests() override {
+    if (!failFast) return false;
+    for (int i = 0; i < getNumResults(); ++i)
+      if (getResult(i)->failures > 0) return true;
+    return false;
+  }
+};
+
+// Groups that drive real pointer input, or need OS keyboard focus, through a
+// foreground window: a click elsewhere on the machine while they run takes
+// the focus and fails them.
+// --no-pointer leaves them out (someone is using the computer).
+const juce::StringArray kPointerGroups{"Library drawer", "Touch scroll",          "Pointer",
+                                       "Preset reorder", "Chain cross-lane drag", "Block size toggle",
+                                       "Knob readout",   "Focus policy",          "Scroll surfaces"};
+
+}  // namespace
+
+// A group may now run first (named on the command line). JUCE records an
+// expect into the test under way and dereferences null when there is none,
+// so every group begins a test before its first expect: one whose setup
+// checks something starts with beginTest("setup").
+int runSelfTests(const juce::StringArray& args) {
+  SelfTestRunner runner;
   runner.setAssertOnFailure(false);
-  runner.runTestsInCategory("ui");
+  juce::StringArray names;
+  bool noPointer = false;
+  for (const auto& arg : args) {
+    if (arg == "--selftest") continue;
+    if (arg == "--fail-fast") runner.failFast = true;
+    else if (arg == "--no-pointer") noPointer = true;
+    else if (const auto name = arg.unquoted().trim(); name.isNotEmpty())
+      names.add(name);  // (an empty one would match every test)
+  }
+  auto all = juce::UnitTest::getTestsInCategory("ui");
+  if (noPointer) {
+    all.removeIf([](juce::UnitTest* t) { return kPointerGroups.contains(t->getName()); });
+    std::cout << "skipped (pointer input): " << kPointerGroups.joinIntoString(", ") << std::endl;
+  }
+  if (names.isEmpty()) {
+    runner.runTests(all);
+  } else {
+    juce::Array<juce::UnitTest*> picked;
+    for (const auto& name : names)
+      for (auto* test : all)
+        if (test->getName().containsIgnoreCase(name)) picked.addIfNotAlreadyThere(test);
+    if (picked.isEmpty()) {
+      std::cout << "no ui test matches: " << names.joinIntoString(", ") << std::endl;
+      return 1;
+    }
+    juce::StringArray which;
+    for (auto* test : picked) which.add(test->getName());
+    std::cerr << "running: " << which.joinIntoString(", ") << std::endl;
+    runner.runTests(picked);
+  }
   int failures = 0;
   for (int i = 0; i < runner.getNumResults(); ++i) {
     const auto* r = runner.getResult(i);

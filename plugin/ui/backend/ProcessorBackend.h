@@ -29,10 +29,19 @@ public:
 
   std::string loadTone(const juce::String& toneJson, const std::string& targetInsertId) override;
   juce::var loadLocalTonePath(const juce::File& source, const std::string& targetInsertId) override;
+  juce::var loadLocalToneInFolder(const juce::File& file, const std::string& targetInsertId) override {
+    return processor_.loadLocalToneInFolder(file, targetInsertId);
+  }
   juce::var loadLocalToneUrls(const juce::Array<juce::URL>& sources,
                               const std::string& targetInsertId) override;
   bool swapTone(const std::string& blockId, const juce::String& toneJson) override;
   bool refreshToneMetadata(const juce::String& toneJson) override;
+  void relinkLocalFiles(const juce::File& from, const juce::File& to) override {
+    processor_.relinkLocalFiles(from, to);
+  }
+  bool setLocalToneArt(const std::string& blockId, const juce::var& art) override {
+    return processor_.setLocalToneArt(blockId, art);
+  }
   bool switchModel(const std::string& blockId, int modelId, const juce::var& model) override;
   bool retryModelLoad(const std::string& blockId) override;
   bool removeChainBlock(const std::string& blockId) override;
@@ -67,6 +76,50 @@ public:
   bool renamePreset(const juce::String& presetId, const juce::String& newName) override;
   bool deletePreset(const juce::String& presetId) override;
   bool movePreset(const juce::String& presetId, int delta) override;
+  bool stepPreset(int delta) override;
+  juce::var savePresetToFolder(const juce::File& folder, const juce::String& name) override;
+  void setLibraryLocation(const juce::File& root, const juce::String& owner,
+                          const juce::Array<juce::File>& linkedDirs) override;
+  juce::String libraryLinkProblem(const juce::File& dir) override;
+  juce::var getLibrary(bool fresh, const std::atomic<bool>* stop = nullptr) override;
+  juce::var getSavedLibrary() override;
+  juce::String getLibraryView() override { return processor_.getLibraryView(); }
+  void setLibraryView(const juce::String& json) override { processor_.setLibraryView(json); }
+  juce::File libraryCreateFolder(const juce::File& parent, const juce::String& name) override;
+  juce::String libraryFolderNameProblem(const juce::String& name) override;
+  juce::File libraryRename(const juce::File& item, const juce::String& name) override;
+  bool libraryRemove(const juce::File& item) override;
+  juce::File libraryMove(const juce::File& item, const juce::File& folder) override;
+  juce::File libraryCopy(const juce::File& item, const juce::File& folder) override;
+  juce::File libraryAddTone(const juce::File& folder, const juce::var& ref) override;
+  juce::File libraryImportFolder(const juce::File& source, const juce::File& into) override {
+    return processor_.libraryImportFolder(source, into);
+  }
+  juce::File libraryAddCapture(const juce::File& folder, const juce::File& source,
+                               const juce::String& name) override;
+  juce::File libraryKeepModel(const std::string& blockId, const juce::File& folder,
+                              const juce::String& name) override {
+    return processor_.libraryKeepModel(blockId, folder, name);
+  }
+  void libraryDownloadModel(const juce::String& modelUrl, bool ir, const juce::File& folder, const juce::String& name,
+                            std::function<void(juce::File)> done) override {
+    processor_.libraryDownloadModel(modelUrl, ir, folder, name, std::move(done));
+  }
+  bool libraryExport(const juce::File& item, const juce::File& archive) override;
+  void loadLocalToneInFolderAsync(const juce::File& file, const std::string& targetInsertId,
+                                  std::function<void(juce::var)> done) override;
+  void libraryImportFolderAsync(const juce::File& source, const juce::File& into,
+                                std::function<void(juce::File)> done) override;
+  void libraryExportAsync(const juce::File& item, const juce::File& archive, std::function<void(bool)> done) override;
+  void libraryShareAsync(const juce::File& item, const juce::File& archive, const juce::var& siteRefs,
+                         std::function<void(juce::var)> done) override;
+  void libraryMoveAsync(const juce::File& item, const juce::File& folder, std::function<void(juce::File)> done) override;
+  void libraryCopyAsync(const juce::File& item, const juce::File& folder, std::function<void(juce::File)> done) override;
+  void libraryRemoveAsync(const juce::File& item, std::function<void(bool)> done) override;
+  void libraryCopyFilesAsync(const juce::Array<juce::File>& files, const juce::File& folder,
+                             std::function<void(juce::var)> done) override;
+  void libraryImportAsync(const juce::File& archive, std::function<void(juce::File)> done) override;
+  juce::File libraryImport(const juce::File& archive) override;
 
   juce::var getAudioDeviceState() override;
   juce::var setAudioDeviceType(const juce::String& typeName) override;
