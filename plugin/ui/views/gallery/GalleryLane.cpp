@@ -149,6 +149,7 @@ void GalleryLane::wire(GalleryTile& tile) {
   } else if (auto* tone = dynamic_cast<ToneTile*>(&tile)) {
     tone->onOpen = [this](const std::string& id) { if (onOpen) onOpen(id); };
     tone->onSwap = [this](const std::string& id) { if (onSwap) onSwap(id); };
+    tone->onAddBeside = [this](const std::string& target) { if (onAdd) onAdd(target); };
   }
 }
 

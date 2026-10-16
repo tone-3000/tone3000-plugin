@@ -153,6 +153,8 @@ public:
 
   void initialise(const juce::String& commandLine) override {
     const auto args = juce::StringArray::fromTokens(commandLine, true);
+    // Never the real Library (library state files are written into it).
+    LibraryStore::defaultRootOverride = libraryRoot.getFile();
     if (args.size() >= 2 && args[0] == "--capture") {
       setApplicationReturnValue(runCapture(args));
       quit();
@@ -171,7 +173,7 @@ public:
       return;
     }
     if (args.size() >= 1 && args[0] == "--selftest") {
-      setApplicationReturnValue(runSelfTests());
+      setApplicationReturnValue(runSelfTests(args));
       quit();
       return;
     }
@@ -193,9 +195,11 @@ public:
   void shutdown() override {
     bench.reset();
     window.reset();
+    libraryRoot.getFile().deleteRecursively();
   }
 
 private:
+  const juce::TemporaryFile libraryRoot;  // deleted on exit (a folder: TemporaryFile removes only a file)
   std::unique_ptr<TestbedWindow> window;
   std::unique_ptr<Bench> bench;
 };

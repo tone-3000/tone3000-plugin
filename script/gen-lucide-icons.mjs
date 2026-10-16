@@ -29,6 +29,9 @@ const ICONS = [
   'MidiPort', 'Pencil', 'Plus', 'PlusCircle', 'Power', 'Redo2', 'RotateCcw', 'Save',
   'Search', 'Settings', 'Share', 'ShieldAlert', 'Smartphone', 'Trash2', 'Undo2', 'Upload',
   'Volume2', 'WifiOff', 'X',
+  // Library drawer
+  'ArrowDown', 'ArrowUp', 'AudioLines', 'Ellipsis', 'FolderOpen', 'FolderPlus', 'Image', 'LibraryBig', 'Lock',
+  'RefreshCw', 'SlidersHorizontal',
 ];
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');

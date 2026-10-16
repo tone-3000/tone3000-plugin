@@ -17,6 +17,9 @@ public:
 
   void paint(juce::Graphics& g) override;
   void resized() override;
+  // How wide a hint can be, a Library item's icon before it (a longer one is
+  // cut off). For the tests that keep the Library's hints to one line.
+  int textWidthWithIcon() const;
 
 private:
   // Audio-callback load, tabular in a fixed-width slot so the row doesn't

@@ -8,6 +8,8 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "core/DelayedCall.h"
+
 #include <functional>
 #include <memory>
 #include <vector>
@@ -41,9 +43,16 @@ public:
   std::function<void(const juce::String& id)> onChange;
   // The list just opened (retry a failed catalog fetch).
   std::function<void()> onOpen;
+  // A number typed: the place it landed on (from 1) of how many, as each
+  // digit comes (the owner says so; the pick itself may wait for more).
+  std::function<void(int position, int count)> onTyped;
 
   void paint(juce::Graphics& g) override;
   void resized() override;
+  // Once clicked, the keyboard: a number (digits close together make one)
+  // picks that model, from 1; Left / Right step.
+  bool keyPressed(const juce::KeyPress& key) override;
+  void mouseDown(const juce::MouseEvent&) override;
 
 private:
   class StepButton;
@@ -64,6 +73,10 @@ private:
   std::unique_ptr<StepButton> prev_, next_;
   std::unique_ptr<juce::Component> trigger_;
   std::unique_ptr<Dropdown> list_;
+  // Number entry: the digits so far, and the pick waiting for more.
+  int typed_ = 0;
+  juce::uint32 lastDigitMs_ = 0;
+  DelayedCall typedPick_;
 };
 
 }  // namespace t3k::ui

@@ -33,9 +33,13 @@ from its name.
 
 Each file is validated at load time (`.nam` must parse and pass the A2
 shape check, `.wav` must open as real audio) so a bad file is a toast, never
-a retry badge. Survivors are stashed (below) and wrapped in a synthetic tone
-JSON: `id: 0`, `local: true`, and each model's `model_url` pointing at its
-stash copy with a `file://` URL. From there `loadTone` takes over, and
+a retry badge. Survivors are wrapped in a synthetic tone JSON: `id: 0`,
+`local: true`, and each model's `model_url` a `file://` URL. On a desktop a
+file read from disk (a drop, the file picker, the Library) is played **in
+place**: its URL is the file itself, and nothing is copied. Bytes that arrive
+without a file to come back to (the base64 route, the iOS document picker,
+whose files are only readable once) are stashed (below) and the URL points
+at the stash copy. From there `loadTone` takes over, and
 `fetchModelFromUrl` resolves `file://` URLs from disk instead of the
 network.
 
@@ -66,12 +70,30 @@ the dropped files and stays whole in the stored tone JSON:
 and the tone summary ships each local model's `model_url` so the picker can
 drive switches (which also work signed out; nothing downloads).
 
-## The stash
+## In place, and the stash
 
-`<app-data>/TONE3000/LocalModels/<content-hash>-<size>.<ext>` is the local
-equivalent of "the server": the copy that cache-lost reloads (undo after a
-remove, retry) re-fetch from, stable even after the user's original file
-moves. Content-addressed names dedupe re-drops.
+A file played in place is read from where it is for every load and switch;
+the user's collection isn't duplicated into app data (a folder of 300
+captures, or a linked collection in the Library, used to leave a copy of
+every file it played). Its dates are never touched. Presets and DAW state
+embed the model bytes as always, so a project still reopens when the file
+has moved. A rename or move made in the Library takes the blocks along: a
+block playing a file from under it is re-pointed (its `model_url`,
+`source_path` and a picture under it, `relinkLocalFiles`), and the move is
+remembered for the process, so a cache-lost reload of the old path (undo
+after a remove, retry) finds the file where it went
+(`noteLocalFilesMoved`, followed by `resolveLocalModelFile`). A file that
+has gone otherwise (moved outside the plugin, a project saved before a
+rename) is looked for in the Library by its name, and a file found there
+counts only when its bytes give the model's id (`localModelId`, the hash
+every local model's id comes from); the block is re-pointed to it
+(`LibraryStore::findMovedFiles`). Anything not found that way (deleted, or
+outside the Library and its linked folders) is reported missing, like any
+missing file.
+
+`<app-data>/TONE3000/LocalModels/<content-hash>-<size>.<ext>` holds the rest:
+the local equivalent of "the server", the copy that cache-lost reloads
+re-fetch from. Content-addressed names dedupe re-drops.
 
 Its lifecycle is self-maintaining:
 
@@ -84,7 +106,9 @@ Its lifecycle is self-maintaining:
 - **The name is the address.** A block's `model_url` persists the stash
   path absolutely, in presets, DAW/app state and undo snapshots. Reads go
   back through `resolveLocalModelFile`, which falls back to the same file
-  name under the *current* stash root when the stored path is gone. A path
+  name under the *current* stash root when the stored path is gone (a stash
+  copy's name only, `isStashFileName`: a file played in place that has gone
+  is never swapped for a same-named stash file). A path
   this machine wrote always still exists, so desktop loads are untouched; the
   one desktop case it changes is a preset or state carrying a stash URL from
   another machine, which now re-stashes locally from the embedded bytes

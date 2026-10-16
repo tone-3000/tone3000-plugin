@@ -114,7 +114,8 @@ juce::File PresetManager::writeUserPreset(const juce::File& dir, const juce::Fil
 // Scanning
 
 std::vector<PresetManager::Entry> PresetManager::scanDir(const juce::File& dir, const char* prefix,
-                                                         bool factory, ScanState& state) const {
+                                                         bool factory, ScanState& state,
+                                                         std::map<juce::String, Cached>& fileCache) const {
   std::vector<Entry> out;
   if (!dir.isDirectory())
     return out;
@@ -137,7 +138,7 @@ std::vector<PresetManager::Entry> PresetManager::scanDir(const juce::File& dir, 
     const juce::int64 size = file.getSize();
     const juce::String stem = file.getFileNameWithoutExtension();
     state.seen.insert(file.getFullPathName());
-    auto& cached = cache[file.getFullPathName()];
+    auto& cached = fileCache[file.getFullPathName()];
     if (cached.modificationMs != modificationMs || cached.size != size) {
       ++state.parsed;
       // Header only for v2 files; a legacy v1 file is parsed in full (once).
@@ -190,8 +191,8 @@ std::vector<PresetManager::Entry> PresetManager::entries() const {
   // Factory section: system Factory with the user Factory overlaid on top (a
   // local file with the same id replaces the shipped one), re-sorted by name
   // so the merged section reads like a single folder.
-  std::vector<Entry> factory = scanDir(systemFactoryDir, kFactoryPrefix, true, state);
-  for (auto& local : scanDir(factoryDir, kFactoryPrefix, true, state)) {
+  std::vector<Entry> factory = scanDir(systemFactoryDir, kFactoryPrefix, true, state, cache);
+  for (auto& local : scanDir(factoryDir, kFactoryPrefix, true, state, cache)) {
     const auto it = std::find_if(factory.begin(), factory.end(), [&local](const Entry& shipped) {
       return shipped.info.id == local.info.id;
     });
@@ -206,7 +207,7 @@ std::vector<PresetManager::Entry> PresetManager::entries() const {
 
   // User presets lead so they own the low MIDI program-change numbers; the
   // factory section follows.
-  std::vector<Entry> presets = scanDir(userDir, kUserPrefix, false, state);
+  std::vector<Entry> presets = scanDir(userDir, kUserPrefix, false, state, cache);
   presets.insert(presets.end(), std::make_move_iterator(factory.begin()),
                  std::make_move_iterator(factory.end()));
 
@@ -253,10 +254,93 @@ std::vector<PresetManager::Info> PresetManager::list() const {
 juce::File PresetManager::fileForId(const juce::String& id) const {
   if (id.isEmpty())
     return {};
+  if (isFileId(id)) {
+    const juce::File file(id.fromFirstOccurrenceOf(kFilePrefix, false, false));
+    return file.existsAsFile() && file.hasFileExtension(kFileExtension) ? file : juce::File();
+  }
   for (const auto& entry : entries())
     if (entry.info.id == id)
       return entry.file;
   return {};
+}
+
+// Folders
+
+std::vector<PresetManager::FolderEntry> PresetManager::listFolder(const juce::File& dir) const {
+  std::vector<FolderEntry> out;
+  if (dir == userDir) {
+    for (auto& entry : entries())
+      if (!entry.info.factory)
+        out.push_back({std::move(entry.info), std::move(entry.file)});
+    return out;
+  }
+
+  const juce::ScopedLock lock(cacheLock);
+  ScanState state;
+  for (auto& entry : scanDir(dir, kFilePrefix, false, state, folderCache)) {
+    entry.info.id = fileId(entry.file);
+    out.push_back({std::move(entry.info), std::move(entry.file)});
+  }
+  // This folder's vanished files leave the cache; other folders' stay.
+  for (auto it = folderCache.begin(); it != folderCache.end();) {
+    const juce::File cached(it->first);
+    it = cached.getParentDirectory() == dir && state.seen.count(it->first) == 0 ? folderCache.erase(it)
+                                                                               : std::next(it);
+  }
+  std::stable_sort(out.begin(), out.end(), [](const FolderEntry& a, const FolderEntry& b) {
+    return a.info.name.compareNatural(b.info.name, false) < 0;
+  });
+  return out;
+}
+
+PresetManager::Info PresetManager::saveInFolder(const juce::File& dir, const juce::String& name,
+                                                juce::ValueTree preset) const {
+  if (dir == userDir)
+    return save(name, preset);
+  // A bare createDirectory, not ensureWritableDir: a Library folder is the
+  // user's own (Documents, a synced drive), never ours to rename aside.
+  if (!dir.createDirectory()) {
+    juce::Logger::writeToLog("[Presets] Failed to create library folder: " + dir.getFullPathName());
+    return {};
+  }
+
+  // Same-name save overwrites, like save(); the file keeps its id inside.
+  juce::File current;
+  juce::String rawId;
+  for (const auto& existing : listFolder(dir)) {
+    if (existing.info.name.compareIgnoreCase(name) == 0) {
+      current = existing.file;
+      rawId = presetfile::readHeader(existing.file).id;
+      break;
+    }
+  }
+  if (rawId.isEmpty())
+    rawId = juce::Uuid().toString();
+
+  preset.setProperty("name", name, nullptr);
+  preset.setProperty("id", rawId, nullptr);
+  const juce::File written = writeUserPreset(dir, current, name, preset);
+  if (written == juce::File()) {
+    juce::Logger::writeToLog("[Presets] Failed to write preset file for: " + name);
+    return {};
+  }
+  Info info;
+  info.id = fileId(written);
+  info.name = name;
+  return info;
+}
+
+juce::File PresetManager::renameFile(const juce::File& file, const juce::String& newName) const {
+  const juce::String trimmed = newName.trim();
+  if (trimmed.isEmpty())
+    return {};
+  juce::ValueTree preset = presetfile::read(file);
+  if (!preset.isValid())
+    return {};
+  preset.setProperty("name", trimmed, nullptr);
+  if (preset.getProperty("id").toString().isEmpty())
+    preset.setProperty("id", juce::Uuid().toString(), nullptr);
+  return writeUserPreset(file.getParentDirectory(), file, trimmed, preset);
 }
 
 // Order

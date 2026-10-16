@@ -16,6 +16,7 @@ constexpr int kGroupGap = 40;  // between header items
 constexpr int kPairGap = 16;   // tight pairs (undo/redo)
 constexpr int kLogoWidth = 160;
 constexpr int kLogoHeight = 24;  // 160 * 32 / 210, rounded like the browser
+constexpr int kLibraryGap = 24;  // logo to the Library toggle
 }  // namespace
 
 // The wordmark links to tone3000.com.
@@ -51,6 +52,12 @@ PluginHeader::PluginHeader(Services& services)
   };
   addAndMakeVisible(tuner_);
 
+  library_.setHelpText(help::text(help::Key::library));
+  library_.onClick = [this] {
+    if (onToggleLibrary) onToggleLibrary(!libraryShown_);
+  };
+  addAndMakeVisible(library_);
+
   undo_.setHelpText(help::text(help::Key::undo));
   undo_.onClick = [this] {
     if (onUndo) onUndo();
@@ -78,6 +85,7 @@ PluginHeader::PluginHeader(Services& services)
   sessionChanged();
   chainChanged(services_.chain.state());
   setTunerShown(false);
+  setLibraryShown(false);
   setSize(design::kWidth, kHeight);
 }
 
@@ -101,6 +109,13 @@ void PluginHeader::setTunerShown(bool shown) {
   // Lit + HIGHLIGHT fill while the tuner is up; the icon itself stays white.
   tuner_.setActive(true);
   tuner_.setFillWhenActive(shown);
+}
+
+void PluginHeader::setLibraryShown(bool shown) {
+  libraryShown_ = shown;
+  // Same treatment as the tuner: lit, with the HIGHLIGHT fill while open.
+  library_.setActive(true);
+  library_.setFillWhenActive(shown);
 }
 
 void PluginHeader::chainChanged(const ChainState& state) {
@@ -128,6 +143,8 @@ void PluginHeader::resized() {
   };
 
   logo_->setBounds(area.getX(), cy - kLogoHeight / 2, kLogoWidth, kLogoHeight);
+  library_.setBounds(logo_->getRight() + kLibraryGap, cy - library_.getHeight() / 2, library_.getWidth(),
+                     library_.getHeight());
 
   // Right group, laid out from the right edge: account · undo/redo · tuner ·
   // stereo · presets, 40px apart (16px inside the undo/redo pair).

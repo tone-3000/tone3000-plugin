@@ -2,7 +2,9 @@
 
 #include "core/Design.h"
 #include "core/Fonts.h"
+#include "core/GearGlyphs.h"
 #include "core/Help.h"
+#include "core/Icons.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
 
@@ -11,6 +13,7 @@ namespace t3k::ui {
 namespace {
 constexpr int kPadX = 24;
 constexpr int kGap = 16;
+constexpr int kIconSize = 16;  // a Library item's icon before its hint
 // Fixed footprint sized for the widest value ("100.0%") so digit count
 // changes never shift the row.
 constexpr int kCpuMinWidth = 72;
@@ -56,8 +59,21 @@ void HintBar::paint(juce::Graphics& g) {
   paint::hairlineH(g, 0, static_cast<float>(getWidth()), 0, theme::kBorder);
   auto area = getLocalBounds().reduced(kPadX, 0);
   area.setRight(cpu_.getX() - kGap);
+  // A Library item says what it is with its icon first.
+  if (const auto icon = services_.hints.currentIcon(); icon.isNotEmpty()) {
+    const auto glyph = area.removeFromLeft(kIconSize).toFloat().withSizeKeepingCentre(kIconSize, kIconSize);
+    area.removeFromLeft(6);
+    if (icon.startsWith("gear:")) Icons::draw(g, gear::svgFor(icon.fromFirstOccurrenceOf("gear:", false, false)), glyph, theme::kMuted);
+    else if (icon == "preset") Icons::draw(g, Icon::SlidersHorizontal, glyph.reduced(1), theme::kMuted);
+    else if (icon == "folder") Icons::draw(g, Icon::FolderClosed, glyph.reduced(1), theme::kMuted);
+    else if (icon == "library") Icons::draw(g, Icon::LibraryBig, glyph.reduced(1), theme::kMuted);
+    else if (icon == "ir") Icons::draw(g, gear::kIr, glyph, theme::kMuted);
+    else Icons::draw(g, Icon::AudioLines, glyph.reduced(1), theme::kMuted);
+  }
   paint::text(g, services_.hints.current(), area, Fonts::sans(13), theme::kMuted);
 }
+
+int HintBar::textWidthWithIcon() const { return cpu_.getX() - kGap - kPadX - (kIconSize + 6); }
 
 void HintBar::resized() {
   auto area = getLocalBounds().reduced(kPadX, 0);

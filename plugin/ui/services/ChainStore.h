@@ -11,8 +11,11 @@
 
 #include <juce_events/juce_events.h>
 
+#include <map>
+
 #include "UiClock.h"
 #include "backend/Backend.h"
+#include "core/AsyncScope.h"
 #include "model/ChainState.h"
 
 namespace t3k::ui {
@@ -40,10 +43,22 @@ public:
   // Load a local .nam/.wav file or a folder of them ("" = success, else a
   // user-facing error).
   juce::String loadLocalTonePath(const juce::File& source, const std::string& targetId);
+  // A capture with the files beside it as one block, starting on it.
+  juce::String loadLocalToneInFolder(const juce::File& file, const std::string& targetId);
+  // The same, the files read off the message thread; `done` gets the error
+  // ("" when it loaded).
+  void loadLocalToneInFolderAsync(const juce::File& file, const std::string& targetId,
+                                  std::function<void(juce::String)> done);
   juce::String loadLocalToneUrls(const juce::Array<juce::URL>& sources, const std::string& targetId);
   bool swapTone(const std::string& blockId, const juce::String& toneJson);
   bool refreshToneMetadata(const juce::String& toneJson);
+  bool setLocalToneArt(const std::string& blockId, const juce::var& art);
   bool switchModel(const std::string& blockId, int modelId, const juce::var& model);
+  // What a block played before what it plays now (another model of its
+  // tone, another folder's capture, another TONE3000 tone), as the block was
+  // then; null: nothing yet. What A/B goes back to. Kept as the chain
+  // changes, however it changed (the picker, the Library, a number typed).
+  const ChainItem* previous(const std::string& blockId) const;
   bool retryModelLoad(const std::string& blockId);
   void removeBlock(const std::string& blockId);
   void reorderBlocks(const std::vector<std::string>& orderedIds);
@@ -83,6 +98,10 @@ private:
   UiClock& clock_;
   ChainState state_;
   juce::ListenerList<Listener> listeners;
+  std::map<std::string, ChainItem> previous_;
+  // Async replies (a folder load) dropped once this store is gone: the
+  // processor still finishes the load, nobody is told.
+  AsyncScope scope_;
 };
 
 }  // namespace t3k::ui

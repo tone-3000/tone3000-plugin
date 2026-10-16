@@ -90,6 +90,12 @@ inline void processConvolverInChunks(juce::dsp::Convolution& convolver,
   }
 }
 
+// loadTone targets beyond an insert slot's id: "before:<blockId>" /
+// "after:<blockId>" open a new slot beside that block and load into it (a
+// drop on a tile's edge), so nothing has to move out of the way first.
+inline constexpr const char* kSlotBeforePrefix = "before:";
+inline constexpr const char* kSlotAfterPrefix = "after:";
+
 // Chain block data structure
 struct ChainBlock {
   std::string id;  // Chain block UUID

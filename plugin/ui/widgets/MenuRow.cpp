@@ -1,5 +1,7 @@
 #include "MenuRow.h"
 
+#include <cmath>
+
 #include "core/Fonts.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
@@ -26,7 +28,9 @@ void MenuRow::setDisabledLook(bool disabled) {
 }
 
 int MenuRow::preferredWidth() const {
-  const int text = juce::roundToInt(Fonts::width(Fonts::sans(metrics_.fontPx), label_));
+  // Rounded up, with a pixel spare: a label a fraction too wide for its box
+  // is ellipsised ("Put in Own Fol...").
+  const int text = static_cast<int>(std::ceil(Fonts::width(Fonts::sans(metrics_.fontPx), label_))) + 1;
   return metrics_.padX * 2 + (icon_ ? metrics_.icon + metrics_.gap : 0) + text;
 }
 

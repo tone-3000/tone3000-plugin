@@ -1,5 +1,7 @@
 #include "ContextMenu.h"
 
+#include <algorithm>
+
 #include "core/Paint.h"
 #include "core/Theme.h"
 
@@ -8,7 +10,7 @@ namespace t3k::ui {
 ContextMenu::ContextMenu(std::vector<Item> items) {
   for (auto& item : items) {
     auto row = std::make_unique<MenuRow>(item.label, item.icon, MenuRow::kContext);
-    row->setHelpText(help::text(item.help));
+    row->setHelpText(item.hint.isNotEmpty() ? item.hint : help::text(item.help));
     if (item.disabled) {
       row->setLabelColour(theme::kMuted);
       row->setDisabledLook(true);
@@ -23,7 +25,10 @@ ContextMenu::ContextMenu(std::vector<Item> items) {
     rows_.push_back(std::move(row));
   }
   const int inner = MenuRow::kContext.height * static_cast<int>(rows_.size());
-  setSize(kWidth, kBorder * 2 + kPad * 2 + inner);
+  // At least kWidth; wider for a longer label, up to kMaxWidth.
+  int width = kWidth;
+  for (const auto& row : rows_) width = std::max(width, row->preferredWidth() + kBorder * 2 + kPad * 2);
+  setSize(std::min(width, kMaxWidth), kBorder * 2 + kPad * 2 + inner);
 }
 
 ContextMenu::~ContextMenu() = default;

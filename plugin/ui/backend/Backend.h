@@ -45,10 +45,22 @@ public:
   virtual std::string loadTone(const juce::String& toneJson, const std::string& targetInsertId) = 0;
   // { blockId } or a user-facing { error }.
   virtual juce::var loadLocalTonePath(const juce::File& source, const std::string& targetInsertId) = 0;
+  // A capture with its folder: one block of the files beside it, starting on it.
+  virtual juce::var loadLocalToneInFolder(const juce::File& file, const std::string& targetInsertId) = 0;
+  // The same with the files read and checked off the message thread; `done`
+  // on it, with what loadLocalToneInFolder returns.
+  virtual void loadLocalToneInFolderAsync(const juce::File& file, const std::string& targetInsertId,
+                                          std::function<void(juce::var)> done) {
+    done(loadLocalToneInFolder(file, targetInsertId));
+  }
   virtual juce::var loadLocalToneUrls(const juce::Array<juce::URL>& sources,
                                       const std::string& targetInsertId) = 0;
   virtual bool swapTone(const std::string& blockId, const juce::String& toneJson) = 0;
   virtual bool refreshToneMetadata(const juce::String& toneJson) = 0;
+  // A local block's matched TONE3000 artwork: { image, username, avatar_url, url }.
+  virtual bool setLocalToneArt(const std::string& blockId, const juce::var& art) = 0;
+  // Local blocks playing files from under `from` play them under `to` now.
+  virtual void relinkLocalFiles(const juce::File& from, const juce::File& to) = 0;
   virtual bool switchModel(const std::string& blockId, int modelId, const juce::var& model) = 0;
   virtual bool retryModelLoad(const std::string& blockId) = 0;
   virtual bool removeChainBlock(const std::string& blockId) = 0;
@@ -89,6 +101,105 @@ public:
   virtual bool renamePreset(const juce::String& presetId, const juce::String& newName) = 0;
   virtual bool deletePreset(const juce::String& presetId) = 0;
   virtual bool movePreset(const juce::String& presetId, int delta) = 0;
+  // ‹ › and the MIDI preset steps: through the active preset's Library
+  // folder when it came from one, else the list (TONE3000Processor::stepPreset).
+  virtual bool stepPreset(int delta) = 0;
+  // Save the current rig into a Library folder: { id, name } or void.
+  virtual juce::var savePresetToFolder(const juce::File& folder, const juce::String& name) = 0;
+
+  // Library (plugin/docs/library.md). The location (base folder, your
+  // library's folder name, linked folders) is the UI's pref, set before the
+  // other calls.
+  // getLibrary re-reads disk: { root, owner, libraries: [node] }; unlike the
+  // rest of this interface it is safe off the message thread (the store
+  // scans on a worker). Edits return the resulting file, an invalid File
+  // when refused or failed.
+  virtual void setLibraryLocation(const juce::File& root, const juce::String& owner,
+                                  const juce::Array<juce::File>& linkedDirs) = 0;
+  // Why a folder can't be linked into your library ("" = it can).
+  virtual juce::String libraryLinkProblem(const juce::File& dir) = 0;
+  // `fresh`: list every folder again (the drawer's Refresh); otherwise
+  // folders unchanged since the last scan reuse their listing.
+  // `stop`: cut the walk short (the editor closing).
+  virtual juce::var getLibrary(bool fresh, const std::atomic<bool>* stop = nullptr) = 0;
+  // Last session's listing until this one has scanned (void otherwise):
+  // shown while getLibrary walks a slow drive. Off the message thread too.
+  virtual juce::var getSavedLibrary() { return {}; }
+  // The drawer's view, saved with this instance (LibraryStore's JSON).
+  virtual juce::String getLibraryView() { return {}; }
+  virtual void setLibraryView(const juce::String&) {}
+  virtual juce::File libraryCreateFolder(const juce::File& parent, const juce::String& name) = 0;
+  // Why a folder can't have this name ("" when it can): one the Library
+  // hides (named for A1 captures) would vanish the moment it is made.
+  virtual juce::String libraryFolderNameProblem(const juce::String& /*name*/) { return {}; }
+  virtual juce::File libraryRename(const juce::File& item, const juce::String& name) = 0;
+  virtual bool libraryRemove(const juce::File& item) = 0;
+  virtual juce::File libraryMove(const juce::File& item, const juce::File& folder) = 0;
+  virtual juce::File libraryCopy(const juce::File& item, const juce::File& folder) = 0;
+  // `ref`: { tone: { id, title, gear, format, image, user, url }, model: { id, name } }.
+  virtual juce::File libraryAddTone(const juce::File& folder, const juce::var& ref) = 0;
+  // Copy a folder's captures and references in (subfolders kept): the
+  // copy-instead-of-link import of an existing collection.
+  virtual juce::File libraryImportFolder(const juce::File& source, const juce::File& into) = 0;
+  virtual juce::File libraryAddCapture(const juce::File& folder, const juce::File& source,
+                                       const juce::String& name) = 0;
+  // Keeping a TONE3000 tone's capture: the model a block plays as a file in
+  // `folder` (none when its bytes aren't in memory), or one downloaded
+  // (`done` on the message thread, with no file on a failure).
+  virtual juce::File libraryKeepModel(const std::string& blockId, const juce::File& folder,
+                                      const juce::String& name) = 0;
+  virtual void libraryDownloadModel(const juce::String& modelUrl, bool ir, const juce::File& folder,
+                                    const juce::String& name, std::function<void(juce::File)> done) = 0;
+  virtual bool libraryExport(const juce::File& item, const juce::File& archive) = 0;
+  virtual juce::File libraryImport(const juce::File& archive) = 0;
+  // Copies and archives off the message thread (`done` on it, with what the
+  // call above returns).
+  virtual void libraryImportFolderAsync(const juce::File& source, const juce::File& into,
+                                        std::function<void(juce::File)> done) {
+    done(libraryImportFolder(source, into));
+  }
+  // Moves, copies, deletes and dropped files, off the message thread (a
+  // folder across drives is a copy; a big one takes a while). `done` gets
+  // the result on the message thread. Defaults: the sync calls.
+  virtual void libraryMoveAsync(const juce::File& item, const juce::File& folder, std::function<void(juce::File)> done) {
+    done(libraryMove(item, folder));
+  }
+  virtual void libraryCopyAsync(const juce::File& item, const juce::File& folder, std::function<void(juce::File)> done) {
+    done(libraryCopy(item, folder));
+  }
+  virtual void libraryRemoveAsync(const juce::File& item, std::function<void(bool)> done) { done(libraryRemove(item)); }
+  // Files copied into a folder; `done` gets the copies (the last one's
+  // path, and how many came / were left out: { copied, skipped, last }).
+  virtual void libraryCopyFilesAsync(const juce::Array<juce::File>& files, const juce::File& folder,
+                                     std::function<void(juce::var)> done) {
+    int copied = 0, skipped = 0;
+    juce::String last;
+    for (const auto& file : files)
+      if (const auto to = libraryCopy(file, folder); to != juce::File()) {
+        ++copied;
+        last = to.getFullPathName();
+      } else {
+        ++skipped;
+      }
+    auto* o = new juce::DynamicObject();
+    o->setProperty("copied", copied);
+    o->setProperty("skipped", skipped);
+    o->setProperty("last", last);
+    done(juce::var(o));
+  }
+  // An export to share (LocalLibrary::shareArchive): `siteRefs` maps a
+  // capture's path to its TONE3000 { tone, model }; `done` gets the counts
+  // ({ links, leftOut, presets, emptied }), void when it failed.
+  virtual void libraryShareAsync(const juce::File&, const juce::File&, const juce::var&,
+                                 std::function<void(juce::var)> done) {
+    done({});
+  }
+  virtual void libraryExportAsync(const juce::File& item, const juce::File& archive, std::function<void(bool)> done) {
+    done(libraryExport(item, archive));
+  }
+  virtual void libraryImportAsync(const juce::File& archive, std::function<void(juce::File)> done) {
+    done(libraryImport(archive));
+  }
 
   // Audio device settings (standalone only; void var elsewhere)
   virtual juce::var getAudioDeviceState() = 0;

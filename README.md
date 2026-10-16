@@ -24,7 +24,17 @@ install, load tones, and use it.
   gain/mix, drag to reorder, dual chains in stereo mode with branching,
   undo/redo, and presets. Presets are plain files named after the preset
   (Plugin Settings → Presets opens the folder), so they can be backed up or
-  copied between machines.
+  copied between machines. A drop on a tile's left or right edge adds a new
+  block before or after it (see
+  [`plugin/docs/chain-slots.md`](plugin/docs/chain-slots.md)).
+- **Library.** A side drawer with your Captures (folders of TONE3000 tone
+  references and local captures, your TONE3000 favorites, linked NAM folders)
+  and Presets (whole rigs): audition captures in one block, search
+  across everything, step through a folder as a setlist with ‹ › or MIDI,
+  and share folders or whole libraries as `.t3klibrary` files (re-importing
+  someone's library updates it). Plain files in a folder you choose; your
+  saved presets show up as its Presets folder. Design notes in
+  [`plugin/docs/library.md`](plugin/docs/library.md).
 - **Cross-platform.** One plugin on macOS, Windows, Linux, and iOS
   (Standalone). The UI is JUCE/C++ (`plugin/ui/`), drawn natively on every
   platform: no browser engine, no web runtime, nothing to install beside the
@@ -433,7 +443,7 @@ Debug`.
 | --------------- | ----------------------------------------------------- |
 | `plugin/`       | C++ plugin: processor, DSP, presets, MIDI mapping; vendors NeuralAmpModelerCore and AudioDSPTools |
 | `plugin/ui/`    | The JUCE UI: views, widgets, services, testbed (see [plugin/ui/README.md](plugin/ui/README.md)) |
-| `plugin/docs/`  | Design docs (UI, spread, oversampling, multi-core, local models, pitch shift, model latency) |
+| `plugin/docs/`  | Design docs (UI, library, chain slots, spread, oversampling, multi-core, local models, pitch shift, model latency) |
 | `test/`         | GoogleTest DSP suite + test assets                    |
 | `script/`       | Build, packaging, and install helpers                 |
 | `tools/`        | Maintainer utilities, not built by default (`PresetTool` regenerates the shipped presets) |
@@ -449,7 +459,10 @@ JUCE has its own licensing, including optional commercial terms; see
 carries its own license terms in its directory. **AudioDSPTools**'
 `ResamplingContainer` originates from the iPlug2 project (license in that
 source). The CLAP build uses **clap-juce-extensions** and the **CLAP** SDK
-(both MIT), fetched at configure time.
+(both MIT), fetched at configure time. Library folder pictures chosen as WebP
+are decoded by Google's **libwebp** (BSD-3-Clause; its decoder only, fetched
+at configure time; license and notice in its source, `libs/libwebp/COPYING`
+and `PATENTS`), which binary distributions reproduce.
 
 ## Credits
 

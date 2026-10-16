@@ -31407,6 +31407,6236 @@
    "banner": false,
    "auth": false,
    "hasDrive": false
+  },
+  {
+   "id": "library-drawer",
+   "section": "library",
+   "title": "Library drawer",
+   "description": "The Library drawer docked left of the chain. Your library has two halves: Captures (your capture folders, a linked NAM folder with its link mark, and the TONE3000 Favorites) and Presets (the user presets folder, mounted, with a setlist). An imported read-only library follows. The active preset (from the setlist) carries the blue dot.",
+   "chain": {
+    "revision": 1,
+    "canUndo": true,
+    "canRedo": false,
+    "stereoEnabled": false,
+    "activeSide": "left",
+    "stereoInput": false,
+    "standalone": false,
+    "inputMode": "stereo",
+    "namFullSize": false,
+    "multiCore": true,
+    "sampleRate": 48000,
+    "chain": [
+     {
+      "blockId": "blk-1",
+      "kind": "tone",
+      "tone": {
+       "id": 104,
+       "title": "Green Russian Big Muff + BD-2",
+       "format": "nam",
+       "gear": "pedal",
+       "images": [
+        "https://t3k-fixtures.local/img/pedal-muff"
+       ],
+       "user": {
+        "username": "kosmicaudio",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-kosmic"
+       },
+       "models": [
+        {
+         "id": 1104,
+         "name": "D-12_00 T-12_00 + BD-2 Boost"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 4100,
+       "url": "https://www.tone3000.com/tones/green-russian-big-muff-clone-boss-bd-2-pack-80291"
+      },
+      "activeModelId": 1104,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-2",
+      "kind": "tone",
+      "tone": {
+       "id": 101,
+       "title": "'02 Vox AC30/6 Top Boost",
+       "format": "nam",
+       "gear": "amp",
+       "images": [
+        "https://t3k-fixtures.local/img/amp-vox"
+       ],
+       "user": {
+        "username": "signaltheoryaudio",
+        "display_name": "Signal Theory Audio",
+        "is_verified": true,
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-signaltheory"
+       },
+       "models": [
+        {
+         "id": 1101,
+         "name": "AC30-6 TB Brl 3"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 5246,
+       "url": "https://www.tone3000.com/tones/02-vox-ac306-top-boost-70408"
+      },
+      "activeModelId": 1101,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-3",
+      "kind": "tone",
+      "tone": {
+       "id": 103,
+       "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+       "format": "ir",
+       "gear": "cab",
+       "images": [
+        "https://t3k-fixtures.local/img/cab-412"
+       ],
+       "user": {
+        "username": "outmodedelectronics",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-outmoded"
+       },
+       "models": [
+        {
+         "id": 1103,
+         "name": "M201 Cap Edge"
+        }
+       ],
+       "models_count": 24,
+       "a2_models_count": 0,
+       "downloads_count": 31000,
+       "url": "https://www.tone3000.com/tones/uk-greenback-marshall-1960tv-4x12-m201-75087"
+      },
+      "activeModelId": 1103,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "ins-1",
+      "kind": "insert"
+     },
+     {
+      "blockId": "ins-2",
+      "kind": "insert"
+     }
+    ],
+    "preset": {
+     "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/02. Next best song.t3kpreset",
+     "name": "02. Next best song"
+    }
+   },
+   "presets": [
+    {
+     "id": "factory-1",
+     "name": "Crunch Rhythm",
+     "factory": true
+    },
+    {
+     "id": "factory-2",
+     "name": "Clean Platform",
+     "factory": true
+    },
+    {
+     "id": "factory-3",
+     "name": "Modern Metal",
+     "factory": true
+    },
+    {
+     "id": "user-1",
+     "name": "My Lead Tone",
+     "factory": false
+    },
+    {
+     "id": "user-2",
+     "name": "Church Sunday",
+     "factory": false
+    }
+   ],
+   "hints": true,
+   "banner": false,
+   "auth": false,
+   "hasDrive": true,
+   "library": {
+    "root": "/Users/you/Documents/TONE3000/Library",
+    "owner": "tonehound",
+    "libraries": [
+     {
+      "kind": "library",
+      "name": "tonehound",
+      "path": "/Users/you/Documents/TONE3000/Library/tonehound",
+      "mine": true,
+      "editable": false,
+      "removable": false,
+      "writable": false,
+      "children": [
+       {
+        "kind": "folder",
+        "name": "Captures",
+        "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures",
+        "type": "captures",
+        "mount": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Clean",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "Roland JC-40 - Clean",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean/Roland JC-40 - Clean.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 102,
+              "title": "Roland JC-40",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "kenji"
+              }
+             },
+             "model": {
+              "id": 1102,
+              "name": "Clean"
+             }
+            }
+           },
+           {
+            "kind": "capture",
+            "name": "Studio 412 SM57",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean/Studio 412 SM57.wav",
+            "format": "ir",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "Crunch",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Crunch",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "'02 Vox AC30/6 Top Boost - Brl 3",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Crunch/'02 Vox AC30/6 Top Boost - Brl 3.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 101,
+              "title": "'02 Vox AC30/6 Top Boost",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "rickwolf"
+              }
+             },
+             "model": {
+              "id": 1101,
+              "name": "Brl 3"
+             }
+            }
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "High gain",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/High gain",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "Metal 00s - Dual Rectifier Direct - Modern",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/High gain/Metal 00s - Dual Rectifier Direct - Modern.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 105,
+              "title": "Metal 00s - Dual Rectifier Direct",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "signaltheory"
+              }
+             },
+             "model": {
+              "id": 1105,
+              "name": "Modern"
+             }
+            }
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "kind": "folder",
+        "name": "Local",
+        "path": "/Users/you/Documents/TONE3000/Library/tonehound/Local",
+        "type": "captures",
+        "mount": true,
+        "local": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "NAM Captures",
+          "path": "D:/Music/NAM Captures",
+          "type": "captures",
+          "mount": true,
+          "editable": false,
+          "removable": false,
+          "writable": true,
+          "children": [
+           {
+            "kind": "folder",
+            "name": "Plexi 1987",
+            "path": "D:/Music/NAM Captures/Plexi 1987",
+            "type": "captures",
+            "mount": false,
+            "editable": true,
+            "removable": true,
+            "writable": true,
+            "children": [
+             {
+              "kind": "capture",
+              "name": "Plexi gain 3",
+              "path": "D:/Music/NAM Captures/Plexi 1987/Plexi gain 3.nam",
+              "format": "nam",
+              "editable": true,
+              "removable": true
+             },
+             {
+              "kind": "capture",
+              "name": "Plexi gain 7",
+              "path": "D:/Music/NAM Captures/Plexi 1987/Plexi gain 7.nam",
+              "format": "nam",
+              "editable": true,
+              "removable": true
+             }
+            ]
+           },
+           {
+            "kind": "capture",
+            "name": "JCM800 lead",
+            "path": "D:/Music/NAM Captures/JCM800 lead.nam",
+            "format": "nam",
+            "editable": true,
+            "removable": true
+           }
+          ],
+          "linked": true,
+          "missing": false
+         }
+        ]
+       },
+       {
+        "kind": "folder",
+        "name": "Presets",
+        "path": "/Users/you/Library/Application Support/TONE3000/Presets",
+        "type": "presets",
+        "mount": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Metal",
+          "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal",
+          "type": "presets",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "BE100 1",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 1.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 1.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "BE100 Rhythm",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 Rhythm.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 Rhythm.t3kpreset",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "Setlist",
+          "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist",
+          "type": "presets",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "01. Best song",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/01. Best song.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/01. Best song.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "02. Next best song",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/02. Next best song.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/02. Next best song.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "03. Closer",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/03. Closer.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/03. Closer.t3kpreset",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "kind": "library",
+      "name": "awesomeuser",
+      "path": "/Users/you/Documents/TONE3000/Library/awesomeuser",
+      "mine": false,
+      "editable": false,
+      "removable": true,
+      "writable": false,
+      "children": [
+       {
+        "kind": "folder",
+        "name": "Presets",
+        "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets",
+        "type": "presets",
+        "mount": false,
+        "editable": false,
+        "removable": false,
+        "writable": false,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Metal Rigs",
+          "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs",
+          "type": "presets",
+          "mount": false,
+          "editable": false,
+          "removable": false,
+          "writable": false,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "Djent Lord",
+            "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs/Djent Lord.t3kpreset",
+            "id": "file:/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs/Djent Lord.t3kpreset",
+            "editable": false,
+            "removable": false
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "library-favorites",
+   "section": "library",
+   "title": "Library favorites",
+   "description": "Signed in: the Favorites folder at the top of Captures mirrors the TONE3000 favorites, beside a capture folder holding a TONE3000 reference and a local IR.",
+   "chain": {
+    "revision": 1,
+    "canUndo": true,
+    "canRedo": false,
+    "stereoEnabled": false,
+    "activeSide": "left",
+    "stereoInput": false,
+    "standalone": false,
+    "inputMode": "stereo",
+    "namFullSize": false,
+    "multiCore": true,
+    "sampleRate": 48000,
+    "chain": [
+     {
+      "blockId": "blk-1",
+      "kind": "tone",
+      "tone": {
+       "id": 104,
+       "title": "Green Russian Big Muff + BD-2",
+       "format": "nam",
+       "gear": "pedal",
+       "images": [
+        "https://t3k-fixtures.local/img/pedal-muff"
+       ],
+       "user": {
+        "username": "kosmicaudio",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-kosmic"
+       },
+       "models": [
+        {
+         "id": 1104,
+         "name": "D-12_00 T-12_00 + BD-2 Boost"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 4100,
+       "url": "https://www.tone3000.com/tones/green-russian-big-muff-clone-boss-bd-2-pack-80291"
+      },
+      "activeModelId": 1104,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-2",
+      "kind": "tone",
+      "tone": {
+       "id": 101,
+       "title": "'02 Vox AC30/6 Top Boost",
+       "format": "nam",
+       "gear": "amp",
+       "images": [
+        "https://t3k-fixtures.local/img/amp-vox"
+       ],
+       "user": {
+        "username": "signaltheoryaudio",
+        "display_name": "Signal Theory Audio",
+        "is_verified": true,
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-signaltheory"
+       },
+       "models": [
+        {
+         "id": 1101,
+         "name": "AC30-6 TB Brl 3"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 5246,
+       "url": "https://www.tone3000.com/tones/02-vox-ac306-top-boost-70408"
+      },
+      "activeModelId": 1101,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-3",
+      "kind": "tone",
+      "tone": {
+       "id": 103,
+       "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+       "format": "ir",
+       "gear": "cab",
+       "images": [
+        "https://t3k-fixtures.local/img/cab-412"
+       ],
+       "user": {
+        "username": "outmodedelectronics",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-outmoded"
+       },
+       "models": [
+        {
+         "id": 1103,
+         "name": "M201 Cap Edge"
+        }
+       ],
+       "models_count": 24,
+       "a2_models_count": 0,
+       "downloads_count": 31000,
+       "url": "https://www.tone3000.com/tones/uk-greenback-marshall-1960tv-4x12-m201-75087"
+      },
+      "activeModelId": 1103,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "ins-1",
+      "kind": "insert"
+     },
+     {
+      "blockId": "ins-2",
+      "kind": "insert"
+     }
+    ],
+    "preset": {
+     "id": "factory-1",
+     "name": "Crunch Rhythm"
+    }
+   },
+   "presets": [
+    {
+     "id": "factory-1",
+     "name": "Crunch Rhythm",
+     "factory": true
+    },
+    {
+     "id": "factory-2",
+     "name": "Clean Platform",
+     "factory": true
+    },
+    {
+     "id": "factory-3",
+     "name": "Modern Metal",
+     "factory": true
+    },
+    {
+     "id": "user-1",
+     "name": "My Lead Tone",
+     "factory": false
+    },
+    {
+     "id": "user-2",
+     "name": "Church Sunday",
+     "factory": false
+    }
+   ],
+   "hints": true,
+   "banner": false,
+   "auth": true,
+   "hasDrive": true,
+   "library": {
+    "root": "/Users/you/Documents/TONE3000/Library",
+    "owner": "tonehound",
+    "libraries": [
+     {
+      "kind": "library",
+      "name": "tonehound",
+      "path": "/Users/you/Documents/TONE3000/Library/tonehound",
+      "mine": true,
+      "editable": false,
+      "removable": false,
+      "writable": false,
+      "children": [
+       {
+        "kind": "folder",
+        "name": "Captures",
+        "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures",
+        "type": "captures",
+        "mount": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Clean",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "Roland JC-40 - Clean",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean/Roland JC-40 - Clean.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 102,
+              "title": "Roland JC-40",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "kenji"
+              }
+             },
+             "model": {
+              "id": 1102,
+              "name": "Clean"
+             }
+            }
+           },
+           {
+            "kind": "capture",
+            "name": "Studio 412 SM57",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean/Studio 412 SM57.wav",
+            "format": "ir",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "Crunch",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Crunch",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "'02 Vox AC30/6 Top Boost - Brl 3",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Crunch/'02 Vox AC30/6 Top Boost - Brl 3.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 101,
+              "title": "'02 Vox AC30/6 Top Boost",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "rickwolf"
+              }
+             },
+             "model": {
+              "id": 1101,
+              "name": "Brl 3"
+             }
+            }
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "High gain",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/High gain",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "Metal 00s - Dual Rectifier Direct - Modern",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/High gain/Metal 00s - Dual Rectifier Direct - Modern.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 105,
+              "title": "Metal 00s - Dual Rectifier Direct",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "signaltheory"
+              }
+             },
+             "model": {
+              "id": 1105,
+              "name": "Modern"
+             }
+            }
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "kind": "folder",
+        "name": "Local",
+        "path": "/Users/you/Documents/TONE3000/Library/tonehound/Local",
+        "type": "captures",
+        "mount": true,
+        "local": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "NAM Captures",
+          "path": "D:/Music/NAM Captures",
+          "type": "captures",
+          "mount": true,
+          "editable": false,
+          "removable": false,
+          "writable": true,
+          "children": [
+           {
+            "kind": "folder",
+            "name": "Plexi 1987",
+            "path": "D:/Music/NAM Captures/Plexi 1987",
+            "type": "captures",
+            "mount": false,
+            "editable": true,
+            "removable": true,
+            "writable": true,
+            "children": [
+             {
+              "kind": "capture",
+              "name": "Plexi gain 3",
+              "path": "D:/Music/NAM Captures/Plexi 1987/Plexi gain 3.nam",
+              "format": "nam",
+              "editable": true,
+              "removable": true
+             },
+             {
+              "kind": "capture",
+              "name": "Plexi gain 7",
+              "path": "D:/Music/NAM Captures/Plexi 1987/Plexi gain 7.nam",
+              "format": "nam",
+              "editable": true,
+              "removable": true
+             }
+            ]
+           },
+           {
+            "kind": "capture",
+            "name": "JCM800 lead",
+            "path": "D:/Music/NAM Captures/JCM800 lead.nam",
+            "format": "nam",
+            "editable": true,
+            "removable": true
+           }
+          ],
+          "linked": true,
+          "missing": false
+         }
+        ]
+       },
+       {
+        "kind": "folder",
+        "name": "Presets",
+        "path": "/Users/you/Library/Application Support/TONE3000/Presets",
+        "type": "presets",
+        "mount": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Metal",
+          "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal",
+          "type": "presets",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "BE100 1",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 1.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 1.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "BE100 Rhythm",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 Rhythm.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 Rhythm.t3kpreset",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "Setlist",
+          "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist",
+          "type": "presets",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "01. Best song",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/01. Best song.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/01. Best song.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "02. Next best song",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/02. Next best song.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/02. Next best song.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "03. Closer",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/03. Closer.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/03. Closer.t3kpreset",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "kind": "library",
+      "name": "awesomeuser",
+      "path": "/Users/you/Documents/TONE3000/Library/awesomeuser",
+      "mine": false,
+      "editable": false,
+      "removable": true,
+      "writable": false,
+      "children": [
+       {
+        "kind": "folder",
+        "name": "Presets",
+        "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets",
+        "type": "presets",
+        "mount": false,
+        "editable": false,
+        "removable": false,
+        "writable": false,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Metal Rigs",
+          "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs",
+          "type": "presets",
+          "mount": false,
+          "editable": false,
+          "removable": false,
+          "writable": false,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "Djent Lord",
+            "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs/Djent Lord.t3kpreset",
+            "id": "file:/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs/Djent Lord.t3kpreset",
+            "editable": false,
+            "removable": false
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "library-search",
+   "section": "library",
+   "title": "Library search",
+   "description": "Filtering by \"metal\": matching folders bring everything in them, across your library and the imported one, shown open.",
+   "chain": {
+    "revision": 1,
+    "canUndo": true,
+    "canRedo": false,
+    "stereoEnabled": false,
+    "activeSide": "left",
+    "stereoInput": false,
+    "standalone": false,
+    "inputMode": "stereo",
+    "namFullSize": false,
+    "multiCore": true,
+    "sampleRate": 48000,
+    "chain": [
+     {
+      "blockId": "blk-1",
+      "kind": "tone",
+      "tone": {
+       "id": 104,
+       "title": "Green Russian Big Muff + BD-2",
+       "format": "nam",
+       "gear": "pedal",
+       "images": [
+        "https://t3k-fixtures.local/img/pedal-muff"
+       ],
+       "user": {
+        "username": "kosmicaudio",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-kosmic"
+       },
+       "models": [
+        {
+         "id": 1104,
+         "name": "D-12_00 T-12_00 + BD-2 Boost"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 4100,
+       "url": "https://www.tone3000.com/tones/green-russian-big-muff-clone-boss-bd-2-pack-80291"
+      },
+      "activeModelId": 1104,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-2",
+      "kind": "tone",
+      "tone": {
+       "id": 101,
+       "title": "'02 Vox AC30/6 Top Boost",
+       "format": "nam",
+       "gear": "amp",
+       "images": [
+        "https://t3k-fixtures.local/img/amp-vox"
+       ],
+       "user": {
+        "username": "signaltheoryaudio",
+        "display_name": "Signal Theory Audio",
+        "is_verified": true,
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-signaltheory"
+       },
+       "models": [
+        {
+         "id": 1101,
+         "name": "AC30-6 TB Brl 3"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 5246,
+       "url": "https://www.tone3000.com/tones/02-vox-ac306-top-boost-70408"
+      },
+      "activeModelId": 1101,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-3",
+      "kind": "tone",
+      "tone": {
+       "id": 103,
+       "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+       "format": "ir",
+       "gear": "cab",
+       "images": [
+        "https://t3k-fixtures.local/img/cab-412"
+       ],
+       "user": {
+        "username": "outmodedelectronics",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-outmoded"
+       },
+       "models": [
+        {
+         "id": 1103,
+         "name": "M201 Cap Edge"
+        }
+       ],
+       "models_count": 24,
+       "a2_models_count": 0,
+       "downloads_count": 31000,
+       "url": "https://www.tone3000.com/tones/uk-greenback-marshall-1960tv-4x12-m201-75087"
+      },
+      "activeModelId": 1103,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "ins-1",
+      "kind": "insert"
+     },
+     {
+      "blockId": "ins-2",
+      "kind": "insert"
+     }
+    ],
+    "preset": {
+     "id": "factory-1",
+     "name": "Crunch Rhythm"
+    }
+   },
+   "presets": [
+    {
+     "id": "factory-1",
+     "name": "Crunch Rhythm",
+     "factory": true
+    },
+    {
+     "id": "factory-2",
+     "name": "Clean Platform",
+     "factory": true
+    },
+    {
+     "id": "factory-3",
+     "name": "Modern Metal",
+     "factory": true
+    },
+    {
+     "id": "user-1",
+     "name": "My Lead Tone",
+     "factory": false
+    },
+    {
+     "id": "user-2",
+     "name": "Church Sunday",
+     "factory": false
+    }
+   ],
+   "hints": true,
+   "banner": false,
+   "auth": false,
+   "hasDrive": true,
+   "library": {
+    "root": "/Users/you/Documents/TONE3000/Library",
+    "owner": "tonehound",
+    "libraries": [
+     {
+      "kind": "library",
+      "name": "tonehound",
+      "path": "/Users/you/Documents/TONE3000/Library/tonehound",
+      "mine": true,
+      "editable": false,
+      "removable": false,
+      "writable": false,
+      "children": [
+       {
+        "kind": "folder",
+        "name": "Captures",
+        "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures",
+        "type": "captures",
+        "mount": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Clean",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "Roland JC-40 - Clean",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean/Roland JC-40 - Clean.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 102,
+              "title": "Roland JC-40",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "kenji"
+              }
+             },
+             "model": {
+              "id": 1102,
+              "name": "Clean"
+             }
+            }
+           },
+           {
+            "kind": "capture",
+            "name": "Studio 412 SM57",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean/Studio 412 SM57.wav",
+            "format": "ir",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "Crunch",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Crunch",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "'02 Vox AC30/6 Top Boost - Brl 3",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Crunch/'02 Vox AC30/6 Top Boost - Brl 3.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 101,
+              "title": "'02 Vox AC30/6 Top Boost",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "rickwolf"
+              }
+             },
+             "model": {
+              "id": 1101,
+              "name": "Brl 3"
+             }
+            }
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "High gain",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/High gain",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "Metal 00s - Dual Rectifier Direct - Modern",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/High gain/Metal 00s - Dual Rectifier Direct - Modern.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 105,
+              "title": "Metal 00s - Dual Rectifier Direct",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "signaltheory"
+              }
+             },
+             "model": {
+              "id": 1105,
+              "name": "Modern"
+             }
+            }
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "kind": "folder",
+        "name": "Local",
+        "path": "/Users/you/Documents/TONE3000/Library/tonehound/Local",
+        "type": "captures",
+        "mount": true,
+        "local": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "NAM Captures",
+          "path": "D:/Music/NAM Captures",
+          "type": "captures",
+          "mount": true,
+          "editable": false,
+          "removable": false,
+          "writable": true,
+          "children": [
+           {
+            "kind": "folder",
+            "name": "Plexi 1987",
+            "path": "D:/Music/NAM Captures/Plexi 1987",
+            "type": "captures",
+            "mount": false,
+            "editable": true,
+            "removable": true,
+            "writable": true,
+            "children": [
+             {
+              "kind": "capture",
+              "name": "Plexi gain 3",
+              "path": "D:/Music/NAM Captures/Plexi 1987/Plexi gain 3.nam",
+              "format": "nam",
+              "editable": true,
+              "removable": true
+             },
+             {
+              "kind": "capture",
+              "name": "Plexi gain 7",
+              "path": "D:/Music/NAM Captures/Plexi 1987/Plexi gain 7.nam",
+              "format": "nam",
+              "editable": true,
+              "removable": true
+             }
+            ]
+           },
+           {
+            "kind": "capture",
+            "name": "JCM800 lead",
+            "path": "D:/Music/NAM Captures/JCM800 lead.nam",
+            "format": "nam",
+            "editable": true,
+            "removable": true
+           }
+          ],
+          "linked": true,
+          "missing": false
+         }
+        ]
+       },
+       {
+        "kind": "folder",
+        "name": "Presets",
+        "path": "/Users/you/Library/Application Support/TONE3000/Presets",
+        "type": "presets",
+        "mount": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Metal",
+          "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal",
+          "type": "presets",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "BE100 1",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 1.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 1.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "BE100 Rhythm",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 Rhythm.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 Rhythm.t3kpreset",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "Setlist",
+          "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist",
+          "type": "presets",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "01. Best song",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/01. Best song.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/01. Best song.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "02. Next best song",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/02. Next best song.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/02. Next best song.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "03. Closer",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/03. Closer.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/03. Closer.t3kpreset",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "kind": "library",
+      "name": "awesomeuser",
+      "path": "/Users/you/Documents/TONE3000/Library/awesomeuser",
+      "mine": false,
+      "editable": false,
+      "removable": true,
+      "writable": false,
+      "children": [
+       {
+        "kind": "folder",
+        "name": "Presets",
+        "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets",
+        "type": "presets",
+        "mount": false,
+        "editable": false,
+        "removable": false,
+        "writable": false,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Metal Rigs",
+          "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs",
+          "type": "presets",
+          "mount": false,
+          "editable": false,
+          "removable": false,
+          "writable": false,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "Djent Lord",
+            "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs/Djent Lord.t3kpreset",
+            "id": "file:/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs/Djent Lord.t3kpreset",
+            "editable": false,
+            "removable": false
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "library-add-pick",
+   "section": "library",
+   "title": "Library: add a tone",
+   "description": "After a tone tile's \"Add to Library\": the strip names the tone waiting for a captures folder; the next one clicked takes it (Favorites favorites it on TONE3000).",
+   "chain": {
+    "revision": 1,
+    "canUndo": true,
+    "canRedo": false,
+    "stereoEnabled": false,
+    "activeSide": "left",
+    "stereoInput": false,
+    "standalone": false,
+    "inputMode": "stereo",
+    "namFullSize": false,
+    "multiCore": true,
+    "sampleRate": 48000,
+    "chain": [
+     {
+      "blockId": "blk-1",
+      "kind": "tone",
+      "tone": {
+       "id": 104,
+       "title": "Green Russian Big Muff + BD-2",
+       "format": "nam",
+       "gear": "pedal",
+       "images": [
+        "https://t3k-fixtures.local/img/pedal-muff"
+       ],
+       "user": {
+        "username": "kosmicaudio",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-kosmic"
+       },
+       "models": [
+        {
+         "id": 1104,
+         "name": "D-12_00 T-12_00 + BD-2 Boost"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 4100,
+       "url": "https://www.tone3000.com/tones/green-russian-big-muff-clone-boss-bd-2-pack-80291"
+      },
+      "activeModelId": 1104,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-2",
+      "kind": "tone",
+      "tone": {
+       "id": 101,
+       "title": "'02 Vox AC30/6 Top Boost",
+       "format": "nam",
+       "gear": "amp",
+       "images": [
+        "https://t3k-fixtures.local/img/amp-vox"
+       ],
+       "user": {
+        "username": "signaltheoryaudio",
+        "display_name": "Signal Theory Audio",
+        "is_verified": true,
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-signaltheory"
+       },
+       "models": [
+        {
+         "id": 1101,
+         "name": "AC30-6 TB Brl 3"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 5246,
+       "url": "https://www.tone3000.com/tones/02-vox-ac306-top-boost-70408"
+      },
+      "activeModelId": 1101,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-3",
+      "kind": "tone",
+      "tone": {
+       "id": 103,
+       "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+       "format": "ir",
+       "gear": "cab",
+       "images": [
+        "https://t3k-fixtures.local/img/cab-412"
+       ],
+       "user": {
+        "username": "outmodedelectronics",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-outmoded"
+       },
+       "models": [
+        {
+         "id": 1103,
+         "name": "M201 Cap Edge"
+        }
+       ],
+       "models_count": 24,
+       "a2_models_count": 0,
+       "downloads_count": 31000,
+       "url": "https://www.tone3000.com/tones/uk-greenback-marshall-1960tv-4x12-m201-75087"
+      },
+      "activeModelId": 1103,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "ins-1",
+      "kind": "insert"
+     },
+     {
+      "blockId": "ins-2",
+      "kind": "insert"
+     }
+    ],
+    "preset": {
+     "id": "factory-1",
+     "name": "Crunch Rhythm"
+    }
+   },
+   "presets": [
+    {
+     "id": "factory-1",
+     "name": "Crunch Rhythm",
+     "factory": true
+    },
+    {
+     "id": "factory-2",
+     "name": "Clean Platform",
+     "factory": true
+    },
+    {
+     "id": "factory-3",
+     "name": "Modern Metal",
+     "factory": true
+    },
+    {
+     "id": "user-1",
+     "name": "My Lead Tone",
+     "factory": false
+    },
+    {
+     "id": "user-2",
+     "name": "Church Sunday",
+     "factory": false
+    }
+   ],
+   "hints": true,
+   "banner": false,
+   "auth": false,
+   "hasDrive": true,
+   "library": {
+    "root": "/Users/you/Documents/TONE3000/Library",
+    "owner": "tonehound",
+    "libraries": [
+     {
+      "kind": "library",
+      "name": "tonehound",
+      "path": "/Users/you/Documents/TONE3000/Library/tonehound",
+      "mine": true,
+      "editable": false,
+      "removable": false,
+      "writable": false,
+      "children": [
+       {
+        "kind": "folder",
+        "name": "Captures",
+        "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures",
+        "type": "captures",
+        "mount": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Clean",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "Roland JC-40 - Clean",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean/Roland JC-40 - Clean.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 102,
+              "title": "Roland JC-40",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "kenji"
+              }
+             },
+             "model": {
+              "id": 1102,
+              "name": "Clean"
+             }
+            }
+           },
+           {
+            "kind": "capture",
+            "name": "Studio 412 SM57",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean/Studio 412 SM57.wav",
+            "format": "ir",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "Crunch",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Crunch",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "'02 Vox AC30/6 Top Boost - Brl 3",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Crunch/'02 Vox AC30/6 Top Boost - Brl 3.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 101,
+              "title": "'02 Vox AC30/6 Top Boost",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "rickwolf"
+              }
+             },
+             "model": {
+              "id": 1101,
+              "name": "Brl 3"
+             }
+            }
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "High gain",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/High gain",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "Metal 00s - Dual Rectifier Direct - Modern",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/High gain/Metal 00s - Dual Rectifier Direct - Modern.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 105,
+              "title": "Metal 00s - Dual Rectifier Direct",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "signaltheory"
+              }
+             },
+             "model": {
+              "id": 1105,
+              "name": "Modern"
+             }
+            }
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "kind": "folder",
+        "name": "Local",
+        "path": "/Users/you/Documents/TONE3000/Library/tonehound/Local",
+        "type": "captures",
+        "mount": true,
+        "local": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "NAM Captures",
+          "path": "D:/Music/NAM Captures",
+          "type": "captures",
+          "mount": true,
+          "editable": false,
+          "removable": false,
+          "writable": true,
+          "children": [
+           {
+            "kind": "folder",
+            "name": "Plexi 1987",
+            "path": "D:/Music/NAM Captures/Plexi 1987",
+            "type": "captures",
+            "mount": false,
+            "editable": true,
+            "removable": true,
+            "writable": true,
+            "children": [
+             {
+              "kind": "capture",
+              "name": "Plexi gain 3",
+              "path": "D:/Music/NAM Captures/Plexi 1987/Plexi gain 3.nam",
+              "format": "nam",
+              "editable": true,
+              "removable": true
+             },
+             {
+              "kind": "capture",
+              "name": "Plexi gain 7",
+              "path": "D:/Music/NAM Captures/Plexi 1987/Plexi gain 7.nam",
+              "format": "nam",
+              "editable": true,
+              "removable": true
+             }
+            ]
+           },
+           {
+            "kind": "capture",
+            "name": "JCM800 lead",
+            "path": "D:/Music/NAM Captures/JCM800 lead.nam",
+            "format": "nam",
+            "editable": true,
+            "removable": true
+           }
+          ],
+          "linked": true,
+          "missing": false
+         }
+        ]
+       },
+       {
+        "kind": "folder",
+        "name": "Presets",
+        "path": "/Users/you/Library/Application Support/TONE3000/Presets",
+        "type": "presets",
+        "mount": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Metal",
+          "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal",
+          "type": "presets",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "BE100 1",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 1.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 1.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "BE100 Rhythm",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 Rhythm.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 Rhythm.t3kpreset",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "Setlist",
+          "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist",
+          "type": "presets",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "01. Best song",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/01. Best song.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/01. Best song.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "02. Next best song",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/02. Next best song.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/02. Next best song.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "03. Closer",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/03. Closer.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/03. Closer.t3kpreset",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "kind": "library",
+      "name": "awesomeuser",
+      "path": "/Users/you/Documents/TONE3000/Library/awesomeuser",
+      "mine": false,
+      "editable": false,
+      "removable": true,
+      "writable": false,
+      "children": [
+       {
+        "kind": "folder",
+        "name": "Presets",
+        "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets",
+        "type": "presets",
+        "mount": false,
+        "editable": false,
+        "removable": false,
+        "writable": false,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Metal Rigs",
+          "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs",
+          "type": "presets",
+          "mount": false,
+          "editable": false,
+          "removable": false,
+          "writable": false,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "Djent Lord",
+            "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs/Djent Lord.t3kpreset",
+            "id": "file:/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs/Djent Lord.t3kpreset",
+            "editable": false,
+            "removable": false
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "library-row-menu",
+   "section": "library",
+   "title": "Library capture menu",
+   "description": "Right-click on a capture: load it into the block it went into last, add it as a new block, rename, export, reveal, delete.",
+   "chain": {
+    "revision": 1,
+    "canUndo": true,
+    "canRedo": false,
+    "stereoEnabled": false,
+    "activeSide": "left",
+    "stereoInput": false,
+    "standalone": false,
+    "inputMode": "stereo",
+    "namFullSize": false,
+    "multiCore": true,
+    "sampleRate": 48000,
+    "chain": [
+     {
+      "blockId": "blk-1",
+      "kind": "tone",
+      "tone": {
+       "id": 104,
+       "title": "Green Russian Big Muff + BD-2",
+       "format": "nam",
+       "gear": "pedal",
+       "images": [
+        "https://t3k-fixtures.local/img/pedal-muff"
+       ],
+       "user": {
+        "username": "kosmicaudio",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-kosmic"
+       },
+       "models": [
+        {
+         "id": 1104,
+         "name": "D-12_00 T-12_00 + BD-2 Boost"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 4100,
+       "url": "https://www.tone3000.com/tones/green-russian-big-muff-clone-boss-bd-2-pack-80291"
+      },
+      "activeModelId": 1104,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-2",
+      "kind": "tone",
+      "tone": {
+       "id": 101,
+       "title": "'02 Vox AC30/6 Top Boost",
+       "format": "nam",
+       "gear": "amp",
+       "images": [
+        "https://t3k-fixtures.local/img/amp-vox"
+       ],
+       "user": {
+        "username": "signaltheoryaudio",
+        "display_name": "Signal Theory Audio",
+        "is_verified": true,
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-signaltheory"
+       },
+       "models": [
+        {
+         "id": 1101,
+         "name": "AC30-6 TB Brl 3"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 5246,
+       "url": "https://www.tone3000.com/tones/02-vox-ac306-top-boost-70408"
+      },
+      "activeModelId": 1101,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-3",
+      "kind": "tone",
+      "tone": {
+       "id": 103,
+       "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+       "format": "ir",
+       "gear": "cab",
+       "images": [
+        "https://t3k-fixtures.local/img/cab-412"
+       ],
+       "user": {
+        "username": "outmodedelectronics",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-outmoded"
+       },
+       "models": [
+        {
+         "id": 1103,
+         "name": "M201 Cap Edge"
+        }
+       ],
+       "models_count": 24,
+       "a2_models_count": 0,
+       "downloads_count": 31000,
+       "url": "https://www.tone3000.com/tones/uk-greenback-marshall-1960tv-4x12-m201-75087"
+      },
+      "activeModelId": 1103,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "ins-1",
+      "kind": "insert"
+     },
+     {
+      "blockId": "ins-2",
+      "kind": "insert"
+     }
+    ],
+    "preset": {
+     "id": "factory-1",
+     "name": "Crunch Rhythm"
+    }
+   },
+   "presets": [
+    {
+     "id": "factory-1",
+     "name": "Crunch Rhythm",
+     "factory": true
+    },
+    {
+     "id": "factory-2",
+     "name": "Clean Platform",
+     "factory": true
+    },
+    {
+     "id": "factory-3",
+     "name": "Modern Metal",
+     "factory": true
+    },
+    {
+     "id": "user-1",
+     "name": "My Lead Tone",
+     "factory": false
+    },
+    {
+     "id": "user-2",
+     "name": "Church Sunday",
+     "factory": false
+    }
+   ],
+   "hints": true,
+   "banner": false,
+   "auth": false,
+   "hasDrive": true,
+   "library": {
+    "root": "/Users/you/Documents/TONE3000/Library",
+    "owner": "tonehound",
+    "libraries": [
+     {
+      "kind": "library",
+      "name": "tonehound",
+      "path": "/Users/you/Documents/TONE3000/Library/tonehound",
+      "mine": true,
+      "editable": false,
+      "removable": false,
+      "writable": false,
+      "children": [
+       {
+        "kind": "folder",
+        "name": "Captures",
+        "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures",
+        "type": "captures",
+        "mount": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Clean",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "Roland JC-40 - Clean",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean/Roland JC-40 - Clean.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 102,
+              "title": "Roland JC-40",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "kenji"
+              }
+             },
+             "model": {
+              "id": 1102,
+              "name": "Clean"
+             }
+            }
+           },
+           {
+            "kind": "capture",
+            "name": "Studio 412 SM57",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean/Studio 412 SM57.wav",
+            "format": "ir",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "Crunch",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Crunch",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "'02 Vox AC30/6 Top Boost - Brl 3",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Crunch/'02 Vox AC30/6 Top Boost - Brl 3.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 101,
+              "title": "'02 Vox AC30/6 Top Boost",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "rickwolf"
+              }
+             },
+             "model": {
+              "id": 1101,
+              "name": "Brl 3"
+             }
+            }
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "High gain",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/High gain",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "Metal 00s - Dual Rectifier Direct - Modern",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/High gain/Metal 00s - Dual Rectifier Direct - Modern.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 105,
+              "title": "Metal 00s - Dual Rectifier Direct",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "signaltheory"
+              }
+             },
+             "model": {
+              "id": 1105,
+              "name": "Modern"
+             }
+            }
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "kind": "folder",
+        "name": "Local",
+        "path": "/Users/you/Documents/TONE3000/Library/tonehound/Local",
+        "type": "captures",
+        "mount": true,
+        "local": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "NAM Captures",
+          "path": "D:/Music/NAM Captures",
+          "type": "captures",
+          "mount": true,
+          "editable": false,
+          "removable": false,
+          "writable": true,
+          "children": [
+           {
+            "kind": "folder",
+            "name": "Plexi 1987",
+            "path": "D:/Music/NAM Captures/Plexi 1987",
+            "type": "captures",
+            "mount": false,
+            "editable": true,
+            "removable": true,
+            "writable": true,
+            "children": [
+             {
+              "kind": "capture",
+              "name": "Plexi gain 3",
+              "path": "D:/Music/NAM Captures/Plexi 1987/Plexi gain 3.nam",
+              "format": "nam",
+              "editable": true,
+              "removable": true
+             },
+             {
+              "kind": "capture",
+              "name": "Plexi gain 7",
+              "path": "D:/Music/NAM Captures/Plexi 1987/Plexi gain 7.nam",
+              "format": "nam",
+              "editable": true,
+              "removable": true
+             }
+            ]
+           },
+           {
+            "kind": "capture",
+            "name": "JCM800 lead",
+            "path": "D:/Music/NAM Captures/JCM800 lead.nam",
+            "format": "nam",
+            "editable": true,
+            "removable": true
+           }
+          ],
+          "linked": true,
+          "missing": false
+         }
+        ]
+       },
+       {
+        "kind": "folder",
+        "name": "Presets",
+        "path": "/Users/you/Library/Application Support/TONE3000/Presets",
+        "type": "presets",
+        "mount": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Metal",
+          "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal",
+          "type": "presets",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "BE100 1",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 1.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 1.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "BE100 Rhythm",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 Rhythm.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 Rhythm.t3kpreset",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "Setlist",
+          "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist",
+          "type": "presets",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "01. Best song",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/01. Best song.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/01. Best song.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "02. Next best song",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/02. Next best song.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/02. Next best song.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "03. Closer",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/03. Closer.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/03. Closer.t3kpreset",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "kind": "library",
+      "name": "awesomeuser",
+      "path": "/Users/you/Documents/TONE3000/Library/awesomeuser",
+      "mine": false,
+      "editable": false,
+      "removable": true,
+      "writable": false,
+      "children": [
+       {
+        "kind": "folder",
+        "name": "Presets",
+        "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets",
+        "type": "presets",
+        "mount": false,
+        "editable": false,
+        "removable": false,
+        "writable": false,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Metal Rigs",
+          "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs",
+          "type": "presets",
+          "mount": false,
+          "editable": false,
+          "removable": false,
+          "writable": false,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "Djent Lord",
+            "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs/Djent Lord.t3kpreset",
+            "id": "file:/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs/Djent Lord.t3kpreset",
+            "editable": false,
+            "removable": false
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "library-empty",
+   "section": "library",
+   "title": "Library, first run",
+   "description": "A first run: your library holds its empty Captures (with Favorites) and the Presets folder, with the hint on how to fill it.",
+   "chain": {
+    "revision": 1,
+    "canUndo": true,
+    "canRedo": false,
+    "stereoEnabled": false,
+    "activeSide": "left",
+    "stereoInput": false,
+    "standalone": false,
+    "inputMode": "stereo",
+    "namFullSize": false,
+    "multiCore": true,
+    "sampleRate": 48000,
+    "chain": [
+     {
+      "blockId": "blk-1",
+      "kind": "tone",
+      "tone": {
+       "id": 104,
+       "title": "Green Russian Big Muff + BD-2",
+       "format": "nam",
+       "gear": "pedal",
+       "images": [
+        "https://t3k-fixtures.local/img/pedal-muff"
+       ],
+       "user": {
+        "username": "kosmicaudio",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-kosmic"
+       },
+       "models": [
+        {
+         "id": 1104,
+         "name": "D-12_00 T-12_00 + BD-2 Boost"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 4100,
+       "url": "https://www.tone3000.com/tones/green-russian-big-muff-clone-boss-bd-2-pack-80291"
+      },
+      "activeModelId": 1104,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-2",
+      "kind": "tone",
+      "tone": {
+       "id": 101,
+       "title": "'02 Vox AC30/6 Top Boost",
+       "format": "nam",
+       "gear": "amp",
+       "images": [
+        "https://t3k-fixtures.local/img/amp-vox"
+       ],
+       "user": {
+        "username": "signaltheoryaudio",
+        "display_name": "Signal Theory Audio",
+        "is_verified": true,
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-signaltheory"
+       },
+       "models": [
+        {
+         "id": 1101,
+         "name": "AC30-6 TB Brl 3"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 5246,
+       "url": "https://www.tone3000.com/tones/02-vox-ac306-top-boost-70408"
+      },
+      "activeModelId": 1101,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-3",
+      "kind": "tone",
+      "tone": {
+       "id": 103,
+       "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+       "format": "ir",
+       "gear": "cab",
+       "images": [
+        "https://t3k-fixtures.local/img/cab-412"
+       ],
+       "user": {
+        "username": "outmodedelectronics",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-outmoded"
+       },
+       "models": [
+        {
+         "id": 1103,
+         "name": "M201 Cap Edge"
+        }
+       ],
+       "models_count": 24,
+       "a2_models_count": 0,
+       "downloads_count": 31000,
+       "url": "https://www.tone3000.com/tones/uk-greenback-marshall-1960tv-4x12-m201-75087"
+      },
+      "activeModelId": 1103,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "ins-1",
+      "kind": "insert"
+     },
+     {
+      "blockId": "ins-2",
+      "kind": "insert"
+     }
+    ],
+    "preset": {
+     "id": "factory-1",
+     "name": "Crunch Rhythm"
+    }
+   },
+   "presets": [
+    {
+     "id": "factory-1",
+     "name": "Crunch Rhythm",
+     "factory": true
+    },
+    {
+     "id": "factory-2",
+     "name": "Clean Platform",
+     "factory": true
+    },
+    {
+     "id": "factory-3",
+     "name": "Modern Metal",
+     "factory": true
+    }
+   ],
+   "hints": true,
+   "banner": false,
+   "auth": false,
+   "hasDrive": true
+  },
+  {
+   "id": "library-detail",
+   "section": "library",
+   "title": "Library beside a block card",
+   "description": "A block card open with the Library drawer up: the chain band and the faceplate keep their full-width layout scaled down beside the drawer, so the card (back link included) and every faceplate control stay visible.",
+   "chain": {
+    "revision": 1,
+    "canUndo": true,
+    "canRedo": false,
+    "stereoEnabled": false,
+    "activeSide": "left",
+    "stereoInput": false,
+    "standalone": false,
+    "inputMode": "stereo",
+    "namFullSize": false,
+    "multiCore": true,
+    "sampleRate": 48000,
+    "chain": [
+     {
+      "blockId": "blk-1",
+      "kind": "tone",
+      "tone": {
+       "id": 104,
+       "title": "Green Russian Big Muff + BD-2",
+       "format": "nam",
+       "gear": "pedal",
+       "images": [
+        "https://t3k-fixtures.local/img/pedal-muff"
+       ],
+       "user": {
+        "username": "kosmicaudio",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-kosmic"
+       },
+       "models": [
+        {
+         "id": 1104,
+         "name": "D-12_00 T-12_00 + BD-2 Boost"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 4100,
+       "url": "https://www.tone3000.com/tones/green-russian-big-muff-clone-boss-bd-2-pack-80291"
+      },
+      "activeModelId": 1104,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-2",
+      "kind": "tone",
+      "tone": {
+       "id": 101,
+       "title": "'02 Vox AC30/6 Top Boost",
+       "format": "nam",
+       "gear": "amp",
+       "images": [
+        "https://t3k-fixtures.local/img/amp-vox"
+       ],
+       "user": {
+        "username": "signaltheoryaudio",
+        "display_name": "Signal Theory Audio",
+        "is_verified": true,
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-signaltheory"
+       },
+       "models": [
+        {
+         "id": 1101,
+         "name": "AC30-6 TB Brl 3"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 5246,
+       "url": "https://www.tone3000.com/tones/02-vox-ac306-top-boost-70408"
+      },
+      "activeModelId": 1101,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "inputLevelDbu": 12.5,
+      "outputLevelDbu": 14.2,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 0.85,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-3",
+      "kind": "tone",
+      "tone": {
+       "id": 103,
+       "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+       "format": "ir",
+       "gear": "cab",
+       "images": [
+        "https://t3k-fixtures.local/img/cab-412"
+       ],
+       "user": {
+        "username": "outmodedelectronics",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-outmoded"
+       },
+       "models": [
+        {
+         "id": 1103,
+         "name": "M201 Cap Edge"
+        }
+       ],
+       "models_count": 24,
+       "a2_models_count": 0,
+       "downloads_count": 31000,
+       "url": "https://www.tone3000.com/tones/uk-greenback-marshall-1960tv-4x12-m201-75087"
+      },
+      "activeModelId": 1103,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "ins-1",
+      "kind": "insert"
+     },
+     {
+      "blockId": "ins-2",
+      "kind": "insert"
+     }
+    ]
+   },
+   "auth": true,
+   "sessionStorage": {
+    "t3k.detailBlockId": "blk-2"
+   },
+   "hints": true,
+   "banner": false,
+   "hasDrive": true,
+   "library": {
+    "root": "/Users/you/Documents/TONE3000/Library",
+    "owner": "tonehound",
+    "libraries": [
+     {
+      "kind": "library",
+      "name": "tonehound",
+      "path": "/Users/you/Documents/TONE3000/Library/tonehound",
+      "mine": true,
+      "editable": false,
+      "removable": false,
+      "writable": false,
+      "children": [
+       {
+        "kind": "folder",
+        "name": "Captures",
+        "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures",
+        "type": "captures",
+        "mount": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Clean",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "Roland JC-40 - Clean",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean/Roland JC-40 - Clean.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 102,
+              "title": "Roland JC-40",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "kenji"
+              }
+             },
+             "model": {
+              "id": 1102,
+              "name": "Clean"
+             }
+            }
+           },
+           {
+            "kind": "capture",
+            "name": "Studio 412 SM57",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean/Studio 412 SM57.wav",
+            "format": "ir",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "Crunch",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Crunch",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "'02 Vox AC30/6 Top Boost - Brl 3",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Crunch/'02 Vox AC30/6 Top Boost - Brl 3.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 101,
+              "title": "'02 Vox AC30/6 Top Boost",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "rickwolf"
+              }
+             },
+             "model": {
+              "id": 1101,
+              "name": "Brl 3"
+             }
+            }
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "High gain",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/High gain",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "Metal 00s - Dual Rectifier Direct - Modern",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/High gain/Metal 00s - Dual Rectifier Direct - Modern.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 105,
+              "title": "Metal 00s - Dual Rectifier Direct",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "signaltheory"
+              }
+             },
+             "model": {
+              "id": 1105,
+              "name": "Modern"
+             }
+            }
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "kind": "folder",
+        "name": "Local",
+        "path": "/Users/you/Documents/TONE3000/Library/tonehound/Local",
+        "type": "captures",
+        "mount": true,
+        "local": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "NAM Captures",
+          "path": "D:/Music/NAM Captures",
+          "type": "captures",
+          "mount": true,
+          "editable": false,
+          "removable": false,
+          "writable": true,
+          "children": [
+           {
+            "kind": "folder",
+            "name": "Plexi 1987",
+            "path": "D:/Music/NAM Captures/Plexi 1987",
+            "type": "captures",
+            "mount": false,
+            "editable": true,
+            "removable": true,
+            "writable": true,
+            "children": [
+             {
+              "kind": "capture",
+              "name": "Plexi gain 3",
+              "path": "D:/Music/NAM Captures/Plexi 1987/Plexi gain 3.nam",
+              "format": "nam",
+              "editable": true,
+              "removable": true
+             },
+             {
+              "kind": "capture",
+              "name": "Plexi gain 7",
+              "path": "D:/Music/NAM Captures/Plexi 1987/Plexi gain 7.nam",
+              "format": "nam",
+              "editable": true,
+              "removable": true
+             }
+            ]
+           },
+           {
+            "kind": "capture",
+            "name": "JCM800 lead",
+            "path": "D:/Music/NAM Captures/JCM800 lead.nam",
+            "format": "nam",
+            "editable": true,
+            "removable": true
+           }
+          ],
+          "linked": true,
+          "missing": false
+         }
+        ]
+       },
+       {
+        "kind": "folder",
+        "name": "Presets",
+        "path": "/Users/you/Library/Application Support/TONE3000/Presets",
+        "type": "presets",
+        "mount": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Metal",
+          "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal",
+          "type": "presets",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "BE100 1",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 1.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 1.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "BE100 Rhythm",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 Rhythm.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 Rhythm.t3kpreset",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "Setlist",
+          "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist",
+          "type": "presets",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "01. Best song",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/01. Best song.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/01. Best song.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "02. Next best song",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/02. Next best song.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/02. Next best song.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "03. Closer",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/03. Closer.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/03. Closer.t3kpreset",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "kind": "library",
+      "name": "awesomeuser",
+      "path": "/Users/you/Documents/TONE3000/Library/awesomeuser",
+      "mine": false,
+      "editable": false,
+      "removable": true,
+      "writable": false,
+      "children": [
+       {
+        "kind": "folder",
+        "name": "Presets",
+        "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets",
+        "type": "presets",
+        "mount": false,
+        "editable": false,
+        "removable": false,
+        "writable": false,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Metal Rigs",
+          "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs",
+          "type": "presets",
+          "mount": false,
+          "editable": false,
+          "removable": false,
+          "writable": false,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "Djent Lord",
+            "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs/Djent Lord.t3kpreset",
+            "id": "file:/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs/Djent Lord.t3kpreset",
+            "editable": false,
+            "removable": false
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "library-big",
+   "section": "library",
+   "title": "Library: a big linked folder",
+   "description": "A linked folder of 5000 captures, open and scrolled to the middle: only the rows around the view exist, and the scroll bar shows the position in the list.",
+   "chain": {
+    "revision": 1,
+    "canUndo": true,
+    "canRedo": false,
+    "stereoEnabled": false,
+    "activeSide": "left",
+    "stereoInput": false,
+    "standalone": false,
+    "inputMode": "stereo",
+    "namFullSize": false,
+    "multiCore": true,
+    "sampleRate": 48000,
+    "chain": [
+     {
+      "blockId": "blk-1",
+      "kind": "tone",
+      "tone": {
+       "id": 104,
+       "title": "Green Russian Big Muff + BD-2",
+       "format": "nam",
+       "gear": "pedal",
+       "images": [
+        "https://t3k-fixtures.local/img/pedal-muff"
+       ],
+       "user": {
+        "username": "kosmicaudio",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-kosmic"
+       },
+       "models": [
+        {
+         "id": 1104,
+         "name": "D-12_00 T-12_00 + BD-2 Boost"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 4100,
+       "url": "https://www.tone3000.com/tones/green-russian-big-muff-clone-boss-bd-2-pack-80291"
+      },
+      "activeModelId": 1104,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-2",
+      "kind": "tone",
+      "tone": {
+       "id": 101,
+       "title": "'02 Vox AC30/6 Top Boost",
+       "format": "nam",
+       "gear": "amp",
+       "images": [
+        "https://t3k-fixtures.local/img/amp-vox"
+       ],
+       "user": {
+        "username": "signaltheoryaudio",
+        "display_name": "Signal Theory Audio",
+        "is_verified": true,
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-signaltheory"
+       },
+       "models": [
+        {
+         "id": 1101,
+         "name": "AC30-6 TB Brl 3"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 5246,
+       "url": "https://www.tone3000.com/tones/02-vox-ac306-top-boost-70408"
+      },
+      "activeModelId": 1101,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-3",
+      "kind": "tone",
+      "tone": {
+       "id": 103,
+       "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+       "format": "ir",
+       "gear": "cab",
+       "images": [
+        "https://t3k-fixtures.local/img/cab-412"
+       ],
+       "user": {
+        "username": "outmodedelectronics",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-outmoded"
+       },
+       "models": [
+        {
+         "id": 1103,
+         "name": "M201 Cap Edge"
+        }
+       ],
+       "models_count": 24,
+       "a2_models_count": 0,
+       "downloads_count": 31000,
+       "url": "https://www.tone3000.com/tones/uk-greenback-marshall-1960tv-4x12-m201-75087"
+      },
+      "activeModelId": 1103,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "ins-1",
+      "kind": "insert"
+     },
+     {
+      "blockId": "ins-2",
+      "kind": "insert"
+     }
+    ]
+   },
+   "presets": [
+    {
+     "id": "factory-1",
+     "name": "Crunch Rhythm",
+     "factory": true
+    },
+    {
+     "id": "factory-2",
+     "name": "Clean Platform",
+     "factory": true
+    },
+    {
+     "id": "factory-3",
+     "name": "Modern Metal",
+     "factory": true
+    },
+    {
+     "id": "user-1",
+     "name": "My Lead Tone",
+     "factory": false
+    },
+    {
+     "id": "user-2",
+     "name": "Church Sunday",
+     "factory": false
+    }
+   ],
+   "hints": true,
+   "banner": false,
+   "auth": false,
+   "hasDrive": true,
+   "library": {
+    "root": "/Users/you/Documents/TONE3000/Library",
+    "owner": "tonehound",
+    "libraries": [
+     {
+      "kind": "library",
+      "name": "tonehound",
+      "path": "/Users/you/Documents/TONE3000/Library/tonehound",
+      "mine": true,
+      "editable": false,
+      "removable": false,
+      "writable": false,
+      "children": [
+       {
+        "kind": "folder",
+        "name": "Captures",
+        "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures",
+        "type": "captures",
+        "mount": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Clean",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "Roland JC-40 - Clean",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean/Roland JC-40 - Clean.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 102,
+              "title": "Roland JC-40",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "kenji"
+              }
+             },
+             "model": {
+              "id": 1102,
+              "name": "Clean"
+             }
+            }
+           },
+           {
+            "kind": "capture",
+            "name": "Studio 412 SM57",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean/Studio 412 SM57.wav",
+            "format": "ir",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "Crunch",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Crunch",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "'02 Vox AC30/6 Top Boost - Brl 3",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Crunch/'02 Vox AC30/6 Top Boost - Brl 3.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 101,
+              "title": "'02 Vox AC30/6 Top Boost",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "rickwolf"
+              }
+             },
+             "model": {
+              "id": 1101,
+              "name": "Brl 3"
+             }
+            }
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "High gain",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/High gain",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "Metal 00s - Dual Rectifier Direct - Modern",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/High gain/Metal 00s - Dual Rectifier Direct - Modern.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 105,
+              "title": "Metal 00s - Dual Rectifier Direct",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "signaltheory"
+              }
+             },
+             "model": {
+              "id": 1105,
+              "name": "Modern"
+             }
+            }
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "kind": "folder",
+        "name": "Local",
+        "path": "/Users/you/Documents/TONE3000/Library/tonehound/Local",
+        "type": "captures",
+        "mount": true,
+        "local": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "NAM Captures",
+          "path": "D:/Music/NAM Captures",
+          "type": "captures",
+          "mount": true,
+          "editable": false,
+          "removable": false,
+          "writable": true,
+          "children": [
+           {
+            "kind": "folder",
+            "name": "Plexi 1987",
+            "path": "D:/Music/NAM Captures/Plexi 1987",
+            "type": "captures",
+            "mount": false,
+            "editable": true,
+            "removable": true,
+            "writable": true,
+            "children": [
+             {
+              "kind": "capture",
+              "name": "Plexi gain 3",
+              "path": "D:/Music/NAM Captures/Plexi 1987/Plexi gain 3.nam",
+              "format": "nam",
+              "editable": true,
+              "removable": true
+             },
+             {
+              "kind": "capture",
+              "name": "Plexi gain 7",
+              "path": "D:/Music/NAM Captures/Plexi 1987/Plexi gain 7.nam",
+              "format": "nam",
+              "editable": true,
+              "removable": true
+             }
+            ]
+           },
+           {
+            "kind": "capture",
+            "name": "JCM800 lead",
+            "path": "D:/Music/NAM Captures/JCM800 lead.nam",
+            "format": "nam",
+            "editable": true,
+            "removable": true
+           }
+          ],
+          "linked": true,
+          "missing": false
+         }
+        ]
+       },
+       {
+        "kind": "folder",
+        "name": "Presets",
+        "path": "/Users/you/Library/Application Support/TONE3000/Presets",
+        "type": "presets",
+        "mount": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Metal",
+          "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal",
+          "type": "presets",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "BE100 1",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 1.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 1.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "BE100 Rhythm",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 Rhythm.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 Rhythm.t3kpreset",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "Setlist",
+          "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist",
+          "type": "presets",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "01. Best song",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/01. Best song.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/01. Best song.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "02. Next best song",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/02. Next best song.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/02. Next best song.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "03. Closer",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/03. Closer.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/03. Closer.t3kpreset",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "kind": "library",
+      "name": "awesomeuser",
+      "path": "/Users/you/Documents/TONE3000/Library/awesomeuser",
+      "mine": false,
+      "editable": false,
+      "removable": true,
+      "writable": false,
+      "children": [
+       {
+        "kind": "folder",
+        "name": "Presets",
+        "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets",
+        "type": "presets",
+        "mount": false,
+        "editable": false,
+        "removable": false,
+        "writable": false,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Metal Rigs",
+          "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs",
+          "type": "presets",
+          "mount": false,
+          "editable": false,
+          "removable": false,
+          "writable": false,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "Djent Lord",
+            "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs/Djent Lord.t3kpreset",
+            "id": "file:/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs/Djent Lord.t3kpreset",
+            "editable": false,
+            "removable": false
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "library-keep",
+   "section": "library",
+   "title": "Library: keeping",
+   "description": "A keep folder set: the drawer strip names it (Stop ends it), and the open block card's Keep beside its model picker copies the model it plays into that folder.",
+   "chain": {
+    "revision": 1,
+    "canUndo": true,
+    "canRedo": false,
+    "stereoEnabled": false,
+    "activeSide": "left",
+    "stereoInput": false,
+    "standalone": false,
+    "inputMode": "stereo",
+    "namFullSize": false,
+    "multiCore": true,
+    "sampleRate": 48000,
+    "chain": [
+     {
+      "blockId": "blk-1",
+      "kind": "tone",
+      "tone": {
+       "id": 104,
+       "title": "Green Russian Big Muff + BD-2",
+       "format": "nam",
+       "gear": "pedal",
+       "images": [
+        "https://t3k-fixtures.local/img/pedal-muff"
+       ],
+       "user": {
+        "username": "kosmicaudio",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-kosmic"
+       },
+       "models": [
+        {
+         "id": 1104,
+         "name": "D-12_00 T-12_00 + BD-2 Boost"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 4100,
+       "url": "https://www.tone3000.com/tones/green-russian-big-muff-clone-boss-bd-2-pack-80291"
+      },
+      "activeModelId": 1104,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-2",
+      "kind": "tone",
+      "tone": {
+       "id": 101,
+       "title": "'02 Vox AC30/6 Top Boost",
+       "format": "nam",
+       "gear": "amp",
+       "images": [
+        "https://t3k-fixtures.local/img/amp-vox"
+       ],
+       "user": {
+        "username": "signaltheoryaudio",
+        "display_name": "Signal Theory Audio",
+        "is_verified": true,
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-signaltheory"
+       },
+       "models": [
+        {
+         "id": 1101,
+         "name": "AC30-6 TB Brl 3"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 5246,
+       "url": "https://www.tone3000.com/tones/02-vox-ac306-top-boost-70408"
+      },
+      "activeModelId": 1101,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "inputLevelDbu": 12.5,
+      "outputLevelDbu": 14.2,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 0.85,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-3",
+      "kind": "tone",
+      "tone": {
+       "id": 103,
+       "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+       "format": "ir",
+       "gear": "cab",
+       "images": [
+        "https://t3k-fixtures.local/img/cab-412"
+       ],
+       "user": {
+        "username": "outmodedelectronics",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-outmoded"
+       },
+       "models": [
+        {
+         "id": 1103,
+         "name": "M201 Cap Edge"
+        }
+       ],
+       "models_count": 24,
+       "a2_models_count": 0,
+       "downloads_count": 31000,
+       "url": "https://www.tone3000.com/tones/uk-greenback-marshall-1960tv-4x12-m201-75087"
+      },
+      "activeModelId": 1103,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "ins-1",
+      "kind": "insert"
+     },
+     {
+      "blockId": "ins-2",
+      "kind": "insert"
+     }
+    ]
+   },
+   "auth": true,
+   "sessionStorage": {
+    "t3k.detailBlockId": "blk-2"
+   },
+   "hints": true,
+   "banner": false,
+   "hasDrive": true,
+   "library": {
+    "root": "/Users/you/Documents/TONE3000/Library",
+    "owner": "tonehound",
+    "libraries": [
+     {
+      "kind": "library",
+      "name": "tonehound",
+      "path": "/Users/you/Documents/TONE3000/Library/tonehound",
+      "mine": true,
+      "editable": false,
+      "removable": false,
+      "writable": false,
+      "children": [
+       {
+        "kind": "folder",
+        "name": "Captures",
+        "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures",
+        "type": "captures",
+        "mount": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Clean",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "Roland JC-40 - Clean",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean/Roland JC-40 - Clean.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 102,
+              "title": "Roland JC-40",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "kenji"
+              }
+             },
+             "model": {
+              "id": 1102,
+              "name": "Clean"
+             }
+            }
+           },
+           {
+            "kind": "capture",
+            "name": "Studio 412 SM57",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Clean/Studio 412 SM57.wav",
+            "format": "ir",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "Crunch",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Crunch",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "'02 Vox AC30/6 Top Boost - Brl 3",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/Crunch/'02 Vox AC30/6 Top Boost - Brl 3.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 101,
+              "title": "'02 Vox AC30/6 Top Boost",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "rickwolf"
+              }
+             },
+             "model": {
+              "id": 1101,
+              "name": "Brl 3"
+             }
+            }
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "High gain",
+          "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/High gain",
+          "type": "captures",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "tone",
+            "name": "Metal 00s - Dual Rectifier Direct - Modern",
+            "path": "/Users/you/Documents/TONE3000/Library/tonehound/Captures/High gain/Metal 00s - Dual Rectifier Direct - Modern.t3ktone",
+            "editable": true,
+            "removable": true,
+            "ref": {
+             "format": "t3ktone",
+             "version": 1,
+             "source": "tone3000",
+             "tone": {
+              "id": 105,
+              "title": "Metal 00s - Dual Rectifier Direct",
+              "gear": "amp",
+              "format": "nam",
+              "user": {
+               "username": "signaltheory"
+              }
+             },
+             "model": {
+              "id": 1105,
+              "name": "Modern"
+             }
+            }
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "kind": "folder",
+        "name": "Local",
+        "path": "/Users/you/Documents/TONE3000/Library/tonehound/Local",
+        "type": "captures",
+        "mount": true,
+        "local": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "NAM Captures",
+          "path": "D:/Music/NAM Captures",
+          "type": "captures",
+          "mount": true,
+          "editable": false,
+          "removable": false,
+          "writable": true,
+          "children": [
+           {
+            "kind": "folder",
+            "name": "Plexi 1987",
+            "path": "D:/Music/NAM Captures/Plexi 1987",
+            "type": "captures",
+            "mount": false,
+            "editable": true,
+            "removable": true,
+            "writable": true,
+            "children": [
+             {
+              "kind": "capture",
+              "name": "Plexi gain 3",
+              "path": "D:/Music/NAM Captures/Plexi 1987/Plexi gain 3.nam",
+              "format": "nam",
+              "editable": true,
+              "removable": true
+             },
+             {
+              "kind": "capture",
+              "name": "Plexi gain 7",
+              "path": "D:/Music/NAM Captures/Plexi 1987/Plexi gain 7.nam",
+              "format": "nam",
+              "editable": true,
+              "removable": true
+             }
+            ]
+           },
+           {
+            "kind": "capture",
+            "name": "JCM800 lead",
+            "path": "D:/Music/NAM Captures/JCM800 lead.nam",
+            "format": "nam",
+            "editable": true,
+            "removable": true
+           }
+          ],
+          "linked": true,
+          "missing": false
+         }
+        ]
+       },
+       {
+        "kind": "folder",
+        "name": "Presets",
+        "path": "/Users/you/Library/Application Support/TONE3000/Presets",
+        "type": "presets",
+        "mount": true,
+        "editable": false,
+        "removable": false,
+        "writable": true,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Metal",
+          "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal",
+          "type": "presets",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "BE100 1",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 1.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 1.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "BE100 Rhythm",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 Rhythm.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Metal/BE100 Rhythm.t3kpreset",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         },
+         {
+          "kind": "folder",
+          "name": "Setlist",
+          "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist",
+          "type": "presets",
+          "mount": false,
+          "editable": true,
+          "removable": true,
+          "writable": true,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "01. Best song",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/01. Best song.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/01. Best song.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "02. Next best song",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/02. Next best song.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/02. Next best song.t3kpreset",
+            "editable": true,
+            "removable": true
+           },
+           {
+            "kind": "preset",
+            "name": "03. Closer",
+            "path": "/Users/you/Library/Application Support/TONE3000/Presets/Setlist/03. Closer.t3kpreset",
+            "id": "file:/Users/you/Library/Application Support/TONE3000/Presets/Setlist/03. Closer.t3kpreset",
+            "editable": true,
+            "removable": true
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "kind": "library",
+      "name": "awesomeuser",
+      "path": "/Users/you/Documents/TONE3000/Library/awesomeuser",
+      "mine": false,
+      "editable": false,
+      "removable": true,
+      "writable": false,
+      "children": [
+       {
+        "kind": "folder",
+        "name": "Presets",
+        "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets",
+        "type": "presets",
+        "mount": false,
+        "editable": false,
+        "removable": false,
+        "writable": false,
+        "children": [
+         {
+          "kind": "folder",
+          "name": "Metal Rigs",
+          "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs",
+          "type": "presets",
+          "mount": false,
+          "editable": false,
+          "removable": false,
+          "writable": false,
+          "children": [
+           {
+            "kind": "preset",
+            "name": "Djent Lord",
+            "path": "/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs/Djent Lord.t3kpreset",
+            "id": "file:/Users/you/Documents/TONE3000/Library/awesomeuser/Presets/Metal Rigs/Djent Lord.t3kpreset",
+            "editable": false,
+            "removable": false
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "main-detail-normalize",
+   "section": "main",
+   "title": "Block detail: Normalize button",
+   "description": "Settings: Per-Block Normalization on. The NAM block card shows its Normalize (=) button left of the Out knob.",
+   "chain": {
+    "revision": 1,
+    "canUndo": true,
+    "canRedo": false,
+    "stereoEnabled": false,
+    "activeSide": "left",
+    "stereoInput": false,
+    "standalone": false,
+    "inputMode": "stereo",
+    "namFullSize": false,
+    "multiCore": true,
+    "sampleRate": 48000,
+    "chain": [
+     {
+      "blockId": "blk-1",
+      "kind": "tone",
+      "tone": {
+       "id": 104,
+       "title": "Green Russian Big Muff + BD-2",
+       "format": "nam",
+       "gear": "pedal",
+       "images": [
+        "https://t3k-fixtures.local/img/pedal-muff"
+       ],
+       "user": {
+        "username": "kosmicaudio",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-kosmic"
+       },
+       "models": [
+        {
+         "id": 1104,
+         "name": "D-12_00 T-12_00 + BD-2 Boost"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 4100,
+       "url": "https://www.tone3000.com/tones/green-russian-big-muff-clone-boss-bd-2-pack-80291"
+      },
+      "activeModelId": 1104,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-2",
+      "kind": "tone",
+      "tone": {
+       "id": 101,
+       "title": "'02 Vox AC30/6 Top Boost",
+       "format": "nam",
+       "gear": "amp",
+       "images": [
+        "https://t3k-fixtures.local/img/amp-vox"
+       ],
+       "user": {
+        "username": "signaltheoryaudio",
+        "display_name": "Signal Theory Audio",
+        "is_verified": true,
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-signaltheory"
+       },
+       "models": [
+        {
+         "id": 1101,
+         "name": "AC30-6 TB Brl 3"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 5246,
+       "url": "https://www.tone3000.com/tones/02-vox-ac306-top-boost-70408"
+      },
+      "activeModelId": 1101,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "inputLevelDbu": 12.5,
+      "outputLevelDbu": 14.2,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 0.85,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-3",
+      "kind": "tone",
+      "tone": {
+       "id": 103,
+       "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+       "format": "ir",
+       "gear": "cab",
+       "images": [
+        "https://t3k-fixtures.local/img/cab-412"
+       ],
+       "user": {
+        "username": "outmodedelectronics",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-outmoded"
+       },
+       "models": [
+        {
+         "id": 1103,
+         "name": "M201 Cap Edge"
+        }
+       ],
+       "models_count": 24,
+       "a2_models_count": 0,
+       "downloads_count": 31000,
+       "url": "https://www.tone3000.com/tones/uk-greenback-marshall-1960tv-4x12-m201-75087"
+      },
+      "activeModelId": 1103,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "ins-1",
+      "kind": "insert"
+     },
+     {
+      "blockId": "ins-2",
+      "kind": "insert"
+     }
+    ]
+   },
+   "auth": true,
+   "sessionStorage": {
+    "t3k.detailBlockId": "blk-2"
+   },
+   "hints": true,
+   "banner": false,
+   "hasDrive": true
+  },
+  {
+   "id": "main-drop-edge",
+   "section": "main",
+   "title": "Chain: drop on a tile edge",
+   "description": "A capture dragged onto the left quarter of a tone tile: an insertion bar marks where the new block goes (before it), instead of the swap outline.",
+   "chain": {
+    "revision": 1,
+    "canUndo": true,
+    "canRedo": false,
+    "stereoEnabled": false,
+    "activeSide": "left",
+    "stereoInput": false,
+    "standalone": false,
+    "inputMode": "stereo",
+    "namFullSize": false,
+    "multiCore": true,
+    "sampleRate": 48000,
+    "chain": [
+     {
+      "blockId": "blk-1",
+      "kind": "tone",
+      "tone": {
+       "id": 104,
+       "title": "Green Russian Big Muff + BD-2",
+       "format": "nam",
+       "gear": "pedal",
+       "images": [
+        "https://t3k-fixtures.local/img/pedal-muff"
+       ],
+       "user": {
+        "username": "kosmicaudio",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-kosmic"
+       },
+       "models": [
+        {
+         "id": 1104,
+         "name": "D-12_00 T-12_00 + BD-2 Boost"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 4100,
+       "url": "https://www.tone3000.com/tones/green-russian-big-muff-clone-boss-bd-2-pack-80291"
+      },
+      "activeModelId": 1104,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-2",
+      "kind": "tone",
+      "tone": {
+       "id": 101,
+       "title": "'02 Vox AC30/6 Top Boost",
+       "format": "nam",
+       "gear": "amp",
+       "images": [
+        "https://t3k-fixtures.local/img/amp-vox"
+       ],
+       "user": {
+        "username": "signaltheoryaudio",
+        "display_name": "Signal Theory Audio",
+        "is_verified": true,
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-signaltheory"
+       },
+       "models": [
+        {
+         "id": 1101,
+         "name": "AC30-6 TB Brl 3"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 5246,
+       "url": "https://www.tone3000.com/tones/02-vox-ac306-top-boost-70408"
+      },
+      "activeModelId": 1101,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-3",
+      "kind": "tone",
+      "tone": {
+       "id": 103,
+       "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+       "format": "ir",
+       "gear": "cab",
+       "images": [
+        "https://t3k-fixtures.local/img/cab-412"
+       ],
+       "user": {
+        "username": "outmodedelectronics",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-outmoded"
+       },
+       "models": [
+        {
+         "id": 1103,
+         "name": "M201 Cap Edge"
+        }
+       ],
+       "models_count": 24,
+       "a2_models_count": 0,
+       "downloads_count": 31000,
+       "url": "https://www.tone3000.com/tones/uk-greenback-marshall-1960tv-4x12-m201-75087"
+      },
+      "activeModelId": 1103,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "ins-1",
+      "kind": "insert"
+     },
+     {
+      "blockId": "ins-2",
+      "kind": "insert"
+     }
+    ],
+    "preset": {
+     "id": "factory-1",
+     "name": "Crunch Rhythm"
+    }
+   },
+   "presets": [
+    {
+     "id": "factory-1",
+     "name": "Crunch Rhythm",
+     "factory": true
+    },
+    {
+     "id": "factory-2",
+     "name": "Clean Platform",
+     "factory": true
+    },
+    {
+     "id": "factory-3",
+     "name": "Modern Metal",
+     "factory": true
+    },
+    {
+     "id": "user-1",
+     "name": "My Lead Tone",
+     "factory": false
+    },
+    {
+     "id": "user-2",
+     "name": "Church Sunday",
+     "factory": false
+    }
+   ],
+   "hints": true,
+   "banner": false,
+   "auth": false,
+   "hasDrive": false
+  },
+  {
+   "id": "library-kept",
+   "section": "library",
+   "title": "Library: kept",
+   "description": "Right after KEEP on a local capture: the quiet \"Kept in\" toast, and KEPT above KEEP (the card plays the original, so it offers the copy).",
+   "chain": {
+    "revision": 1,
+    "canUndo": true,
+    "canRedo": false,
+    "stereoEnabled": false,
+    "activeSide": "left",
+    "stereoInput": false,
+    "standalone": false,
+    "inputMode": "stereo",
+    "namFullSize": false,
+    "multiCore": true,
+    "sampleRate": 48000,
+    "chain": [
+     {
+      "blockId": "blk-1",
+      "kind": "tone",
+      "tone": {
+       "id": 104,
+       "title": "Green Russian Big Muff + BD-2",
+       "format": "nam",
+       "gear": "pedal",
+       "images": [
+        "https://t3k-fixtures.local/img/pedal-muff"
+       ],
+       "user": {
+        "username": "kosmicaudio",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-kosmic"
+       },
+       "models": [
+        {
+         "id": 1104,
+         "name": "D-12_00 T-12_00 + BD-2 Boost"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 4100,
+       "url": "https://www.tone3000.com/tones/green-russian-big-muff-clone-boss-bd-2-pack-80291"
+      },
+      "activeModelId": 1104,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-2",
+      "kind": "tone",
+      "tone": {
+       "id": 101,
+       "title": "'02 Vox AC30/6 Top Boost",
+       "format": "nam",
+       "gear": "amp",
+       "images": [
+        "https://t3k-fixtures.local/img/amp-vox"
+       ],
+       "user": {
+        "username": "signaltheoryaudio",
+        "display_name": "Signal Theory Audio",
+        "is_verified": true,
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-signaltheory"
+       },
+       "models": [
+        {
+         "id": 1101,
+         "name": "AC30-6 TB Brl 3"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 5246,
+       "url": "https://www.tone3000.com/tones/02-vox-ac306-top-boost-70408"
+      },
+      "activeModelId": 1101,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "inputLevelDbu": 12.5,
+      "outputLevelDbu": 14.2,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 0.85,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-3",
+      "kind": "tone",
+      "tone": {
+       "id": 103,
+       "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+       "format": "ir",
+       "gear": "cab",
+       "images": [
+        "https://t3k-fixtures.local/img/cab-412"
+       ],
+       "user": {
+        "username": "outmodedelectronics",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-outmoded"
+       },
+       "models": [
+        {
+         "id": 1103,
+         "name": "M201 Cap Edge"
+        }
+       ],
+       "models_count": 24,
+       "a2_models_count": 0,
+       "downloads_count": 31000,
+       "url": "https://www.tone3000.com/tones/uk-greenback-marshall-1960tv-4x12-m201-75087"
+      },
+      "activeModelId": 1103,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "ins-1",
+      "kind": "insert"
+     },
+     {
+      "blockId": "ins-2",
+      "kind": "insert"
+     }
+    ]
+   },
+   "auth": true,
+   "sessionStorage": {
+    "t3k.detailBlockId": "blk-2"
+   },
+   "hints": true,
+   "banner": false,
+   "hasDrive": true
   }
  ]
 }

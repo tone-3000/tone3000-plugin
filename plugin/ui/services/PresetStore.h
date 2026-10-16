@@ -32,6 +32,10 @@ public:
   bool remove(const juce::String& id);
   // N steps within the preset's section (negative = earlier).
   bool move(const juce::String& id, int delta);
+  // Load the next (+1) / previous (-1) preset: through the active preset's
+  // Library folder when it came from one, else the list (native decides, the
+  // same walk the MIDI preset steps take).
+  bool step(int delta);
 
 private:
   template <typename Fn>

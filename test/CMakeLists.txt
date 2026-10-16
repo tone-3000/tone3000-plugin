@@ -18,6 +18,7 @@ juce_add_console_app(DspTests PRODUCT_NAME "DspTests")
 target_sources(DspTests PRIVATE
     src/auto_offset_tests.cpp
     src/branch_tests.cpp
+    src/chain_slot_tests.cpp
     src/clipboard_tests.cpp
     src/dsp_tests.cpp
     src/dual_mono_tests.cpp
@@ -28,6 +29,8 @@ target_sources(DspTests PRIVATE
     src/gate_tests.cpp
     src/host_program_tests.cpp
     src/ir_block_size_tests.cpp
+    src/library_tests.cpp
+    src/nam_architecture_tests.cpp
     src/ir_classification_tests.cpp
     src/ir_temp_file_tests.cpp
     src/local_load_tests.cpp
@@ -55,11 +58,14 @@ target_sources(DspTests PRIVATE
     ../plugin/src/NamEngine.cpp
     ../plugin/src/PresetFile.cpp
     ../plugin/src/PresetManager.cpp
+    ../plugin/src/Library.cpp
+    ../plugin/src/NamArchitecture.cpp
     ../plugin/src/Processor.cpp
     ../plugin/src/ProcessorChain.cpp
     ../plugin/src/ProcessorHistory.cpp
     ../plugin/src/ProcessorModelLoader.cpp
     ../plugin/src/ProcessorPresets.cpp
+    ../plugin/src/ProcessorLibrary.cpp
     ../plugin/src/ProcessorState.cpp
     ../plugin/src/Spread.cpp
     # Processor.cpp's constructor calls StandaloneStateAutosave::install().

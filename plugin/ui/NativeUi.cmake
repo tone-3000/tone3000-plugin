@@ -69,10 +69,28 @@ file(GLOB_RECURSE T3K_UI_SOURCES CONFIGURE_DEPENDS
     "${T3K_UI_DIR}/vendor/*/*.cpp" "${T3K_UI_DIR}/vendor/*/*.hpp"
 )
 
+# libwebp's decoder (BSD), for pictures chosen as WebP (services/PictureFile):
+# JUCE reads PNG, JPEG and GIF only. Decoder alone, no tools.
+if(NOT TARGET webpdecoder)
+    CPMAddPackage(
+        NAME libwebp
+        GITHUB_REPOSITORY webmproject/libwebp
+        GIT_TAG v1.4.0
+        VERSION 1.4.0
+        SOURCE_DIR ${LIB_DIR}/libwebp
+        EXCLUDE_FROM_ALL YES
+        OPTIONS
+            "WEBP_BUILD_ANIM_UTILS OFF" "WEBP_BUILD_CWEBP OFF" "WEBP_BUILD_DWEBP OFF"
+            "WEBP_BUILD_GIF2WEBP OFF" "WEBP_BUILD_IMG2WEBP OFF" "WEBP_BUILD_VWEBP OFF"
+            "WEBP_BUILD_WEBPINFO OFF" "WEBP_BUILD_LIBWEBPMUX OFF" "WEBP_BUILD_WEBPMUX OFF"
+            "WEBP_BUILD_EXTRAS OFF" "WEBP_BUILD_WEBP_JS OFF" "WEBP_BUILD_FUZZTEST OFF"
+    )
+endif()
+
 function(t3k_add_native_ui target)
     target_sources(${target} PRIVATE ${T3K_UI_SOURCES})
     target_include_directories(${target} PRIVATE "${T3K_UI_DIR}" "${CMAKE_BINARY_DIR}/t3k_ui")
-    target_link_libraries(${target} PRIVATE NativeUiAssets juce::juce_animation juce::juce_cryptography)
+    target_link_libraries(${target} PRIVATE NativeUiAssets juce::juce_animation juce::juce_cryptography webpdecoder)
     # macOS: paint through a Metal-backed layer so each dirty rect is drawn
     # on its own. Plain CoreGraphics gets one merged rect per frame, so the
     # two meters ticking together would repaint the whole plate between them.

@@ -126,6 +126,7 @@ MockBackend::MockBackend(const juce::var& scenario)
                    ? scenario["midiMap"]
                    : obj({{"channel", 0}, {"learnTargetId", ""}, {"mappings", juce::Array<juce::var>()}})),
       presets_(scenario["presets"].isArray() ? scenario["presets"] : juce::var(juce::Array<juce::var>())),
+      library_(scenario["library"]),
       meters_(scenario["meters"]),
       tuner_(scenario["tuner"].isObject() ? scenario["tuner"]
                                           : obj({{"frequency", 0}, {"confidence", 0}, {"level", -60}})),
@@ -172,7 +173,9 @@ juce::uint32 MockBackend::chainRevision() {
   return static_cast<juce::uint32>(static_cast<int>(chain_["revision"]));
 }
 
-juce::var MockBackend::loadLocalTonePath(const juce::File&, const std::string&) {
+juce::var MockBackend::loadLocalTonePath(const juce::File& file, const std::string& target) {
+  lastLocalLoadTarget_ = target;
+  lastLocalLoadFile_ = file;
   return obj({{"blockId", "blk-local"}});
 }
 
@@ -268,6 +271,40 @@ bool MockBackend::loadPreset(const juce::String& presetId) {
     }
   }
   return true;
+}
+
+bool MockBackend::stepPreset(int delta) {
+  const auto* all = presets_.getArray();
+  if (all == nullptr || all->isEmpty() || delta == 0) return false;
+  const juce::String active = chain_["preset"]["id"].toString();
+  int index = -1;
+  for (int i = 0; i < all->size(); ++i)
+    if ((*all)[i]["id"].toString() == active) index = i;
+  const int n = all->size();
+  const int next = index < 0 ? (delta > 0 ? 0 : n - 1) : ((index + delta) % n + n) % n;
+  return loadPreset((*all)[next]["id"].toString());
+}
+
+juce::var MockBackend::getLibrary(bool, const std::atomic<bool>*) {
+  if (library_.isObject()) return library_;
+  // Your library alone: an empty Captures, and the scenario's user presets
+  // in its Presets mount.
+  const juce::String root = "/Users/you/Documents/TONE3000/Library";
+  juce::Array<juce::var> presets;
+  if (const auto* all = presets_.getArray())
+    for (const auto& p : *all)
+      if (!static_cast<bool>(p["factory"]))
+        presets.add(obj({{"kind", "preset"}, {"name", p["name"]}, {"id", p["id"]},
+                         {"path", "/Users/you/Presets/" + p["name"].toString() + ".t3kpreset"},
+                         {"editable", true}, {"removable", true}}));
+  auto captures = obj({{"kind", "folder"}, {"name", "Captures"}, {"path", root + "/My Library/Captures"},
+                       {"type", "captures"}, {"mount", true}, {"writable", true},
+                       {"children", juce::Array<juce::var>()}});
+  auto mount = obj({{"kind", "folder"}, {"name", "Presets"}, {"path", "/Users/you/Presets"}, {"type", "presets"},
+                    {"mount", true}, {"writable", true}, {"children", presets}});
+  auto mine = obj({{"kind", "library"}, {"name", "My Library"}, {"path", root + "/My Library"}, {"mine", true},
+                   {"children", juce::Array<juce::var>{captures, mount}}});
+  return obj({{"root", root}, {"owner", "My Library"}, {"libraries", juce::Array<juce::var>{mine}}});
 }
 
 bool MockBackend::movePreset(const juce::String& presetId, int delta) {

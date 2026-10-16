@@ -45,4 +45,8 @@ bool PresetStore::move(const juce::String& id, int delta) {
   return run([&] { return backend_.movePreset(id, delta); });
 }
 
+bool PresetStore::step(int delta) {
+  return run([&] { return backend_.stepPreset(delta); });
+}
+
 }  // namespace t3k::ui

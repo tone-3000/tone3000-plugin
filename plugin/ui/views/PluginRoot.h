@@ -44,6 +44,7 @@
 #include "ToastView.h"
 #include "TunerView.h"
 #include "browser/ToneBrowser.h"
+#include "library/LibraryDrawer.h"
 #include "core/DelayedCall.h"
 #include "modals/ConnectionModal.h"
 #include "modals/UpdateNotice.h"
@@ -53,8 +54,12 @@
 
 namespace t3k::ui {
 
+class BlockCard;
+
 class PluginRoot : public juce::Component,
                    public OverlayHost,
+                   // Library rows drag onto gallery tiles (LibraryDrawer, GalleryTile).
+                   public juce::DragAndDropContainer,
                    private HintBus::Listener,
                    private BannerStore::Listener,
                    private ConnectionGate::Listener,
@@ -89,6 +94,11 @@ public:
   // flight (it follows the session's AuthFlow), over the browser when that
   // is what started it, so the browser is there again on return.
   bool signInShown() const { return signIn_ != nullptr; }
+  // The Library drawer docks at the left edge under the header; the chain
+  // band narrows beside it. Mounted only while open; it steps aside (hidden,
+  // still mounted) while a takeover covers the column.
+  void setLibraryShown(bool shown);
+  bool libraryShown() const { return library_ != nullptr; }
 
   // The Settings takeover covers the whole window (chrome strips included)
   // under the overlay layer; mounted only while open. Banner actions and the
@@ -102,6 +112,12 @@ public:
   void parentHierarchyChanged() override;
   // Escape drops a focused control's focus (a text field takes its own Escape).
   bool keyPressed(const juce::KeyPress& key) override;
+  // A number or "a" typed with a block's card open, that nothing focused
+  // took (a click on the EQ, the faceplate, nowhere): the card's (its model,
+  // A/B). The Library drawer and text fields keep theirs.
+  bool blockKey(const juce::KeyPress& key);
+  // The block card on screen, if one is open.
+  BlockCard* openCard();
   std::unique_ptr<juce::ComponentTraverser> createKeyboardFocusTraverser() override;
 
 private:
@@ -149,6 +165,7 @@ private:
   std::unique_ptr<ToneBrowser> browser_;
   std::unique_ptr<SignInScreen> signIn_;
   std::unique_ptr<TunerView> tuner_;
+  std::unique_ptr<LibraryDrawer> library_;
   std::unique_ptr<SettingsScreen> settings_;
   Faceplate faceplate_;
   AppBanner banner_;

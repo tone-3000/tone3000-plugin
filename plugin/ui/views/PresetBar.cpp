@@ -16,6 +16,10 @@ namespace t3k::ui {
 
 namespace {
 
+// A preset loaded from a Library folder is active by path (PresetManager's
+// "file:" ids): Save writes into its folder and ‹ › walk that folder.
+constexpr const char* kLibraryPresetPrefix = "file:";
+
 // The bar uses GRAY for its muted text (PresetBar.tsx `MUTED = GRAY`).
 const juce::Colour kMutedText = theme::kGray;
 constexpr int kPanelGap = 10;    // top: calc(100% + 10)
@@ -130,7 +134,9 @@ public:
     addAndMakeVisible(saveButton_);
   }
 
-  void show(const juce::String& prefill) {
+  // `folder`: the Library folder a save lands in (empty = Presets).
+  void show(const juce::String& prefill, const juce::String& folder) {
+    title_ = folder.isEmpty() ? juce::String("Save Preset") : "Save to " + folder;
     name_.setText(prefill);
     open(owner_, Align::left, kPanelGap, kPanelInset);
     name_.focus();
@@ -140,7 +146,7 @@ public:
     const auto box = getLocalBounds().toFloat();
     paint::fill(g, box, theme::kPanelCorner, theme::kPanelBg);
     paint::border(g, box, theme::kPanelCorner, theme::kBorder);
-    paint::text(g, "Save Preset", contentBounds().reduced(kPad).removeFromTop(kTitleHeight),
+    paint::text(g, title_, contentBounds().reduced(kPad).removeFromTop(kTitleHeight),
                 Fonts::sans(14, true), theme::kWhite);
     // Outline pill: border rgba(235,235,245,0.6), label white / muted.
     const bool enabled = name_.text().trim().isNotEmpty();
@@ -178,6 +184,7 @@ private:
   PresetBar& owner_;
   TextField name_;
   Hit saveButton_;
+  juce::String title_{"Save Preset"};
 };
 
 // Preset browser
@@ -613,8 +620,12 @@ void PresetBar::prefChanged(const juce::String& key) {
   if (key == UiPrefs::kShowPresetPcNumbers) browsePanel_->presetsChanged();
 }
 
+bool PresetBar::libraryActive() const {
+  return active() && active()->id.startsWith(kLibraryPresetPrefix);
+}
+
 void PresetBar::refreshChrome() {
-  const bool any = !presets().empty();
+  const bool any = !presets().empty() || libraryActive();
   prev_->setLit(any);
   next_->setLit(any);
   name_->set(active() ? active()->name : juce::String("Presets"), active().has_value());
@@ -622,16 +633,12 @@ void PresetBar::refreshChrome() {
 }
 
 void PresetBar::step(int direction) {
-  const auto& list = presets();
-  if (list.empty()) return;
-  int index = -1;
-  if (active())
-    for (size_t i = 0; i < list.size(); ++i)
-      if (list[i].id == active()->id) index = static_cast<int>(i);
-  const int n = static_cast<int>(list.size());
-  // Wrap at the ends; with no active preset, › starts at the first, ‹ at the last.
-  const int next = index < 0 ? (direction > 0 ? 0 : n - 1) : (index + direction + n) % n;
-  loadAndClose(list[static_cast<size_t>(next)].id);
+  if (presets().empty() && !libraryActive()) return;
+  // Native walks the list (or the active Library preset's folder), wrapping
+  // at the ends; with no active preset, › starts at the first, ‹ at the last.
+  closePanels();
+  if (beforeLoad) beforeLoad();
+  services_.presets.step(direction);
 }
 
 void PresetBar::loadAndClose(const juce::String& id) {
@@ -648,11 +655,18 @@ void PresetBar::openSavePanel() {
   browsePanel_->close();
   // Prefill with the active user preset's name: saving it again is the
   // one-click "update" path (same name overwrites in place).
-  juce::String prefill;
+  juce::String prefill, folder;
   if (active())
     for (const auto& p : presets())
       if (p.id == active()->id && !p.factory) prefill = p.name;
-  savePanel_->show(prefill);
+  if (libraryActive()) {
+    // A Library preset saves back into its folder (TONE3000Processor::savePreset).
+    prefill = active()->name;
+    folder = juce::File(active()->id.fromFirstOccurrenceOf(kLibraryPresetPrefix, false, false))
+                 .getParentDirectory()
+                 .getFileName();
+  }
+  savePanel_->show(prefill, folder);
 }
 
 void PresetBar::openBrowsePanel() {

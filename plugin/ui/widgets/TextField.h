@@ -46,6 +46,9 @@ public:
   std::function<void(const juce::String&)> onChange;
   std::function<void()> onEnter;
   std::function<void()> onEscape;
+  // Down arrow: true when it was taken (a list below the field), else the
+  // editor's own.
+  std::function<bool()> onDown;
   std::function<void()> onBlur;
   std::function<void()> onFocus;
   std::function<void()> onClear;
@@ -60,7 +63,17 @@ private:
   void textEditorFocusLost(juce::TextEditor&) override;
   void globalFocusChanged(juce::Component* focused) override;
 
-  juce::TextEditor editor_;
+  // The editor, with the Down arrow offered to onDown first (a TextEditor
+  // takes it before any key listener sees it).
+  struct Editor : juce::TextEditor {
+    std::function<bool()> down;
+    bool keyPressed(const juce::KeyPress& key) override {
+      if (key.isKeyCode(juce::KeyPress::downKey) && key.getModifiers().getRawFlags() == 0 && down && down())
+        return true;
+      return juce::TextEditor::keyPressed(key);
+    }
+  };
+  Editor editor_;
   bool focused_ = false;
   float radius_ = 10.0f;
   int padV_ = 9, padL_ = 12, padR_ = 12;

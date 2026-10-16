@@ -111,7 +111,7 @@ ToneSummary parseTone(const juce::var& v) {
     t.user = ToneUserRef{str(v["user"], "username"), str(v["user"], "avatar_url")};
   t.publishedAt = str(v, "published_at");
   t.models = list<ToneModelRef>(v, "models", [](const juce::var& m) {
-    return ToneModelRef{integer(m, "id"), str(m, "name"), str(m, "model_url")};
+    return ToneModelRef{integer(m, "id"), str(m, "name"), str(m, "model_url"), str(m, "source_path")};
   });
   t.modelsCount = integer(v, "models_count");
   t.a2ModelsCount = integer(v, "a2_models_count");

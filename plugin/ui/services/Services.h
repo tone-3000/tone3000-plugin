@@ -12,6 +12,7 @@
 #include "ConnectionGate.h"
 #include "HintBus.h"
 #include "ImageLoader.h"
+#include "LibraryStore.h"
 #include "LocalFiles.h"
 #include "MeterStore.h"
 #include "MidiMapStore.h"
@@ -63,7 +64,8 @@ public:
         modelLoads(chain, t),
         connection(t),
         loadFlow(chain, connection, t),
-        updates(t, prefs, b.pluginVersion(), updateNotice) {}
+        updates(t, prefs, b.pluginVersion(), updateNotice),
+        library(b, chain, presets, t, connection, prefs, toast) {}
 
   Backend& backend;
   ToneSession& session;
@@ -89,6 +91,7 @@ public:
   UpdateCheck updates;
   Zoom zoom;
   Pointer pointer;
+  LibraryStore library;
 };
 
 }  // namespace t3k::ui

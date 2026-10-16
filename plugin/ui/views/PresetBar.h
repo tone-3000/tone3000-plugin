@@ -6,7 +6,9 @@
 //
 // Pure view over PresetStore + the active preset from ChainStore. Prev/next
 // walk the list in its shown order (user section first, then factory, same
-// as the native list), which is also what MIDI program-change numbers follow.
+// as the native list), which is also what MIDI program-change numbers follow;
+// a preset loaded from a Library folder walks that folder instead (a
+// setlist), and Save writes back into it.
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -53,6 +55,8 @@ private:
   void prefChanged(const juce::String& key) override;
 
   const std::optional<ActivePreset>& active() const { return services_.chain.state().preset; }
+  // The active preset came from a Library folder (see PresetBar.cpp).
+  bool libraryActive() const;
   const std::vector<PresetInfo>& presets() const { return services_.presets.presets(); }
   void step(int direction);
   void loadAndClose(const juce::String& id);
