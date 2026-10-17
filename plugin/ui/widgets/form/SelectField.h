@@ -54,9 +54,12 @@ public:
 
   void paint(juce::Graphics& g) override;
   void resized() override;
+  bool keyPressed(const juce::KeyPress& key) override;
   void mouseUp(const juce::MouseEvent& e) override;
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
 private:
+  class AccessibleValue;
   class Dropdown;
   const Option* selected() const;
   void pick(const juce::String& value);

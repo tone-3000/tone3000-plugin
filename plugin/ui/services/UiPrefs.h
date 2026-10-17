@@ -62,6 +62,7 @@ public:
   static constexpr const char* kShowGateControl = "t3k.showGateControl";
   static constexpr const char* kShowPitchControl = "t3k.showPitchControl";
   static constexpr const char* kShowPresetPcNumbers = "t3k.showPresetPcNumbers";
+  static constexpr const char* kToneBrowserTextSize = "t3k.browserTextSize";
   static constexpr const char* kTokens = "t3k_tokens";
   static constexpr const char* kCachedUser = "t3k.cachedUser";
   static constexpr const char* kUpdateNotice = "t3k.updateNotice";

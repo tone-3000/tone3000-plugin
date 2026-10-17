@@ -23,6 +23,8 @@ namespace t3k::ui {
 
 class ToneCard : public Clickable {
 public:
+  enum class TextSize { small, normal, large };
+
   static constexpr int kPad = 12;
   static constexpr int kImage = 112;
   static constexpr float kCorner = 12;
@@ -30,10 +32,11 @@ public:
   static constexpr int kStatGap = 6;
   static constexpr int kStatIconWidth = kStatIcon + kStatGap;
 
-  ToneCard(ImageLoader& images, const Tone& tone);
+  ToneCard(ImageLoader& images, const Tone& tone, TextSize textSize = TextSize::normal);
   ~ToneCard() override;
 
   const Tone& tone() const { return tone_; }
+  TextSize textSize() const { return textSize_; }
   // NAM tones without an A2 model: the plugin can't load them.
   static bool unavailable(const Tone& tone) { return tone.isNam() && tone.a2ModelsCount == 0; }
 
@@ -53,10 +56,7 @@ private:
   static constexpr int kGapX = 16;
   static constexpr float kImageCorner = 8;
   static constexpr int kRowGap = 8;
-  static constexpr float kTitlePx = 14;
-  static constexpr float kTitleLine = kTitlePx * 1.3f;
   static constexpr int kTitleLines = 2;
-  static constexpr float kBodyPx = 13;
   static constexpr int kGearGap = 10;
   static constexpr int kStatsGap = 16;
   static constexpr int kAvatar = 22;
@@ -64,9 +64,12 @@ private:
 
   // Wrap the title and total the text column for `width`.
   void measure(int width);
+  float titlePx() const;
+  float bodyPx() const;
   void syncState();
 
   Tone tone_;
+  TextSize textSize_;
   bool loading_ = false;
   bool disabled_ = false;
 

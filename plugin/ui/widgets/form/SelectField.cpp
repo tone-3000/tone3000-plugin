@@ -1,5 +1,7 @@
 #include "SelectField.h"
 
+#include <algorithm>
+
 #include "FormStyle.h"
 #include "core/Icons.h"
 #include "core/Paint.h"
@@ -89,9 +91,57 @@ private:
   std::vector<std::unique_ptr<Row>> rows_;
 };
 
+class SelectField::AccessibleValue : public juce::AccessibilityTextValueInterface {
+public:
+  explicit AccessibleValue(SelectField& owner) : owner_(owner) {}
+
+  bool isReadOnly() const override { return owner_.disabled_; }
+
+  juce::String getCurrentValueAsString() const override {
+    const auto* option = owner_.selected();
+    return option != nullptr ? option->label : owner_.placeholder_;
+  }
+
+  void setValueAsString(const juce::String& value) override {
+    if (owner_.disabled_) return;
+    const auto option = std::find_if(owner_.options_.begin(), owner_.options_.end(), [&](const Option& candidate) {
+      return candidate.label == value || candidate.value == value;
+    });
+    if (option != owner_.options_.end()) owner_.pick(option->value);
+  }
+
+private:
+  SelectField& owner_;
+};
+
+namespace {
+
+class SelectFieldAccessibilityHandler : public juce::AccessibilityHandler {
+public:
+  SelectFieldAccessibilityHandler(SelectField& owner, juce::AccessibilityActions actions, Interfaces interfaces)
+      : juce::AccessibilityHandler(owner, juce::AccessibilityRole::comboBox, std::move(actions),
+                                   std::move(interfaces)),
+        owner_(owner) {}
+
+  juce::String getTitle() const override { return owner_.getName(); }
+  juce::String getHelp() const override { return owner_.getHelpText(); }
+
+  juce::AccessibleState getCurrentState() const override {
+    const auto state = juce::AccessibilityHandler::getCurrentState().withExpandable();
+    return owner_.isOpen() ? state.withExpanded() : state.withCollapsed();
+  }
+
+private:
+  SelectField& owner_;
+};
+
+}  // namespace
+
 // SelectField
 SelectField::SelectField(const juce::String& name) : dropdown_(std::make_unique<Dropdown>(*this)) {
   setName(name);
+  setWantsKeyboardFocus(true);
+  setMouseClickGrabsKeyboardFocus(false);
   setMouseCursor(juce::MouseCursor::PointingHandCursor);
   dropdown_->onDismiss = [this] { repaint(); };
 }
@@ -118,6 +168,7 @@ void SelectField::setPlaceholder(const juce::String& text) {
 void SelectField::setDisabled(bool disabled) {
   disabled_ = disabled;
   if (disabled) close();
+  setWantsKeyboardFocus(!disabled);
   setMouseCursor(disabled ? juce::MouseCursor::NormalCursor : juce::MouseCursor::PointingHandCursor);
   repaint();
 }
@@ -157,6 +208,27 @@ void SelectField::mouseUp(const juce::MouseEvent& e) {
     close();
   else
     open();
+}
+
+bool SelectField::keyPressed(const juce::KeyPress& key) {
+  if (disabled_) return false;
+  if (key != juce::KeyPress::spaceKey && key != juce::KeyPress::returnKey && key != juce::KeyPress::downKey &&
+      key != juce::KeyPress::upKey)
+    return false;
+  open();
+  return isOpen();
+}
+
+std::unique_ptr<juce::AccessibilityHandler> SelectField::createAccessibilityHandler() {
+  juce::AccessibilityActions actions;
+  actions.addAction(juce::AccessibilityActionType::press, [this] {
+    if (disabled_) return;
+    grabKeyboardFocus();
+    open();
+  });
+  juce::AccessibilityHandler::Interfaces interfaces;
+  interfaces.value = std::make_unique<AccessibleValue>(*this);
+  return std::make_unique<SelectFieldAccessibilityHandler>(*this, std::move(actions), std::move(interfaces));
 }
 
 void SelectField::paint(juce::Graphics& g) {

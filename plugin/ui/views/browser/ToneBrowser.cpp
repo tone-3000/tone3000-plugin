@@ -31,6 +31,13 @@ constexpr int kScrollFade = 32;
 constexpr float kFadeSolid = 0.2f;  // 6px
 constexpr float kFadePower = 1.5f;
 
+ToneCard::TextSize toneCardTextSize(const UiPrefs& prefs) {
+  const auto value = prefs.get(UiPrefs::kToneBrowserTextSize, "normal");
+  if (value == "small") return ToneCard::TextSize::small;
+  if (value == "large") return ToneCard::TextSize::large;
+  return ToneCard::TextSize::normal;
+}
+
 // One fade band, solid at its top (or bottom) edge running to clear at the
 // other.
 void fillScrollFade(juce::Graphics& g, juce::Rectangle<float> band, bool solidAtTop) {
@@ -118,6 +125,7 @@ ToneBrowser::ToneBrowser(Services& services)
 
   services_.session.addListener(this);
   services_.zoom.addListener(this);
+  services_.prefs.addListener(this);
   // Back to the page this screen was left on, so long as it is the same
   // kind of page (a signed-in search page, or the signed-out trending feed);
   // a fresh visit, or one across a sign-in / out, fetches.
@@ -133,6 +141,7 @@ ToneBrowser::ToneBrowser(Services& services)
 ToneBrowser::~ToneBrowser() {
   services_.zoom.removeListener(this);
   services_.session.removeListener(this);
+  services_.prefs.removeListener(this);
 }
 
 // State
@@ -146,6 +155,12 @@ void ToneBrowser::sessionChanged() {
 void ToneBrowser::authFlowChanged() {
   // Held back during an OAuth return; the fetch goes out once it clears.
   if (!authPending() && loading_ && !state_.result) fetch();
+}
+
+void ToneBrowser::prefChanged(const juce::String& key) {
+  if (key != UiPrefs::kToneBrowserTextSize) return;
+  rebuildCards();
+  rebuildBody();
 }
 
 void ToneBrowser::submit() {
@@ -269,7 +284,7 @@ void ToneBrowser::rebuildCards() {
   cards_.clear();
   if (!state_.result) return;
   for (const auto& tone : state_.result->data) {
-    auto card = std::make_unique<ToneCard>(services_.images, tone);
+    auto card = std::make_unique<ToneCard>(services_.images, tone, toneCardTextSize(services_.prefs));
     card->onClick = [this, id = tone.id] {
       // Loading a tone needs the session: signed out, a card is the way to
       // the sign-in page.

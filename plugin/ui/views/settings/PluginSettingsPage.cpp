@@ -87,6 +87,7 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
       services_(services),
       infoBar_("Show Info Bar",
                "Shows help text on hover explaining what elements do, plus keyboard shortcuts and a CPU meter."),
+      toneBrowserTextSize_("Tone Browser Text Size", "Changes the text size on cards in Select Tone."),
       showGate_("Show Gate", "Reduces unwanted noise like hum and hiss while you're playing."),
       showPitch_("Show Pitch Shift",
                  "Transpose your instrument up or down without retuning or use a MIDI expression pedal for "
@@ -147,6 +148,14 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
   // Info Bar.
   infoBar_.onChange = [this](bool on) { services_.hints.setEnabled(on); };
   add(infoBar_);
+
+  // Tone browser text size is a machine-wide UI preference, shared by plugin and standalone builds.
+  toneBrowserTextSize_.content().add(toneBrowserTextSizeSelect_);
+  toneBrowserTextSizeSelect_.setOptions({{"small", "Small", {}}, {"normal", "Default", {}}, {"large", "Large", {}}});
+  toneBrowserTextSizeSelect_.onChange = [this](const juce::String& value) {
+    services_.prefs.set(UiPrefs::kToneBrowserTextSize, value);
+  };
+  add(toneBrowserTextSize_);
 
   // Gate / pitch: view settings the faceplate reads from the same keys.
   showGate_.onChange = [this](bool on) { services_.prefs.setBool(UiPrefs::kShowGateControl, on); };
@@ -252,12 +261,14 @@ PluginSettingsPage::~PluginSettingsPage() {
 
 void PluginSettingsPage::prefChanged(const juce::String& key) {
   if (key == UiPrefs::kShowHints || key == UiPrefs::kShowGateControl || key == UiPrefs::kShowPitchControl ||
-      key == UiPrefs::kShowBlockSizeControl || key == UiPrefs::kShowBlockNormalizeControl)
+      key == UiPrefs::kShowBlockSizeControl || key == UiPrefs::kShowBlockNormalizeControl ||
+      key == UiPrefs::kToneBrowserTextSize)
     syncPrefs();
 }
 
 void PluginSettingsPage::syncPrefs() {
   infoBar_.setValue(services_.hints.enabled());
+  toneBrowserTextSizeSelect_.setValue(services_.prefs.get(UiPrefs::kToneBrowserTextSize, "normal"));
   showGate_.setValue(services_.prefs.getBool(UiPrefs::kShowGateControl, true));
   showPitch_.setValue(services_.prefs.getBool(UiPrefs::kShowPitchControl, false));
   const bool size = services_.prefs.getBool(UiPrefs::kShowBlockSizeControl, false);

@@ -374,7 +374,8 @@ app-data root: `~/Library/Application Support/TONE3000` on macOS,
 - **Machine-wide UI preferences** (`ui-preferences.settings`,
   `plugin/ui/services/UiPrefs.h`). View toggles (Info Bar, which effects the
   faceplate shows, the per-block size and normalization controls, preset PC
-  numbers), the TONE3000 sign-in, dismissed banners and update notices.
+  numbers), Tone Browser text size, the TONE3000 sign-in, dismissed banners
+  and update notices.
   Merged across processes under a lock, so a DAW and the standalone never
   overwrite each other's writes.
 - **Standalone only** (`TONE3000.settings`, JUCE's standalone holder). Audio

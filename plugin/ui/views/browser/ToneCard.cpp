@@ -21,8 +21,8 @@ constexpr float kBadgeWidth = kBadgeHeight * 17.5f / 20.0f;
 constexpr float kBadgeGap = 6;
 }  // namespace
 
-ToneCard::ToneCard(ImageLoader& images, const Tone& tone)
-    : Clickable(tone.title), tone_(tone), image_(images) {
+ToneCard::ToneCard(ImageLoader& images, const Tone& tone, TextSize textSize)
+    : Clickable(tone.title), tone_(tone), textSize_(textSize), image_(images) {
 
   image_.setCornerRadius(kImageCorner);
   image_.setTone(tone_.images.empty() ? juce::String() : tone_.images.front(), tone_.gear, /*local=*/false);
@@ -77,6 +77,24 @@ float ToneCard::contentHeightFor(int width) {
   return 2 * kPad + std::max(static_cast<float>(kImage), columnHeight_);
 }
 
+float ToneCard::titlePx() const {
+  switch (textSize_) {
+    case TextSize::small: return 12;
+    case TextSize::normal: return 14;
+    case TextSize::large: return 18;
+  }
+  return 14;
+}
+
+float ToneCard::bodyPx() const {
+  switch (textSize_) {
+    case TextSize::small: return 11;
+    case TextSize::normal: return 13;
+    case TextSize::large: return 16;
+  }
+  return 13;
+}
+
 void ToneCard::setContentHeight(float height) {
   contentHeight_ = height;
   resized();
@@ -86,10 +104,11 @@ void ToneCard::measure(int width) {
   if (width == builtWidth_) return;
   builtWidth_ = width;
   const float colW = static_cast<float>(width - 2 * kPad - kImage - kGapX);
-  title_ = std::make_unique<TextFlow>(Fonts::sans(kTitlePx, /*bold=*/true), kTitleLine, tone_.title, colW);
+  title_ = std::make_unique<TextFlow>(Fonts::sans(titlePx(), /*bold=*/true), titlePx() * 1.3f, tone_.title, colW);
   const float titleH = title_->clampedHeight(kTitleLines);
-  const float gearH = static_cast<float>(std::max(Fonts::normalLineHeight(kBodyPx), badge_.isVisible() ? badge_.getHeight() : 0));
-  const float statsH = static_cast<float>(std::max(Fonts::normalLineHeight(kBodyPx), kStatIcon));
+  const float gearH = static_cast<float>(
+      std::max(Fonts::normalLineHeight(bodyPx()), badge_.isVisible() ? badge_.getHeight() : 0));
+  const float statsH = static_cast<float>(std::max(Fonts::normalLineHeight(bodyPx()), kStatIcon));
   columnHeight_ = titleH + kRowGap + gearH + kRowGap + statsH + (tone_.user ? kRowGap + kAvatar : 0);
 }
 
@@ -104,8 +123,9 @@ void ToneCard::resized() {
 
   float y = kPad + (rowH - columnHeight_) / 2;
   const float titleH = title_->clampedHeight(kTitleLines);
-  const float gearH = static_cast<float>(std::max(Fonts::normalLineHeight(kBodyPx), badge_.isVisible() ? badge_.getHeight() : 0));
-  const float statsH = static_cast<float>(std::max(Fonts::normalLineHeight(kBodyPx), kStatIcon));
+  const float gearH = static_cast<float>(
+      std::max(Fonts::normalLineHeight(bodyPx()), badge_.isVisible() ? badge_.getHeight() : 0));
+  const float statsH = static_cast<float>(std::max(Fonts::normalLineHeight(bodyPx()), kStatIcon));
   titleBox_ = {x, y, colW, titleH};
   y += titleH + kRowGap;
   gearRow_ = {x, y, colW, gearH};
@@ -117,7 +137,7 @@ void ToneCard::resized() {
   // Gear label shrinks first; the badge keeps its width (flex-shrink 0).
   const auto gearLabel = labels::gear(tone_.gear);
   const int badgeW = badge_.isVisible() ? badge_.getWidth() : 0;
-  const float labelW = gearLabel.isEmpty() ? 0.0f : Fonts::width(Fonts::sans(kBodyPx), gearLabel);
+  const float labelW = gearLabel.isEmpty() ? 0.0f : Fonts::width(Fonts::sans(bodyPx()), gearLabel);
   const float labelMax = gearRow_.getWidth() - (badgeW > 0 ? badgeW + kGearGap : 0);
   const float badgeX = gearRow_.getX() + (gearLabel.isEmpty() ? 0.0f : std::min(labelW, labelMax) + kGearGap);
   badge_.setTopLeftPosition(design::snap(badgeX),
@@ -134,8 +154,8 @@ void ToneCard::paintButton(juce::Graphics& g, bool, bool) {
 
   if (title_) title_->draw(g, titleBox_.getTopLeft(), theme::kWhite, kTitleLines, /*ellipsis=*/true);
 
-  const auto body = Fonts::sans(kBodyPx);
-  const float line = static_cast<float>(Fonts::normalLineHeight(kBodyPx));
+  const auto body = Fonts::sans(bodyPx());
+  const float line = static_cast<float>(Fonts::normalLineHeight(bodyPx()));
 
   // Gear label, ellipsised beside the badge.
   const auto gearLabel = labels::gear(tone_.gear);

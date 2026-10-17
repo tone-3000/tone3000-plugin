@@ -37,6 +37,7 @@
 #include "views/browser/FilterChip.h"
 #include "views/browser/Paginator.h"
 #include "views/browser/ToneCard.h"
+#include "widgets/form/SelectField.h"
 #include "views/gallery/GalleryGeometry.h"
 #include "views/gallery/GalleryTile.h"
 #include "widgets/Avatar.h"
@@ -451,6 +452,15 @@ struct UiPrefsTests : juce::UnitTest {
     beginTest("a write of the value already held is no write");
     a.prefs.set(UiPrefs::kTokens, "B");
     expect(a.heard.isEmpty());
+
+    beginTest("browser text size is visible to another host instance");
+    a.prefs.set(UiPrefs::kToneBrowserTextSize, "large");
+    b.prefs.sync();
+    expectEquals(b.prefs.get(UiPrefs::kToneBrowserTextSize), juce::String("large"));
+    {
+      Host reopened(file, lock);
+      expectEquals(reopened.prefs.get(UiPrefs::kToneBrowserTextSize), juce::String("large"));
+    }
 
     file.deleteFile();
   }
@@ -975,6 +985,14 @@ struct AccessibilityTests : juce::UnitTest {
     IconButton icon(Icon::X);
     expect(icon.getWantsKeyboardFocus());
     expect(!icon.getMouseClickGrabsKeyboardFocus());
+
+    beginTest("disabled selects are not keyboard stops");
+    SelectField locked("Locked select");
+    locked.setDisabled(true);
+    expect(!locked.getWantsKeyboardFocus());
+    expect(!locked.keyPressed(juce::KeyPress(juce::KeyPress::spaceKey)));
+    locked.setDisabled(false);
+    expect(locked.getWantsKeyboardFocus());
 
     beginTest("a button's name: title, else text, else the hint lead");
     icon.setHelpText(help::text(help::Key::undo));
@@ -1699,6 +1717,108 @@ struct TouchScrollTests : juce::UnitTest {
     expectEquals(picks, 1);
     expect(scroller->getViewPositionY() > 0);
     window.setVisible(false);
+  }
+};
+
+// Issue #163: browser card text is configurable, persists as a UI preference,
+// and updates visible cards without waiting for another fetch.
+struct ToneBrowserTextSizeTests : juce::UnitTest {
+  ToneBrowserTextSizeTests() : juce::UnitTest("Tone browser text size", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  static ToneCard* firstCard(PluginRoot& root) {
+    return dynamic_cast<ToneCard*>(drive::find(root, [](juce::Component& c) {
+      return dynamic_cast<ToneCard*>(&c) != nullptr && c.isShowing();
+    }));
+  }
+
+  void runTest() override {
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+
+    beginTest("the Settings dropdown writes the machine-wide preference");
+    {
+      const auto* scenario = fixtures.find("settings-plugin");
+      if (scenario == nullptr) {
+        expect(false, "settings-plugin scenario missing");
+        return;
+      }
+      MockBackend backend(scenario->data);
+      juce::DocumentWindow window("browser text size settings", juce::Colours::black, 0);
+      ScaledHost host(backend, *scenario, fixtures.root);
+      window.setContentNonOwned(&host, true);
+      window.setVisible(true);
+      pump(300);
+      auto& root = host.pluginRoot();
+      drive::openSettings(root);
+      pump(100);
+
+      auto* select = dynamic_cast<SelectField*>(drive::find(root, [](juce::Component& c) {
+        return c.getName() == "Tone browser text size" && c.isShowing();
+      }));
+      expect(select != nullptr, "Tone Browser Text Size select is visible in Plugin Settings");
+      if (select != nullptr) {
+        expect(select->value().has_value() && *select->value() == "normal", "the default is unchanged");
+        expect(select->getWantsKeyboardFocus(), "the text size setting is reachable from the keyboard");
+        auto accessibility = select->createAccessibilityHandler();
+        expect(accessibility->getRole() == juce::AccessibilityRole::comboBox);
+        expectEquals(accessibility->getTitle(), juce::String("Tone browser text size"));
+        expectEquals(accessibility->getValueInterface()->getCurrentValueAsString(), juce::String("Default"));
+        expect(accessibility->getActions().invoke(juce::AccessibilityActionType::press));
+        pump(50);
+        expect(select->isOpen(), "screen-reader press opens the options");
+        select->close();
+        expect(select->keyPressed(juce::KeyPress(juce::KeyPress::returnKey)), "Enter opens the options");
+        expect(select->isOpen());
+        select->close();
+
+        drive::click(root, *select);
+        pump(50);
+        auto* large = drive::find(root, [](juce::Component& c) {
+          auto* button = dynamic_cast<juce::Button*>(&c);
+          return button != nullptr && button->getButtonText() == "Large" && c.isShowing();
+        });
+        expect(large != nullptr, "the Large option appears in the dropdown");
+        if (large != nullptr) {
+          drive::click(root, *large);
+          expect(select->value().has_value() && *select->value() == "large");
+          expectEquals(host.uiServices().prefs.get(UiPrefs::kToneBrowserTextSize), juce::String("large"));
+        }
+      }
+      window.setVisible(false);
+    }
+
+    beginTest("changing the preference updates visible browser cards immediately");
+    {
+      const auto* scenario = fixtures.find("browser-zoom-three-up");
+      if (scenario == nullptr) {
+        expect(false, "browser-zoom-three-up scenario missing");
+        return;
+      }
+      MockBackend backend(scenario->data);
+      juce::DocumentWindow window("browser text size", juce::Colours::black, 0);
+      ScaledHost host(backend, *scenario, fixtures.root);
+      window.setContentNonOwned(&host, true);
+      window.setVisible(true);
+      pump(400);
+
+      auto& root = host.pluginRoot();
+      auto* card = firstCard(root);
+      expect(card != nullptr, "browser-zoom-three-up has a visible result card");
+      if (card != nullptr) {
+        expect(card->textSize() == ToneCard::TextSize::normal, "missing preference uses the current default");
+        host.uiServices().prefs.set(UiPrefs::kToneBrowserTextSize, "large");
+        pump(20);
+        card = firstCard(root);  // changing the preference rebuilds the cards
+        expect(card != nullptr && card->textSize() == ToneCard::TextSize::large);
+
+        host.uiServices().prefs.set(UiPrefs::kToneBrowserTextSize, "small");
+        pump(20);
+        card = firstCard(root);
+        expect(card != nullptr && card->textSize() == ToneCard::TextSize::small);
+      }
+      window.setVisible(false);
+    }
   }
 };
 
@@ -2633,6 +2753,7 @@ FocusPolicyTests focusPolicyTests;
 SettingsKeyboardTests settingsKeyboardTests;
 ScrollSurfacesTests scrollSurfacesTests;
 TouchScrollTests touchScrollTests;
+ToneBrowserTextSizeTests toneBrowserTextSizeTests;
 PopoverFollowTests popoverFollowTests;
 PointerTests pointerTests;
 GlowCornerTests glowCornerTests;

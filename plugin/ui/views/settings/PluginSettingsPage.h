@@ -1,7 +1,7 @@
 // Plugin Settings (Settings.tsx pluginTab): one scrollable page of options
 // that work in every build: Show Info Bar, Show Gate / Show Pitch Shift
-// (which of the two the faceplate shows), NAM A2 size default, the per-block
-// size / normalization controls, calibration (with its dBu field),
+// (which of the two the faceplate shows), tone browser text size, NAM A2 size
+// default, the per-block size / normalization controls, calibration (with its dBu field),
 // oversampling (with its rate), multi-core, MIDI Mapping, Presets (open the
 // user presets folder), diagnostics, and the version / update footer.
 #pragma once
@@ -46,6 +46,8 @@ private:
   Services& services_;
 
   ToggleRow infoBar_;
+  FieldRow toneBrowserTextSize_;
+  SelectField toneBrowserTextSizeSelect_{"Tone browser text size"};
   // View-only toggles for the faceplate's gate / pitch groups; the
   // Faceplate shows a powered effect regardless.
   ToggleRow showGate_, showPitch_;
