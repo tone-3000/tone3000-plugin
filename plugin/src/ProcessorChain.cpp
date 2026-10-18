@@ -261,7 +261,8 @@ void TONE3000Processor::queueToneLoad(const std::string& blockId, int modelId,
 }
 
 std::string TONE3000Processor::loadTone(const juce::String& toneJsonString,
-                                        const std::string& targetInsertId) {
+                                        const std::string& targetInsertId,
+                                        const juce::var& browse) {
   juce::ScopedLock lock(chainMutex);
 
   const ParsedTone parsed = parseToneForLoading(toneJsonString);
@@ -276,6 +277,7 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString,
 
   auto block = std::make_unique<ChainBlock>(blockId, parsed.type);
   setToneOnBlock(*block, parsed.toneId, parsed.toneJson, parsed.toneVar);
+  block->browse = browsecontext::sanitize(browse);
   block->activeModelId = parsed.firstModelId;
   // Fresh blocks load at the machine-wide default A2 size; from here on the
   // size is the block's own (setBlockSlimSize, presets, undo).
@@ -453,7 +455,8 @@ std::string TONE3000Processor::pasteChainBlock(const juce::String& side, int ind
   return newId;
 }
 
-bool TONE3000Processor::swapTone(const std::string& blockId, const juce::String& toneJsonString) {
+bool TONE3000Processor::swapTone(const std::string& blockId, const juce::String& toneJsonString,
+                                 const juce::var& browse) {
   juce::ScopedLock lock(chainMutex);
 
   ChainBlock* block = findBlockById(blockId);
@@ -474,6 +477,7 @@ bool TONE3000Processor::swapTone(const std::string& blockId, const juce::String&
   // spliced in by applyPreparedModelToChainBlock (which also stamps the new
   // type); `modelLoading` drives the UI's loading state meanwhile.
   setToneOnBlock(*block, parsed.toneId, parsed.toneJson, parsed.toneVar);
+  block->browse = browsecontext::sanitize(browse);
   block->activeModelId = parsed.firstModelId;
   block->modelLoading = true;
   block->loadFailed = false;
@@ -986,6 +990,7 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
     double slimSize = 0.0;
     float inputGain = 0.5f, outputGain = 0.5f, mix = 1.0f;
     juce::var eq;
+    juce::var browse;
     bool rtFailed = false;
   };
 
@@ -1053,6 +1058,7 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
         row.outputGain = block->outputGainNormalized;
         row.mix = block->mixNormalized;
         row.eq = block->eq.toVar();
+        row.browse = block->browse;
         out.push_back(std::move(row));
       }
     };
@@ -1132,6 +1138,8 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
       params->setProperty("mix", row.mix);
       params->setProperty("eq", row.eq);
       item->setProperty("params", juce::var(params.get()));
+      if (row.browse.isObject())
+        item->setProperty("browse", row.browse);
 
       chainArray.add(juce::var(item.get()));
     }

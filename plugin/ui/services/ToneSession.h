@@ -137,6 +137,10 @@ public:
   // model and a fresh token for native, then onToneSelected. `done` reports
   // failure (the card shows a pick error).
   virtual void selectTone(int toneId, Done done) = 0;
+  // The same resolution without landing it anywhere: the tone with its first
+  // loadable model, native holding a fresh token, handed to `reply`. The
+  // previous / next stepper lands it on its own block.
+  virtual void resolveTone(int toneId, Reply<Tone> reply) = 0;
 
   // Native downloads
   // Native fetches model files itself with a Bearer header. Guarantee it

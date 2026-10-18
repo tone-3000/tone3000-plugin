@@ -205,6 +205,8 @@ juce::ValueTree TONE3000Processor::serializeBlockSettings(const ChainBlock& bloc
     blockState.setProperty("toneId", block.toneId, nullptr);
     blockState.setProperty("toneJson", block.toneJson, nullptr);
     blockState.setProperty("activeModelId", block.activeModelId, nullptr);
+    if (block.browse.isObject())
+      blockState.setProperty("browse", browsecontext::toString(block.browse), nullptr);
     blockState.appendChild(block.eq.toValueTree(), nullptr);
   }
 
@@ -234,6 +236,8 @@ void TONE3000Processor::applyBlockSettings(ChainBlock& block, const juce::ValueT
     // prepareChain has seen.
     block.eq.restoreFromValueTree(blockState.getChildWithName("Eq"));
     prepareBlockForChainRate(block);
+    // Absent in state from before browse contexts existed: no cursor.
+    block.browse = browsecontext::fromString(blockState.getProperty("browse").toString());
   }
 }
 

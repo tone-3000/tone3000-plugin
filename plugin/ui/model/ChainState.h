@@ -120,6 +120,9 @@ struct ChainItem {
   std::optional<double> inputLevelDbu;
   std::optional<double> outputLevelDbu;
   BlockParams params;
+  // The result list the tone was picked from (plugin/include/BrowseContext.h,
+  // already sanitized by native); void when there is none. ToneStepper reads it.
+  juce::var browse;
 
   bool isTone() const { return !isInsert; }
 };

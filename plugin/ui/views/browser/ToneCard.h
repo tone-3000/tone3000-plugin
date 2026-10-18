@@ -45,6 +45,9 @@ public:
   void setContentHeight(float height);
   void setLoading(bool loading);
   void setDisabled(bool disabled);
+  // The tone now loaded in the slot the browser picks for: an accent rim,
+  // so the user always sees where they are while flipping through results.
+  void setCurrent(bool current);
 
   void paintButton(juce::Graphics& g, bool highlighted, bool down) override;
   void resized() override;
@@ -68,6 +71,7 @@ private:
 
   Tone tone_;
   bool loading_ = false;
+  bool current_ = false;
   bool disabled_ = false;
 
   ToneImage image_;

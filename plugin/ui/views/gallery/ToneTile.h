@@ -9,6 +9,7 @@
 #include "GalleryTile.h"
 #include "core/AlphaTween.h"
 #include "model/ChainState.h"
+#include "views/StepPill.h"
 #include "widgets/BlockLed.h"
 #include "widgets/ChromeIconButton.h"
 #include "widgets/EnergyGlow.h"
@@ -93,6 +94,9 @@ private:
   // the tile is a drop target.
   juce::Component ledSlot_;
   BlockLed led_;
+  // Previous / next through the search the tone came from; always shown
+  // while the block has one (stepping is a playing action, not a hover one).
+  StepPill step_;
   HoverWatcher hover_{*this};
 };
 

@@ -36,12 +36,13 @@ public:
 
   // Actions (each resyncs afterwards)
   // Add a tone at an insert slot; the new blockId, "" on failure.
-  std::string loadTone(const juce::String& toneJson, const std::string& targetInsertId = {});
+  std::string loadTone(const juce::String& toneJson, const std::string& targetInsertId = {},
+                       const juce::var& browse = {});
   // Load a local .nam/.wav file or a folder of them ("" = success, else a
   // user-facing error).
   juce::String loadLocalTonePath(const juce::File& source, const std::string& targetId);
   juce::String loadLocalToneUrls(const juce::Array<juce::URL>& sources, const std::string& targetId);
-  bool swapTone(const std::string& blockId, const juce::String& toneJson);
+  bool swapTone(const std::string& blockId, const juce::String& toneJson, const juce::var& browse = {});
   bool refreshToneMetadata(const juce::String& toneJson);
   bool switchModel(const std::string& blockId, int modelId, const juce::var& model);
   bool retryModelLoad(const std::string& blockId);

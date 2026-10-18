@@ -173,7 +173,7 @@ void Tone3000Session::fetchToneAndModels(int toneId, Reply<Tone> reply) {
   });
 }
 
-void Tone3000Session::selectTone(int toneId, Done done) {
+void Tone3000Session::resolveTone(int toneId, Reply<Tone> reply) {
   // Both in flight together, like the web's Promise.all: the tone with its
   // first model, and a fresh token pushed to native before the load starts.
   struct Pending {
@@ -182,16 +182,15 @@ void Tone3000Session::selectTone(int toneId, Done done) {
     bool failed = false;
   };
   auto pending = std::make_shared<Pending>();
-  auto settle = scope_.wrap([this, pending, done](const juce::String& error) {
+  auto settle = scope_.wrap([pending, reply](const juce::String& error) {
     if (pending->failed) return;
     if (error.isNotEmpty()) {
       pending->failed = true;
-      if (done) done(error);
+      if (reply) reply(Result<Tone>::fail(error));
       return;
     }
     if (!pending->tone || !pending->tokenReady) return;
-    if (onToneSelected) onToneSelected(*pending->tone);
-    if (done) done({});
+    if (reply) reply(Result<Tone>::ok(*pending->tone));
   });
   fetchToneAndModels(toneId, [pending, settle](Result<Tone> tone) {
     if (!tone) return settle(tone.error);
@@ -202,6 +201,17 @@ void Tone3000Session::selectTone(int toneId, Done done) {
     if (error.isNotEmpty()) return settle(error);
     pending->tokenReady = true;
     settle(juce::String());
+  });
+}
+
+void Tone3000Session::selectTone(int toneId, Done done) {
+  resolveTone(toneId, [this, done](Result<Tone> tone) {
+    if (!tone) {
+      if (done) done(tone.error);
+      return;
+    }
+    if (onToneSelected) onToneSelected(*tone);
+    if (done) done({});
   });
 }
 

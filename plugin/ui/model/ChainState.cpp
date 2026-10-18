@@ -137,6 +137,7 @@ ChainItem parseItem(const juce::var& v) {
   item.inputLevelDbu = optNum(v, "inputLevelDbu");
   item.outputLevelDbu = optNum(v, "outputLevelDbu");
   item.params = parseParams(v["params"]);
+  item.browse = v["browse"];
   return item;
 }
 

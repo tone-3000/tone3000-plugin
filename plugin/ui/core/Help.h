@@ -33,7 +33,7 @@ enum class Key {
   signInBack, signInCopyLink, signInPhone, signInNewCode, signInRetry, signInDismiss,
   // Chain gallery
   addTile, closeToneBrowser, copyBlock, pasteBlock, loadFileTile, loadFolderTile, blockPower,
-  retryLoad, swapTone, removeBlock, panLeft, panRight, panLink, monoSum, panMonoSum, soloLeft,
+  retryLoad, swapTone, stepPrev, stepNext, removeBlock, panLeft, panRight, panLink, monoSum, panMonoSum, soloLeft,
   soloRight, invertLeft, invertRight, swapChains, branchGap, branchJunction,
   // Block card
   blockIn, blockOut, blockOutIr, blockMix, blockNormalize, blockNormalizeOverridden, blockSize,

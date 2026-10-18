@@ -107,7 +107,15 @@ const std::map<juce::String, Drive>& drives() {
       // The detail card opens from the seeded t3k.detailBlockId; the suite's
       // tile click (the web dropped the seed before the chain arrived) only
       // re-opens it, leaving no hover behind once the gallery is gone.
+      // Every tile carries its previous / next pill; the amp holds the
+      // arrow keys' focus (the accent rim).
+      {"main-browse",
+       [](PluginRoot& root, MockBackend&) {
+         root.services().stepper.setFocusBlock("blk-2");
+         wait(200);
+       }},
       {"main-detail", [](PluginRoot&, MockBackend&) { wait(300); }},
+      {"main-detail-browse", [](PluginRoot&, MockBackend&) { wait(300); }},
       {"load-detail-loading", [](PluginRoot&, MockBackend&) { wait(300); }},
       {"load-detail-failed", [](PluginRoot&, MockBackend&) { wait(300); }},
       {"main-detail-info",

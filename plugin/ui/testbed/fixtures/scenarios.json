@@ -1733,6 +1733,451 @@
    "hasDrive": true
   },
   {
+   "id": "main-detail-browse",
+   "section": "main",
+   "title": "Block detail card - browse cursor",
+   "description": "The detail card of a block picked from a search: the previous / next pill sits centred in the header.",
+   "chain": {
+    "revision": 1,
+    "canUndo": true,
+    "canRedo": false,
+    "stereoEnabled": false,
+    "activeSide": "left",
+    "stereoInput": false,
+    "standalone": false,
+    "inputMode": "stereo",
+    "namFullSize": false,
+    "multiCore": true,
+    "sampleRate": 48000,
+    "chain": [
+     {
+      "blockId": "blk-1",
+      "kind": "tone",
+      "tone": {
+       "id": 104,
+       "title": "Green Russian Big Muff + BD-2",
+       "format": "nam",
+       "gear": "pedal",
+       "images": [
+        "https://t3k-fixtures.local/img/pedal-muff"
+       ],
+       "user": {
+        "username": "kosmicaudio",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-kosmic"
+       },
+       "models": [
+        {
+         "id": 1104,
+         "name": "D-12_00 T-12_00 + BD-2 Boost"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 4100,
+       "url": "https://www.tone3000.com/tones/green-russian-big-muff-clone-boss-bd-2-pack-80291"
+      },
+      "activeModelId": 1104,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      },
+      "browse": {
+       "query": {
+        "text": "",
+        "gear": "pedal"
+       },
+       "page": 1,
+       "pageSize": 12,
+       "totalPages": 4,
+       "index": 3,
+       "tones": [
+        {
+         "id": 101,
+         "title": "'02 Vox AC30/6 Top Boost",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 102,
+         "title": "Roland JC-40",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 103,
+         "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+         "gear": "cab",
+         "format": "ir",
+         "a2": true
+        },
+        {
+         "id": 104,
+         "title": "Green Russian Big Muff + BD-2",
+         "gear": "pedal",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 105,
+         "title": "Metal 00s - Dual Rectifier Direct",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 106,
+         "title": "AMS Neve 88R LB",
+         "gear": "outboard",
+         "format": "ir",
+         "a2": true
+        }
+       ]
+      }
+     },
+     {
+      "blockId": "blk-2",
+      "kind": "tone",
+      "tone": {
+       "id": 101,
+       "title": "'02 Vox AC30/6 Top Boost",
+       "format": "nam",
+       "gear": "amp",
+       "images": [
+        "https://t3k-fixtures.local/img/amp-vox"
+       ],
+       "user": {
+        "username": "signaltheoryaudio",
+        "display_name": "Signal Theory Audio",
+        "is_verified": true,
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-signaltheory"
+       },
+       "models": [
+        {
+         "id": 1101,
+         "name": "AC30-6 TB Brl 3"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 5246,
+       "url": "https://www.tone3000.com/tones/02-vox-ac306-top-boost-70408"
+      },
+      "activeModelId": 1101,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "inputLevelDbu": 12.5,
+      "outputLevelDbu": 14.2,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 0.85,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      },
+      "browse": {
+       "query": {
+        "text": "",
+        "gear": "amp"
+       },
+       "page": 2,
+       "pageSize": 12,
+       "totalPages": 4,
+       "index": 0,
+       "tones": [
+        {
+         "id": 101,
+         "title": "'02 Vox AC30/6 Top Boost",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 102,
+         "title": "Roland JC-40",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 103,
+         "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+         "gear": "cab",
+         "format": "ir",
+         "a2": true
+        },
+        {
+         "id": 104,
+         "title": "Green Russian Big Muff + BD-2",
+         "gear": "pedal",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 105,
+         "title": "Metal 00s - Dual Rectifier Direct",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 106,
+         "title": "AMS Neve 88R LB",
+         "gear": "outboard",
+         "format": "ir",
+         "a2": true
+        }
+       ]
+      }
+     },
+     {
+      "blockId": "blk-3",
+      "kind": "tone",
+      "tone": {
+       "id": 103,
+       "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+       "format": "ir",
+       "gear": "cab",
+       "images": [
+        "https://t3k-fixtures.local/img/cab-412"
+       ],
+       "user": {
+        "username": "outmodedelectronics",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-outmoded"
+       },
+       "models": [
+        {
+         "id": 1103,
+         "name": "M201 Cap Edge"
+        }
+       ],
+       "models_count": 24,
+       "a2_models_count": 0,
+       "downloads_count": 31000,
+       "url": "https://www.tone3000.com/tones/uk-greenback-marshall-1960tv-4x12-m201-75087"
+      },
+      "activeModelId": 1103,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      },
+      "browse": {
+       "query": {
+        "text": "",
+        "gear": "cab"
+       },
+       "page": 3,
+       "pageSize": 12,
+       "totalPages": 4,
+       "index": 2,
+       "tones": [
+        {
+         "id": 101,
+         "title": "'02 Vox AC30/6 Top Boost",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 102,
+         "title": "Roland JC-40",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 103,
+         "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+         "gear": "cab",
+         "format": "ir",
+         "a2": true
+        },
+        {
+         "id": 104,
+         "title": "Green Russian Big Muff + BD-2",
+         "gear": "pedal",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 105,
+         "title": "Metal 00s - Dual Rectifier Direct",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 106,
+         "title": "AMS Neve 88R LB",
+         "gear": "outboard",
+         "format": "ir",
+         "a2": true
+        }
+       ]
+      }
+     },
+     {
+      "blockId": "ins-1",
+      "kind": "insert"
+     },
+     {
+      "blockId": "ins-2",
+      "kind": "insert"
+     }
+    ]
+   },
+   "auth": true,
+   "sessionStorage": {
+    "t3k.detailBlockId": "blk-2"
+   },
+   "hints": true,
+   "banner": false,
+   "hasDrive": true
+  },
+  {
    "id": "main-detail-info",
    "section": "main",
    "title": "Block detail - info view",
@@ -3491,6 +3936,1054 @@
          }
         ]
        }
+      }
+     },
+     {
+      "blockId": "ins-r1",
+      "kind": "insert"
+     }
+    ]
+   },
+   "hints": true,
+   "banner": false,
+   "auth": false,
+   "hasDrive": false
+  },
+  {
+   "id": "main-browse",
+   "section": "main",
+   "title": "Signal chain - browse cursors",
+   "description": "The mono chain with every tone picked from a search: each tile carries its previous / next pill (position in the results), and the amp is the arrow keys' focus.",
+   "chain": {
+    "revision": 1,
+    "canUndo": true,
+    "canRedo": false,
+    "stereoEnabled": false,
+    "activeSide": "left",
+    "stereoInput": false,
+    "standalone": false,
+    "inputMode": "stereo",
+    "namFullSize": false,
+    "multiCore": true,
+    "sampleRate": 48000,
+    "chain": [
+     {
+      "blockId": "blk-1",
+      "kind": "tone",
+      "tone": {
+       "id": 104,
+       "title": "Green Russian Big Muff + BD-2",
+       "format": "nam",
+       "gear": "pedal",
+       "images": [
+        "https://t3k-fixtures.local/img/pedal-muff"
+       ],
+       "user": {
+        "username": "kosmicaudio",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-kosmic"
+       },
+       "models": [
+        {
+         "id": 1104,
+         "name": "D-12_00 T-12_00 + BD-2 Boost"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 4100,
+       "url": "https://www.tone3000.com/tones/green-russian-big-muff-clone-boss-bd-2-pack-80291"
+      },
+      "activeModelId": 1104,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      },
+      "browse": {
+       "query": {
+        "text": "",
+        "gear": "pedal"
+       },
+       "page": 1,
+       "pageSize": 12,
+       "totalPages": 4,
+       "index": 3,
+       "tones": [
+        {
+         "id": 101,
+         "title": "'02 Vox AC30/6 Top Boost",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 102,
+         "title": "Roland JC-40",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 103,
+         "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+         "gear": "cab",
+         "format": "ir",
+         "a2": true
+        },
+        {
+         "id": 104,
+         "title": "Green Russian Big Muff + BD-2",
+         "gear": "pedal",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 105,
+         "title": "Metal 00s - Dual Rectifier Direct",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 106,
+         "title": "AMS Neve 88R LB",
+         "gear": "outboard",
+         "format": "ir",
+         "a2": true
+        }
+       ]
+      }
+     },
+     {
+      "blockId": "blk-2",
+      "kind": "tone",
+      "tone": {
+       "id": 101,
+       "title": "'02 Vox AC30/6 Top Boost",
+       "format": "nam",
+       "gear": "amp",
+       "images": [
+        "https://t3k-fixtures.local/img/amp-vox"
+       ],
+       "user": {
+        "username": "signaltheoryaudio",
+        "display_name": "Signal Theory Audio",
+        "is_verified": true,
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-signaltheory"
+       },
+       "models": [
+        {
+         "id": 1101,
+         "name": "AC30-6 TB Brl 3"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 5246,
+       "url": "https://www.tone3000.com/tones/02-vox-ac306-top-boost-70408"
+      },
+      "activeModelId": 1101,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      },
+      "browse": {
+       "query": {
+        "text": "",
+        "gear": "amp"
+       },
+       "page": 2,
+       "pageSize": 12,
+       "totalPages": 4,
+       "index": 0,
+       "tones": [
+        {
+         "id": 101,
+         "title": "'02 Vox AC30/6 Top Boost",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 102,
+         "title": "Roland JC-40",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 103,
+         "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+         "gear": "cab",
+         "format": "ir",
+         "a2": true
+        },
+        {
+         "id": 104,
+         "title": "Green Russian Big Muff + BD-2",
+         "gear": "pedal",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 105,
+         "title": "Metal 00s - Dual Rectifier Direct",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 106,
+         "title": "AMS Neve 88R LB",
+         "gear": "outboard",
+         "format": "ir",
+         "a2": true
+        }
+       ]
+      }
+     },
+     {
+      "blockId": "blk-3",
+      "kind": "tone",
+      "tone": {
+       "id": 103,
+       "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+       "format": "ir",
+       "gear": "cab",
+       "images": [
+        "https://t3k-fixtures.local/img/cab-412"
+       ],
+       "user": {
+        "username": "outmodedelectronics",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-outmoded"
+       },
+       "models": [
+        {
+         "id": 1103,
+         "name": "M201 Cap Edge"
+        }
+       ],
+       "models_count": 24,
+       "a2_models_count": 0,
+       "downloads_count": 31000,
+       "url": "https://www.tone3000.com/tones/uk-greenback-marshall-1960tv-4x12-m201-75087"
+      },
+      "activeModelId": 1103,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      },
+      "browse": {
+       "query": {
+        "text": "",
+        "gear": "cab"
+       },
+       "page": 3,
+       "pageSize": 12,
+       "totalPages": 4,
+       "index": 2,
+       "tones": [
+        {
+         "id": 101,
+         "title": "'02 Vox AC30/6 Top Boost",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 102,
+         "title": "Roland JC-40",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 103,
+         "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+         "gear": "cab",
+         "format": "ir",
+         "a2": true
+        },
+        {
+         "id": 104,
+         "title": "Green Russian Big Muff + BD-2",
+         "gear": "pedal",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 105,
+         "title": "Metal 00s - Dual Rectifier Direct",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 106,
+         "title": "AMS Neve 88R LB",
+         "gear": "outboard",
+         "format": "ir",
+         "a2": true
+        }
+       ]
+      }
+     },
+     {
+      "blockId": "ins-1",
+      "kind": "insert"
+     },
+     {
+      "blockId": "ins-2",
+      "kind": "insert"
+     }
+    ],
+    "preset": {
+     "id": "factory-1",
+     "name": "Crunch Rhythm"
+    }
+   },
+   "presets": [
+    {
+     "id": "factory-1",
+     "name": "Crunch Rhythm",
+     "factory": true
+    },
+    {
+     "id": "factory-2",
+     "name": "Clean Platform",
+     "factory": true
+    },
+    {
+     "id": "factory-3",
+     "name": "Modern Metal",
+     "factory": true
+    },
+    {
+     "id": "user-1",
+     "name": "My Lead Tone",
+     "factory": false
+    },
+    {
+     "id": "user-2",
+     "name": "Church Sunday",
+     "factory": false
+    }
+   ],
+   "hints": true,
+   "banner": false,
+   "auth": false,
+   "hasDrive": true
+  },
+  {
+   "id": "main-stereo-browse",
+   "section": "main",
+   "title": "Signal chain - stereo browse cursors",
+   "description": "Stereo lanes at the smaller tile size, with the previous / next pill on each tile.",
+   "chain": {
+    "revision": 1,
+    "canUndo": true,
+    "canRedo": false,
+    "stereoEnabled": true,
+    "activeSide": "left",
+    "stereoInput": true,
+    "standalone": false,
+    "inputMode": "stereo",
+    "namFullSize": false,
+    "multiCore": true,
+    "sampleRate": 48000,
+    "chain": [
+     {
+      "blockId": "blk-l1",
+      "kind": "tone",
+      "tone": {
+       "id": 101,
+       "title": "'02 Vox AC30/6 Top Boost",
+       "format": "nam",
+       "gear": "amp",
+       "images": [
+        "https://t3k-fixtures.local/img/amp-vox"
+       ],
+       "user": {
+        "username": "signaltheoryaudio",
+        "display_name": "Signal Theory Audio",
+        "is_verified": true,
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-signaltheory"
+       },
+       "models": [
+        {
+         "id": 1101,
+         "name": "AC30-6 TB Brl 3"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 5246,
+       "url": "https://www.tone3000.com/tones/02-vox-ac306-top-boost-70408"
+      },
+      "activeModelId": 1101,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      },
+      "browse": {
+       "query": {
+        "text": "",
+        "gear": "amp"
+       },
+       "page": 1,
+       "pageSize": 12,
+       "totalPages": 4,
+       "index": 0,
+       "tones": [
+        {
+         "id": 101,
+         "title": "'02 Vox AC30/6 Top Boost",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 102,
+         "title": "Roland JC-40",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 103,
+         "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+         "gear": "cab",
+         "format": "ir",
+         "a2": true
+        },
+        {
+         "id": 104,
+         "title": "Green Russian Big Muff + BD-2",
+         "gear": "pedal",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 105,
+         "title": "Metal 00s - Dual Rectifier Direct",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 106,
+         "title": "AMS Neve 88R LB",
+         "gear": "outboard",
+         "format": "ir",
+         "a2": true
+        }
+       ]
+      }
+     },
+     {
+      "blockId": "blk-l2",
+      "kind": "tone",
+      "tone": {
+       "id": 103,
+       "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+       "format": "ir",
+       "gear": "cab",
+       "images": [
+        "https://t3k-fixtures.local/img/cab-412"
+       ],
+       "user": {
+        "username": "outmodedelectronics",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-outmoded"
+       },
+       "models": [
+        {
+         "id": 1103,
+         "name": "M201 Cap Edge"
+        }
+       ],
+       "models_count": 24,
+       "a2_models_count": 0,
+       "downloads_count": 31000,
+       "url": "https://www.tone3000.com/tones/uk-greenback-marshall-1960tv-4x12-m201-75087"
+      },
+      "activeModelId": 1103,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      },
+      "browse": {
+       "query": {
+        "text": "",
+        "gear": "cab"
+       },
+       "page": 1,
+       "pageSize": 12,
+       "totalPages": 4,
+       "index": 2,
+       "tones": [
+        {
+         "id": 101,
+         "title": "'02 Vox AC30/6 Top Boost",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 102,
+         "title": "Roland JC-40",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 103,
+         "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+         "gear": "cab",
+         "format": "ir",
+         "a2": true
+        },
+        {
+         "id": 104,
+         "title": "Green Russian Big Muff + BD-2",
+         "gear": "pedal",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 105,
+         "title": "Metal 00s - Dual Rectifier Direct",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 106,
+         "title": "AMS Neve 88R LB",
+         "gear": "outboard",
+         "format": "ir",
+         "a2": true
+        }
+       ]
+      }
+     },
+     {
+      "blockId": "ins-l1",
+      "kind": "insert"
+     }
+    ],
+    "chainRight": [
+     {
+      "blockId": "blk-r1",
+      "kind": "tone",
+      "tone": {
+       "id": 102,
+       "title": "Roland JC-40",
+       "format": "nam",
+       "gear": "amp",
+       "images": [
+        "https://t3k-fixtures.local/img/amp-jc40"
+       ],
+       "user": {
+        "username": "saprumi",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-saprumi"
+       },
+       "models": [
+        {
+         "id": 1102,
+         "name": "JC40_414_CLEAN"
+        }
+       ],
+       "models_count": 48,
+       "a2_models_count": 48,
+       "downloads_count": 9200,
+       "url": "https://www.tone3000.com/tones/roland-jc-40-79851"
+      },
+      "activeModelId": 1102,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      },
+      "browse": {
+       "query": {
+        "text": "",
+        "gear": "amp"
+       },
+       "page": 1,
+       "pageSize": 12,
+       "totalPages": 4,
+       "index": 1,
+       "tones": [
+        {
+         "id": 101,
+         "title": "'02 Vox AC30/6 Top Boost",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 102,
+         "title": "Roland JC-40",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 103,
+         "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+         "gear": "cab",
+         "format": "ir",
+         "a2": true
+        },
+        {
+         "id": 104,
+         "title": "Green Russian Big Muff + BD-2",
+         "gear": "pedal",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 105,
+         "title": "Metal 00s - Dual Rectifier Direct",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 106,
+         "title": "AMS Neve 88R LB",
+         "gear": "outboard",
+         "format": "ir",
+         "a2": true
+        }
+       ]
+      }
+     },
+     {
+      "blockId": "blk-r2",
+      "kind": "tone",
+      "tone": {
+       "id": 106,
+       "title": "AMS Neve 88R LB",
+       "format": "ir",
+       "gear": "outboard",
+       "images": [
+        "https://t3k-fixtures.local/img/outboard-neve"
+       ],
+       "user": {
+        "username": "rickwolf",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-rickwolf"
+       },
+       "models": [
+        {
+         "id": 1106,
+         "name": "Line - Drive 3"
+        }
+       ],
+       "models_count": 3,
+       "a2_models_count": 0,
+       "downloads_count": 2600,
+       "url": "https://www.tone3000.com/tones/ams-neve-88r-lb-79582"
+      },
+      "activeModelId": 1106,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": true,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 0.5,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      },
+      "browse": {
+       "query": {
+        "text": "",
+        "gear": "outboard"
+       },
+       "page": 1,
+       "pageSize": 12,
+       "totalPages": 4,
+       "index": 5,
+       "tones": [
+        {
+         "id": 101,
+         "title": "'02 Vox AC30/6 Top Boost",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 102,
+         "title": "Roland JC-40",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 103,
+         "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+         "gear": "cab",
+         "format": "ir",
+         "a2": true
+        },
+        {
+         "id": 104,
+         "title": "Green Russian Big Muff + BD-2",
+         "gear": "pedal",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 105,
+         "title": "Metal 00s - Dual Rectifier Direct",
+         "gear": "amp",
+         "format": "nam",
+         "a2": true
+        },
+        {
+         "id": 106,
+         "title": "AMS Neve 88R LB",
+         "gear": "outboard",
+         "format": "ir",
+         "a2": true
+        }
+       ]
       }
      },
      {

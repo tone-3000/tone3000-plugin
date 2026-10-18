@@ -27,11 +27,12 @@ public:
   bool redoChain() override;
   bool resetToDefault() override;
 
-  std::string loadTone(const juce::String& toneJson, const std::string& targetInsertId) override;
+  std::string loadTone(const juce::String& toneJson, const std::string& targetInsertId,
+                       const juce::var& browse = {}) override;
   juce::var loadLocalTonePath(const juce::File& source, const std::string& targetInsertId) override;
   juce::var loadLocalToneUrls(const juce::Array<juce::URL>& sources,
                               const std::string& targetInsertId) override;
-  bool swapTone(const std::string& blockId, const juce::String& toneJson) override;
+  bool swapTone(const std::string& blockId, const juce::String& toneJson, const juce::var& browse = {}) override;
   bool refreshToneMetadata(const juce::String& toneJson) override;
   bool switchModel(const std::string& blockId, int modelId, const juce::var& model) override;
   bool retryModelLoad(const std::string& blockId) override;

@@ -109,6 +109,68 @@ juce::String ToneQuery::requestPath(int page, int pageSize, int architecture) co
   return base + qs.str();
 }
 
+namespace {
+
+juce::var stringList(const std::vector<juce::String>& values) {
+  juce::Array<juce::var> out;
+  for (const auto& v : values) out.add(v);
+  return out;
+}
+
+std::vector<juce::String> readList(const juce::var& v) {
+  std::vector<juce::String> out;
+  if (const auto* arr = v.getArray())
+    for (const auto& item : *arr)
+      if (item.isString() && out.size() < 32) out.push_back(item.toString().substring(0, 100));
+  return out;
+}
+
+}  // namespace
+
+juce::var ToneQuery::toVar() const {
+  juce::DynamicObject::Ptr o = new juce::DynamicObject();
+  o->setProperty("text", text);
+  if (sort) o->setProperty("sort", sortId(*sort));
+  o->setProperty("gear", gear);
+  o->setProperty("format", format);
+  o->setProperty("tags", stringList(tags));
+  o->setProperty("makes", stringList(makes));
+  o->setProperty("creators", stringList(creators));
+  o->setProperty("calibrated", calibrated);
+  o->setProperty("verified", verified);
+  o->setProperty("profile", profileEndpoint(profile));
+  return juce::var(o.get());
+}
+
+ToneQuery ToneQuery::fromVar(const juce::var& v) {
+  ToneQuery q;
+  if (v.getDynamicObject() == nullptr) return q;
+  const auto str = [&v](const char* key, int maxLength) {
+    const auto& value = v[key];
+    return value.isString() ? value.toString().substring(0, maxLength) : juce::String();
+  };
+  q.text = str("text", 200);
+  const auto sort = str("sort", 32);
+  for (const auto option : kToneSorts)
+    if (sort == sortId(option)) q.sort = option;
+  // Only the catalog's own gear and format ids; anything else would reach
+  // the request path.
+  const auto gear = str("gear", 32);
+  if (gear.containsOnly("abcdefghijklmnopqrstuvwxyz-")) q.gear = gear;
+  const auto format = str("format", 16);
+  for (const auto& option : kFormatOptions)
+    if (format == option.id) q.format = format;
+  q.tags = readList(v["tags"]);
+  q.makes = readList(v["makes"]);
+  q.creators = readList(v["creators"]);
+  q.calibrated = static_cast<bool>(v.getProperty("calibrated", false));
+  q.verified = static_cast<bool>(v.getProperty("verified", false));
+  const auto profile = str("profile", 32);
+  for (const auto option : kProfiles)
+    if (profile == profileEndpoint(option)) q.profile = option;
+  return q;
+}
+
 bool ToneQuery::operator==(const ToneQuery& o) const {
   return text == o.text && sort == o.sort && gear == o.gear && format == o.format && tags == o.tags &&
          makes == o.makes && creators == o.creators && calibrated == o.calibrated && verified == o.verified &&

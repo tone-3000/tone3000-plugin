@@ -82,8 +82,11 @@ public:
   // user clicked (the UI remembers it across the tone-select flow); the new
   // tone block takes that slot's position. When the id is absent or
   // stale (undone away mid-flow), the active lane's first insert is used.
+  // `browse` is the result list the tone was picked from (BrowseContext.h);
+  // void leaves the block without one.
   std::string loadTone(const juce::String& toneJsonString,
-                       const std::string& targetInsertId = {});
+                       const std::string& targetInsertId = {},
+                       const juce::var& browse = {});
   // Load dropped local files (`files` = [{ name, data }], base64 bytes; one
   // entry for a single file, many for a folder) as one tone block, one model
   // per file. `targetInsertId` is either an insert slot (adds, consuming
@@ -169,8 +172,11 @@ public:
   static juce::String localFileNameFromUrl(const juce::URL& url);
   // Replace the tone of an existing block in place. Keeps the block's chain
   // position and user params (enabled/gains/mix); the new tone's first model
-  // is queued for background loading.
-  bool swapTone(const std::string& blockId, const juce::String& toneJsonString);
+  // is queued for background loading. `browse` replaces the block's browse
+  // context (void clears it: a tone from anywhere but the browser has no
+  // result list to step through).
+  bool swapTone(const std::string& blockId, const juce::String& toneJsonString,
+                const juce::var& browse = {});
   // Best-effort tone metadata re-sync: merge a fresh /tones/{id} API payload
   // into every non-local block holding that tone (both lanes). The stored
   // models array is preserved per block (native persists only the active

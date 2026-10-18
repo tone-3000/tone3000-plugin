@@ -42,12 +42,13 @@ public:
 
   // Chain mutations
   // Returns the new block id, "" on failure.
-  virtual std::string loadTone(const juce::String& toneJson, const std::string& targetInsertId) = 0;
+  virtual std::string loadTone(const juce::String& toneJson, const std::string& targetInsertId,
+                               const juce::var& browse = {}) = 0;
   // { blockId } or a user-facing { error }.
   virtual juce::var loadLocalTonePath(const juce::File& source, const std::string& targetInsertId) = 0;
   virtual juce::var loadLocalToneUrls(const juce::Array<juce::URL>& sources,
                                       const std::string& targetInsertId) = 0;
-  virtual bool swapTone(const std::string& blockId, const juce::String& toneJson) = 0;
+  virtual bool swapTone(const std::string& blockId, const juce::String& toneJson, const juce::var& browse = {}) = 0;
   virtual bool refreshToneMetadata(const juce::String& toneJson) = 0;
   virtual bool switchModel(const std::string& blockId, int modelId, const juce::var& model) = 0;
   virtual bool retryModelLoad(const std::string& blockId) = 0;

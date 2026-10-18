@@ -118,6 +118,7 @@ ToneBrowser::ToneBrowser(Services& services)
 
   services_.session.addListener(this);
   services_.zoom.addListener(this);
+  services_.chain.addListener(this);
   // Back to the page this screen was left on, so long as it is the same
   // kind of page (a signed-in search page, or the signed-out trending feed);
   // a fresh visit, or one across a sign-in / out, fetches.
@@ -131,6 +132,7 @@ ToneBrowser::ToneBrowser(Services& services)
 }
 
 ToneBrowser::~ToneBrowser() {
+  services_.chain.removeListener(this);
   services_.zoom.removeListener(this);
   services_.session.removeListener(this);
 }
@@ -235,13 +237,36 @@ void ToneBrowser::pick(const Tone& tone) {
   pickError_.clear();
   pickingId_ = tone.id;
   rebuildBody();
-  // On success the parent closes the browser; the scope guards the reply.
+  // The page around the card rides along, so the block can step through
+  // the same results later. The signed-out trending feed is no search.
+  juce::var context;
+  if (state_.result && !state_.resultIsTrending) {
+    const auto& data = state_.result->data;
+    const auto it = std::find_if(data.begin(), data.end(), [&tone](const Tone& t) { return t.id == tone.id; });
+    if (it != data.end())
+      context = ToneStepper::makeContext(state_.query.toVar(), *state_.result, kPageSize,
+                                         static_cast<int>(std::distance(data.begin(), it)));
+  }
+  services_.loadFlow.setPickContext(context);
+  // The browser stays open on success (pick again to audition another tone
+  // in the same slot); the scope guards the reply.
   services_.session.selectTone(tone.id, scope_.wrap([this](const juce::String& error) {
-    if (error.isEmpty()) return;
-    pickError_ = kPickError;
+    if (error.isNotEmpty()) pickError_ = kPickError;
     pickingId_.reset();
     rebuildBody();
   }));
+}
+
+int ToneBrowser::currentToneId() const {
+  const auto& target = services_.loadFlow.targetBlockId();
+  if (target.empty()) return 0;
+  const auto* item = services_.chain.state().findBlock(target);
+  return item != nullptr && item->isTone() ? item->tone.id : 0;
+}
+
+void ToneBrowser::syncCurrent() {
+  const int current = currentToneId();
+  for (auto& card : cards_) card->setCurrent(current != 0 && card->tone().id == current);
 }
 
 void ToneBrowser::setSignInPageShown(bool shown) {
@@ -343,6 +368,7 @@ void ToneBrowser::rebuildBody() {
     card->setLoading(picking);
     card->setDisabled(ToneCard::unavailable(card->tone()) || pickingId_.has_value() || loading_);
   }
+  syncCurrent();
   if (cardsVisible && loading_) {
     if (!gridBusy_) {
       gridBusy_ = std::make_unique<BusyOverlay>(BusyOverlay::Align::top);

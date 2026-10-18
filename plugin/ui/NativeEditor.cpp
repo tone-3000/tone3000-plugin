@@ -246,7 +246,18 @@ void NativeEditor::resized() {
 // Since clicks never focus buttons (Clickable), that is the state after any
 // mouse work; only a text field, or a control the user Tabbed to, takes
 // them for itself (PluginRoot's focus policy).
+//
+// ← / → step the focused tone block through its search results, Shift+← /
+// → move that focus between blocks. Many Linux hosts never pass keys to a
+// plugin window at all, so these are a shortcut beside the on-screen ‹ ›
+// and the MIDI targets, never the only way.
 bool NativeEditor::keyPressed(const juce::KeyPress& key) {
+  const auto mods = key.getModifiers();
+  const bool plain = !mods.isCommandDown() && !mods.isCtrlDown() && !mods.isAltDown();
+  if (plain && (key.isKeyCode(juce::KeyPress::leftKey) || key.isKeyCode(juce::KeyPress::rightKey))) {
+    const int dir = key.isKeyCode(juce::KeyPress::rightKey) ? 1 : -1;
+    if (mods.isShiftDown() ? services_.stepper.moveFocus(dir) : services_.stepper.stepFocused(dir)) return true;
+  }
   if (key == juce::KeyPress::spaceKey) return backend_.forwardKeyToHost(Backend::HostKey::space);
   if (key == juce::KeyPress::returnKey) return backend_.forwardKeyToHost(Backend::HostKey::enter);
   return false;

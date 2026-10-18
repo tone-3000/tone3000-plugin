@@ -22,6 +22,7 @@
 #include "T3kConfig.h"
 #include "ToneLoadFlow.h"
 #include "ToneSession.h"
+#include "ToneStepper.h"
 #include "UiClock.h"
 #include "UiPrefs.h"
 #include "UpdateCheck.h"
@@ -63,7 +64,10 @@ public:
         modelLoads(chain, t),
         connection(t),
         loadFlow(chain, connection, t),
-        updates(t, prefs, b.pluginVersion(), updateNotice) {}
+        stepper(chain, t, connection, toast),
+        updates(t, prefs, b.pluginVersion(), updateNotice) {
+    loadFlow.onToneLanded = [this](const std::string& id) { stepper.setFocusBlock(id); };
+  }
 
   Backend& backend;
   ToneSession& session;
@@ -86,6 +90,7 @@ public:
   ModelLoads modelLoads;
   ConnectionGate connection;
   ToneLoadFlow loadFlow;
+  ToneStepper stepper;
   UpdateCheck updates;
   Zoom zoom;
   Pointer pointer;

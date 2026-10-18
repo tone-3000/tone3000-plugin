@@ -78,6 +78,8 @@ BlockCard::BlockCard(Services& services, const ChainItem& block, bool namDownstr
       meta_(services.images) {
   setOpaque(false);
   buildHeader();
+  step_ = std::make_unique<StepPill>(services_, block_.blockId);
+  addChildComponent(*step_);
   buildBody();
 
   calibrateInput_.onChange = [this] { syncHeader(); };
@@ -286,6 +288,10 @@ void BlockCard::syncFromBlock() {
     eqEditor_->setSampleRate(services_.chain.state().sampleRate);
   }
 
+  if (step_) {
+    step_->refresh();
+    step_->setVisible(step_->hasCursor());
+  }
   syncHeader();
   syncMeta();
   syncModelSelect();
@@ -511,6 +517,7 @@ void BlockCard::layoutHeader(juce::Rectangle<int> header) {
     x += size_->getWidth() + kHeaderGap;
   }
   if (calibration_->isVisible()) centreAt(*calibration_, x);
+  if (step_) centreAt(*step_, row.getCentreX() - step_->getWidth() / 2);
 
   // Right cluster, laid right to left; EQ stays rightmost in its pill so
   // opening grows left only.

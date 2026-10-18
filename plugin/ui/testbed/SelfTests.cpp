@@ -27,7 +27,10 @@
 #include "model/ChainState.h"
 #include "model/Tone.h"
 #include "model/ToneQuery.h"
+#include "MockBackend.h"
 #include "services/ConnectionGate.h"
+#include "services/Toast.h"
+#include "services/ToneStepper.h"
 #include "services/LoopbackServer.h"
 #include "services/OAuth.h"
 #include "services/Pointer.h"
@@ -195,6 +198,7 @@ struct ScriptedSession : ToneSession {
     reply(Result<std::vector<TaxonomyEntry>>::fail("n/a"));
   }
   void selectTone(int, Done done) override { done("n/a"); }
+  void resolveTone(int, Reply<Tone> reply) override { reply(Result<Tone>::fail("n/a")); }
   void ensureNativeAuth(Done done) override { done("n/a"); }
   void login(LoginIntent) override {}
   void logout() override {}
@@ -958,6 +962,189 @@ struct ToneQueryTests : juce::UnitTest {
     expectEquals(static_cast<int>(page.data.size()), 2);
     expectEquals(page.page, 2);
     expectEquals(page.totalPages, 3);
+
+    beginTest("a query survives its JSON round trip (a block's browse context)");
+    ToneQuery full;
+    full.text = "plexi crunch";
+    full.setSort(ToneSort::newest);
+    full.gear = "amp";
+    full.format = "nam";
+    full.tags = {"crunch", "british"};
+    full.makes = {"Marshall"};
+    full.creators = {"some_user"};
+    full.calibrated = true;
+    full.verified = true;
+    expect(ToneQuery::fromVar(full.toVar()) == full);
+    ToneQuery profile;
+    profile.profile = Profile::favorited;
+    expect(ToneQuery::fromVar(profile.toVar()) == profile);
+
+    beginTest("a hostile saved query falls back to defaults, never into the request path");
+    const auto bad = ToneQuery::fromVar(juce::JSON::parse(
+        R"({"text":7,"sort":"drop-tables","gear":"amp&admin=1","format":"exe","profile":"../x","tags":"x"})"));
+    expect(bad == ToneQuery{});
+    expect(ToneQuery::fromVar(juce::var("nonsense")) == ToneQuery{});
+  }
+};
+
+// Previous / next per block, against the main-browse fixture: blk-1 holds
+// tone 104 at index 3 of page 1 (of 4), blk-2 tone 101 at index 0 of page
+// 2; both lists are [101 102 103 104 105 106].
+struct ToneStepperTests : juce::UnitTest {
+  ToneStepperTests() : juce::UnitTest("ToneStepper", "ui") {}
+
+  struct Swap {
+    std::string block;
+    int tone = 0, index = -1, page = 0;
+  };
+  struct SteppingBackend : MockBackend {
+    using MockBackend::MockBackend;
+    std::vector<Swap> swaps;
+    bool swapTone(const std::string& id, const juce::String& json, const juce::var& browse) override {
+      swaps.push_back({id, static_cast<int>(juce::JSON::parse(json)["id"]), static_cast<int>(browse["index"]),
+                       static_cast<int>(browse["page"])});
+      return true;
+    }
+  };
+  struct SteppingSession : ScriptedSession {
+    bool hold = false;
+    std::vector<std::pair<int, Reply<Tone>>> held;
+    std::vector<int> pages;
+    bool authenticated() const override { return true; }
+    static Tone tone(int id, const char* format = "nam") {
+      return Tone::parse(juce::JSON::parse("{\"id\":" + juce::String(id) + ",\"title\":\"T" + juce::String(id) +
+                                           "\",\"format\":\"" + format + "\",\"a2_models_count\":1,\"models\":[{\"id\":" +
+                                           juce::String(id * 10) + ",\"name\":\"m\",\"model_url\":\"https://x.invalid/m\"}]}"));
+    }
+    void resolveTone(int id, Reply<Tone> reply) override {
+      if (hold) held.emplace_back(id, std::move(reply));
+      else reply(Result<Tone>::ok(tone(id)));
+    }
+    void searchTones(const ToneQuery&, int page, int, Reply<TonePage> reply) override {
+      pages.push_back(page);
+      TonePage p;
+      p.page = page;
+      p.totalPages = 4;
+      p.data = {tone(200 + page * 10 + 1), tone(200 + page * 10 + 2)};
+      reply(Result<TonePage>::ok(std::move(p)));
+    }
+  };
+
+  // The fixture's chain with `edit` applied to blk-1's browse context.
+  static juce::var scenarioWith(const juce::var& data, std::function<void(juce::var&)> edit) {
+    auto copy = data.clone();
+    if (auto* lane = copy["chain"]["chain"].getArray())
+      for (auto& item : *lane)
+        if (item["blockId"].toString() == "blk-1" && edit) {
+          auto browse = item["browse"];
+          edit(browse);
+        }
+    return copy;
+  }
+
+  void runTest() override {
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("main-browse");
+    if (scenario == nullptr) {
+      expect(false, "main-browse scenario missing");
+      return;
+    }
+    struct Rig {
+      SteppingBackend backend;
+      SteppingSession session;
+      UiClock clock;
+      ChainStore chain{backend, clock};
+      ConnectionGate gate{session};
+      Toast toast;
+      ToneStepper stepper{chain, session, gate, toast};
+      explicit Rig(const juce::var& data) : backend(data) {}
+    };
+
+    beginTest("next and previous swap the neighbour in, carrying the moved cursor");
+    {
+      Rig rig(scenario->data);
+      const auto cursor = rig.stepper.cursor("blk-1");
+      expect(cursor.has_value());
+      expectEquals(cursor->position, 4);
+      rig.stepper.step("blk-1", +1);
+      rig.stepper.step("blk-2", -1);  // index 0 of page 2: the previous page's last
+      expectEquals(static_cast<int>(rig.backend.swaps.size()), 2);
+      expect(rig.backend.swaps[0].block == "blk-1");
+      expectEquals(rig.backend.swaps[0].tone, 105);
+      expectEquals(rig.backend.swaps[0].index, 4);
+      expectEquals(rig.backend.swaps[1].tone, 212);
+      expectEquals(rig.backend.swaps[1].page, 1);
+      expectEquals(rig.backend.swaps[1].index, 1);
+      expect(rig.session.pages == std::vector<int>{1});
+      expect(rig.stepper.focusBlock() == "blk-2");
+    }
+
+    beginTest("a step skips NAM tones with no A2 model");
+    {
+      Rig rig(scenarioWith(scenario->data, [](juce::var& b) {
+        b["tones"][4].getDynamicObject()->setProperty("a2", false);
+      }));
+      rig.stepper.step("blk-1", +1);
+      expectEquals(static_cast<int>(rig.backend.swaps.size()), 1);
+      expectEquals(rig.backend.swaps[0].tone, 106);
+    }
+
+    beginTest("past the end of the page, the next page is fetched");
+    {
+      Rig rig(scenarioWith(scenario->data, [](juce::var& b) { b.getDynamicObject()->setProperty("index", 5); }));
+      rig.stepper.step("blk-1", +1);
+      expect(rig.session.pages == std::vector<int>{2});
+      expectEquals(static_cast<int>(rig.backend.swaps.size()), 1);
+      expectEquals(rig.backend.swaps[0].tone, 221);
+      expectEquals(rig.backend.swaps[0].page, 2);
+      expectEquals(rig.backend.swaps[0].index, 0);
+    }
+
+    beginTest("the ends of the whole list stop, they don't wrap");
+    {
+      Rig rig(scenarioWith(scenario->data, [](juce::var& b) {
+        b.getDynamicObject()->setProperty("index", 5);
+        b.getDynamicObject()->setProperty("totalPages", 1);
+      }));
+      const auto cursor = rig.stepper.cursor("blk-1");
+      expect(cursor && !cursor->canNext && cursor->canPrev);
+      rig.stepper.step("blk-1", +1);
+      expect(rig.backend.swaps.empty());
+      expect(rig.session.pages.empty());
+      expectEquals(rig.toast.message(), juce::String("Last result"));
+    }
+
+    beginTest("rapid presses: the cursor moves at once and only the last press lands");
+    {
+      Rig rig(scenario->data);
+      rig.session.hold = true;
+      rig.stepper.step("blk-1", +1);
+      rig.stepper.step("blk-1", +1);
+      const auto cursor = rig.stepper.cursor("blk-1");
+      expect(cursor && cursor->busy);
+      expectEquals(cursor->position, 6);
+      expectEquals(static_cast<int>(rig.session.held.size()), 2);
+      rig.session.held[0].second(Result<Tone>::ok(SteppingSession::tone(105)));  // stale
+      expect(rig.backend.swaps.empty());
+      rig.session.held[1].second(Result<Tone>::ok(SteppingSession::tone(106)));
+      expectEquals(static_cast<int>(rig.backend.swaps.size()), 1);
+      expectEquals(rig.backend.swaps[0].tone, 106);
+      expect(!rig.stepper.cursor("blk-1")->busy);
+    }
+
+    beginTest("cursors are per block, and the keyboard focus cycles blocks with one");
+    {
+      Rig rig(scenario->data);
+      rig.session.hold = true;
+      rig.stepper.step("blk-1", +1);
+      expectEquals(rig.stepper.cursor("blk-2")->position, 13);  // untouched
+      expect(!rig.stepper.cursor("blk-2")->busy);
+      expect(rig.stepper.moveFocus(+1));
+      expect(rig.stepper.focusBlock() == "blk-2");
+      expect(rig.stepper.moveFocus(+1) && rig.stepper.moveFocus(+1));
+      expect(rig.stepper.focusBlock() == "blk-1");  // wraps across the three
+      expect(!rig.stepper.cursor("no-such-block").has_value());
+    }
   }
 };
 
@@ -2654,6 +2841,7 @@ UiPrefsTests uiPrefsTests;
 Tone3000ClientTests tone3000ClientTests;
 ToneModelTests toneModelTests;
 ToneQueryTests toneQueryTests;
+ToneStepperTests toneStepperTests;
 ReadoutTests readoutTests;
 
 }  // namespace

@@ -27,7 +27,8 @@ ToneTile::ToneTile(Services& services, const ChainItem& block, int size)
       swap_(Icon::ArrowLeftRight, ChromeIconButton::Tone::plain, help::Key::swapTone),
       remove_(Icon::Trash2, ChromeIconButton::Tone::plain, help::Key::removeBlock),
       glow_(services.meters, MeterStore::blockOutId(block.blockId)),
-      led_(services.meters, MeterStore::blockOutId(block.blockId)) {
+      led_(services.meters, MeterStore::blockOutId(block.blockId)),
+      step_(services, block.blockId) {
   image_.setCornerRadius(gallery::kTileCorner);
   image_.setGlow(glow_.glow());
   glow_.onChange = [this] { image_.setGlow(glow_.glow()); };
@@ -45,6 +46,7 @@ ToneTile::ToneTile(Services& services, const ChainItem& block, int size)
   addAndMakeVisible(ledSlot_);
   ledSlot_.addChildComponent(led_);
   ledSlot_.setSize(BlockLed::kSize, BlockLed::kSize);
+  addChildComponent(step_);
   addMouseListener(&hover_, true);
   services.pointer.addListener(this);
 
@@ -79,6 +81,8 @@ void ToneTile::syncState() {
   retry_.setVisible(!armed && block_.loadFailed);
   chrome_.setVisible(!armed);
   ledSlot_.setVisible(!armed);
+  step_.refresh();
+  step_.setVisible(!armed && step_.hasCursor());
   power_.setOn(enabled_);
   repaint();
 }
@@ -91,6 +95,7 @@ void ToneTile::togglePower() {
 }
 
 void ToneTile::open() {
+  services().stepper.setFocusBlock(blockId());
   if (onOpen) onOpen(blockId());
 }
 
@@ -135,6 +140,7 @@ void ToneTile::resized() {
 
   ledSlot_.setTopLeftPosition(getWidth() - kLedInset - BlockLed::kSize,
                               getHeight() - kLedInset - BlockLed::kSize);
+  step_.setTopLeftPosition((getWidth() - StepPill::kWidth) / 2, getHeight() - kLedInset - StepPill::kHeight);
 }
 
 void ToneTile::paint(juce::Graphics& g) {

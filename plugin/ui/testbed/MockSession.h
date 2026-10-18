@@ -33,6 +33,7 @@ public:
   // narrowed by the text (`api.taxonomy`).
   void listTaxonomy(Taxonomy kind, const juce::String& text, Reply<std::vector<TaxonomyEntry>> reply) override;
   // The tone (`api.tone`) with its first model, then onToneSelected.
+  void resolveTone(int toneId, Reply<Tone> reply) override;
   void selectTone(int toneId, Done done) override;
   void ensureNativeAuth(Done done) override;
 

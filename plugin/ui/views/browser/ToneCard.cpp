@@ -57,6 +57,12 @@ void ToneCard::setLoading(bool loading) {
   syncState();
 }
 
+void ToneCard::setCurrent(bool current) {
+  if (current == current_) return;
+  current_ = current;
+  repaint();
+}
+
 void ToneCard::setDisabled(bool disabled) {
   if (disabled == disabled_) return;
   disabled_ = disabled;
@@ -129,6 +135,10 @@ void ToneCard::resized() {
 
 void ToneCard::paintButton(juce::Graphics& g, bool, bool) {
   paint::fill(g, getLocalBounds().toFloat(), kCorner, theme::kSurface);
+  if (current_) {
+    g.setColour(theme::kBrandYellow);
+    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(1.0f), kCorner - 1.0f, 2.0f);
+  }
   // The image box's raised backdrop shows through until artwork paints.
   paint::fill(g, image_.getBounds().toFloat(), kImageCorner, theme::kSurfaceRaised);
 

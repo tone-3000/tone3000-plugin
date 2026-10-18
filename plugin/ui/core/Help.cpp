@@ -189,6 +189,8 @@ std::map<Key, String> buildTable() {
   t[Key::blockPower] = U("Power: bypass this block.");
   t[Key::retryLoad] = U("Retry: re-download this model.");
   t[Key::swapTone] = U("Swap: replace this tone, keeping its slot.");
+  t[Key::stepPrev] = U("Previous: load the previous result of the search this tone came from.");
+  t[Key::stepNext] = U("Next: load the next result of the search this tone came from.");
   t[Key::removeBlock] = U("Remove: delete this block.");
   t[Key::panLeft] = knobDesktop("Pan L", "Left chain, hard left ↔ center.");
   t[Key::panRight] = knobDesktop("Pan R", "Right chain, center ↔ hard right.");

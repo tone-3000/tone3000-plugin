@@ -86,6 +86,12 @@ struct ToneQuery {
   // default, and the API ignores it for formats without one (IR).
   juce::String requestPath(int page, int pageSize, int architecture) const;
 
+  // Round trip through plain JSON, for the browse context a tone block
+  // keeps (BrowseContext.h). fromVar accepts anything: unknown values fall
+  // back to the defaults, so a bad saved query is just a broader search.
+  juce::var toVar() const;
+  static ToneQuery fromVar(const juce::var& v);
+
   bool operator==(const ToneQuery& o) const;
   bool operator!=(const ToneQuery& o) const { return !(*this == o); }
 };

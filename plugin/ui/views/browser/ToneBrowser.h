@@ -46,7 +46,10 @@
 
 namespace t3k::ui {
 
-class ToneBrowser : public juce::Component, private ToneSession::Listener, private Zoom::Listener {
+class ToneBrowser : public juce::Component,
+                    private ToneSession::Listener,
+                    private Zoom::Listener,
+                    private ChainStore::Listener {
 public:
   // Plugin.tsx's shared 24px pad under the header (design px); half that
   // closes the screen under the paginator (1x body, screen px).
@@ -93,6 +96,11 @@ private:
   void sessionChanged() override;
   void authFlowChanged() override;
   void zoomChanged() override { resized(); }
+  // The pick target's tone may have moved (a pick landed, a step, an undo).
+  void chainChanged(const ChainState&) override { syncCurrent(); }
+  // The tone id loaded in the block the next pick replaces, 0 for none.
+  int currentToneId() const;
+  void syncCurrent();
 
   bool signedOut() const { return !services_.session.authenticated(); }
   // The signed-out screen: the trending preview, or its sign-in page.

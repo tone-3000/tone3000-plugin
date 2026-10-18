@@ -40,29 +40,39 @@ void ToneLoadFlow::swapBlock(const std::string& blockId) {
 }
 
 // If a swap was pending, replace that block in place; otherwise add the tone
-// at the remembered insert slot.
+// at the remembered insert slot. The browser stays open either way, and the
+// landed block becomes the swap target: the next pick auditions another
+// tone in the same slot, so flipping through results never piles up blocks.
 void ToneLoadFlow::toneSelected(const Tone& tone) {
+  const auto context = std::exchange(pickContext_, juce::var());
   if (tone.models.empty()) {
     DBG("Tone has no models");
     return;
   }
-  // Consume the pending targets up front so they can never leak into a
-  // later selection. (Each flow clears the other's before starting.)
+  // Consume the insert target up front so it can never leak into a later
+  // selection. (Each flow clears the other's before starting.)
   const auto swapId = std::exchange(pendingSwapId_, {});
   const auto insertId = std::exchange(pendingInsertId_, {});
   const auto toneJson = tone.toJson();
-  if (onShowBrowser) onShowBrowser(false);
 
+  std::string landed;
   if (!swapId.empty()) {
-    if (chain_.swapTone(swapId, toneJson)) return;
-    DBG("Swap target no longer exists; adding tone as a new block");
+    if (chain_.swapTone(swapId, toneJson, context)) landed = swapId;
+    else DBG("Swap target no longer exists; adding tone as a new block");
   }
-  if (chain_.loadTone(toneJson, insertId).empty()) DBG("Failed to load tone");
+  if (landed.empty()) landed = chain_.loadTone(toneJson, insertId, context);
+  if (landed.empty()) {
+    DBG("Failed to load tone");
+    return;
+  }
+  pendingSwapId_ = landed;
+  if (onToneLanded) onToneLanded(landed);
 }
 
 void ToneLoadFlow::clearPendingTargets() {
   pendingSwapId_.clear();
   pendingInsertId_.clear();
+  pickContext_ = juce::var();
 }
 
 }  // namespace t3k::ui

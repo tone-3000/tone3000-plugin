@@ -213,6 +213,8 @@ void MockSession::listTaxonomy(Taxonomy kind, const juce::String& text, Reply<st
   });
 }
 
+void MockSession::resolveTone(int toneId, Reply<Tone> reply) { getTone(toneId, std::move(reply)); }
+
 void MockSession::selectTone(int toneId, Done done) {
   getTone(toneId, [self = juce::WeakReference<MockSession>(this), fin = std::move(done)](Result<Tone> tone) {
     if (self == nullptr) return;

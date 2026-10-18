@@ -34,10 +34,10 @@ public:
   bool redoChain() override { return true; }
   bool resetToDefault() override { return true; }
 
-  std::string loadTone(const juce::String&, const std::string&) override { return {}; }
+  std::string loadTone(const juce::String&, const std::string&, const juce::var& = {}) override { return {}; }
   juce::var loadLocalTonePath(const juce::File&, const std::string&) override;
   juce::var loadLocalToneUrls(const juce::Array<juce::URL>&, const std::string&) override;
-  bool swapTone(const std::string&, const juce::String&) override { return true; }
+  bool swapTone(const std::string&, const juce::String&, const juce::var& = {}) override { return true; }
   bool refreshToneMetadata(const juce::String&) override { return true; }
   bool switchModel(const std::string&, int, const juce::var&) override { return true; }
   bool retryModelLoad(const std::string&) override { return true; }

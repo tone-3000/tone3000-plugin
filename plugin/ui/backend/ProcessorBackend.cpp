@@ -45,9 +45,9 @@ bool ProcessorBackend::redoChain() { return processor_.redoChain(); }
 bool ProcessorBackend::resetToDefault() { return processor_.resetToDefault(); }
 
 // Chain mutations
-std::string ProcessorBackend::loadTone(const juce::String& toneJson,
-                                       const std::string& targetInsertId) {
-  return processor_.loadTone(toneJson, targetInsertId);
+std::string ProcessorBackend::loadTone(const juce::String& toneJson, const std::string& targetInsertId,
+                                       const juce::var& browse) {
+  return processor_.loadTone(toneJson, targetInsertId, browse);
 }
 juce::var ProcessorBackend::loadLocalTonePath(const juce::File& source,
                                               const std::string& targetInsertId) {
@@ -57,8 +57,9 @@ juce::var ProcessorBackend::loadLocalToneUrls(const juce::Array<juce::URL>& sour
                                               const std::string& targetInsertId) {
   return processor_.loadLocalToneUrls(sources, targetInsertId);
 }
-bool ProcessorBackend::swapTone(const std::string& blockId, const juce::String& toneJson) {
-  return processor_.swapTone(blockId, toneJson);
+bool ProcessorBackend::swapTone(const std::string& blockId, const juce::String& toneJson,
+                                const juce::var& browse) {
+  return processor_.swapTone(blockId, toneJson, browse);
 }
 bool ProcessorBackend::refreshToneMetadata(const juce::String& toneJson) {
   return processor_.refreshToneMetadata(toneJson);

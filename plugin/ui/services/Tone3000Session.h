@@ -58,6 +58,7 @@ public:
   void searchTones(const ToneQuery& query, int page, int pageSize, Reply<TonePage> reply) override;
   void listTrending(const juce::String& gear, Reply<std::vector<Tone>> reply) override;
   void listTaxonomy(Taxonomy kind, const juce::String& text, Reply<std::vector<TaxonomyEntry>> reply) override;
+  void resolveTone(int toneId, Reply<Tone> reply) override;
   void selectTone(int toneId, Done done) override;
   void ensureNativeAuth(Done done) override;
 

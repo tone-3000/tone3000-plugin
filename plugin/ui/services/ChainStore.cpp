@@ -34,8 +34,9 @@ juce::String ChainStore::localLoadResult(const juce::var& res) {
   return error.isNotEmpty() ? error : "Couldn't load the file";
 }
 
-std::string ChainStore::loadTone(const juce::String& toneJson, const std::string& targetInsertId) {
-  return run([&] { return backend_.loadTone(toneJson, targetInsertId); });
+std::string ChainStore::loadTone(const juce::String& toneJson, const std::string& targetInsertId,
+                                 const juce::var& browse) {
+  return run([&] { return backend_.loadTone(toneJson, targetInsertId, browse); });
 }
 
 juce::String ChainStore::loadLocalTonePath(const juce::File& source, const std::string& targetId) {
@@ -47,8 +48,8 @@ juce::String ChainStore::loadLocalToneUrls(const juce::Array<juce::URL>& sources
   return localLoadResult(run([&] { return backend_.loadLocalToneUrls(sources, targetId); }));
 }
 
-bool ChainStore::swapTone(const std::string& blockId, const juce::String& toneJson) {
-  return run([&] { return backend_.swapTone(blockId, toneJson); });
+bool ChainStore::swapTone(const std::string& blockId, const juce::String& toneJson, const juce::var& browse) {
+  return run([&] { return backend_.swapTone(blockId, toneJson, browse); });
 }
 
 bool ChainStore::refreshToneMetadata(const juce::String& toneJson) {

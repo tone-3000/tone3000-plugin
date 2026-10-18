@@ -37,6 +37,7 @@
 #include "widgets/RetryLoadBadge.h"
 #include "widgets/SegmentedText.h"
 #include "widgets/ToneImage.h"
+#include "views/StepPill.h"
 
 namespace t3k::ui {
 
@@ -128,6 +129,9 @@ private:
   ChromeIconButton share_{Icon::Share, ChromeIconButton::Tone::plain, help::Key::shareTone};
   ChromeIconButton swap_{Icon::ArrowLeftRight, ChromeIconButton::Tone::plain, help::Key::swapTone};
   ChromeIconButton remove_{Icon::Trash2, ChromeIconButton::Tone::plain, help::Key::removeBlock};
+  // Previous / next through the search the tone came from, centred in the
+  // header (the gallery tile carries the same pill).
+  std::unique_ptr<StepPill> step_;
 
   // Body (tone / info views live in `body_`, which dims while bypassed)
   DimGroup body_;

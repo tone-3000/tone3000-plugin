@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include "BlockEq.h"
+#include "BrowseContext.h"
 #include "BlockSpectrum.h"
 #include "ChainOversampler.h"
 #include "NamEngine.h"
@@ -107,6 +108,12 @@ struct ChainBlock {
   // Set together wherever toneJson is set; see setToneOnBlock.
   juce::var toneVar;
   juce::var toneSummary;
+
+  // The result list this block's tone was picked from, for stepping to the
+  // previous / next result (see BrowseContext.h). Void when the tone did not
+  // come from the browser (local files, legacy state). Persisted with the
+  // block settings, always sanitized.
+  juce::var browse;
 
   // Model cache: stores downloaded model data by model ID
   std::map<int, std::vector<uint8_t>> modelCache;
