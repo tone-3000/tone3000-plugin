@@ -4,7 +4,9 @@
 
 namespace t3k::ui::config {
 
-// OAuth client_id (`t3k_pub_…`). Empty → the login flow surfaces an error.
+// OAuth client_id (`t3k_pub_…`). Empty → read from the T3K_PUBLISHABLE_KEY
+// environment variable at run time; empty there too → the login flow
+// surfaces an error.
 inline constexpr const char* kPublishableKey = "@T3K_PUBLISHABLE_KEY@";
 // API origin without trailing slash.
 inline constexpr const char* kApiOrigin = "@T3K_API_DOMAIN@";

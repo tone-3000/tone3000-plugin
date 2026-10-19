@@ -8,7 +8,8 @@ namespace t3k::ui {
 
 namespace {
 constexpr const char* kNoKeyMessage =
-    "TONE3000 publishable key not configured. Set T3K_PUBLISHABLE_KEY at build time.";
+    "TONE3000 publishable key not configured. Set T3K_PUBLISHABLE_KEY at build time or in "
+    "the environment.";
 constexpr const char* kLoopbackFailed = "Could not start the local sign-in listener. Try again.";
 // The launcher itself refused (AuthFlow::browserProblem; the screen adds
 // what to do instead). A browser that starts and then dies reports nothing
@@ -31,7 +32,12 @@ constexpr int kTaxonomyPageSize = 25;
 }  // namespace
 
 Tone3000Session::Config Tone3000Session::Config::fromBuild() {
-  return {config::kApiOrigin, config::kPublishableKey, config::kArchitecture};
+  juce::String key = config::kPublishableKey;
+  // A build without a key (distro packages) takes one from the process
+  // environment instead; a key baked in at build time always wins.
+  if (key.isEmpty())
+    key = juce::SystemStats::getEnvironmentVariable("T3K_PUBLISHABLE_KEY", {}).trim();
+  return {config::kApiOrigin, key, config::kArchitecture};
 }
 
 Tone3000Session::Tone3000Session(Backend& backend, UiPrefs& prefs, HttpTransport& http, Config config)

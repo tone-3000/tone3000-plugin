@@ -94,6 +94,11 @@ T3K_PUBLISHABLE_KEY=t3k_pub_your_key_here
 # T3K_API_DOMAIN=https://staging.tone3000.com
 ```
 
+If the build has no key, the plugin reads `T3K_PUBLISHABLE_KEY` from its
+environment at run time instead, so a packaged build can ship without one and
+each user supplies their own (set it in the environment the DAW or standalone
+app is launched from). A key set at build time always takes precedence.
+
 Sign-in opens in the system browser and returns to the plugin through a
 loopback redirect on an ephemeral port (`http://localhost:<port>/`).
 Localhost redirect URIs are auto-allowed for publishable keys, so nothing

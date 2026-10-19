@@ -38,7 +38,8 @@ public:
     juce::String publishableKey;
     int architecture = 2;  // NAM model architecture filter; < 0 disables
 
-    // The build's .env values (T3kConfig.h).
+    // The build's .env values (T3kConfig.h). An empty build-time key falls
+    // back to the T3K_PUBLISHABLE_KEY environment variable at run time.
     static Config fromBuild();
   };
 
