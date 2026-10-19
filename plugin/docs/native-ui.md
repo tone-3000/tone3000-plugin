@@ -513,7 +513,9 @@ The repo-root `.env` (`.env.local` overrides, the configure environment
 overrides both) is the single source of `T3K_PUBLISHABLE_KEY`,
 `T3K_API_DOMAIN`, `T3K_UPDATE_NOTICE`. CMake parses it at configure time
 into `T3kConfig.h` (`plugin/ui/NativeUi.cmake`); `.env.example` documents
-the keys.
+the keys. A build configured without a publishable key reads
+`T3K_PUBLISHABLE_KEY` from the process environment at run time
+(`Tone3000Session::Config::fromBuild`), so distro packages can ship keyless.
 
 ### 5.17 Build
 Every non-`HEADLESS` build compiles `plugin/ui/**` and `createEditor()`
