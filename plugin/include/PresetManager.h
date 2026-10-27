@@ -65,11 +65,14 @@ public:
   struct Info {
     juce::String id;
     juce::String name;
+    juce::String category;  // user category, "" = root; always an existing category
+    bool favorite{false};
     bool factory{false};
   };
 
   static constexpr const char* kFileExtension = t3k::presetfile::kExtension;
   static constexpr const char* kPresetTag = t3k::presetfile::kTag;
+  static constexpr int kMaxCategoryNameLength = 50;
 
   PresetManager();
 
@@ -112,6 +115,34 @@ public:
       global order can't disagree. Persists the whole current order. */
   bool move(const juce::String& id, int delta) const;
 
+  /** User categories, sorted alphabetically (case-insensitive). */
+  juce::StringArray listCategories() const;
+
+  /** Add a category (trimmed, non-empty, <= kMaxCategoryNameLength chars,
+      case-insensitively unique). */
+  bool addCategory(const juce::String& name) const;
+
+  /** Delete a category. Its presets fall back to the root; none are deleted. */
+  bool deleteCategory(const juce::String& name) const;
+
+  /** File user presets under an existing category ("" = root). Refuses
+      factory presets, unknown ids and categories that don't exist. */
+  bool setPresetCategory(const juce::String& id, const juce::String& category) const;
+  bool movePresetsToCategory(const juce::StringArray& ids, const juce::String& category) const;
+
+  /** Star/unstar presets (factory presets included). All-or-nothing: false
+      when any id is unknown or the write fails. */
+  bool setPresetFavorite(const juce::String& id, bool isFavorite) const;
+  bool setPresetsFavorite(const juce::StringArray& ids, bool isFavorite) const;
+
+  /** Copy a user preset as "Copy-<name>" (" 2", " 3", … on a clash) with a
+      fresh id, in the same category, unstarred. Empty-id Info on failure. */
+  Info duplicatePreset(const juce::String& id) const;
+  std::vector<Info> duplicatePresets(const juce::StringArray& ids) const;
+
+  /** Delete user presets; returns the ids actually removed. */
+  juce::StringArray removePresets(const juce::StringArray& ids) const;
+
   /** presetfile::sanitizeStem, kept here for callers/tests of the store. */
   static juce::String sanitizeFileStem(const juce::String& name) {
     return t3k::presetfile::sanitizeStem(name);
@@ -152,6 +183,22 @@ private:
   juce::File orderFile() const;
   juce::StringArray readOrder() const;
   bool writeOrder(const juce::StringArray& ids) const;
+
+  /** Category/favourite bookkeeping, one side file (presets-meta.json) beside
+      the preset files. Keyed by preset id, so it survives renames and never
+      touches the preset files (which keeps list()'s header-only scan cheap). */
+  struct Meta {
+    juce::StringArray categories;                // sorted, case-insensitive
+    std::map<juce::String, juce::String> filed;  // user preset id -> category
+    juce::StringArray favorites;                 // preset ids
+  };
+  juce::File metaFile() const;
+  /** The side file; `ok` goes false when it exists but cannot be read as
+      an object, so a writer never overwrites a file it failed to understand
+      with an empty one. */
+  Meta readMeta(bool* ok = nullptr) const;
+  bool writeMeta(const Meta& meta) const;
+  static int indexOfCategory(const juce::StringArray& categories, const juce::String& name);
 
   // Per-file cache behind list(); see the class comment. `valid` is false
   // for files that failed to parse, so a corrupt file costs one read, not

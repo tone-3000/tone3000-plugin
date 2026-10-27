@@ -611,4 +611,224 @@ TEST(PresetManagerTest, SaveWritesV2AndLegacyFilesUpgradeOnWrite) {
   EXPECT_TRUE(mgr.load("user:" + uuid).isValid());
 }
 
+// Categories, favourites and bulk actions. State lives in presets-meta.json
+// beside the preset files, keyed by preset id.
+
+TEST(PresetManagerTest, CategoryLifecycleValidationAndSorting) {
+  TempPresetDir tmp;
+  PresetManager mgr(tmp.dir);
+
+  EXPECT_TRUE(mgr.addCategory("Rock"));
+  EXPECT_TRUE(mgr.addCategory("ambient"));
+  EXPECT_TRUE(mgr.addCategory("Blues"));
+  EXPECT_FALSE(mgr.addCategory("ROCK"));  // case-insensitive duplicate
+  EXPECT_FALSE(mgr.addCategory("   "));   // blank
+  EXPECT_FALSE(mgr.addCategory(juce::String(std::string(PresetManager::kMaxCategoryNameLength + 1, 'a'))));
+  const juce::String longest(std::string(PresetManager::kMaxCategoryNameLength, 'b'));
+  EXPECT_TRUE(mgr.addCategory(longest));
+
+  const auto categories = mgr.listCategories();
+  ASSERT_EQ(categories.size(), 4);
+  EXPECT_EQ(categories[0], juce::String("ambient"));
+  EXPECT_EQ(categories[1], longest);
+  EXPECT_EQ(categories[2], juce::String("Blues"));
+  EXPECT_EQ(categories[3], juce::String("Rock"));
+
+  PresetManager fresh(tmp.dir);  // survives a new instance
+  EXPECT_EQ(fresh.listCategories(), categories);
+}
+
+TEST(PresetManagerTest, CategoryNamesKeepUnicode) {
+  TempPresetDir tmp;
+  PresetManager mgr(tmp.dir);
+  const juce::String jp = juce::CharPointer_UTF8("リード・ギター");
+  const juce::String emoji = juce::CharPointer_UTF8("Café Rock 🎸");
+  EXPECT_TRUE(mgr.addCategory(jp));
+  EXPECT_TRUE(mgr.addCategory(emoji));
+
+  PresetManager fresh(tmp.dir);
+  EXPECT_TRUE(fresh.listCategories().contains(jp));
+  EXPECT_TRUE(fresh.listCategories().contains(emoji));
+}
+
+TEST(PresetManagerTest, FilingRequiresAnExistingCategoryAndUserPreset) {
+  TempPresetDir tmp;
+  PresetManager mgr(tmp.dir);
+  mgr.addCategory("Rock");
+  const auto p = mgr.save("Lead", makePreset("a"));
+
+  EXPECT_FALSE(mgr.setPresetCategory(p.id, "Nope"));  // never invents a category
+  EXPECT_EQ(mgr.list()[0].category, juce::String());
+  EXPECT_FALSE(mgr.setPresetCategory("user:missing", "Rock"));
+
+  EXPECT_TRUE(mgr.setPresetCategory(p.id, "rock"));  // resolves to the stored spelling
+  EXPECT_EQ(mgr.list()[0].category, juce::String("Rock"));
+  EXPECT_TRUE(mgr.setPresetCategory(p.id, ""));
+  EXPECT_EQ(mgr.list()[0].category, juce::String());
+}
+
+TEST(PresetManagerTest, BulkMoveIsAllOrNothing) {
+  TempPresetDir tmp;
+  PresetManager mgr(tmp.dir);
+  mgr.addCategory("Clean");
+  const auto a = mgr.save("A", makePreset("a"));
+  const auto b = mgr.save("B", makePreset("b"));
+
+  EXPECT_FALSE(mgr.movePresetsToCategory(juce::StringArray{a.id, "user:missing"}, "Clean"));
+  for (const auto& info : mgr.list())
+    EXPECT_EQ(info.category, juce::String());
+
+  EXPECT_TRUE(mgr.movePresetsToCategory(juce::StringArray{a.id, b.id}, "Clean"));
+  for (const auto& info : mgr.list())
+    EXPECT_EQ(info.category, juce::String("Clean"));
+}
+
+TEST(PresetManagerTest, DeleteCategoryMovesPresetsToRootAndKeepsStars) {
+  TempPresetDir tmp;
+  PresetManager mgr(tmp.dir);
+  mgr.addCategory("Clean");
+  const auto a = mgr.save("Warm", makePreset("a"));
+  const auto b = mgr.save("Bright", makePreset("b"));
+  mgr.movePresetsToCategory(juce::StringArray{a.id, b.id}, "Clean");
+  mgr.setPresetFavorite(a.id, true);
+
+  EXPECT_TRUE(mgr.deleteCategory("clean"));
+  EXPECT_EQ(mgr.listCategories().size(), 0);
+  EXPECT_FALSE(mgr.deleteCategory("Clean"));  // already gone
+
+  const auto list = mgr.list();
+  ASSERT_EQ(list.size(), 2u);
+  for (const auto& info : list) {
+    EXPECT_EQ(info.category, juce::String());
+    EXPECT_TRUE(mgr.load(info.id).isValid());
+  }
+  EXPECT_TRUE(mgr.list()[1].favorite || mgr.list()[0].favorite);
+}
+
+TEST(PresetManagerTest, CategoryAndStarFollowARename) {
+  TempPresetDir tmp;
+  PresetManager mgr(tmp.dir);
+  mgr.addCategory("Rock");
+  const auto p = mgr.save("Old", makePreset("a"));
+  mgr.setPresetCategory(p.id, "Rock");
+  mgr.setPresetFavorite(p.id, true);
+
+  ASSERT_TRUE(mgr.rename(p.id, "New"));
+  const auto list = mgr.list();
+  ASSERT_EQ(list.size(), 1u);
+  EXPECT_EQ(list[0].name, juce::String("New"));
+  EXPECT_EQ(list[0].category, juce::String("Rock"));
+  EXPECT_TRUE(list[0].favorite);
+}
+
+TEST(PresetManagerTest, FavoritesPersistBulkAndRejectUnknownIds) {
+  TempPresetDir tmp;
+  PresetManager mgr(tmp.dir);
+  const auto a = mgr.save("A", makePreset("a"));
+  const auto b = mgr.save("B", makePreset("b"));
+
+  EXPECT_TRUE(mgr.setPresetFavorite(a.id, true));
+  EXPECT_FALSE(mgr.setPresetFavorite("user:missing", true));
+  EXPECT_FALSE(mgr.setPresetsFavorite(juce::StringArray{b.id, "user:missing"}, true));
+
+  PresetManager fresh(tmp.dir);
+  auto list = fresh.list();
+  EXPECT_TRUE(list[0].favorite);
+  EXPECT_FALSE(list[1].favorite);  // the refused bulk call changed nothing
+
+  EXPECT_TRUE(fresh.setPresetsFavorite(juce::StringArray{a.id, b.id}, true));
+  EXPECT_TRUE(fresh.setPresetsFavorite(juce::StringArray{a.id, b.id}, false));
+  for (const auto& info : fresh.list())
+    EXPECT_FALSE(info.favorite);
+}
+
+TEST(PresetManagerTest, FactoryPresetsCanBeStarredButNotFiled) {
+  TempPresetDir tmp;
+  TempPresetDir factory;
+  writeRawPreset(factory.dir.getChildFile(withExt("Shipped")), "Shipped");
+  PresetManager mgr(tmp.dir, factory.dir);
+  mgr.addCategory("Rock");
+
+  PresetManager::Info shipped;
+  for (const auto& info : mgr.list())
+    if (info.factory)
+      shipped = info;
+  ASSERT_TRUE(shipped.id.isNotEmpty());
+
+  EXPECT_TRUE(mgr.setPresetFavorite(shipped.id, true));
+  EXPECT_FALSE(mgr.setPresetCategory(shipped.id, "Rock"));
+  for (const auto& info : mgr.list())
+    if (info.factory) {
+      EXPECT_TRUE(info.favorite);
+      EXPECT_EQ(info.category, juce::String());
+    }
+}
+
+TEST(PresetManagerTest, DuplicateKeepsCategoryDropsStarAndNeverOverwritesACopy) {
+  TempPresetDir tmp;
+  PresetManager mgr(tmp.dir);
+  mgr.addCategory("Metal");
+  const auto orig = mgr.save("Chug", makePreset("metal"));
+  mgr.setPresetCategory(orig.id, "Metal");
+  mgr.setPresetFavorite(orig.id, true);
+
+  const auto copy1 = mgr.duplicatePreset(orig.id);
+  ASSERT_TRUE(copy1.id.isNotEmpty());
+  EXPECT_NE(copy1.id, orig.id);
+  EXPECT_EQ(copy1.name, juce::String("Copy-Chug"));
+  EXPECT_EQ(copy1.category, juce::String("Metal"));
+
+  const auto copy2 = mgr.duplicatePreset(orig.id);  // same source again
+  EXPECT_EQ(copy2.name, juce::String("Copy-Chug 2"));
+  EXPECT_NE(copy2.id, copy1.id);
+
+  int stars = 0;
+  for (const auto& info : mgr.list())
+    stars += info.favorite ? 1 : 0;
+  EXPECT_EQ(stars, 1);
+  EXPECT_EQ(mgr.list().size(), 3u);
+  EXPECT_EQ(mgr.load(copy1.id).getProperty("marker").toString(), juce::String("metal"));
+  EXPECT_TRUE(mgr.duplicatePreset("user:missing").id.isEmpty());
+}
+
+TEST(PresetManagerTest, RemovePresetsReportsWhatWentAndClearsItsState) {
+  TempPresetDir tmp;
+  PresetManager mgr(tmp.dir);
+  mgr.addCategory("Rock");
+  const auto a = mgr.save("A", makePreset("a"));
+  const auto b = mgr.save("B", makePreset("b"));
+  mgr.setPresetCategory(a.id, "Rock");
+  mgr.setPresetFavorite(a.id, true);
+
+  const auto removed = mgr.removePresets(juce::StringArray{a.id, "user:missing"});
+  EXPECT_EQ(removed, juce::StringArray{a.id});
+  ASSERT_EQ(mgr.list().size(), 1u);
+  EXPECT_EQ(mgr.list()[0].id, b.id);
+
+  // A new preset can't inherit the deleted one's star/category.
+  const auto again = mgr.save("A", makePreset("a2"));
+  for (const auto& info : mgr.list())
+    if (info.id == again.id) {
+      EXPECT_FALSE(info.favorite);
+      EXPECT_EQ(info.category, juce::String());
+    }
+}
+
+TEST(PresetManagerTest, AnUnreadableMetaFileIsNeverOverwrittenByAWriter) {
+  TempPresetDir tmp;
+  PresetManager mgr(tmp.dir);
+  ASSERT_TRUE(mgr.addCategory("Rock"));
+  const auto p = mgr.save("A", makePreset("a"));
+  ASSERT_TRUE(mgr.setPresetFavorite(p.id, true));
+
+  const juce::File meta = tmp.dir.getChildFile("presets-meta.json");
+  ASSERT_TRUE(meta.existsAsFile());
+  const juce::String garbage = "{ not json";
+  ASSERT_TRUE(meta.replaceWithText(garbage));
+
+  EXPECT_FALSE(mgr.addCategory("Blues"));
+  EXPECT_FALSE(mgr.setPresetFavorite(p.id, false));
+  EXPECT_EQ(meta.loadFileAsString(), garbage);  // left for the user to repair, not wiped
+}
+
 }  // namespace

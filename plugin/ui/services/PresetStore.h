@@ -19,6 +19,7 @@ public:
   PresetStore(Backend& backend, ChainStore& chain);
 
   const std::vector<PresetInfo>& presets() const { return presets_; }
+  const std::vector<juce::String>& categories() const { return categories_; }
   void refresh();
 
   void addListener(Listener* l) { listeners.add(l); }
@@ -33,6 +34,18 @@ public:
   // N steps within the preset's section (negative = earlier).
   bool move(const juce::String& id, int delta);
 
+  // Categories, stars and bulk actions. Category names are validated by the
+  // store (trimmed, <= 50 chars, unique ignoring case, must exist to be filed
+  // under); each returns false when refused.
+  bool addCategory(const juce::String& name);
+  bool deleteCategory(const juce::String& name);  // its presets fall back to the root
+  bool setCategory(const juce::String& id, const juce::String& category);
+  bool moveToCategory(const juce::StringArray& ids, const juce::String& category);
+  bool setFavorite(const juce::String& id, bool favorite);
+  bool setFavorites(const juce::StringArray& ids, bool favorite);
+  std::vector<PresetInfo> duplicate(const juce::StringArray& ids);  // the new copies
+  bool removeMany(const juce::StringArray& ids);
+
 private:
   template <typename Fn>
   auto run(Fn&& fn) -> decltype(fn());
@@ -40,6 +53,7 @@ private:
   Backend& backend_;
   ChainStore& chain_;
   std::vector<PresetInfo> presets_;
+  std::vector<juce::String> categories_;
   juce::ListenerList<Listener> listeners;
 };
 

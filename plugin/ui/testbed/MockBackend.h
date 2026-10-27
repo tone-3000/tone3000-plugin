@@ -82,6 +82,18 @@ public:
   bool loadPreset(const juce::String& presetId) override;
   bool renamePreset(const juce::String&, const juce::String&) override { return true; }
   bool deletePreset(const juce::String&) override { return true; }
+  // Categories, stars and bulk actions follow the real store's rules
+  // (PresetManager): a filing needs an existing category and a user preset,
+  // bulk calls are all-or-nothing, a copy is "Copy-<name>" in the same
+  // category and unstarred.
+  bool addPresetCategory(const juce::String& name) override;
+  bool deletePresetCategory(const juce::String& name) override;
+  bool setPresetCategory(const juce::String& presetId, const juce::String& category) override;
+  bool movePresetsToCategory(const juce::StringArray& ids, const juce::String& category) override;
+  bool setPresetFavorite(const juce::String& presetId, bool isFavorite) override;
+  bool setPresetsFavorite(const juce::StringArray& ids, bool isFavorite) override;
+  juce::var duplicatePresets(const juce::StringArray& ids) override;
+  bool deletePresets(const juce::StringArray& ids) override;
   // Reorders presets_ within the preset's section like the real store, and
   // records the call so self-tests can check what the browser asked for.
   bool movePreset(const juce::String& presetId, int delta) override;
@@ -150,6 +162,8 @@ private:
   juce::var device_;
   juce::var midiMap_;
   juce::var presets_;
+  juce::StringArray categories_;
+  juce::DynamicObject* findPreset(const juce::String& id) const;
   std::vector<Move> presetMoves_;
   std::vector<ChainMove> chainMoves_;
   std::vector<juce::String> machineDefaults_;

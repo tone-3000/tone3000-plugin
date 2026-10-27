@@ -128,6 +128,8 @@ struct PresetInfo {
   juce::String id;
   juce::String name;
   bool factory = false;
+  juce::String category;  // "" = root ("Your Presets")
+  bool favorite = false;
 };
 
 struct ActivePreset {
@@ -209,5 +211,7 @@ struct AutoMeasureResult {
 };
 
 std::vector<PresetInfo> parsePresetList(const juce::var& v);
+/** The user's category names, alphabetical, from the same getPresetList payload. */
+std::vector<juce::String> parsePresetCategories(const juce::var& v);
 
 }  // namespace t3k::ui
