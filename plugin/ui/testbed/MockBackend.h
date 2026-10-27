@@ -39,7 +39,12 @@ public:
   juce::var loadLocalToneUrls(const juce::Array<juce::URL>&, const std::string&) override;
   bool swapTone(const std::string&, const juce::String&) override { return true; }
   bool refreshToneMetadata(const juce::String&) override { return true; }
-  bool switchModel(const std::string&, int, const juce::var&) override { return true; }
+  bool switchModel(const std::string& blockId, int modelId, const juce::var&) override {
+    lastSwitch_ = {blockId, modelId};
+    return true;
+  }
+  // The last switchModel: block and model id.
+  const std::pair<std::string, int>& lastSwitch() const { return lastSwitch_; }
   bool retryModelLoad(const std::string&) override { return true; }
   bool removeChainBlock(const std::string&) override { return true; }
   bool reorderChainBlocks(const std::vector<std::string>&) override { return true; }
@@ -151,6 +156,7 @@ private:
   juce::var midiMap_;
   juce::var presets_;
   std::vector<Move> presetMoves_;
+  std::pair<std::string, int> lastSwitch_;
   std::vector<ChainMove> chainMoves_;
   std::vector<juce::String> machineDefaults_;
   juce::var meters_;
