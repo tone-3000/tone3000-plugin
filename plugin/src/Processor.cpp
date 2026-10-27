@@ -940,9 +940,11 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     chainEditFadeDone.store(true);
 
   // Output-stage gain, primed from the current parameters so a restored
-  // session doesn't glide in from the wrong level.
+  // session doesn't glide in from the wrong level, and from the tuner mute so
+  // a re-prepare while muted (rate / buffer change, device switch) doesn't
+  // blast the output for the glide down.
   outputGainSmoother.reset(sampleRate, 0.02);
-  outputGainSmoother.setCurrentAndTargetValue(mainStageGain(cacheOutputLevel));
+  outputGainSmoother.setCurrentAndTargetValue(tunerMuteActive() ? 0.0f : mainStageGain(cacheOutputLevel));
 
   // Post-chain image matrix (balance × pan, or the mono fold): 20 ms ramps,
   // primed from the current parameters and rig so a restored session doesn't
@@ -2045,7 +2047,8 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // meters ride the same pass.
   // ###########
   {
-    outputGainSmoother.setTargetValue(mainStageGain(cacheOutputLevel));
+    // The tuner mute rides the same glide: only honoured while the tuner is open.
+    outputGainSmoother.setTargetValue(tunerMuteActive() ? 0.0f : mainStageGain(cacheOutputLevel));
 
     float peakL = 0.0f, peakR = 0.0f;
     auto* l = buffer.getWritePointer(0);

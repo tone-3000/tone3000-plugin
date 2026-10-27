@@ -27,6 +27,8 @@ public:
   static constexpr int kTriangleW = 61, kTriangleH = 53;
   static constexpr float kNotePx = 110;
   static constexpr int kCloseTop = 16, kCloseRight = 20, kCloseBox = 28, kCloseGlyph = 20;
+  // Mute toggle sits just left of the ✕, same box.
+  static constexpr int kMuteGap = 8;
 
   explicit TunerView(Services& services);
   ~TunerView() override;
@@ -42,12 +44,18 @@ private:
   enum class Side { left, right };
 
   void feedChanged();
+  void setMuted(bool muted);
   juce::Rectangle<int> readoutArea() const;
   void paintBars(juce::Graphics& g, Side side, juce::Rectangle<int> row, int litCount) const;
   void paintReadout(juce::Graphics& g, juce::Rectangle<int> box) const;
 
+  Backend& backend_;
   TunerFeed feed_;
   IconButton close_{Icon::X, kCloseBox, kCloseGlyph};
+  // Silences the plugin output while the tuner is open; the backend clears it
+  // when the tuner closes, and this view is rebuilt unmuted each time.
+  IconButton mute_{Icon::Volume2, kCloseBox, kCloseGlyph};
+  bool muted_ = false;
   std::unique_ptr<Triangle> up_, down_;
   juce::Rectangle<int> leftRow_, rightRow_, noteBox_;
   // What is on screen, so a feed change dirties only what it moved.
