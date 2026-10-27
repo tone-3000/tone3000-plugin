@@ -30,6 +30,9 @@ public:
 
   std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
+  void clicked() override;
+  void notifyStateChanged();
+
   void mouseDrag(const juce::MouseEvent& e) override;
   void mouseUp(const juce::MouseEvent& e) override;
 };

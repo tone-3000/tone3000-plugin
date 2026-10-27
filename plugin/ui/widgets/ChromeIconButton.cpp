@@ -10,7 +10,14 @@ namespace t3k::ui {
 
 ChromeIconButton::ChromeIconButton(Tone tone, help::Key help) : Clickable({}), tone_(tone) {
   setSize(theme::kIconBoxSize, theme::kIconBoxSize);
-  setHelpText(help::text(help));
+  const auto hint = help::text(help);
+  setHelpText(hint);
+  setDescription(hint);
+  setTitle(help::lead(hint));
+  if (tone == Tone::power || tone == Tone::armed || tone == Tone::link) {
+    setToggleable(true);
+    setToggleState(on_, juce::dontSendNotification);
+  }
   setMouseCursor(juce::MouseCursor::PointingHandCursor);
 }
 
@@ -33,6 +40,10 @@ void ChromeIconButton::setIcon(Icon icon) {
 void ChromeIconButton::setOn(bool on) {
   if (on_ == on) return;
   on_ = on;
+  if (isToggleable()) {
+    setToggleState(on, juce::dontSendNotification);
+    notifyStateChanged();
+  }
   repaint();
 }
 

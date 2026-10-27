@@ -118,6 +118,16 @@ public:
     mode_ = mode;
     branched_ = branched;
     stereoChains_ = stereoChains;
+
+    juce::String name = "Stereo";
+    switch (mode_) {
+      case InputMode::stereo: name = stereoChains_ ? "Stereo" : "Stereo SUM"; break;
+      case InputMode::dualMono: name = "Dual Mono"; break;
+      case InputMode::left: name = "Left"; break;
+      case InputMode::right: name = "Right"; break;
+    }
+    setTitle("Input Mode: " + name);
+
     repaint();
     if (menuOpen()) {
       closeMenu();
@@ -168,8 +178,9 @@ private:
         const ModeOption& option =
             stereoChains && entry.mode == InputMode::stereo ? kStereoChainsOption : entry;
         auto row = std::make_unique<Row>(option, option.mode == mode);
-        row->onClick = [this, onPick, m = option.mode] {
+        row->onClick = [this, onPick, m = option.mode, name = option.label] {
           close();
+          help::announce(juce::String("Input Mode: ") + name);
           onPick(m);
         };
         addAndMakeVisible(*row);

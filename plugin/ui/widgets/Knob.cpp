@@ -92,7 +92,11 @@ Knob::Knob(Options options) : options_(std::move(options)) {
   setWantsKeyboardFocus(true);
   setMouseClickGrabsKeyboardFocus(false);  // Tab reaches a knob; a click leaves the host's keys alone
   setTitle(options_.label);
-  if (options_.help) setHelpText(help::text(*options_.help));
+  if (options_.help) {
+    const auto hint = help::text(*options_.help);
+    setHelpText(hint);
+    setDescription(hint);
+  }
   live_ = emitted_ = value_ = juce::jlimit(options_.min, options_.max, options_.min);
 }
 
@@ -119,6 +123,8 @@ void Knob::setValue(float normalised) {
   value_ = v;
   repaint();
   syncReadout();
+  if (auto* handler = getAccessibilityHandler())
+    handler->notifyAccessibilityEvent(juce::AccessibilityEvent::valueChanged);
 }
 
 void Knob::emit(float v) {
@@ -126,6 +132,8 @@ void Knob::emit(float v) {
   value_ = v;
   repaint();
   syncReadout();
+  if (auto* handler = getAccessibilityHandler())
+    handler->notifyAccessibilityEvent(juce::AccessibilityEvent::valueChanged);
   if (onChange) onChange(v);
 }
 

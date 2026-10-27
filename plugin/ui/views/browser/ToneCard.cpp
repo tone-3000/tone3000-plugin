@@ -38,6 +38,16 @@ ToneCard::ToneCard(ImageLoader& images, const Tone& tone)
     avatar_.setVisible(true);
     avatar_.setImage(images, tone_.user->avatarUrl);
   }
+
+  juce::String desc = tone_.title;
+  if (tone_.user && tone_.user->username.isNotEmpty())
+    desc << ", by " << tone_.user->username;
+  desc << ", " << labels::gear(tone_.gear) << ", " << labels::format(tone_.format);
+  if (unavailable(tone_))
+    desc << ", unavailable";
+  setTitle(desc);
+  setDescription(desc);
+
   syncState();
 }
 

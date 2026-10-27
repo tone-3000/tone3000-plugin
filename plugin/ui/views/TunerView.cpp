@@ -3,6 +3,7 @@
 #include "core/AlphaTween.h"
 #include "core/Design.h"
 #include "core/Fonts.h"
+#include "core/Help.h"
 #include "core/Pitch.h"
 #include "core/Theme.h"
 
@@ -75,7 +76,10 @@ private:
 TunerView::TunerView(Services& services)
     : feed_(services.backend, services.clock), up_(std::make_unique<Triangle>(true)), down_(std::make_unique<Triangle>(false)) {
   setOpaque(true);
+  setWantsKeyboardFocus(true);
+  setTitle("Tuner");
   close_.setName("Close tuner");
+  close_.setTitle("Close tuner");
   close_.onClick = [this] {
     if (onClose) onClose();
   };
@@ -87,6 +91,29 @@ TunerView::TunerView(Services& services)
 }
 
 TunerView::~TunerView() = default;
+
+namespace {
+class TunerAccessibilityHandler : public juce::AccessibilityHandler {
+public:
+  TunerAccessibilityHandler(TunerView& tuner, const juce::String& status)
+      : juce::AccessibilityHandler(tuner, juce::AccessibilityRole::staticText), tuner_(tuner), status_(status) {}
+
+  juce::String getTitle() const override {
+    return status_.isNotEmpty() ? status_ : juce::String("Tuner: waiting for signal");
+  }
+  juce::String getDescription() const override {
+    return "Chromatic tuner. Play a note on your instrument to tune.";
+  }
+
+private:
+  TunerView& tuner_;
+  const juce::String& status_;
+};
+}  // namespace
+
+std::unique_ptr<juce::AccessibilityHandler> TunerView::createAccessibilityHandler() {
+  return std::make_unique<TunerAccessibilityHandler>(*this, currentAccessibleStatus_);
+}
 
 // The feed notifies on every smoothed-cents change, most of which move
 // nothing visible; only the parts whose drawn state changed get dirtied,
@@ -113,6 +140,31 @@ void TunerView::feedChanged() {
   if (readout != shownReadout_) {
     shownReadout_ = readout;
     repaint(readoutArea());
+  }
+
+  if (s.hasSignal) {
+    const int cents = juce::roundToInt(s.cents);
+    juce::String status = s.note + " (" + juce::String(s.frequency, 1) + " Hz), " +
+        (inTune ? "in tune" : (cents < 0 ? juce::String(std::abs(cents)) + " cents flat"
+                                         : juce::String(cents) + " cents sharp"));
+    currentAccessibleStatus_ = status;
+
+    const auto now = juce::Time::currentTimeMillis();
+    const bool noteChanged = s.note != lastNote_;
+    const bool justInTune = inTune && !wasInTune_;
+    const bool timeElapsed = (now - lastAnnounceMs_) > 1800;
+
+    if (noteChanged || justInTune || timeElapsed) {
+      lastAnnounceMs_ = now;
+      lastNote_ = s.note;
+      wasInTune_ = inTune;
+      help::announce(inTune ? (s.note + " in tune") : status);
+      if (auto* h = getAccessibilityHandler())
+        h->notifyAccessibilityEvent(juce::AccessibilityEvent::titleChanged);
+    }
+  } else {
+    currentAccessibleStatus_ = "Tuner: waiting for signal";
+    wasInTune_ = false;
   }
 }
 

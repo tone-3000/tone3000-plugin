@@ -37,6 +37,7 @@ public:
   // Swap: launch the Select flow to replace this block's tone in place.
   std::function<void(const std::string& blockId)> onSwap;
 
+  bool keyPressed(const juce::KeyPress& key) override;
   void paint(juce::Graphics& g) override;
   void paintOverChildren(juce::Graphics& g) override;
   void resized() override;

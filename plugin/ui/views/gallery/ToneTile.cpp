@@ -62,7 +62,10 @@ void ToneTile::setBlock(const ChainItem& block) {
   block_ = block;
   enabled_ = block.params.enabled;
   setHelpText(help::toneTile(block.tone.title));
-  setTitle(block.tone.title);
+  juce::String desc = block.tone.title;
+  if (!enabled_) desc << " (bypassed)";
+  setTitle(desc);
+  setDescription(desc);
   image_.setTone(block.tone.image, block.tone.gear, block.tone.local, kGlyphSize);
   syncState();
 }
@@ -88,6 +91,27 @@ void ToneTile::togglePower() {
   power_.setOn(enabled_);
   imageFade_.animateTo(enabled_ ? 1.0f : kDimmedImage, kImageFadeMs);
   this->services().chain.setBlockParam(blockId(), "enabled", enabled_);
+  juce::String desc = block_.tone.title;
+  if (!enabled_) desc << " (bypassed)";
+  setTitle(desc);
+  setDescription(desc);
+  if (auto* h = getAccessibilityHandler())
+    h->notifyAccessibilityEvent(juce::AccessibilityEvent::titleChanged);
+  help::announce(block_.tone.title + (enabled_ ? " enabled" : " bypassed"));
+}
+
+bool ToneTile::keyPressed(const juce::KeyPress& key) {
+  if (key.getKeyCode() == 'P' || key.getKeyCode() == 'p') {
+    togglePower();
+    return true;
+  }
+  if (key.isKeyCode(juce::KeyPress::deleteKey) || key.isKeyCode(juce::KeyPress::backspaceKey)) {
+    const auto title = block_.tone.title;
+    this->services().chain.removeBlock(blockId());
+    help::announce("Removed " + title);
+    return true;
+  }
+  return GalleryTile::keyPressed(key);
 }
 
 void ToneTile::open() {

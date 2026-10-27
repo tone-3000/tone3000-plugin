@@ -9,8 +9,12 @@
 
 namespace t3k::ui {
 
-BackLink::BackLink(const juce::String& label, help::Key help) : Clickable("Back"), label_(label.toUpperCase()) {
-  setHelpText(help::text(help));
+BackLink::BackLink(const juce::String& label, help::Key help)
+    : Clickable("Back"), label_(label.toUpperCase()) {
+  const auto hint = help::text(help);
+  setHelpText(hint);
+  setDescription(hint);
+  setTitle("Back: " + (label.isNotEmpty() ? label : juce::String("return")));
   setMouseCursor(juce::MouseCursor::PointingHandCursor);
   if (label_.isEmpty()) {
     setSize(kIcon, kHeight);

@@ -3,6 +3,7 @@
 #include "LoadingDots.h"
 #include "Popover.h"
 #include "core/Fonts.h"
+#include "core/Help.h"
 #include "core/Icons.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
@@ -149,18 +150,21 @@ private:
 
 // ModelSelect
 namespace {
-// The name area between the steppers; a click toggles the list.
-class Trigger : public juce::Component {
+// The name area between the steppers; a click or Enter toggles the list.
+class Trigger : public Clickable {
 public:
-  std::function<void()> onClick;
-  void mouseUp(const juce::MouseEvent& e) override {
-    // Local bounds, not Component::contains(): that walks up to the window
-    // peer, which an offscreen (testbed) render doesn't have. A press that
-    // panned the column around it is not a click.
-    if (e.mods.isLeftButtonDown() && getLocalBounds().contains(e.getPosition()) &&
-        !e.mouseWasDraggedSinceMouseDown() && onClick)
-      onClick();
+  Trigger() : Clickable("Model") {
+    setTitle("Model");
+    setMouseCursor(juce::MouseCursor::PointingHandCursor);
   }
+
+  void updateName(const juce::String& name) {
+    const auto title = name.isNotEmpty() ? ("Model: " + name) : juce::String("Select model");
+    setTitle(title);
+    setDescription("Open model menu");
+  }
+
+  void paintButton(juce::Graphics&, bool, bool) override {}
 };
 }  // namespace
 
@@ -175,7 +179,6 @@ ModelSelect::ModelSelect()
   auto trigger = std::make_unique<Trigger>();
   trigger->setName("model select");
   trigger->onClick = [this] { toggleList(); };
-  trigger->setMouseCursor(juce::MouseCursor::PointingHandCursor);
   trigger_ = std::move(trigger);
   addAndMakeVisible(*trigger_);
   setSize(100, kHeight);
@@ -192,6 +195,11 @@ int ModelSelect::currentIndex() const {
 
 void ModelSelect::setOptions(std::vector<Option> options) {
   options_ = std::move(options);
+  const int i = currentIndex();
+  if (i >= 0 && i < static_cast<int>(options_.size())) {
+    if (auto* t = dynamic_cast<Trigger*>(trigger_.get()))
+      t->updateName(options_[static_cast<size_t>(i)].name);
+  }
   syncSteppers();
   syncList();
   repaint();
@@ -200,6 +208,11 @@ void ModelSelect::setOptions(std::vector<Option> options) {
 void ModelSelect::setValue(const juce::String& id) {
   if (value_ == id) return;
   value_ = id;
+  const int i = currentIndex();
+  if (i >= 0 && i < static_cast<int>(options_.size())) {
+    if (auto* t = dynamic_cast<Trigger*>(trigger_.get()))
+      t->updateName(options_[static_cast<size_t>(i)].name);
+  }
   syncSteppers();
   syncList();
   repaint();
@@ -225,6 +238,7 @@ void ModelSelect::setDisabledLook(bool disabled) {
 void ModelSelect::step(int delta) {
   const int i = currentIndex() + delta;
   if (i < 0 || i >= static_cast<int>(options_.size())) return;
+  help::announce("Model: " + options_[static_cast<size_t>(i)].name);
   if (onChange) onChange(options_[static_cast<size_t>(i)].id);
 }
 
@@ -240,6 +254,12 @@ void ModelSelect::toggleList() {
 
 void ModelSelect::dismissAndSelect(const juce::String& id) {
   list_->close();
+  for (const auto& opt : options_) {
+    if (opt.id == id) {
+      help::announce("Model: " + opt.name);
+      break;
+    }
+  }
   if (onChange) onChange(id);
 }
 

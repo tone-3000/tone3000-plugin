@@ -10,7 +10,12 @@ namespace t3k::ui {
 
 ChromeTextButton::ChromeTextButton(juce::String label, help::Key help)
     : Clickable(label), label_(std::move(label)) {
-  setHelpText(help::text(help));
+  const auto hint = help::text(help);
+  setHelpText(hint);
+  setDescription(hint);
+  setTitle(label_);
+  setToggleable(true);
+  setToggleState(armed_, juce::dontSendNotification);
   setMouseCursor(juce::MouseCursor::PointingHandCursor);
   // border-box: 4px padding inside a 1px border each side.
   const float text = Fonts::width(Fonts::mono(kFontPx), label_);
@@ -20,6 +25,8 @@ ChromeTextButton::ChromeTextButton(juce::String label, help::Key help)
 void ChromeTextButton::setArmed(bool armed) {
   if (armed_ == armed) return;
   armed_ = armed;
+  setToggleState(armed, juce::dontSendNotification);
+  notifyStateChanged();
   repaint();
 }
 

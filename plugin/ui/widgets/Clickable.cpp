@@ -12,13 +12,18 @@ namespace {
 class Handler : public juce::AccessibilityHandler {
 public:
   explicit Handler(Clickable& button)
-      : juce::AccessibilityHandler(button, juce::AccessibilityRole::button,
+      : juce::AccessibilityHandler(button,
+                                   button.isToggleable() ? juce::AccessibilityRole::toggleButton
+                                                         : juce::AccessibilityRole::button,
                                    juce::AccessibilityActions().addAction(juce::AccessibilityActionType::press,
                                                                           [&button] { button.triggerClick(); })),
         button_(button) {}
 
   juce::String getTitle() const override { return button_.accessibleName(); }
   juce::String getHelp() const override { return button_.getHelpText(); }
+  juce::String getDescription() const override {
+    return button_.getHelpText().isNotEmpty() ? button_.getHelpText() : button_.getDescription();
+  }
   juce::AccessibleState getCurrentState() const override {
     auto state = juce::AccessibilityHandler::getCurrentState();
     if (!button_.isToggleable()) return state;
@@ -45,6 +50,16 @@ juce::String Clickable::accessibleName() const {
 
 std::unique_ptr<juce::AccessibilityHandler> Clickable::createAccessibilityHandler() {
   return std::make_unique<Handler>(*this);
+}
+
+void Clickable::clicked() {
+  if (isToggleable()) notifyStateChanged();
+  juce::Button::clicked();
+}
+
+void Clickable::notifyStateChanged() {
+  if (auto* handler = getAccessibilityHandler())
+    handler->notifyAccessibilityEvent(juce::AccessibilityEvent::valueChanged);
 }
 
 // The button's own handler runs before the viewport's listeners, so on the

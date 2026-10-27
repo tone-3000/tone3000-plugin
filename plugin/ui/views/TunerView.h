@@ -34,6 +34,8 @@ public:
   // The top-right ✕ (the header's tuner button also closes).
   std::function<void()> onClose;
 
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+
   void paint(juce::Graphics& g) override;
   void resized() override;
 
@@ -53,6 +55,10 @@ private:
   // What is on screen, so a feed change dirties only what it moved.
   int shownLeftLit_ = 0, shownRightLit_ = 0;
   juce::String shownReadout_;
+  juce::int64 lastAnnounceMs_ = 0;
+  juce::String lastNote_;
+  bool wasInTune_ = false;
+  juce::String currentAccessibleStatus_;
 };
 
 }  // namespace t3k::ui
