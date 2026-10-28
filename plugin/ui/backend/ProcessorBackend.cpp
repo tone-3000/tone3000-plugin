@@ -21,6 +21,7 @@ ProcessorBackend::ProcessorBackend(TONE3000Processor& processor, juce::Component
 }
 
 ProcessorBackend::~ProcessorBackend() {
+  masterReference.clear();
   // The mapper outlives the editor (it's the processor's): detach our hook.
   processor_.midiMapper.onChanged = nullptr;
   // Tear down the audio settings controller before the listeners it reports to.
@@ -153,6 +154,41 @@ bool ProcessorBackend::deletePreset(const juce::String& presetId) {
 }
 bool ProcessorBackend::movePreset(const juce::String& presetId, int delta) {
   return processor_.movePreset(presetId, delta);
+}
+
+void ProcessorBackend::exportPresetBackup(const juce::File& file, PresetTransferDone done) {
+  // The worker owns a file-store copy, never an editor or processor pointer.
+  juce::Thread::launch([store = processor_.presetStoreForTransfer(), file, done = std::move(done)] {
+    const auto result = store.exportBackup(file);
+    juce::MessageManager::callAsync([done, result] { done(result); });
+  });
+}
+
+void ProcessorBackend::importPresetBackup(const juce::URL& url, PresetImportMode mode, PresetTransferDone done) {
+  juce::WeakReference<ProcessorBackend> self(this);
+  juce::Thread::launch([store = processor_.presetStoreForTransfer(), url, mode, self, done = std::move(done)] {
+    // Keep the bookmarked URL alive and open it through URL, not File: on
+    // iOS an iCloud/Files document may be outside the app's sandbox.
+    const auto result = [&]() -> juce::Result {
+      auto input = url.createInputStream(juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress));
+      if (!input) return juce::Result::fail("Could not open the backup from Files.");
+      constexpr juce::int64 maxBytes = 2LL * 1024 * 1024 * 1024;
+      juce::TemporaryFile local(".zip");
+      {
+        juce::FileOutputStream output(local.getFile());
+        if (!output.openedOk()) return juce::Result::fail("Could not create the import file.");
+        const auto size = output.writeFromInputStream(*input, maxBytes + 1);
+        output.flush();
+        if (size > maxBytes || output.getStatus().failed())
+          return juce::Result::fail("The backup is too large or could not be read.");
+      }
+      return store.importBackup(local.getFile(), mode);
+    }();
+    juce::MessageManager::callAsync([self, done, result] {
+      if (self != nullptr && result.wasOk()) self->processor_.presetBackupImported();
+      done(result);
+    });
+  });
 }
 
 // Audio device settings (standalone only)

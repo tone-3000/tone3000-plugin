@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "PresetFile.h"
+#include "PresetImportMode.h"
 
 /**
  * On-disk internal preset store. Pure file layer: one preset per file (the
@@ -111,6 +112,13 @@ public:
       Clamped to the factory/user boundary so the browser's sections and the
       global order can't disagree. Persists the whole current order. */
   bool move(const juce::String& id, int delta) const;
+
+  /** ZIP backup of every user preset, with embedded model/IR data and list order.
+      Import validates/stages the whole archive first. Replacement saves a
+      recovery ZIP and rolls back on failure. Factory presets are kept. */
+  juce::Result exportBackup(const juce::File& archive) const;
+  juce::Result importBackup(const juce::File& archive,
+      t3k::PresetImportMode mode = t3k::PresetImportMode::addCopies) const;
 
   /** presetfile::sanitizeStem, kept here for callers/tests of the store. */
   static juce::String sanitizeFileStem(const juce::String& name) {

@@ -68,6 +68,9 @@ public:
   bool deletePreset(const juce::String& presetId) override;
   bool movePreset(const juce::String& presetId, int delta) override;
 
+  void exportPresetBackup(const juce::File& file, PresetTransferDone done) override;
+  void importPresetBackup(const juce::URL& url, PresetImportMode mode, PresetTransferDone done) override;
+
   juce::var getAudioDeviceState() override;
   juce::var setAudioDeviceType(const juce::String& typeName) override;
   juce::var setAudioDevice(const juce::String& kind, const juce::String& name) override;
@@ -124,6 +127,7 @@ private:
   TONE3000Processor& processor_;
   juce::Component& peerHost_;
   std::unique_ptr<StandaloneAudioSettings> audioSettings_;
+  JUCE_DECLARE_WEAK_REFERENCEABLE(ProcessorBackend)
 };
 
 }  // namespace t3k::ui
