@@ -42,6 +42,9 @@ public:
   explicit Faceplate(Services& services);
   ~Faceplate() override;
 
+  std::function<void()> onToggleLooper, onHideLooper;
+  void setLooperShown(bool shown) { looper_.setToggleState(shown, juce::dontSendNotification); }
+
   void paint(juce::Graphics& g) override;
   void resized() override;
 
@@ -74,6 +77,8 @@ private:
   // Spread dims and goes inert as a whole (the hover hint says why).
   DimGroup imageDim_;
   StereoImageGroup spread_, align_;
+
+  juce::TextButton looper_{"Loop"};
 
   // [=][Bal][Output]: inactive companions stay laid out but hidden.
   ChromeIconButton autoBalance_;

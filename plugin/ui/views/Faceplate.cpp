@@ -263,6 +263,10 @@ Faceplate::Faceplate(Services& services)
   imageDim_.addChildComponent(align_);
   addAndMakeVisible(imageDim_);
 
+  looper_.setName("Open global looper");
+  looper_.onClick = [this] { if (onToggleLooper) onToggleLooper(); };
+  addAndMakeVisible(looper_);
+
   autoBalance_.onClick = [this] { services_.autoBalance.toggle(); };
   addChildComponent(autoBalance_);
   addChildComponent(balance_);
@@ -284,7 +288,7 @@ Faceplate::~Faceplate() {
 void Faceplate::autoMeasureChanged() { autoBalance_.setOn(services_.autoBalance.listening()); }
 
 void Faceplate::prefChanged(const juce::String& key) {
-  if (key == UiPrefs::kShowGateControl || key == UiPrefs::kShowPitchControl) syncFlags();
+  if (key == UiPrefs::kShowGateControl || key == UiPrefs::kShowPitchControl || key == UiPrefs::kShowLooperControl) syncFlags();
 }
 
 void Faceplate::showEffect(juce::Component& group, bool show) {
@@ -295,6 +299,13 @@ void Faceplate::showEffect(juce::Component& group, bool show) {
 
 void Faceplate::syncFlags() {
   const auto& chain = services_.chain.state();
+  const bool showLooper = services_.prefs.getBool(UiPrefs::kShowLooperControl, false);
+  services_.backend.setLooperMidiEnabled(showLooper);
+  if (!showLooper && looper_.isVisible()) {
+    services_.backend.looperCommand("stop");
+    if (onHideLooper) onHideLooper();
+  }
+  showEffect(looper_, showLooper);
 
   // Effects: the view setting decides (gate on, pitch off by default),
   // except that a powered effect always shows. A preset or host state that
@@ -360,7 +371,8 @@ void Faceplate::resized() {
   const int effectsW =
       (gate ? GateGroup::kWidth : 0) + (gate && pitch ? kEffectsGap : 0) + (pitch ? PitchGroup::kWidth : 0);
   const int toneW = 3 * primary + 2 * kToneGap + kGroupGap + box;
-  const int imageW = StereoImageGroup::kWidth;
+  const int loopW = 48;
+  const int imageW = StereoImageGroup::kWidth + (looper_.isVisible() ? kGroupGap + loopW : 0);
   const int outputW = box + kGroupGap + secondary + kGroupGap + primary;
   const int peers = 4 + (effectsW > 0 ? 1 : 0);
   const float gap =
@@ -394,9 +406,10 @@ void Faceplate::resized() {
   x += toneW + gap;
 
   // Spread / Align slot
-  imageDim_.setBounds(at(x), knobBottom - StereoImageGroup::height(), imageW, StereoImageGroup::height());
+  imageDim_.setBounds(at(x), knobBottom - StereoImageGroup::height(), StereoImageGroup::kWidth, StereoImageGroup::height());
   spread_.setTopLeftPosition(0, 0);
   align_.setTopLeftPosition(0, 0);
+  looper_.setBounds(at(x) + StereoImageGroup::kWidth + kGroupGap, chromeY - 6, loopW, box + 12);
   x += imageW + gap;
 
   // [=][Bal][Output]: the (=) sits on the outer edge, keeping Bal next to the

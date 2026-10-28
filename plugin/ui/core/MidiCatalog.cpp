@@ -11,6 +11,7 @@ const std::vector<MappableTarget>& mappableTargets() {
         // programmed with CC / note buttons instead of program changes.
         {"presetPrevious", "Previous Preset", "Presets", K::trigger},
         {"presetNext", "Next Preset", "Presets", K::trigger},
+        {"looperRecord", "Looper Record / Play", "Looper", K::trigger},
         {"inputLevel", "Input Gain", "Global", K::continuous},
         {"outputLevel", "Output Level", "Global", K::continuous},
         {"outputBalance", "Output Balance", "Global", K::continuous},

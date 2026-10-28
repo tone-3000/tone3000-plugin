@@ -234,4 +234,52 @@ TEST(MidiMapperTest, ProgramChangeDeliversProgramNumber) {
   EXPECT_EQ(programs[0], 5);
 }
 
+TEST(MidiMapperTest, LooperCcFiresImmediatelyOncePerMomentaryPressAndHonoursChannel) {
+  TONE3000Processor proc;
+  int presses = 0;
+  proc.midiMapper.onLooperRecordToggle = [&] { ++presses; };
+  ASSERT_TRUE(proc.midiMapper.setCcMapping("looperRecord", 6));
+  proc.midiMapper.setChannelFilter(2);
+  proc.midiMapper.processMidi(ccEvent(6, 127, 1));
+  EXPECT_EQ(presses, 0);
+  proc.midiMapper.processMidi(ccEvent(6, 127, 2));
+  EXPECT_EQ(presses, 1); // no async dispatch needed for transport
+  proc.midiMapper.processMidi(ccEvent(6, 0, 2));
+  EXPECT_EQ(presses, 1); // release does not finish the take
+  proc.midiMapper.processMidi(ccEvent(6, 127, 2));
+  EXPECT_EQ(presses, 2);
+  proc.midiMapper.processMidi(ccEvent(6, 127, 2));
+  EXPECT_EQ(presses, 3); // FCB-style repeated identical messages
+}
+
+TEST(MidiMapperTest, LooperLearnConsumesNoteThenRestoresMappingAndIgnoresNoteOff) {
+  TONE3000Processor proc;
+  int presses = 0;
+  proc.midiMapper.onLooperRecordToggle = [&] { ++presses; };
+  learn(proc, "looperRecord", noteOnEvent(48));
+  EXPECT_EQ(presses, 0);
+  const auto saved = proc.midiMapper.toValueTree();
+  proc.midiMapper.removeMapping("looperRecord");
+  proc.midiMapper.restoreFromValueTree(saved);
+  proc.midiMapper.processMidi(noteOnEvent(48));
+  EXPECT_EQ(presses, 1);
+  juce::MidiBuffer off;
+  off.addEvent(juce::MidiMessage::noteOff(1, 48), 0);
+  proc.midiMapper.processMidi(off);
+  EXPECT_EQ(presses, 1);
+}
+
+TEST(MidiMapperTest, LooperLowValueOnlyCcWorksAndMappingCanBeRemoved) {
+  TONE3000Processor proc;
+  int presses = 0;
+  proc.midiMapper.onLooperRecordToggle = [&] { ++presses; };
+  ASSERT_TRUE(proc.midiMapper.setCcMapping("looperRecord", 6));
+  proc.midiMapper.processMidi(ccEvent(6, 0));
+  proc.midiMapper.processMidi(ccEvent(6, 0));
+  EXPECT_EQ(presses, 2);
+  ASSERT_TRUE(proc.midiMapper.removeMapping("looperRecord"));
+  proc.midiMapper.processMidi(ccEvent(6, 127));
+  EXPECT_EQ(presses, 2);
+}
+
 }  // namespace
