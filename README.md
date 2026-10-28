@@ -122,6 +122,10 @@ To see `DBG()` output in Debug builds, run the binary directly so
 stdout/stderr reach your terminal (on macOS that is
 `TONE3000.app/Contents/MacOS/TONE3000`).
 
+In the standalone app, use the speaker button in the top bar to turn **Hear
+Yourself** monitoring on or off. The same setting is available in **System
+Settings**. The button is hidden when the plugin runs inside a DAW.
+
 **In a DAW:** `./script/install-plugin.sh VST3` (or `AU` / `AAX`) installs
 the built plugin and the factory presets on macOS and Linux to the same
 folders the official installers use (the macOS preset copy goes to

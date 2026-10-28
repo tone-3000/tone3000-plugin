@@ -44,6 +44,16 @@ PluginHeader::PluginHeader(Services& services)
   };
   addAndMakeVisible(stereo_);
 
+  monitoring_.setFillWhenActive(true);
+  monitoring_.setClickingTogglesState(true);
+  monitoring_.onClick = [this] {
+    const auto& state = services_.audioDevice.state();
+    if (!state) return;
+    const auto error = services_.audioDevice.setHearYourself(!state->hearYourself);
+    if (error.isNotEmpty()) services_.toast.show(error);
+  };
+  addChildComponent(monitoring_);
+
   tuner_.setHelpText(help::text(help::Key::tuner));
   tuner_.setFillWhenActive(true);
   tuner_.onClick = [this] {
@@ -75,15 +85,31 @@ PluginHeader::PluginHeader(Services& services)
 
   services_.chain.addListener(this);
   services_.session.addListener(this);
+  services_.audioDevice.addListener(this);
   sessionChanged();
   chainChanged(services_.chain.state());
+  audioDeviceChanged();
   setTunerShown(false);
   setSize(design::kWidth, kHeight);
 }
 
 PluginHeader::~PluginHeader() {
+  services_.audioDevice.removeListener(this);
   services_.session.removeListener(this);
   services_.chain.removeListener(this);
+}
+
+void PluginHeader::audioDeviceChanged() {
+  const auto& state = services_.audioDevice.state();
+  monitoring_.setVisible(state.has_value());
+  if (state) {
+    monitoring_.setToggleState(state->hearYourself, juce::dontSendNotification);
+    monitoring_.setActive(state->hearYourself);
+    const auto action = state->hearYourself ? "Turn off Hear Yourself" : "Turn on Hear Yourself";
+    monitoring_.setTitle(action);
+    monitoring_.setHelpText(juce::String(action) + ": Monitor your instrument through TONE3000.");
+  }
+  resized();
 }
 
 void PluginHeader::sessionChanged() {
@@ -130,11 +156,13 @@ void PluginHeader::resized() {
   logo_->setBounds(area.getX(), cy - kLogoHeight / 2, kLogoWidth, kLogoHeight);
 
   // Right group, laid out from the right edge: account · undo/redo · tuner ·
-  // stereo · presets, 40px apart (16px inside the undo/redo pair).
+  // standalone monitoring · stereo · presets, 40px apart (16px inside the
+  // undo/redo pair).
   int x = place(account_, area.getRight()) - kGroupGap;
   x = place(redo_, x) - kPairGap;
   x = place(undo_, x) - kGroupGap;
   x = place(tuner_, x) - kGroupGap;
+  if (monitoring_.isVisible()) x = place(monitoring_, x) - kGroupGap;
   x = place(stereo_, x) - kGroupGap;
   place(presetBar_, x);
 }

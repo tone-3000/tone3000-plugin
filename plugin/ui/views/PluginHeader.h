@@ -13,7 +13,8 @@
 
 namespace t3k::ui {
 
-class PluginHeader : public juce::Component, private ChainStore::Listener, private ToneSession::Listener {
+class PluginHeader : public juce::Component, private ChainStore::Listener,
+                     private ToneSession::Listener, private AudioDeviceStore::Listener {
 public:
   static constexpr int kHeight = design::kHeaderHeight;
 
@@ -38,12 +39,14 @@ private:
   // Signed in / out, or the identity refreshed: the account pill's menu
   // and avatar follow the session.
   void sessionChanged() override;
+  void audioDeviceChanged() override;
 
   Services& services_;
   juce::String avatarUrl_;
   std::unique_ptr<LogoLink> logo_;
   PresetBar presetBar_;
   StereoModeToggle stereo_;
+  IconButton monitoring_{Icon::Volume2, 28};
   IconButton tuner_;
   IconButton undo_{Icon::Undo2, 28};
   IconButton redo_{Icon::Redo2, 28};
