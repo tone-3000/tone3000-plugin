@@ -1779,6 +1779,87 @@ struct PopoverFollowTests : juce::UnitTest {
   }
 };
 
+// Remember Browser Filters (off by default): with it on, a new editor opens
+// the tone browser on the sort, gear, format and Calibrated / Verified chosen
+// last; off, on the defaults, and nothing is saved.
+struct BrowserFilterMemoryTests : juce::UnitTest {
+  BrowserFilterMemoryTests() : juce::UnitTest("Browser filters remembered", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    beginTest("setup");  // before any expect: a group run first has no test under way
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("main-detail");  // signed in, the browser closed
+    if (scenario == nullptr) {
+      expect(false, "main-detail scenario missing");
+      return;
+    }
+    const auto saved = [] {
+      // What an earlier editor saved: Newest, amp heads, calibrated only.
+      auto* o = new juce::DynamicObject();
+      o->setProperty("sort", "newest");
+      o->setProperty("gear", "amp");
+      o->setProperty("format", "");
+      o->setProperty("calibrated", true);
+      o->setProperty("verified", false);
+      return juce::var(o);
+    };
+    MockBackend backend(scenario->data);
+
+    beginTest("off (the default): a new editor's browser opens on the defaults, and nothing is saved");
+    {
+      juce::DocumentWindow window("browser filters", juce::Colours::black, 0);
+      ScaledHost host(backend, *scenario, fixtures.root);
+      window.setContentNonOwned(&host, true);
+      window.setVisible(true);
+      pump(300);
+      auto& services = host.pluginRoot().services();
+      services.prefs.setJson(UiPrefs::kBrowserFilters, saved());
+      host.pluginRoot().setBrowserShown(true);
+      pump(200);
+      expect(!services.browser.query.sort.has_value() && services.browser.query.gear.isEmpty() &&
+                 !services.browser.query.calibrated,
+             "the defaults");
+      host.pluginRoot().setBrowserShown(false);
+      window.setVisible(false);
+    }
+
+    beginTest("on: a new editor's browser opens on the filters chosen last, and a change is saved at once");
+    {
+      juce::DocumentWindow window("browser filters", juce::Colours::black, 0);
+      ScaledHost host(backend, *scenario, fixtures.root);
+      window.setContentNonOwned(&host, true);
+      window.setVisible(true);
+      pump(300);
+      auto& root = host.pluginRoot();
+      auto& services = root.services();
+      services.prefs.setBool(UiPrefs::kRememberBrowserFilters, true);
+      services.prefs.setJson(UiPrefs::kBrowserFilters, saved());
+      services.browser.filtersExpanded = true;  // the Calibrated chip shows (below)
+      root.setBrowserShown(true);
+      pump(200);
+      const auto& query = services.browser.query;
+      expect(query.sort.has_value() && *query.sort == ToneSort::newest, "Newest");
+      expectEquals(query.gear, juce::String("amp"));
+      expect(query.calibrated, "Calibrated");
+      expect(query.text.isEmpty(), "no search text brought back");
+
+      auto* chip = dynamic_cast<FilterChip*>(drive::byHelpPrefix(root, "Calibrated:"));
+      expect(chip != nullptr && chip->onPress != nullptr, "the Calibrated chip");
+      if (chip != nullptr && chip->onPress) chip->onPress();
+      pump(100);
+      const auto now = services.prefs.getJson(UiPrefs::kBrowserFilters);
+      expect(!static_cast<bool>(now.getProperty("calibrated", true)), "Calibrated off, saved");
+      expectEquals(now["sort"].toString(), juce::String("newest"), "the rest kept");
+      root.setBrowserShown(false);
+      services.prefs.remove(UiPrefs::kRememberBrowserFilters);
+      services.prefs.remove(UiPrefs::kBrowserFilters);
+      window.setVisible(false);
+    }
+  }
+};
+
 // Services::pointer: a desktop build follows the input, and the gallery's
 // hover-revealed chrome pins while that input is a finger.
 struct PointerTests : juce::UnitTest {
@@ -2821,6 +2902,7 @@ SettingsKeyboardTests settingsKeyboardTests;
 ScrollSurfacesTests scrollSurfacesTests;
 TouchScrollTests touchScrollTests;
 PopoverFollowTests popoverFollowTests;
+BrowserFilterMemoryTests browserFilterMemoryTests;
 PointerTests pointerTests;
 GlowCornerTests glowCornerTests;
 PresetReorderTests presetReorderTests;

@@ -11,6 +11,13 @@
 namespace t3k::ui {
 
 namespace {
+
+// The browser state, its filters restored first (see restoreFilters).
+BrowserState& restored(Services& services) {
+  restoreFilters(services.browser, services.prefs);
+  return services.browser;
+}
+
 // The preview's copy (Select Tone mockups, signed out): the CTA under the
 // trending cards, and the page a card click lands on.
 constexpr const char* kTrendingFooterCopy = "Discover a zillion more tones.";
@@ -75,7 +82,7 @@ public:
 
 ToneBrowser::ToneBrowser(Services& services)
     : services_(services),
-      state_(services.browser),
+      state_(restored(services)),
       back_("Select Tone", help::Key::closeToneBrowser),
       signInBack_({}, help::Key::browserBackToTrending),
       body_(std::make_unique<Body>(*this)),
@@ -156,6 +163,7 @@ void ToneBrowser::submit() {
 
 void ToneBrowser::queryChanged() {
   state_.page = 1;
+  rememberFilters(state_, services_.prefs);
   fetch();
 }
 

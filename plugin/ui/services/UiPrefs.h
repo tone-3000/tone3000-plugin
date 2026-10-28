@@ -58,6 +58,10 @@ public:
   static constexpr const char* kShowHints = "t3k.showHints";
   static constexpr const char* kShowBlockNormalizeControl = "t3k.showBlockNormalizeControl";
   static constexpr const char* kShowBlockSizeControl = "t3k.showBlockSizeControl";
+  // Remember Browser Filters (off by default): the tone browser opens on the
+  // filter chips chosen last (kBrowserFilters), in every new editor.
+  static constexpr const char* kRememberBrowserFilters = "t3k.rememberBrowserFilters";
+  static constexpr const char* kBrowserFilters = "t3k.browserFilters";
   // Faceplate effect groups (view only; a powered effect shows regardless).
   static constexpr const char* kShowGateControl = "t3k.showGateControl";
   static constexpr const char* kShowPitchControl = "t3k.showPitchControl";
