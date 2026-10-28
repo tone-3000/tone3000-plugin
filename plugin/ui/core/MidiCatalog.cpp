@@ -25,6 +25,7 @@ const std::vector<MappableTarget>& mappableTargets() {
         {"pitchSemitones", "Pitch", "Pitch Shift", K::continuous},
         {"pitchStep", "Pitch Step", "Pitch Shift", K::toggle},
         {"pitchTonality", "Pitch Tonality", "Pitch Shift", K::continuous},
+        {"pitchMix", "Pitch Mix", "Pitch Shift", K::continuous},
         {"toneEqEnabled", "Tone Stack Power", "Tone Stack", K::toggle},
         {"toneBass", "Bass", "Tone Stack", K::continuous},
         {"toneMid", "Mid", "Tone Stack", K::continuous},
