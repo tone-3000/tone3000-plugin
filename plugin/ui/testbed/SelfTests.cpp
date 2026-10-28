@@ -814,6 +814,233 @@ struct ToneModelTests : juce::UnitTest {
   }
 };
 
+struct KnobWheelTests : juce::UnitTest {
+  KnobWheelTests() : juce::UnitTest("Knob wheel", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  // A wheel event delivered to `c`, positioned in its own coordinates: the
+  // component under the pointer is the event's component, as JUCE does.
+  static void wheelTo(juce::Component& c, juce::Point<float> pos, float deltaY,
+                      juce::ModifierKeys mods = {}, bool inertial = false) {
+    const auto now = juce::Time::getCurrentTime();
+    const juce::MouseEvent e(juce::Desktop::getInstance().getMainMouseSource(), pos, mods, 0, 0, 0, 0, 0, &c, &c,
+                             now, pos, now, 0, false);
+    juce::MouseWheelDetails w;
+    w.deltaY = deltaY;
+    w.isInertial = inertial;
+    c.mouseWheelMove(e, w);
+  }
+
+  // One physical click, as JUCE reports it on Windows: WHEEL_DELTA (120)
+  // through the 0.5/256 page scaling, so 0.234375 pages. Positive deltaY is
+  // what JUCE sends for a forward turn (away from the user), which is what
+  // raises a value, so kNotch is a forward click and -kNotch a backward one.
+  // The earlier version used -0.04f: a trackpad fraction, five times too fine,
+  // and with the sign read as "forward".
+  static constexpr float kNotch = 0.5f * 120.0f / 256.0f;
+
+  static Knob::Options options(int steps = 0) {
+    Knob::Options o;
+    o.label = "Test";
+    o.size = 48;
+    o.min = 0.0f;
+    o.max = 1.0f;
+    if (steps > 0) o.steps = steps;
+    return o;
+  }
+
+  static juce::Point<float> faceCentre(Knob& k) { return k.faceBounds().getCentre().toFloat(); }
+
+  // A knob inside a horizontal scrolling lane.
+  struct Rig {
+    DragScroller scroller{DragScroller::Axis::horizontal};
+    juce::Component content;
+    Knob knob;
+    Rig() : knob(options()) {
+      content.setSize(4000, 200);
+      scroller.setSize(400, 200);
+      scroller.setViewedComponent(&content, false);
+      content.addAndMakeVisible(knob);
+      knob.setBounds(1000, 40, 60, Knob::heightFor(48));
+      scroller.setViewPosition(1000, 0);
+    }
+    juce::Point<float> knobPos() const { return knob.faceBounds().getCentre().toFloat(); }
+  };
+
+  void runTest() override {
+    beginTest("one click moves one arrow-key step, forward raises, Shift divides by 8");
+    {
+      // One click is one arrow press (kKeyStep = 1 % of the range), and a
+      // forward turn raises the value -- the same direction as the knob's own
+      // drag and arrow keys, and as the EQ curve and faders one screen away.
+      Knob k(options());
+      k.setValue(0.5f);
+      wheelTo(k, faceCentre(k), kNotch);
+      expectWithinAbsoluteError(k.value(), 0.51f, 1.0e-4f);
+
+      // The opposite turn lowers it, by the same amount.
+      wheelTo(k, faceCentre(k), -kNotch);
+      expectWithinAbsoluteError(k.value(), 0.5f, 1.0e-4f);
+
+      Knob fine(options());
+      fine.setValue(0.5f);
+      wheelTo(fine, faceCentre(fine), kNotch, juce::ModifierKeys::shiftModifier);
+      expectWithinAbsoluteError(fine.value(), 0.5f + 0.01f / 8.0f, 1.0e-4f);
+    }
+
+    beginTest("the wheel acts over the face only: the label slot is a tap target");
+    {
+      Knob k(options());
+      k.setValue(0.5f);
+      const auto below = static_cast<float>(k.faceBounds().getBottom() + 4);
+      wheelTo(k, {static_cast<float>(k.getWidth()) / 2.0f, below}, kNotch);
+      expectEquals(k.value(), 0.5f);
+    }
+
+    beginTest("inertial momentum after the finger lifts changes nothing");
+    {
+      Knob k(options());
+      k.setValue(0.5f);
+      wheelTo(k, faceCentre(k), kNotch, {}, /*inertial=*/true);
+      expectEquals(k.value(), 0.5f);
+    }
+
+    beginTest("the value clamps at both ends");
+    {
+      Knob k(options());
+      k.setValue(0.99f);
+      for (int i = 0; i < 40; ++i) wheelTo(k, faceCentre(k), kNotch);
+      expectEquals(k.value(), 1.0f);
+      for (int i = 0; i < 400; ++i) wheelTo(k, faceCentre(k), -kNotch);
+      expectEquals(k.value(), 0.0f);
+    }
+
+    beginTest("a detented knob steps one detent per notch and carries fractions");
+    {
+      Knob k(options(/*steps=*/5));  // unit = 0.25
+      k.setValue(0.0f);
+      wheelTo(k, faceCentre(k), kNotch);
+      expectWithinAbsoluteError(k.value(), 0.25f, 1.0e-5f);
+      wheelTo(k, faceCentre(k), kNotch);
+      expectWithinAbsoluteError(k.value(), 0.5f, 1.0e-5f);
+      wheelTo(k, faceCentre(k), -kNotch);
+      expectWithinAbsoluteError(k.value(), 0.25f, 1.0e-5f);
+
+      // A tenth of a notch does nothing; ten of them make exactly one detent.
+      Knob slow(options(/*steps=*/5));
+      slow.setValue(0.0f);
+      for (int i = 0; i < 9; ++i) wheelTo(slow, faceCentre(slow), kNotch / 10.0f);
+      expectEquals(slow.value(), 0.0f);
+      wheelTo(slow, faceCentre(slow), kNotch / 10.0f);
+      expectWithinAbsoluteError(slow.value(), 0.25f, 1.0e-5f);
+    }
+
+    beginTest("a burst brackets one host gesture and swallows echoes until it ends");
+    {
+      Knob k(options());
+      k.setValue(0.5f);
+      int begins = 0, ends = 0;
+      k.onDragStateChange = [&](bool dragging) { (dragging ? begins : ends)++; };
+
+      for (int i = 0; i < 3; ++i) wheelTo(k, faceCentre(k), kNotch);
+      expectEquals(begins, 1);
+      expectEquals(ends, 0);
+
+      const float during = k.value();
+      k.setValue(0.9f);  // an automation echo mid-burst
+      expectEquals(k.value(), during);
+
+      pump(400);  // longer than the burst gap
+      expectEquals(ends, 1);
+      k.setValue(0.1f);  // after the burst an echo lands
+      expectEquals(k.value(), 0.1f);
+    }
+
+    beginTest("a press takes the value over from a burst still in flight");
+    {
+      Knob k(options());
+      k.setValue(0.5f);
+      int begins = 0, ends = 0;
+      k.onDragStateChange = [&](bool dragging) { (dragging ? begins : ends)++; };
+      wheelTo(k, faceCentre(k), kNotch);
+      expectEquals(begins, 1);
+
+      const auto now = juce::Time::getCurrentTime();
+      const auto at = faceCentre(k);
+      const juce::MouseEvent down(juce::Desktop::getInstance().getMainMouseSource(), at,
+                                  juce::ModifierKeys::leftButtonModifier, 0, 0, 0, 0, 0, &k, &k, now, at, now, 1,
+                                  true);
+      k.mouseDown(down);
+      expectEquals(ends, 1);  // the wheel gesture closed before the drag's opened
+      const juce::MouseEvent up(juce::Desktop::getInstance().getMainMouseSource(), at, {}, 0, 0, 0, 0, 0, &k, &k,
+                                now, at, now, 1, false);
+      k.mouseUp(up);
+    }
+
+    beginTest("a detented knob steps once per notch even from an unsnapped value");
+    {
+      // 0.51 is not on a detent of five. Stepping from the raw accumulator
+      // would emit twice: once to settle onto 0.5, once to step to 0.75.
+      Knob k(options());
+      k.setValue(0.51f);
+      k.setSteps(5);
+      int emits = 0;
+      k.onChange = [&](float) { ++emits; };
+      wheelTo(k, faceCentre(k), kNotch);
+      expectEquals(emits, 1);
+      expectWithinAbsoluteError(k.value(), 0.75f, 1.0e-5f);
+    }
+
+    beginTest("a wheel against a hard stop opens no gesture");
+    {
+      Knob k(options());
+      k.setValue(1.0f);
+      int begins = 0, ends = 0;
+      k.onDragStateChange = [&](bool dragging) { (dragging ? begins : ends)++; };
+      for (int i = 0; i < 3; ++i) wheelTo(k, faceCentre(k), kNotch);
+      expectEquals(k.value(), 1.0f);
+      expectEquals(begins, 0);
+      expectEquals(ends, 0);
+
+      // The same for a detented knob resting on its last detent.
+      Knob d(options(/*steps=*/5));
+      d.setValue(1.0f);
+      int dBegins = 0;
+      d.onDragStateChange = [&](bool dragging) { if (dragging) ++dBegins; };
+      wheelTo(d, faceCentre(d), kNotch);
+      expectEquals(d.value(), 1.0f);
+      expectEquals(dBegins, 0);
+    }
+
+    // A Viewport is a recursive mouse listener on its content, so it receives
+    // the wheel over any descendant. Both handlers are driven here, in JUCE's
+    // order: the target first, then the scroller.
+    beginTest("a pan that slides a knob under the pointer does not edit it");
+    {
+      Rig r;
+      r.knob.setValue(0.5f);
+      wheelTo(r.scroller, {10.0f, 10.0f}, kNotch);  // the lane starts the burst
+      const int afterPan = r.scroller.getViewPositionX();
+      expect(afterPan != 1000, "the lane panned");
+
+      wheelTo(r.knob, r.knobPos(), kNotch);  // now under the stationary pointer
+      expectEquals(r.knob.value(), 0.5f);
+      wheelTo(r.scroller, {10.0f, 10.0f}, kNotch);  // and the pan continues
+      expect(r.scroller.getViewPositionX() != afterPan, "the pan continued");
+    }
+
+    beginTest("a burst a knob starts edits it and leaves the lane still");
+    {
+      Rig r;
+      r.knob.setValue(0.5f);
+      wheelTo(r.knob, r.knobPos(), kNotch);
+      expect(r.knob.value() > 0.5f, "the knob moved");
+      expectEquals(r.scroller.getViewPositionX(), 1000);  // the lane did not
+    }
+  }
+};
+
 struct ReadoutTests : juce::UnitTest {
   ReadoutTests() : juce::UnitTest("Readouts", "ui") {}
   void runTest() override {
@@ -2837,6 +3064,7 @@ OAuthTests oauthTests;
 LoopbackServerTests loopbackServerTests;
 PaginatorTests paginatorTests;
 DragScrollerTests dragScrollerTests;
+KnobWheelTests knobWheelTests;
 UiPrefsTests uiPrefsTests;
 Tone3000ClientTests tone3000ClientTests;
 ToneModelTests toneModelTests;

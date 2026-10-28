@@ -1,12 +1,14 @@
-#include "Knob.h"
+﻿#include "Knob.h"
 
 #include <cmath>
 
+#include "DragScroller.h"
 #include "KnobFace.h"
 #include "Popover.h"
 #include "SecondaryPress.h"
 #include "core/Fonts.h"
 #include "core/Paint.h"
+#include "core/Wheel.h"
 
 namespace t3k::ui {
 
@@ -62,6 +64,17 @@ constexpr float kDetent = 0.02f;
 constexpr float kKeyStep = 0.01f;
 constexpr int kKeyReadoutMs = 600;
 
+// Wheel. A notched click is WHEEL_DELTA (120) through JUCE's 0.5/256 page
+// scaling, which core/Wheel.h converts to wheel::kNotchPixels web px — 120,
+// not the ~20 a trackpad's fine delta averages to. Sensitivity is per web px,
+// set here as one click = one arrow key (kKeyStep) so the two agree: ~1 % of
+// the range per click, where the drag's 0.006 per px would jump far more.
+constexpr double kWheelPixelsPerNotch = wheel::kNotchPixels;
+constexpr float kWheelSensitivity = kKeyStep / static_cast<float>(wheel::kNotchPixels);
+// A gap longer than this starts a new burst; matches DragScroller::kWheelBurstMs
+// so one burst is one host gesture.
+constexpr int kWheelBurstMs = 250;
+
 const juce::Colour kEditorBorder = juce::Colour(235, 235, 245).withAlpha(0.3f);
 
 // Indicator angle in degrees from noon (-135..135) for a variant.
@@ -112,7 +125,7 @@ juce::Rectangle<int> Knob::labelBounds() const {
 }
 
 void Knob::setValue(float normalised) {
-  if (dragging_) return;
+  if (dragging_ || wheelActive_) return;  // the pointer owns the value mid-gesture
   const float v = juce::jlimit(options_.min, options_.max, normalised);
   live_ = emitted_ = v;
   if (juce::exactlyEqual(v, value_)) return;
@@ -151,10 +164,18 @@ void Knob::applyLive(float next, bool fine) {
   // step) and the knob glides out the far side of the window.
   const float raw = juce::jlimit(options_.min, options_.max, next);
   live_ = raw;
-  const bool snap = options_.variant == Variant::bipolar && !fine && std::abs(raw - 0.5f) < kDetent;
-  const float v = snapToStep(snap ? 0.5f : raw);
+  const float v = effectiveValue(raw, fine);
   if (juce::exactlyEqual(v, emitted_)) return;
   emit(v);
+}
+
+// The value applyLive would emit for `raw`: clamped, with the bipolar centre
+// detent and the detents applied. Pure, so the wheel can ask "would this
+// change anything?" before opening a gesture.
+float Knob::effectiveValue(float raw, bool fine) const {
+  const float c = juce::jlimit(options_.min, options_.max, raw);
+  const bool snap = options_.variant == Variant::bipolar && !fine && std::abs(c - 0.5f) < kDetent;
+  return snapToStep(snap ? 0.5f : c);
 }
 
 // Mouse
@@ -163,6 +184,12 @@ void Knob::mouseDown(const juce::MouseEvent& e) {
   if (isSecondaryPress(e)) {  // right-click / Ctrl-click belongs to the group
     forwardSecondaryPress(*this, e);
     return;
+  }
+  // A press takes the value over from a wheel burst still in flight, so the
+  // gesture the drag brackets starts clean (and the readout stays up).
+  if (wheelActive_) {
+    wheelTimer_.cancel();
+    endWheelBurst();
   }
   touchPress_ = touch;
   pressOrigin_ = e.position;
@@ -238,6 +265,93 @@ void Knob::mouseDoubleClick(const juce::MouseEvent& e) {
   if (e.source.isTouch() || !faceBounds().contains(e.getPosition())) return;
   endDrag();
   openEditor();
+}
+
+// Wheel
+void Knob::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) {
+  // macOS momentum outlives the finger: the burst has ended by then, and a
+  // value that keeps creeping after release is a bug, not a gesture.
+  if (wheel.isInertial) return;
+  // The face only. The component also covers the label slot (above the face
+  // for a block trim), which is a tap target, not a second value control.
+  if (!faceBounds().contains(e.getPosition())) return;
+  if (editor_ != nullptr) return;  // never fight the field being typed into
+
+  const float px = wheel::pixelsY(wheel);
+  if (juce::exactlyEqual(px, 0.0f)) return;
+  // A forward turn (away from the user) raises the value, as it does for this
+  // knob's own drag and arrow keys, for the EQ curve's Q, and for the EQ's
+  // faders. wheel::pixelsY is negative for a forward turn, so negate once here
+  // and read `forward` as "the way a gesture that increases the value goes".
+  const float forward = -px;
+
+  // A burst belongs to whatever was under the pointer when it began: inside a
+  // scrolling lane, a pan that slides this knob under the pointer must not edit.
+  auto* scroller = scrollingScroller();
+  if (scroller != nullptr && scroller->wheelBurstOwnedByOther(*this)) return;
+
+  const bool detented = options_.steps && *options_.steps >= 2;
+  // Shift refines a continuous knob only; a detented one has nothing finer than
+  // its detents, as in keyPressed.
+  const bool fine = e.mods.isShiftDown() && !detented;
+
+  float target = live_;
+  if (detented) {
+    // One detent per notch whatever the event's magnitude; a fractional notch
+    // carries, so a slow trackpad gesture still steps exactly once.
+    const double unit = (options_.max - options_.min) / static_cast<double>(*options_.steps - 1);
+    wheelNotch_ += static_cast<double>(forward) / kWheelPixelsPerNotch;
+    // A click lands exactly on 1.0, but a trackpad sends fractions of one, so
+    // the accumulator still has to reach a whole detent from an inexact sum:
+    // treat a near-whole notch as whole.
+    constexpr double kNotchEpsilon = 1.0e-3;
+    const int notches = static_cast<int>(wheelNotch_ >= 0.0 ? wheelNotch_ + kNotchEpsilon
+                                                            : wheelNotch_ - kNotchEpsilon);
+    if (notches == 0) return;
+    wheelNotch_ -= static_cast<double>(notches);
+    // Step from the emitted value, which always sits on a detent; stepping
+    // from the raw accumulator would emit twice, settling then stepping.
+    target = emitted_ + static_cast<float>(unit * static_cast<double>(notches));
+  } else {
+    target = live_ + forward * kWheelSensitivity * (fine ? 1.0f / kFineFactor : 1.0f);
+  }
+
+  // Nothing to write (already at an end, or the notch lands on the detent the
+  // knob is on): open no gesture, so wheeling against a hard stop stays silent.
+  if (juce::exactlyEqual(effectiveValue(target, fine), emitted_)) return;
+
+  if (scroller != nullptr) scroller->claimWheelBurst(*this);
+  beginWheelBurst();
+  applyLive(target, fine);
+}
+
+void Knob::beginWheelBurst() {
+  if (!wheelActive_) {
+    wheelActive_ = true;
+    wheelNotch_ = 0.0;
+    if (onDragStateChange) onDragStateChange(true);
+  }
+  setReadoutVisible(true);
+  wheelTimer_.start(kWheelBurstMs, [this] { endWheelBurst(); });
+}
+
+void Knob::endWheelBurst() {
+  if (!wheelActive_) return;
+  wheelActive_ = false;
+  wheelNotch_ = 0.0;
+  if (onDragStateChange) onDragStateChange(false);
+  // Linger like a key nudge, so the last value can be read after the burst.
+  readoutTimer_.start(kKeyReadoutMs, [this] { setReadoutVisible(false); });
+}
+
+void Knob::visibilityChanged() {
+  // A knob that goes away mid-burst must not leave the host inside an open
+  // gesture. ParamBinding also closes one on destruction, but a hidden knob
+  // can outlive its burst by a long time.
+  if (!isVisible()) {
+    wheelTimer_.cancel();
+    endWheelBurst();
+  }
 }
 
 // Keyboard / screen reader
@@ -337,7 +451,17 @@ void Knob::syncReadout() {
   readout_->setText(options_.scale->format(value_));
 }
 
-void Knob::parentHierarchyChanged() { syncReadout(); }
+void Knob::parentHierarchyChanged() {
+  // Resolved once per reparent rather than on every wheel event: the wheel
+  // handler consults it for burst ownership.
+  scrollingAncestor_ = findParentComponentOfClass<DragScroller>();
+  syncReadout();
+}
+
+DragScroller* Knob::scrollingScroller() const {
+  // Only ever stored from findParentComponentOfClass<DragScroller>() above.
+  return static_cast<DragScroller*>(scrollingAncestor_.getComponent());
+}
 
 void Knob::openEditor() {
   if (editor_ != nullptr) return;

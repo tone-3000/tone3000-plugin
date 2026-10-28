@@ -9,8 +9,11 @@
 // - Double-click opens inline text entry in real units (Enter commits,
 //   Escape cancels, blur commits).
 // - Alt/Option-click resets to the default value (when one is declared).
-// - No scroll-wheel support on purpose: knobs sit inside the horizontally
-//   scrolling chain view.
+// - Scroll wheel over the face adjusts it; a forward turn raises the value,
+//   one click moves what one arrow key moves, Shift for 8x finer; a detented
+//   knob steps one detent per click. Inertial (momentum) events are ignored.
+//   Inside a scrolling lane the burst belongs to whatever was under the
+//   pointer when it began (see DragScroller::claimWheelBurst).
 // On a touch screen: double tap resets, tapping the label opens the editor,
 // and a touch-and-hold fires onLongPress (the right-click of the platform).
 // From the keyboard (Tab to the knob; a click never focuses it): arrows step
@@ -30,6 +33,8 @@
 #include "widgets/TextField.h"
 
 namespace t3k::ui {
+
+class DragScroller;  // the scrolling lane, when this knob sits in one
 
 class Knob : public juce::Component {
 public:
@@ -103,7 +108,9 @@ public:
   void mouseDrag(const juce::MouseEvent& e) override;
   void mouseUp(const juce::MouseEvent& e) override;
   void mouseDoubleClick(const juce::MouseEvent& e) override;
+  void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override;
   bool keyPressed(const juce::KeyPress& key) override;
+  void visibilityChanged() override;
   std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
 private:
@@ -112,11 +119,20 @@ private:
   void nudgeTo(float normalised);
   bool resetToDefault();
   void applyLive(float raw, bool fine);
+  // The value applyLive would emit for `raw`; pure, so the wheel can test
+  // whether an event would change anything before opening a gesture.
+  float effectiveValue(float raw, bool fine) const;
+  // The nearest scrolling lane, resolved in parentHierarchyChanged.
+  DragScroller* scrollingScroller() const;
   void emit(float v);
   void openEditor();
   void commitEdit();
   void closeEditor();
   void endDrag();
+  // One wheel burst is one host gesture: begin on the first event, end after
+  // kWheelBurstMs of quiet (the same gap DragScroller calls a new burst).
+  void beginWheelBurst();
+  void endWheelBurst();
   // The nearest detent when Options::steps is set; otherwise `v` itself.
   float snapToStep(float v) const;
   void setReadoutVisible(bool show);
@@ -131,6 +147,12 @@ private:
   float live_ = 0.0f;     // un-snapped drag accumulator
   float emitted_ = 0.0f;  // last value emitted (detent-snapped)
   bool dragging_ = false;
+  // A wheel burst is a gesture too: echoes are ignored until it ends, and the
+  // owner brackets one host gesture around the whole run of events.
+  bool wheelActive_ = false;
+  // Detented knobs: fractional notches carried between events. Double, so a
+  // real notch lands exactly on a detent.
+  double wheelNotch_ = 0.0;
   bool readoutVisible_ = false;
   float lastY_ = 0.0f;
   juce::Point<float> pressOrigin_;
@@ -140,7 +162,11 @@ private:
   juce::Point<float> lastTapPos_;
   bool touchPress_ = false;
 
-  DelayedCall readoutTimer_, holdTimer_;
+  DelayedCall readoutTimer_, holdTimer_, wheelTimer_;
+  // Only set while this knob sits inside a scrolling lane (see the wheel
+  // handler). Kept as a Component pointer so Knob.h need not know
+  // DragScroller; scrollingScroller() is the typed view.
+  juce::Component::SafePointer<juce::Component> scrollingAncestor_;
   std::unique_ptr<TextField> editor_;
   // The readout floats in the overlay layer (see syncReadout); present while
   // it shows there, in which case the label slot here stays blank.
