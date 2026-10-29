@@ -170,6 +170,24 @@ const std::map<juce::String, Drive>& drives() {
          wait(300);
          unhover(root);
        }},
+      // The iOS AUv3: Login lands on the device page itself (no browser
+      // page to go through), the code answering a beat later.
+      {"load-oauth-app-device",
+       [](PluginRoot& root, MockBackend&) {
+         clickByHelp(root, "Account:");
+         wait(100);
+         if (auto* login = buttonNamed(root, "Login")) click(root, *login);
+         wait(400);
+         unhover(root);
+       }},
+      {"load-oauth-app-device-expired",
+       [](PluginRoot& root, MockBackend&) {
+         clickByHelp(root, "Account:");
+         wait(100);
+         if (auto* login = buttonNamed(root, "Login")) click(root, *login);
+         wait(400);
+         unhover(root);
+       }},
       {"load-oauth-copied",
        [](PluginRoot& root, MockBackend&) {
          clickByHelp(root, "Account:");

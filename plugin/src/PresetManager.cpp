@@ -1,4 +1,5 @@
 #include "PresetManager.h"
+#include "AppData.h"
 // For TONE3000Processor::ensureWritableDir: preset saves share the app-data
 // folder whose permissions a sudo'd install script can mangle (github
 // issue #76).
@@ -13,13 +14,7 @@ namespace {
 constexpr const char* kUserPrefix = "user:";
 constexpr const char* kFactoryPrefix = "factory:";
 
-juce::File presetsRootDir() {
-  juce::File base = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory);
-#if JUCE_MAC
-  base = base.getChildFile("Application Support");
-#endif
-  return base.getChildFile("TONE3000").getChildFile("Presets");
-}
+juce::File presetsRootDir() { return t3k::appdata::root().getChildFile("Presets"); }
 
 juce::String stripPrefix(const juce::String& id, const char* prefix) {
   return id.fromFirstOccurrenceOf(prefix, false, false);
@@ -53,15 +48,18 @@ juce::File PresetManager::defaultSystemFactoryDir() {
   // means no shipped presets; scans treat it as empty.
 #if JUCE_IOS
   // iOS has no installer and so no shared factory directory outside the app:
-  // the same .t3kpreset files ride inside the bundle (plugin/CMakeLists.txt carries
-  // resources/factory-presets as bundle resources; iOS bundles are flat, so
-  // they land at TONE3000.app/FactoryPresets). The bundle is read-only, which
-  // is exactly the contract this directory already has; a user Factory folder
-  // still overlays it in list(), as on macOS and Windows. This is the
-  // Standalone app: an AUv3 extension would resolve to its own .appex, which
-  // carries no presets, so revisit this when AUv3 arrives.
-  return juce::File::getSpecialLocation(juce::File::currentApplicationFile)
-      .getChildFile("FactoryPresets");
+  // the same .t3kpreset files ride inside the app bundle (plugin/CMakeLists.txt
+  // carries resources/factory-presets as bundle resources; iOS bundles are
+  // flat, so they land at TONE3000.app/FactoryPresets). The bundle is
+  // read-only, which is exactly the contract this directory already has; a
+  // user Factory folder still overlays it in list(), as on macOS and Windows.
+  // The AUv3 is an app extension inside that same bundle
+  // (TONE3000.app/PlugIns/TONE3000.appex) and carries no presets of its own,
+  // so from there the app is two levels up.
+  juce::File bundle = juce::File::getSpecialLocation(juce::File::currentApplicationFile);
+  if (bundle.hasFileExtension("appex"))
+    bundle = bundle.getParentDirectory().getParentDirectory();
+  return bundle.getChildFile("FactoryPresets");
 #elif JUCE_MAC
   return juce::File("/Library/Application Support/TONE3000/Presets/Factory");
 #elif JUCE_WINDOWS

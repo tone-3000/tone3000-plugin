@@ -21,6 +21,10 @@
 // The browser path stays live throughout, so finishing in the browser
 // still works from the device page. A failed flow shows its reason with Try
 // again / Dismiss in place of the dots.
+//
+// With no browser at all (AuthFlow::deviceOnly, the iOS AUv3) the flow
+// starts on the device page and never shows the browser one: no Copy Link,
+// and a line under the cards that the TONE3000 app's sign-in counts too.
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>

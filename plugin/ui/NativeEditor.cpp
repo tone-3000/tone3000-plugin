@@ -23,6 +23,17 @@ juce::String rendererName(const juce::ComponentPeer& peer) {
   return "engine " + juce::String(index) + " of " + juce::String(engines.size());
 }
 
+using Wrapper = juce::AudioProcessor::WrapperType;
+
+// The build's TONE3000 configuration, plus what this process can do about
+// signing in: the iOS AUv3 has no browser (nor a sheet to present), so it
+// signs in by device code or through the app (Tone3000Session.h).
+Tone3000Session::Config sessionConfig(Wrapper wrapper) {
+  auto config = Tone3000Session::Config::fromBuild();
+  config.signInViaApp = design::kIos && wrapper == Wrapper::wrapperType_AudioUnitv3;
+  return config;
+}
+
 }  // namespace
 
 NativeEditor::Trace::Trace(const TONE3000Processor& processor) {
@@ -77,9 +88,10 @@ NativeEditor::NativeEditor(TONE3000Processor& owner)
     : AudioProcessorEditor(&owner),
       trace_(owner),
       processor_(owner),
+      kiosk_(design::kIos && owner.wrapperType == Wrapper::wrapperType_Standalone),
       backend_(owner, *this),
       prefs_(&prefsFile_->file, &prefsFile_->lock),
-      session_(backend_, prefs_, http_, Tone3000Session::Config::fromBuild()),
+      session_(backend_, prefs_, http_, sessionConfig(owner.wrapperType)),
       services_(backend_, session_, *this, prefs_),
       root_(services_) {
   // Dark-theme every JUCE-drawn surface outside the root (standalone audio
@@ -95,25 +107,25 @@ NativeEditor::NativeEditor(TONE3000Processor& owner)
   // extraContentHeight_ is already set: the root reported its chrome from
   // its constructor (see setExtraContentHeight).
 
-#if JUCE_IOS
-  // iOS gets one fixed, full-screen window: no corner drags, no host resize
-  // request, no persisted size. The kiosk window hands us its bounds and the
-  // root fits into them (see fitRoot): the 4:3 screen stretches the column
-  // by what it has over the design box.
-  setSize(design::kWidth, minDesignHeight());
-  setResizable(false, false);
-#else
-  setResizable(true, true);
-  // Read the persisted shape before installing the constrainer: it snaps the
-  // editor to the 1x minimum, and resized() writes that back through the
-  // processor. Limits first: setConstrainer reads them to decide whether the
-  // host may resize us at all.
-  const auto start = startFit();
-  bounds_.setMinDesignHeight(minDesignHeight());
-  bounds_.updateLimitsFor(design::kWidth);
-  setConstrainer(&bounds_);
-  applyScaledSize(start.scale, start.stretch);
-#endif
+  if (kiosk_) {
+    // The iPad app gets one fixed, full-screen window: no corner drags, no
+    // host resize request, no persisted size. The kiosk window hands us its
+    // bounds and the root fits into them (see fitRoot): the 4:3 screen
+    // stretches the column by what it has over the design box.
+    setSize(design::kWidth, minDesignHeight());
+    setResizable(false, false);
+  } else {
+    setResizable(true, true);
+    // Read the persisted shape before installing the constrainer: it snaps
+    // the editor to the 1x minimum, and resized() writes that back through
+    // the processor. Limits first: setConstrainer reads them to decide
+    // whether the host may resize us at all.
+    const auto start = startFit();
+    bounds_.setMinDesignHeight(minDesignHeight());
+    bounds_.updateLimitsFor(design::kWidth);
+    setConstrainer(&bounds_);
+    applyScaledSize(start.scale, start.stretch);
+  }
   // Separates a crash inside PluginRoot's construction (log stops at "Fonts
   // ready") from one in the host's window attach (stops here).
   trace("Constructed: " + juce::String(getWidth()) + "x" + juce::String(getHeight()));
@@ -166,11 +178,12 @@ void NativeEditor::setExtraContentHeight(int total, int persistent) {
   // A taller box keeps the current scale until the (possibly async or
   // refused) host resize lands, or the grace period ends.
   shrinkAllowedAtMs_ = grew ? juce::Time::currentTimeMillis() + kShrinkGraceMs : 0;
-#if JUCE_IOS
-  // The window is the screen; it cannot grow. The column gives up the
-  // strip's height from its stretch, or the box shrinks to fit.
-  fitRoot();
-#else
+  if (kiosk_) {
+    // The window is the screen; it cannot grow. The column gives up the
+    // strip's height from its stretch, or the box shrinks to fit.
+    fitRoot();
+    return;
+  }
   // Keep the scale and the stretch, grow by the strip. setSize() reaches the
   // host as a resize request through the plugin wrapper (resizeView in
   // VST3); a host that refuses keeps the old size, and fitRoot takes the
@@ -180,7 +193,6 @@ void NativeEditor::setExtraContentHeight(int total, int persistent) {
   bounds_.setMinDesignHeight(minDesignHeight());
   applyScaledSize(currentScale(), root_.stretch());
   fitRoot();
-#endif
 }
 
 void NativeEditor::fitRoot() {
@@ -229,16 +241,15 @@ void NativeEditor::resized() {
           juce::String(extraContentHeight_) + ")");
   }
   fitRoot();
-#if !JUCE_IOS
+  if (kiosk_) return;  // no chosen shape: the window is the screen
   // The height range hosts read follows the width we now have.
   bounds_.updateLimitsFor(getWidth());
   // Persist the user's (or host's) chosen shape; skip while correcting our
-  // own size. No chosen shape exists on iOS (the window is the screen).
+  // own size.
   if (!restoringSize_) {
     processor_.editorScale.store(currentScale());
     processor_.editorStretch.store(root_.stretch());
   }
-#endif
 }
 
 // Key presses reach the editor when no control took them (the peer falls
@@ -258,7 +269,7 @@ void NativeEditor::visibilityChanged() { services_.clock.wake(); }
 void NativeEditor::parentHierarchyChanged() {
   services_.clock.wake();
   logPeerAttached();
-#if !JUCE_IOS
+  if (kiosk_) return;  // the kiosk window has no title bar to flip
   if (auto* window = dynamic_cast<juce::DocumentWindow*>(getTopLevelComponent())) {
     // Flipping the native title bar on relayouts the window's content split
     // and can briefly mis-size us; re-assert our exact size so JUCE's own
@@ -277,7 +288,6 @@ void NativeEditor::parentHierarchyChanged() {
       if (self != nullptr) self->restoringSize_ = false;
     });
   }
-#endif
 }
 
 }  // namespace t3k::ui

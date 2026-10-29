@@ -29,6 +29,11 @@ constexpr const char* kOr = "OR";
 constexpr const char* kGettingCode = "Getting a code for your phone";
 // After AuthFlow::Device::error's sentence.
 constexpr const char* kDeviceHelp = "Get a new one, or finish on your browser.";
+// AuthFlow::deviceOnly (the iOS AUv3): no browser to finish on, but the
+// TONE3000 app's sign-in is the plugin's too.
+constexpr const char* kDeviceHelpApp = "Get a new one, or sign in with the TONE3000 app.";
+constexpr const char* kAppCopy =
+    "Or sign in with the TONE3000 app on this iPad. The plugin picks that up on its own.";
 constexpr const char* kReturning = "Finishing sign-in";
 constexpr const char* kCopyLink = "Copy Link", *kCopied = "Copied";
 constexpr const char* kLinkCopied = "Sign-in link copied";
@@ -238,15 +243,21 @@ void SignInScreen::rebuild() {
     addComponent(dots_, 0).height = kDotsRow;
     addText(headline, kCopyPx, theme::kWhite, kCopyMaxWidth, kGap);
   } else if (flow.device && flow.device->state == DeviceState::waiting) {
-    // The device page (mockup 13342:46055).
+    // The device page (mockup 13342:46055); with no browser path under it,
+    // the app is the other way in.
     deviceCards_.setDevice(*flow.device);
     headline = juce::String(kPhoneTitle) + ". " + deviceCards_.spoken();
     addComponent(phoneTitle_, 0);
     addComponent(deviceCards_, kSectionGap);
+    if (flow.deviceOnly) {
+      headline << " " << kAppCopy;
+      addText(kAppCopy, kCopyPx, theme::kGray, kWideMaxWidth, kSectionGap);
+    }
   } else if (flow.device && flow.device->state == DeviceState::failed) {
-    headline = flow.device->error + " " + kDeviceHelp;
+    headline = flow.device->error + " " + (flow.deviceOnly ? kDeviceHelpApp : kDeviceHelp);
     addText(headline, kCopyPx, theme::kWhite, kWideMaxWidth, 0);
-    addButtons({&newCode_, &copyLink_}, kGap);
+    if (flow.deviceOnly) addButtons({&newCode_}, kGap);  // no authorize URL to copy
+    else addButtons({&newCode_, &copyLink_}, kGap);
   } else {
     // Waiting on the browser (mockup 13342:46017), the fallbacks under it.
     const juce::String copy = flow.browserProblem.isNotEmpty() ? flow.browserProblem + " " + kProblemHelp

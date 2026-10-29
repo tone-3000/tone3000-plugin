@@ -254,6 +254,21 @@ exchanged for tokens (`Tone3000Client`, persisted in `UiPrefs`, refreshed
 transparently with a single in-flight refresh and one 401 retry). Closing
 the editor stops the listener and the polling; a stale callback is ignored.
 
+The iOS AUv3 can do neither browser path (an app extension cannot open
+Safari or present the sheet), but the device flow never leaves the
+process, so `Tone3000Session::Config::signInViaApp` turns `login()` into:
+already signed in through the TONE3000 app, whose preferences file (and so
+whose tokens) the plugin shares through the App Group container? Then the
+gated action goes ahead. Otherwise the flow enters `leaving` with
+`AuthFlow::deviceOnly` set and the device code requested at once, so the
+`SignInScreen` opens on the device page itself (no browser page, no Copy
+Link, a line under the cards that the app's sign-in counts too, and the
+expired-code page offers New code alone), while the session also re-reads
+the shared file every second (`kAppSignInPollMs`); the code's approval or
+the app's sign-in, whichever lands first, finishes like any sign-in. The
+testbed's `MockSession` plays this with `api.authorize: "app"`
+(`load-oauth-app-device*`).
+
 ## The tone browser (Select tone)
 
 The screen takes over everything under the header (meters, chain and

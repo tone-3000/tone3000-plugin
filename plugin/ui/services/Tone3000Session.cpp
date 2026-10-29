@@ -254,6 +254,20 @@ void Tone3000Session::login(LoginIntent intent) {
     return;
   }
   lastIntent_ = intent;
+  if (config_.signInViaApp) {
+    // The app may have signed in since this editor last looked: then the
+    // gated action simply goes ahead. Otherwise there is no browser to
+    // send anywhere: the device code is the sign-in, the screen opens on
+    // it, and the app's sign-in is watched for alongside.
+    if (adoptAppSignIn()) return;
+    stopDeviceFlow();
+    flow_ = {};
+    flow_.deviceOnly = true;
+    setFlow(AuthFlow::Phase::leaving);
+    startDeviceFlow();
+    appSignInPoll_.start(kAppSignInPollMs, [this] { pollAppSignIn(); });
+    return;
+  }
   stopDeviceFlow();
   // The sign-in screen comes up at once; the browser takes a beat.
   setFlow(AuthFlow::Phase::leaving);
@@ -280,8 +294,27 @@ void Tone3000Session::cancelFlow() {
   sheet_.cancel();
   pkce_.reset();
   stopDeviceFlow();
+  appSignInPoll_.cancel();
   if (flow_.phase == AuthFlow::Phase::leaving || flow_.phase == AuthFlow::Phase::returning)
     setFlow(AuthFlow::Phase::idle);
+}
+
+// Sign-in through the app (Config::signInViaApp)
+bool Tone3000Session::adoptAppSignIn() {
+  prefs_.sync();  // the app writes the tokens; our copy of the file is stale
+  if (!authenticated()) return false;
+  appSignInPoll_.cancel();
+  stopDeviceFlow();  // the code, if one was pending, has nothing left to do
+  // The tokens never passed through setTokens here, so native has no
+  // Bearer yet: push one the same way a remembered login does.
+  ensureNativeAuth({});
+  settleSignIn();
+  return true;
+}
+
+void Tone3000Session::pollAppSignIn() {
+  if (flow_.phase != AuthFlow::Phase::leaving || !flow_.deviceOnly) return;  // cancelled meanwhile
+  if (!adoptAppSignIn()) appSignInPoll_.start(kAppSignInPollMs, [this] { pollAppSignIn(); });
 }
 
 void Tone3000Session::handleCallback(const juce::String& query) {
@@ -316,12 +349,17 @@ void Tone3000Session::handleCallback(const juce::String& query) {
 }
 
 void Tone3000Session::finishSignIn(const Tokens& tokens) {
-  const bool wantsBrowser = lastIntent_ == LoginIntent::browse;
   loopback_.stop();
   sheet_.cancel();
   pkce_.reset();
   stopDeviceFlow();
+  appSignInPoll_.cancel();
   client_.setTokens(tokens);
+  settleSignIn();
+}
+
+void Tone3000Session::settleSignIn() {
+  const bool wantsBrowser = lastIntent_ == LoginIntent::browse;
   notifySessionChanged();
   refreshUser();
   if (wantsBrowser && onAuthenticated) onAuthenticated();

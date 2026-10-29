@@ -155,6 +155,12 @@ jobs:
       # where the app-store-connect method and the API key re-sign the
       # archive. The build number is the run number: App Store Connect
       # refuses one it has already seen for a marketing version.
+      #
+      # The app embeds the AUv3 extension (docs/ios.md, AUv3), so there are
+      # two bundle ids to sign, <id> and <id>.TONE3000AUv3, both carrying the
+      # App Group entitlement. Automatic signing with -allowProvisioningUpdates
+      # registers the second App ID, the group and the capability on both,
+      # and makes the two profiles; nothing is listed here by hand.
       - name: Configure CMake
         run: |
           cmake --preset ios-device \

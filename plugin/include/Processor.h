@@ -517,9 +517,9 @@ public:
   static juce::File getLogFile();
 
   // Location of the shared machine-wide settings file (the multi-core
-  // preference). Logged once at startup (see the constructor) so
-  // a "settings don't persist" report can be diagnosed straight from the
-  // log instead of guessed at.
+  // preference), in the app-data root (AppData.h). Logged once at startup
+  // (see the constructor) so a "settings don't persist" report can be
+  // diagnosed straight from the log instead of guessed at.
   static juce::File getSettingsFile();
 
   // PropertiesFile options for the native UI's per-machine preferences
