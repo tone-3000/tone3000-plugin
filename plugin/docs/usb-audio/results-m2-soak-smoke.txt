@@ -1,0 +1,4 @@
+# M2.4 L3 soak (script/usb-scenarios.sh)
+# layout=8 x 4, ring=128, rate=48000, screen_off=true
+timestamp,elapsed_s,capUrb,playUrb,capPkts,playPkts,xruns,ringOver,ringUnder,submitFail,fbErr,fbVal,drift,cap_pkts_per_s,play_pkts_per_s
+2026-10-17T23:57:48-07:00,62,64832,64825,518656,518600,0,0,4,0,0,6.00000,0.0,7932,7932

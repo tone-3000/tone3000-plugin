@@ -7,6 +7,11 @@ build-arm64/
 build-x86_64/
 build-ios/
 build-ios-device/
+build-android/
+android/local.properties
+android/.gradle/
+android/*/.cxx/
+.idea/
 release-build/
 vs-build/
 output/
@@ -24,3 +29,6 @@ TONE3000-CERTS/
 notes/
 build-ui/
 build-ui-release/
+
+t3k-usb-low-latency.md
+__pycache__/

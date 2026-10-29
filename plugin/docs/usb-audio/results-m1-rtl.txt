@@ -1,0 +1,48 @@
+M1.6 rtl self-measurement and URB layout sweep (probe rtl/sweep modes)
+date: 2026-10-17
+device: Galaxy Tab S10 FE + Zoom AMS-22, 48 kHz/2ch/subslot 4
+method: plan section 4.1. 2 ms exponential sine sweep at -12 dBFS played
+through the stream, cross-correlated against the capture. rtlMs = burst
+start to capture arrival (our buffering + device loopback/converter path).
+peakRatio is the peak/next-lobe sanity metric (garbage below 3.0).
+
+digital loopback (device mixes playback into capture; plan D5):
+  trial=1 rtlMs=4.333  peakRatio=21.0 lag=208
+  trial=2 rtlMs=9.958  peakRatio=21.1 lag=478
+  trial=3 rtlMs=12.021 peakRatio=22.7 lag=577
+  trial=4 rtlMs=7.854  peakRatio=18.6 lag=377
+  trial=5 rtlMs=11.188 peakRatio=22.8 lag=537
+  median=9.958 ms over 5 trials worstRatio=18.6 xruns=0
+
+analog loopback (cable: AMS-22 OUT -> AMS-22 IN; includes the converters):
+  trial=1 rtlMs=5.333  peakRatio=26.5 lag=256
+  trial=2 rtlMs=12.021 peakRatio=22.2 lag=577
+  trial=3 rtlMs=11.229 peakRatio=22.2 lag=539
+  trial=4 rtlMs=9.521  peakRatio=26.9 lag=457
+  trial=5 rtlMs=9.521  peakRatio=21.1 lag=457
+  median=9.521 ms over 5 trials worstRatio=21.1 xruns=1
+
+  Analog - digital = -0.44 ms: the AMS-22's DAC+ADC sit inside the
+  measurement's variance at this layout. Consistent with the 1-2 ms
+  converter estimate in the M0 budget table.
+
+sweep (one trial per layout, digital loopback, 500 ms each):
+  packetsPerUrb,urbsInFlight,rtlMs,peakRatio,xruns
+  1,2,-1.000,1.1,1     (no detection: 125 us URBs are degenerate in the spike)
+  1,3,-1.000,1.0,0
+  1,4,-1.000,1.2,0
+  2,2,-1.000,1.0,0
+  2,3,1.250,9.6,0      <- best valid
+  2,4,2.021,12.3,0
+  4,2,1.917,21.3,0
+  4,3,2.854,10.3,0
+  4,4,3.396,21.3,0
+  8,2,3.333,11.0,0
+  8,3,4.312,20.8,0
+  8,4,5.292,23.6,0
+
+  RTL grows with URB size and depth (queueing behind already-submitted
+  URBs on both sides), exactly as the plan's section 6.3 predicts. The
+  M1.6 target (our buffering <= 2 ms) is met at 2 packets x 3 URBs
+  (1.25 ms) and 4 x 2 (1.92 ms). The 3x8 default exists for xrun margin;
+  M2's ClockModel/feedback work decides the shipping layout.

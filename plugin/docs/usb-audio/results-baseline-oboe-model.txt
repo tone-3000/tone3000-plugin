@@ -1,0 +1,64 @@
+M0 baseline: Oboe path, NAM model loaded, monitoring live
+date: 2026-10-17T21:43:36-07:00
+host: Samsung Galaxy Tab S10 FE (SM-X520), Android 16
+device under test: Zoom AMS-22 (UAC2), input gain 5/10, output 10/10, headphones unplugged
+rig: EVO out 1 -> AMS-22 IN; AMS-22 MAIN R -> EVO in 2; EVO out 2 -> EVO in 1 (reference)
+method: --window-ms 30,300 (selects the app path; the AMS-22's raw ~1 ms feed excluded)
+note: after probe usbfs claims the app must be restarted with the device already
+re-enumerated, else it silently falls back to the tablet speaker+mic
+---
+[  1/20] rtl= 137.250 ms  peakRatio ref=154.08 path= 28.58
+[  2/20] rtl=  41.188 ms  peakRatio ref=147.94 path=  1.02
+[  3/20] rtl= 137.417 ms  peakRatio ref=132.47 path= 31.20
+[  4/20] rtl= 136.667 ms  peakRatio ref=138.44 path=  2.06
+[  5/20] rtl= 137.417 ms  peakRatio ref=157.99 path= 24.97
+[  6/20] rtl= 137.438 ms  peakRatio ref=133.00 path= 28.40
+[  7/20] rtl= 136.979 ms  peakRatio ref=168.44 path=  1.90
+[  8/20] rtl= 137.188 ms  peakRatio ref=145.67 path=  4.47
+[  9/20] rtl= 137.146 ms  peakRatio ref=156.36 path=  7.72
+[ 10/20] rtl= 137.208 ms  peakRatio ref=150.85 path= 12.18
+[ 11/20] rtl= 137.208 ms  peakRatio ref=163.42 path= 19.31
+[ 12/20] rtl= 137.208 ms  peakRatio ref=177.32 path= 23.98
+[ 13/20] rtl=  49.604 ms  peakRatio ref=154.59 path=  1.16
+[ 14/20] rtl= 137.250 ms  peakRatio ref=129.98 path= 28.13
+[ 15/20] rtl= 137.417 ms  peakRatio ref=170.09 path= 23.41
+[ 16/20] rtl= 137.417 ms  peakRatio ref=133.37 path= 26.19
+[ 17/20] rtl= 137.250 ms  peakRatio ref=166.62 path= 26.11
+[ 18/20] rtl= 137.438 ms  peakRatio ref=163.61 path= 26.35
+[ 19/20] rtl=  73.417 ms  peakRatio ref=164.74 path=  9.66
+[ 20/20] rtl=  93.438 ms  peakRatio ref=155.32 path=  9.90
+
+median rtl = 137.208 ms over 20 trials  (min 41.188, max 137.438)
+worst peak/next-lobe ratio = 1.02  [GARBAGE: < 3.0]
+M0 baseline: Oboe path, NAM model loaded (chain active), monitoring live, videos paused
+date: 2026-10-17T21:44:29-07:00
+host: Samsung Galaxy Tab S10 FE (SM-X520), Android 16
+device under test: Zoom AMS-22 (UAC2), input gain 5/10, output 10/10, headphones unplugged
+rig: EVO out 1 -> AMS-22 IN; AMS-22 MAIN R -> EVO in 2; EVO out 2 -> EVO in 1 (reference)
+method: --window-ms 30,300 (app path only; the AMS-22's raw ~1 ms feed excluded)
+finding: the model chain's latency is UNSTABLE (73-137 ms across trials);
+the bypass path is rock stable at 88.188 ms. Jitter is audible as artifacts.
+---
+[  1/20] rtl= 101.604 ms  peakRatio ref=137.43 path= 11.80
+[  2/20] rtl= 101.625 ms  peakRatio ref=143.60 path=  8.57
+[  3/20] rtl= 101.604 ms  peakRatio ref=150.04 path=  9.83
+[  4/20] rtl= 101.604 ms  peakRatio ref=137.54 path= 10.16
+[  5/20] rtl= 101.438 ms  peakRatio ref=162.50 path= 10.53
+[  6/20] rtl= 101.604 ms  peakRatio ref=142.47 path=  8.88
+[  7/20] rtl= 101.604 ms  peakRatio ref=149.52 path= 10.25
+[  8/20] rtl=  77.438 ms  peakRatio ref=131.57 path=  9.89
+[  9/20] rtl=  81.604 ms  peakRatio ref=136.49 path= 10.27
+[ 10/20] rtl=  81.625 ms  peakRatio ref=140.94 path= 10.55
+[ 11/20] rtl=  81.438 ms  peakRatio ref=122.33 path=  9.88
+[ 12/20] rtl=  81.625 ms  peakRatio ref=147.08 path=  9.26
+[ 13/20] rtl=  81.604 ms  peakRatio ref=150.65 path=  9.03
+[ 14/20] rtl=  81.438 ms  peakRatio ref=144.62 path= 10.85
+[ 15/20] rtl=  81.438 ms  peakRatio ref=130.96 path=  8.81
+[ 16/20] rtl=  81.604 ms  peakRatio ref=149.06 path=  8.98
+[ 17/20] rtl=  81.604 ms  peakRatio ref=140.72 path=  9.36
+[ 18/20] rtl= 105.458 ms  peakRatio ref=136.82 path= 12.76
+[ 19/20] rtl=  73.604 ms  peakRatio ref=138.58 path= 10.52
+[ 20/20] rtl=  93.604 ms  peakRatio ref=155.70 path= 10.63
+
+median rtl = 81.625 ms over 20 trials  (min 73.604, max 105.458)
+worst peak/next-lobe ratio = 8.57

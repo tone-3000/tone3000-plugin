@@ -4,6 +4,10 @@
 #include "IosAudioRoute.h"
 #include "Processor.h"
 
+#if JUCE_ANDROID
+#include "UsbDirectAudioDevice.h"
+#endif
+
 #include <cmath>
 
 // The standalone filter window header expects the full GUI/audio module set
@@ -122,6 +126,37 @@ StandaloneAudioSettings::StandaloneAudioSettings(TONE3000Processor& p,
   jassert(isAvailable());
   if (auto* dm = deviceManager())
     dm->addChangeListener(this);
+#if JUCE_ANDROID
+  // USB Direct (plan M3/D4): register the custom type next to Oboe. Oboe
+  // stays the default; this only adds "USB Direct" to the driver picker.
+  if (auto* dm = deviceManager()) {
+    bool hasUsbDirect = false;
+    for (auto* type : dm->getAvailableDeviceTypes())
+      if (type->getTypeName() == "USB Direct") hasUsbDirect = true;
+    if (!hasUsbDirect)
+      dm->addAudioDeviceType(std::make_unique<t3k::UsbDirectAudioIODeviceType>());
+    // addAudioDeviceType() does not scan; without this the marker switch
+    // below sees an empty device list and selects a device-less type.
+    for (auto* type : dm->getAvailableDeviceTypes())
+      if (type->getTypeName() == "USB Direct") type->scanForDevices();
+    // Debug/measurement hook for the M3 run: the activity creates this
+    // marker from `am start ... --ez usbDirect true`.
+    if (juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+            .getChildFile("usb_direct_test")
+            .existsAsFile()) {
+      dm->setCurrentAudioDeviceType("USB Direct", true);
+      juce::Logger::writeToLog(juce::String("USB Direct: select ")
+                               + (dm->getCurrentAudioDeviceType() == "USB Direct" ? "ok"
+                                                                                  : "failed")
+                               + ", current=" + dm->getCurrentAudioDeviceType() +
+                               ", device=" +
+                               (dm->getCurrentAudioDevice() != nullptr
+                                    ? dm->getCurrentAudioDevice()->getName()
+                                    : juce::String("none")));
+      applyRememberedOrPreferredSetup();
+    }
+  }
+#endif
   // iOS: Measurement mode, and no Bluetooth headset mic route (see
   // IosAudioRoute.h). No-op off iOS.
   applyRawInputMode();
@@ -145,6 +180,26 @@ void StandaloneAudioSettings::changeListenerCallback(juce::ChangeBroadcaster*) {
   applyRawInputMode();
   ensureInitialPolicies();
   applyMonitoringPolicy();
+  // Plan M3.5: one diagnostics line per state change. Latency is the device's
+  // own readback, not the requested setup; drift only exists on backends that
+  // estimate it. Android-only so desktop and iOS behavior is unchanged.
+#if JUCE_ANDROID
+  if (auto* dm = deviceManager()) {
+    if (auto* device = dm->getCurrentAudioDevice()) {
+      juce::String line =
+          "[AudioSettings] " + dm->getCurrentAudioDeviceType() + " | " +
+          device->getName() + " | " +
+          juce::String(device->getCurrentSampleRate(), 0) + " Hz, " +
+          juce::String(device->getCurrentBufferSizeSamples()) + " frames, in " +
+          juce::String(device->getInputLatencyInSamples()) + " / out " +
+          juce::String(device->getOutputLatencyInSamples()) + " samples, xruns " +
+          juce::String(device->getXRunCount());
+      if (auto* diag = dynamic_cast<t3k::AudioDeviceDiagnostics*>(device))
+        line << ", drift " << juce::String(diag->getDriftPpm(), 1) << " ppm";
+      juce::Logger::writeToLog(line);
+    }
+  }
+#endif
   if (onDeviceStateChanged)
     onDeviceStateChanged();
 }
@@ -246,6 +301,25 @@ juce::var StandaloneAudioSettings::getState() {
   obj->setProperty("sampleRate", device != nullptr ? device->getCurrentSampleRate() : 0.0);
   obj->setProperty("bufferSize", device != nullptr ? device->getCurrentBufferSizeSamples() : 0);
 
+  // Honest diagnostics (plan M3.1/M3.5): the device's own latency readback,
+  // its xrun counter, and drift when the backend estimates it. These are
+  // readback values, not the requested setup.
+  obj->setProperty("inputLatencySamples",
+                   device != nullptr ? device->getInputLatencyInSamples() : 0);
+  obj->setProperty("outputLatencySamples",
+                   device != nullptr ? device->getOutputLatencyInSamples() : 0);
+  obj->setProperty("xrunCount", device != nullptr ? device->getXRunCount() : 0);
+  double driftPpm = 0.0;
+  bool hasDrift = false;
+#if JUCE_ANDROID
+  if (auto* diag = dynamic_cast<t3k::AudioDeviceDiagnostics*>(device)) {
+    driftPpm = diag->getDriftPpm();
+    hasDrift = true;
+  }
+#endif
+  obj->setProperty("driftPpm", driftPpm);
+  obj->setProperty("hasDrift", hasDrift);
+
   obj->setProperty("hasControlPanel", device != nullptr && device->hasControlPanel());
   obj->setProperty("hearYourself",
                    !static_cast<bool>(holder()->getMuteInputValue().getValue()));
@@ -285,6 +359,27 @@ juce::var StandaloneAudioSettings::setDeviceType(const juce::String& typeName) {
   if (dm == nullptr)
     return makeResult("Audio settings are unavailable.");
 
+  // Selecting the current type again must not close and reopen the stream.
+  // The reopen is where a failed USB Direct open used to fall back to Oboe.
+  if (typeName == dm->getCurrentAudioDeviceType())
+    return makeResult({});
+
+#if JUCE_ANDROID
+  // Leaving USB Direct hands the device back to the Android audio HAL, which
+  // still has no kernel driver bound to the interfaces we claimed. The HAL
+  // retries and the binder call blocks the message thread long enough to ANR
+  // (observed 2026-10-19: input dispatch timed out, audioserver 40% CPU).
+  // Only a physical replug rebinds snd-usb-audio, so ask for it rather than
+  // hanging the UI. With no open device (AMS unplugged) the switch is fine.
+  if (dm->getCurrentAudioDeviceType() == "USB Direct" && typeName != "USB Direct" &&
+      dm->getCurrentAudioDevice() != nullptr) {
+    return makeResult(
+        "Replug the AMS-22 before switching to " + typeName +
+        ". USB Direct still holds the interface, and the Android audio driver "
+        "only rebinds on a physical replug.");
+  }
+#endif
+
   // Entirely new device context; any tracked request belongs to the old type.
   explicitInputChannels.clear();
   explicitOutputChannels.clear();
@@ -304,7 +399,31 @@ juce::var StandaloneAudioSettings::setDevice(const juce::String& kind,
   if (dm == nullptr)
     return makeResult("Audio settings are unavailable.");
 
+#if JUCE_ANDROID
+  // Selecting the AMS-22 on Oboe while snd-usb-audio is detached makes
+  // AAudio's openStream block inside the audio HAL (ANR 2026-10-19,
+  // audioserver binder wait). The kernel driver only rebinds on a physical
+  // replug, so refuse with that instruction instead of hanging the UI.
+  if (dm->getCurrentAudioDeviceType() != "USB Direct" &&
+      name.containsIgnoreCase("AMS-22") && !t3k::usbDirectKernelDriverBound()) {
+    return makeResult(
+        "Replug the AMS-22 before selecting it. Its kernel driver is detached "
+        "after USB Direct, and Android's audio driver only rebinds on a "
+        "physical replug.");
+  }
+#endif
+
   auto setup = dm->getAudioDeviceSetup();
+
+  // Re-selecting the device that is already open is not a change; reopening
+  // it needlessly risks the Oboe fallback path (and an ANR). Retry uses
+  // restartDevice(), not this setter.
+  const bool sameDevice =
+      (kind == "linked" && name == setup.inputDeviceName && name == setup.outputDeviceName) ||
+      (kind == "input" && name == setup.inputDeviceName) ||
+      (kind == "output" && name == setup.outputDeviceName);
+  if (dm->getCurrentAudioDevice() != nullptr && sameDevice)
+    return makeResult({});
 
   // The side(s) whose device is changing get a fresh device context; a mask
   // tracked for the old device on that side no longer means anything (and

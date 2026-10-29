@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Any USB Audio class device (class 1): the AMS-22 is UAC2 but the probe
+     should offer itself for every class-compliant interface. -->
+<resources>
+    <usb-device class="1" />
+</resources>

@@ -95,11 +95,12 @@ NativeEditor::NativeEditor(TONE3000Processor& owner)
   // extraContentHeight_ is already set: the root reported its chrome from
   // its constructor (see setExtraContentHeight).
 
-#if JUCE_IOS
-  // iOS gets one fixed, full-screen window: no corner drags, no host resize
-  // request, no persisted size. The kiosk window hands us its bounds and the
-  // root fits into them (see fitRoot): the 4:3 screen stretches the column
-  // by what it has over the design box.
+#if JUCE_IOS || JUCE_ANDROID
+  // iOS and Android get one fixed, full-screen window: no corner drags, no
+  // host resize request, no persisted size. The kiosk window hands us its
+  // bounds and the root fits into them (see fitRoot): the 4:3 screen
+  // stretches the column by what it has over the design box. Android keeps
+  // this design-size guess until parentHierarchyChanged corrects it.
   setSize(design::kWidth, minDesignHeight());
   setResizable(false, false);
 #else
@@ -166,7 +167,7 @@ void NativeEditor::setExtraContentHeight(int total, int persistent) {
   // A taller box keeps the current scale until the (possibly async or
   // refused) host resize lands, or the grace period ends.
   shrinkAllowedAtMs_ = grew ? juce::Time::currentTimeMillis() + kShrinkGraceMs : 0;
-#if JUCE_IOS
+#if JUCE_IOS || JUCE_ANDROID
   // The window is the screen; it cannot grow. The column gives up the
   // strip's height from its stretch, or the box shrinks to fit.
   fitRoot();
@@ -229,11 +230,12 @@ void NativeEditor::resized() {
           juce::String(extraContentHeight_) + ")");
   }
   fitRoot();
-#if !JUCE_IOS
+#if !(JUCE_IOS || JUCE_ANDROID)
   // The height range hosts read follows the width we now have.
   bounds_.updateLimitsFor(getWidth());
   // Persist the user's (or host's) chosen shape; skip while correcting our
-  // own size. No chosen shape exists on iOS (the window is the screen).
+  // own size. No chosen shape exists on iOS or Android (the window is the
+  // screen).
   if (!restoringSize_) {
     processor_.editorScale.store(currentScale());
     processor_.editorStretch.store(root_.stretch());
@@ -258,7 +260,16 @@ void NativeEditor::visibilityChanged() { services_.clock.wake(); }
 void NativeEditor::parentHierarchyChanged() {
   services_.clock.wake();
   logPeerAttached();
-#if !JUCE_IOS
+#if JUCE_ANDROID
+  // Unlike UIKit, Android's peer keeps whatever size we ask for, so the
+  // constructor's design-size guess would stick. The displays aren't known
+  // at construction time but are once we're parented; the window's own
+  // bounds aren't reliable yet (they can still be a placeholder).
+  if (auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
+    setSize(juce::roundToInt(display->userBounds.getWidth()),
+            juce::roundToInt(display->userBounds.getHeight()));
+#endif
+#if !(JUCE_IOS || JUCE_ANDROID)
   if (auto* window = dynamic_cast<juce::DocumentWindow*>(getTopLevelComponent())) {
     // Flipping the native title bar on relayouts the window's content split
     // and can briefly mis-size us; re-assert our exact size so JUCE's own

@@ -20,10 +20,11 @@ void LocalFiles::pick(const std::string& targetBlockId, Kind kind) {
   if (chooser_ != nullptr) return;
   const bool folder = kind == Kind::folder;
 
-#if JUCE_IOS
-  // iOS has no usable folder route: the document picker's folder URLs are
-  // security scoped and can't be enumerated, so "Load Folder" asks for the
-  // files themselves and the same many-models-at-once path runs on them.
+#if JUCE_IOS || JUCE_ANDROID
+  // iOS and Android have no usable folder route: the document picker's
+  // folder URLs (security scoped on iOS, SAF tree URIs on Android) can't be
+  // enumerated, so "Load Folder" asks for the files themselves and the same
+  // many-models-at-once path runs on them.
   chooser_ = std::make_unique<juce::FileChooser>(folder ? "Load Files" : "Load File", juce::File{},
                                                  juce::String("*.nam;*.wav"));
   const int flags = juce::FileBrowserComponent::openMode |
@@ -44,9 +45,10 @@ void LocalFiles::pick(const std::string& targetBlockId, Kind kind) {
     juce::MessageManager::callAsync([self] {
       if (self != nullptr) self->chooser_.reset();
     });
-#if JUCE_IOS
+#if JUCE_IOS || JUCE_ANDROID
     // URL results, not paths: the picked files live outside the sandbox and
-    // are only readable through the security scope JUCE bookmarked.
+    // are only readable through the security scope JUCE bookmarked (iOS) or
+    // the content:// URI the picker granted (Android).
     const auto results = chooser.getURLResults();
     if (results.isEmpty()) return;
     self->report(self->chain_.loadLocalToneUrls(results, target));

@@ -1,0 +1,8 @@
+60-minute unattended soak: probe stream mode, 3x8 layout, 48 kHz/2ch/subslot 4
+date: 2026-10-17T21:28:52-07:00; run 20:28:30 - 21:28:45, screen held on
+result: PASS - 3,608,840 capture URBs, 3,607,861 playback URBs, xruns=1 (startup artifact)
+drift estimate (reap-timing based): steady -500..-600 ppm
+---
+10-17 21:28:45.024 13916 13951 I T3KUSB  : stream: capUrb=3608840 capPkts=28870720 playUrb=3607861 playPkts=28862888 xruns=1 bytes=1385781912 drift=-479.1
+10-17 21:28:50.025 13916 13951 I T3KUSB  : stream: capUrb=3613837 capPkts=28910696 playUrb=3612856 playPkts=28902848 xruns=1 bytes=1387700760 drift=-568.6
+10-17 21:28:55.025 13916 13951 I T3KUSB  : stream: capUrb=3618837 capPkts=28950696 playUrb=3617852 playPkts=28942816 xruns=1 bytes=1389620760 drift=-361.2

@@ -1,0 +1,45 @@
+M1.5 stream soak: Galaxy Tab S10 FE + AMS-22, probe stream mode
+date: 2026-10-17T19:57:44-07:00
+layout: 3 URBs x 8 packets per direction, 48 kHz/2ch/subslot 4, implicit pacing
+result: PASS - 14.5 min, zero xruns, CPU ~24%
+--- logcat (T3KUSB) ---
+10-17 19:56:05.792  1418  1491 I T3KUSB  : stream: capUrb=779732 capPkts=6237856 playUrb=779642 playPkts=6237136 xruns=0 bytes=299414336 drift=-560.2
+10-17 19:56:05.793  1418  1491 I T3KUSB  : stream: capBytesPerUrb=383 playBytesPerUrb=384 sfCap=0 stepCap=0 sfPlay=0 stepPlay=0
+10-17 19:56:10.793  1418  1491 I T3KUSB  : stream: capUrb=784733 capPkts=6277864 playUrb=784642 playPkts=6277136 xruns=0 bytes=301334720 drift=-288.0
+10-17 19:56:10.793  1418  1491 I T3KUSB  : stream: capBytesPerUrb=383 playBytesPerUrb=384 sfCap=0 stepCap=0 sfPlay=0 stepPlay=0
+10-17 19:56:15.794  1418  1491 I T3KUSB  : stream: capUrb=789730 capPkts=6317840 playUrb=789639 playPkts=6317112 xruns=0 bytes=303253568 drift=-535.4
+10-17 19:56:15.794  1418  1491 I T3KUSB  : stream: capBytesPerUrb=383 playBytesPerUrb=384 sfCap=0 stepCap=0 sfPlay=0 stepPlay=0
+10-17 19:56:20.794  1418  1491 I T3KUSB  : stream: capUrb=794728 capPkts=6357824 playUrb=794638 playPkts=6357104 xruns=0 bytes=305172800 drift=-458.5
+10-17 19:56:20.794  1418  1491 I T3KUSB  : stream: capBytesPerUrb=383 playBytesPerUrb=384 sfCap=0 stepCap=0 sfPlay=0 stepPlay=0
+10-17 19:56:25.794  1418  1491 I T3KUSB  : stream: capUrb=799725 capPkts=6397800 playUrb=799634 playPkts=6397072 xruns=0 bytes=307091648 drift=-533.0
+10-17 19:56:25.795  1418  1491 I T3KUSB  : stream: capBytesPerUrb=383 playBytesPerUrb=384 sfCap=0 stepCap=0 sfPlay=0 stepPlay=0
+10-17 19:56:30.794  1418  1491 I T3KUSB  : stream: capUrb=804723 capPkts=6437784 playUrb=804633 playPkts=6437064 xruns=0 bytes=309010816 drift=-475.3
+10-17 19:56:30.794  1418  1491 I T3KUSB  : stream: capBytesPerUrb=383 playBytesPerUrb=384 sfCap=0 stepCap=0 sfPlay=0 stepPlay=0
+10-17 19:56:35.795  1418  1491 I T3KUSB  : stream: capUrb=809723 capPkts=6477784 playUrb=809631 playPkts=6477048 xruns=0 bytes=310930816 drift=-341.7
+10-17 19:56:35.795  1418  1491 I T3KUSB  : stream: capBytesPerUrb=383 playBytesPerUrb=384 sfCap=0 stepCap=0 sfPlay=0 stepPlay=0
+10-17 19:56:40.795  1418  1491 I T3KUSB  : stream: capUrb=814717 capPkts=6517736 playUrb=814624 playPkts=6516992 xruns=0 bytes=312848448 drift=-785.1
+10-17 19:56:40.795  1418  1491 I T3KUSB  : stream: capBytesPerUrb=383 playBytesPerUrb=384 sfCap=0 stepCap=0 sfPlay=0 stepPlay=0
+10-17 19:56:45.795  1418  1491 I T3KUSB  : stream: capUrb=819715 capPkts=6557720 playUrb=819622 playPkts=6556976 xruns=0 bytes=314767648 drift=-593.4
+10-17 19:56:45.795  1418  1491 I T3KUSB  : stream: capBytesPerUrb=383 playBytesPerUrb=384 sfCap=0 stepCap=0 sfPlay=0 stepPlay=0
+10-17 19:56:50.796  1418  1491 I T3KUSB  : stream: capUrb=824716 capPkts=6597728 playUrb=824621 playPkts=6596968 xruns=0 bytes=316688032 drift=-296.7
+10-17 19:56:50.796  1418  1491 I T3KUSB  : stream: capBytesPerUrb=383 playBytesPerUrb=384 sfCap=0 stepCap=0 sfPlay=0 stepPlay=0
+10-17 19:56:55.796  1418  1491 I T3KUSB  : stream: capUrb=829713 capPkts=6637704 playUrb=829618 playPkts=6636944 xruns=0 bytes=318606832 drift=-468.2
+10-17 19:56:55.796  1418  1491 I T3KUSB  : stream: capBytesPerUrb=383 playBytesPerUrb=384 sfCap=0 stepCap=0 sfPlay=0 stepPlay=0
+10-17 19:57:00.796  1418  1491 I T3KUSB  : stream: capUrb=834709 capPkts=6677672 playUrb=834612 playPkts=6676896 xruns=0 bytes=320525272 drift=-646.1
+10-17 19:57:00.796  1418  1491 I T3KUSB  : stream: capBytesPerUrb=383 playBytesPerUrb=384 sfCap=0 stepCap=0 sfPlay=0 stepPlay=0
+10-17 19:57:05.796  1418  1491 I T3KUSB  : stream: capUrb=839709 capPkts=6717672 playUrb=839612 playPkts=6716896 xruns=0 bytes=322445272 drift=-332.5
+10-17 19:57:05.797  1418  1491 I T3KUSB  : stream: capBytesPerUrb=383 playBytesPerUrb=384 sfCap=0 stepCap=0 sfPlay=0 stepPlay=0
+10-17 19:57:10.796  1418  1491 I T3KUSB  : stream: capUrb=844708 capPkts=6757664 playUrb=844610 playPkts=6756880 xruns=0 bytes=324364888 drift=-265.3
+10-17 19:57:10.797  1418  1491 I T3KUSB  : stream: capBytesPerUrb=383 playBytesPerUrb=384 sfCap=0 stepCap=0 sfPlay=0 stepPlay=0
+10-17 19:57:15.796  1418  1491 I T3KUSB  : stream: capUrb=849704 capPkts=6797632 playUrb=849606 playPkts=6796848 xruns=0 bytes=326283352 drift=-535.1
+10-17 19:57:15.797  1418  1491 I T3KUSB  : stream: capBytesPerUrb=383 playBytesPerUrb=384 sfCap=0 stepCap=0 sfPlay=0 stepPlay=0
+10-17 19:57:20.796  1418  1491 I T3KUSB  : stream: capUrb=854701 capPkts=6837608 playUrb=854602 playPkts=6836816 xruns=0 bytes=328202200 drift=-568.5
+10-17 19:57:20.797  1418  1491 I T3KUSB  : stream: capBytesPerUrb=383 playBytesPerUrb=384 sfCap=0 stepCap=0 sfPlay=0 stepPlay=0
+10-17 19:57:25.796  1418  1491 I T3KUSB  : stream: capUrb=859699 capPkts=6877592 playUrb=859599 playPkts=6876792 xruns=0 bytes=330121432 drift=-490.2
+10-17 19:57:25.797  1418  1491 I T3KUSB  : stream: capBytesPerUrb=383 playBytesPerUrb=384 sfCap=0 stepCap=0 sfPlay=0 stepPlay=0
+10-17 19:57:30.797  1418  1491 I T3KUSB  : stream: capUrb=864699 capPkts=6917592 playUrb=864598 playPkts=6916784 xruns=0 bytes=332041408 drift=-349.9
+10-17 19:57:30.798  1418  1491 I T3KUSB  : stream: capBytesPerUrb=383 playBytesPerUrb=384 sfCap=0 stepCap=0 sfPlay=0 stepPlay=0
+10-17 19:57:35.798  1418  1491 I T3KUSB  : stream: capUrb=869698 capPkts=6957584 playUrb=869596 playPkts=6956768 xruns=0 bytes=333961000 drift=-376.0
+10-17 19:57:35.798  1418  1491 I T3KUSB  : stream: capBytesPerUrb=383 playBytesPerUrb=384 sfCap=0 stepCap=0 sfPlay=0 stepPlay=0
+10-17 19:57:40.798  1418  1491 I T3KUSB  : stream: capUrb=874698 capPkts=6997584 playUrb=874596 playPkts=6996768 xruns=0 bytes=335881000 drift=-183.8
+10-17 19:57:40.799  1418  1491 I T3KUSB  : stream: capBytesPerUrb=383 playBytesPerUrb=384 sfCap=0 stepCap=0 sfPlay=0 stepPlay=0

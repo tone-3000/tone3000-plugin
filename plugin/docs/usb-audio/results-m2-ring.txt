@@ -1,0 +1,39 @@
+# M2.2 ring policy, on-device observation (2026-10-17)
+
+Scope: verify the ring under/overrun policy counters are surfaced and that
+the driver still streams without URB xruns after the M2.2 changes. This is
+not the M2.4 soak and it is not a latency run.
+
+Rig: Tab S10 FE + AMS-22, probe 3 URBs x 8 packets, 48 kHz/2 ch/subslot 4,
+digital loopback ON, direct monitor OFF. The probe was left running for about
+three minutes and then stopped from the app (Back, so onDestroy ran
+`nativeStop`).
+
+Observed (last 5 s sample before stopping):
+
+```
+capUrb=197197 capPkts=1577576 playUrb=194223 playPkts=1553784 xruns=0
+ringOver=503 ringUnder=4
+capBytesPerUrb=383 playBytesPerUrb=389
+fbUrb=25001 fbPkts=200008 fbErr=0 fbVal=6.00000
+```
+
+Reading:
+
+- URB-level xruns stay 0; feedback packets stay error-free.
+- `ringUnder=4` is the three playback URBs primed before the first capture
+  arrived, plus one; no underruns after the stream warmed up.
+- `ringOver` climbs at roughly 2-4 events/s. The capture and playback URB
+  rates differ by ~1.5% on this run (986/s capture vs 967/s playback), and
+  the pacer compensates by sending ~48.6 frames per playback URB (389 bytes
+  per URB vs 384 nominal). The +1-frame ceiling is just enough to keep the
+  audio rate matched, so the ring sits near full and periodically laps.
+- This is a probe scheduling symptom, not a ring-policy failure: the policy
+  drops oldest capture frames and flags the overrun as specified. M2.4's
+  chosen URB layout / pump loop must bring the playback URB rate up to
+  nominal so the ring is not sitting at its ceiling. Do not hide it with a
+  larger ring; that spends the latency budget.
+
+Host suite: 70/70 green (`script/test-usb.sh`), including the 10^8-frame
+producer/consumer stress (109 ms) and the +1-frame pacing test that would
+have caught the old scratch-buffer overrun.

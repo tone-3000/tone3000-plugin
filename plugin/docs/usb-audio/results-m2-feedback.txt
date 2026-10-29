@@ -1,0 +1,40 @@
+# M2.1 explicit-feedback smoke test (2026-10-17)
+
+Scope: verify the AMS-22's explicit feedback endpoint (0x82) is read by the
+driver core and drives playback pacing. This is not the M2.4 soak; it is the
+first on-device proof that feedback works before the layout and recovery work
+continues.
+
+Rig: Samsung Galaxy Tab S10 FE (SM-X520, Android 16) + Zoom AMS-22, probe app
+`com.TONE3000.USBCHECK`, 48 kHz / 2 ch / subslot 4, 3 URBs x 8 packets per
+direction, digital loopback switch ON, direct monitor OFF.
+
+Command:
+
+```sh
+adb shell am force-stop com.TONE3000.USBCHECK
+adb logcat -c
+adb shell am start -n com.TONE3000.USBCHECK/.MainActivity -e mode stream
+```
+
+Observed over ~95 s (probe force-stopped after the last sample):
+
+```
+capUrb=94928 capPkts=759424 playUrb=94900 playPkts=759200 xruns=0
+fbUrb=11875 fbPkts=95000 fbErr=0
+```
+
+Feedback values seen: `5.99734` (-443 ppm), `5.99898` (-170 ppm),
+`6.00000` (0 ppm). These are the device's own 16.16 values; one LSB at
+6 frames/microframe is 15.26 ppm, so the stepping is expected quantisation,
+not estimator noise. The value matches the capture-based estimate that was
+previously called "scheduling noise" in `m1-report.md`.
+
+Notes:
+
+- Feedback URBs are reaped about every 8 ms, i.e. the endpoint wants one
+  packet per millisecond and the probe submits 8 packets per URB. Pacing
+  therefore updates once per 8 ms, which is ample for a few-hundred-ppm
+  drift.
+- Capture and playback xruns stayed at 0 with feedback pacing active.
+- Host suite: 66/66 green (`script/test-usb.sh`).

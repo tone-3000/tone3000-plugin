@@ -37,6 +37,11 @@ struct AudioDeviceState {
   double sampleRate = 0;
   std::vector<int> bufferSizes;
   int bufferSize = 0;
+  int inputLatencySamples = 0;
+  int outputLatencySamples = 0;
+  int xrunCount = 0;
+  double driftPpm = 0;
+  bool hasDrift = false;
   bool hasControlPanel = false;
   bool hearYourself = true;
   bool feedbackRisk = false;

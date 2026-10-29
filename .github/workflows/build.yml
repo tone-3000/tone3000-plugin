@@ -228,6 +228,17 @@ jobs:
         if: matrix.os == 'macos'
         run: ctest --test-dir build-arm64/test --output-on-failure
 
+      # USB driver core (plugin/usb/test): descriptor/control/PCM/ring/clock/
+      # URB-machine tests. Pure C++, built for every desktop target; Android
+      # and iOS cross-builds exclude them (they cannot run on the build host).
+      - name: Run USB driver tests (Linux / Windows)
+        if: matrix.os != 'macos'
+        run: ctest --test-dir build/plugin/usb/test --output-on-failure
+
+      - name: Run USB driver tests (macOS)
+        if: matrix.os == 'macos'
+        run: ctest --test-dir build-arm64/plugin/usb/test --output-on-failure
+
       # The native UI's pure-logic unit tests (plugin/ui/testbed/SelfTests.cpp:
       # parsers, wrapping, OAuth/PKCE, token refresh, the connection gate).
       # The testbed is a JUCE GUI app, so Linux gives it a virtual display.

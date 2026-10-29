@@ -120,6 +120,21 @@ public:
     const double budgetMs = juce::jlimit(0.1, 40.0, frameMs);
     for (int i = 0; i < numWorkers; ++i) {
       auto worker = std::make_unique<Worker>(*this, i);
+#if JUCE_ANDROID
+      // Never use JUCE's realtime thread on Android: its primitive is
+      // OboeRealtimeThread, one AAudio stream per thread
+      // (juce_Threads_android.cpp createNativeThread ->
+      // getAndroidRealtimeThreadFactory). Each open is a binder call through
+      // this tablet's slow audio HAL - seconds per worker, on the message
+      // thread inside prepareToPlay. Seven workers ANRed every buffer change
+      // (2026-10-19: "Preparing Oboe stream" xN, main blocked in
+      // BpAAudioService::openStream, 10 s input timeout). The plain
+      // high-priority worker is the fallback this pool already documents and
+      // accepts (join-steal absorbs scheduling misses), and SCHED_FIFO stays
+      // opt-in per the plan's 2026-10-17 decision.
+      juce::ignoreUnused(budgetMs);
+      worker->startThread(juce::Thread::Priority::highest);
+#else
       const bool startedRealtime = worker->startRealtimeThread(
           juce::Thread::RealtimeOptions{}
               .withPriority(10)
@@ -131,6 +146,7 @@ public:
       // than running with no workers at all.
       if (!startedRealtime)
         worker->startThread(juce::Thread::Priority::highest);
+#endif
       workers.push_back(std::move(worker));
     }
   }

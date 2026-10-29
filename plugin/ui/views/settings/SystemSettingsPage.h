@@ -70,6 +70,7 @@ private:
   FieldRow buffer_;
   SelectField bufferSelect_{"Buffer size"};
   Paragraph bufferCaption_;
+  Paragraph diagnostics_;
   InlineBannerAlert bufferLatency_{"buffer-latency"};
   FieldRow rate_;
   SelectField rateSelect_{"Sample rate"};

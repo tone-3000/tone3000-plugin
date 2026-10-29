@@ -38,6 +38,33 @@ juce::String bufferCaption(const AudioDeviceState& s) {
   return {};
 }
 
+// Plan M3.5: honest readback. Latency and xruns come from the device; drift is
+// only reported by backends that estimate it (USB Direct). Empty when the
+// device is closed or has nothing useful to say.
+juce::String diagnosticsCaption(const AudioDeviceState& s) {
+  // Android/USB Direct only (plan M3.5): this is the custom driver's honest
+  // readout, not a general desktop feature.
+  if (!s.deviceOpen || s.currentType != "USB Direct" || s.sampleRate <= 0.0) return {};
+  const bool hasLatency = s.inputLatencySamples > 0 || s.outputLatencySamples > 0;
+  if (!hasLatency && s.xrunCount <= 0 && !s.hasDrift) return {};
+  juce::String text;
+  if (hasLatency) {
+    const double inMs = s.inputLatencySamples * 1000.0 / s.sampleRate;
+    const double outMs = s.outputLatencySamples * 1000.0 / s.sampleRate;
+    text << "Reported latency: " << juce::String(inMs, 1) << " ms in / "
+         << juce::String(outMs, 1) << " ms out";
+  }
+  if (s.xrunCount > 0) {
+    if (text.isNotEmpty()) text << "  \xc2\xb7  ";
+    text << "xruns: " << s.xrunCount;
+  }
+  if (s.hasDrift) {
+    if (text.isNotEmpty()) text << "  \xc2\xb7  ";
+    text << "drift: " << juce::String(s.driftPpm, 1) << " ppm";
+  }
+  return text;
+}
+
 juce::String rateCaption(const AudioDeviceState& s) {
   if (s.sampleRates.size() > 1) return {};
   if (s.currentType == "JACK") return "Set by the JACK server.";
@@ -252,6 +279,7 @@ SystemSettingsPage::SystemSettingsPage(Services& services)
   };
   buffer_.content().add(bufferSelect_);
   buffer_.content().add(bufferCaption_, form::kControlGap);
+  buffer_.content().add(diagnostics_, form::kControlGap);
   buffer_.content().add(bufferLatency_, form::kControlGap);
   group_.content().add(buffer_);
 
@@ -380,6 +408,9 @@ void SystemSettingsPage::sync() {
     const auto caption = bufferCaption(s);
     bufferCaption_.setText(caption);
     buffer_.content().setShown(bufferCaption_, caption.isNotEmpty());
+    const auto diagnostics = diagnosticsCaption(s);
+    diagnostics_.setText(diagnostics);
+    buffer_.content().setShown(diagnostics_, diagnostics.isNotEmpty());
     buffer_.content().setShown(bufferLatency_, bufferLatency_.update(s));
     card.setShown(buffer_, !s.bufferSizes.empty());
   }

@@ -1,0 +1,30 @@
+M0 baseline: Oboe path, chain bypassed (no NAM model), monitoring live
+date: 2026-10-17T13:25:55-07:00
+host: Samsung Galaxy Tab S10 FE (SM-X520), Android 16, kernel 6.6.102-android15
+device under test: Zoom AMS-22 (UAC2), input gain 5/10, output 10/10, direct monitor OFF, digital loopback OFF
+rig: EVO8 Main L -> AMS-22 IN; AMS-22 OUT -> EVO8 in2; EVO8 Main R -> EVO8 in1 (reference)
+script: script/rtl_pc.py --trials 20 --probe sweep --rate 48000 --out-channels 0,1
+---
+[  1/20] rtl=  88.208 ms  peakRatio ref=332.86 path=161.63
+[  2/20] rtl=  88.188 ms  peakRatio ref=334.90 path=155.27
+[  3/20] rtl=  88.188 ms  peakRatio ref=335.39 path=156.14
+[  4/20] rtl=  88.188 ms  peakRatio ref=333.16 path=163.04
+[  5/20] rtl=  88.208 ms  peakRatio ref=330.29 path=161.63
+[  6/20] rtl=  88.188 ms  peakRatio ref=332.97 path=155.09
+[  7/20] rtl=  88.188 ms  peakRatio ref=332.58 path=165.47
+[  8/20] rtl=  88.188 ms  peakRatio ref=333.07 path=167.98
+[  9/20] rtl=  88.208 ms  peakRatio ref=329.49 path=164.83
+[ 10/20] rtl=  88.188 ms  peakRatio ref=333.96 path=154.67
+[ 11/20] rtl=  88.188 ms  peakRatio ref=336.33 path=167.81
+[ 12/20] rtl=  88.208 ms  peakRatio ref=330.04 path=162.99
+[ 13/20] rtl=  88.208 ms  peakRatio ref=328.41 path=157.74
+[ 14/20] rtl=  88.208 ms  peakRatio ref=332.39 path=167.54
+[ 15/20] rtl=  88.188 ms  peakRatio ref=335.14 path=164.99
+[ 16/20] rtl=  88.188 ms  peakRatio ref=333.01 path=161.43
+[ 17/20] rtl=  88.188 ms  peakRatio ref=334.97 path=159.68
+[ 18/20] rtl=  88.188 ms  peakRatio ref=336.48 path=161.19
+[ 19/20] rtl=  88.208 ms  peakRatio ref=330.28 path=166.65
+[ 20/20] rtl=  88.188 ms  peakRatio ref=329.86 path=170.47
+
+median rtl = 88.188 ms over 20 trials  (min 88.188, max 88.208)
+worst peak/next-lobe ratio = 154.67

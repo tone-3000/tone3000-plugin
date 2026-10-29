@@ -1,3 +1,9 @@
 # Preset files are magic-prefixed binary ValueTree streams; never diff,
 # merge, or EOL-convert them.
 *.t3kpreset binary
+
+# Gradle wrapper: fixed line endings regardless of a contributor's autocrlf
+# setting, matching the shell/batch script each file actually needs.
+/android/gradlew text eol=lf
+/android/gradlew.bat text eol=crlf
+android/gradle/wrapper/gradle-wrapper.jar binary

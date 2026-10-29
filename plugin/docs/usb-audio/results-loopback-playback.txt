@@ -1,0 +1,28 @@
+# USB Direct playback quality: AMS-22 digital loopback (2026-10-19)
+
+Question: is the square/distorted 440 Hz sine heard from the AMS-22 headphones
+a driver/playback-data problem or the unit's analog output stage?
+
+Method: AMS-22 LOOPBACK switch ON mixes the USB playback into the USB capture
+digitally, before the DAC. The probe (com.TONE3000.USBCHECK) played its steady
+440 Hz sine (0.25 FS) for 2 s at 8 packets x 4 URBs, 48 kHz, and logged the
+captured input (95,868 samples) to files/loopback.csv. The first 100 ms were
+discarded; a 1 s Hann-windowed FFT measured the harmonics.
+
+Result (clean):
+  peak = 0.2824 FS   rms = 0.1767   crest = 1.60
+  THD  = -57.5 dBc
+  h2 880 Hz  -60.6 dBc    h3 1320 Hz -65.3    h4 1760 Hz -69.0
+  h5 2200 Hz -70.8        h6 2640 Hz -68.1    h7 3080 Hz -71.0
+  h8 3520 Hz -72.9        h9 3960 Hz -70.5    h10 4400 Hz -76.0
+
+Conclusion: the playback data reaching the AMS-22 is a clean sine. The
+square-ish output measured at the AMS line output (EVO8 In 1, same day) and
+heard on its headphones is the unit's analog output stage, not USB Direct.
+This is consistent with the same unit passing direct monitor but not USB
+playback at its rear line outputs.
+
+Artifacts: /tmp/opencode/loopback.csv (capture), loopback_scope.png (waveform
+and spectrum). Reproduce: LOOPBACK ON, `am start -n ...USBCHECK/.MainActivity
+-e mode loopback --ei packets 8 --ei urbs 4 --ei ring 128`, then read
+files/loopback.csv.

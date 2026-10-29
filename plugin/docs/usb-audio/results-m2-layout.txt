@@ -1,0 +1,106 @@
+# M2.3/M2.4 recovery, layout, and latency results (2026-10-17/18)
+
+Rig: Samsung Galaxy Tab S10 FE (SM-X520, Android 16, kernel 6.6.102-android15)
++ Zoom AMS-22 (UAC2, explicit feedback 0x82) behind an Anker 332 USB-C hub
+(power delivery to the tablet). Probe `com.TONE3000.USBCHECK` at 48 kHz /
+2 ch / subslot 4, digital loopback ON, direct monitor OFF, screen off where
+noted. Host suite: 77/77 (`script/test-usb.sh`, commit 1bc00f0).
+
+## Layout cadence
+
+10 s status deltas (`capPkts` / elapsed). Nominal is 8,000 packets/s
+(8 packets per 1 ms URB) and 1,000 URBs/s.
+
+| Layout | URBs/s | Packets/s | % of nominal | Notes |
+|---|---:|---:|---:|---|
+| 2 x 3 | ~1,500 | ~2,990 | 37% | pump cannot follow 250 us URBs |
+| 4 x 3 | 1,329 | 5,315 | 66% | |
+| 4 x 4 | 1,663 | 6,652 | 83% | |
+| 8 x 2 | 667 | 5,332 | 67% | no queued URB while resubmitting |
+| 8 x 3 | 999 | 7,992 | 99.9% | works, but see overruns below |
+| 8 x 4 | 999 | 7,990 | 99.9% | chosen; zero overruns |
+
+The pump must have a queued URB while it refills the reaped one. At 8x2 the
+one-URB gap stretches each cycle to 1.5 ms; at 8x3/8x4 it holds 1 ms. This
+is why the plan's 2x3/4x2 candidates cannot be the shipping layout even
+though 2x3 has the lowest RTL.
+
+## Ring size and RTL (8x3, digital loopback, 5 trials each)
+
+| ringFrames | RTL median | peakRatio |
+|---:|---:|---:|
+| 512 | 8.917 ms | 10.7 |
+| 256 | 5.750 ms | 11.6 |
+| 192 | 5.188 ms | 11.9 |
+| 128 | 4.312 ms | 10.1 |
+| 96 | 4.375 ms | 12.3 |
+
+The pacer targets half the ring, so this is a direct latency term, not just
+buffer headroom. 128 is the knee; 96 buys nothing.
+
+8x4 with ring 128: **RTL median 5.521 ms** (worst peakRatio 12.1, xruns 0).
+The extra URB costs 1.2 ms but removes the ring overruns.
+
+## Cadence and ring overruns, screen off
+
+8x3 / ring 128, 90-120 s screen-off runs:
+
+```
+capUrb 101463 -> 190996 over 90.3 s = 991.5/s
+playUrb 101439 -> 189820          = 978.4/s   (1.2% below capture)
+ringOver 10 -> 692                = 7.7 events/s
+```
+
+8x4 / ring 128, 120 s screen off:
+
+```
+capUrb 3252 -> 123341 over 120.24 s = 998.7/s
+playUrb 3252 -> 123325             = 998.6/s
+ringOver 0 -> 0
+xruns 0, submitFail 0, fbErr 1, fbVal 6.00000
+```
+
+Cause: playback buffers are prepared between reap and resubmit, so an OUT
+URB can miss its slot; capture URBs never do. With only three URBs the miss
+is uncovered; four keeps one queued. Draining all ready completions per
+wake-up (instead of one per 100 us tick) is necessary but not sufficient.
+
+## Recovery
+
+- **Rate switch 48 -> 96 -> 48**, full stop/SET_INTERFACE 0/SET_CUR/
+  SET_INTERFACE 1/restart: `fbVal=12.00211` at 96 kHz and `6.00000` back at
+  48 kHz; 1,000 URBs/s and 8,000 packets/s at both; xruns 0.
+- **GET_CUR readback**: the AMS-22 STALLs the UAC2 SAM_FREQ GET_CUR
+  (`errno=32`, EPIPE). SET_CUR is verified by the feedback value and the
+  8,000-packets/s cadence instead. Readback stays "unavailable" on this
+  device; the code treats it as optional.
+- **Error burst injection** (`nativeDiscardOne`, one in-flight capture URB):
+  xruns went 0 -> 2, the stream stayed running, and the counters advanced
+  again immediately. No teardown.
+- **Submit retry**: host tests cover transient (N failures then success),
+  exhausted (deferred and retried next pump), and device-gone cases; no
+  transient submit failures occurred on-device (`submitFail=0` throughout).
+- **Screen off**: foreground service + partial wake lock kept the stream at
+  nominal for 90-120 s while `mWakefulness=Dozing`; Android 16 freezes a
+  non-foreground service, which is why the probe session moved out of the
+  activity.
+- **Unplug/replug**: clean detach was observed during the session (device
+  disappeared mid-permission and the stream side is covered by the M1
+  detach test). A scripted mid-stream physical replug still needs a human
+  and is deferred to the next human session.
+
+## Build / pump findings
+
+- Gradle debug builds compile native code at `-O0`; that costs about a third
+  of the packet throughput. Probe and core now build with `-O3` in Debug.
+- `poll()` on this usbfs fd cannot be used: POLLOUT (submit room) is always
+  ready, and POLLIN never wakes. The M1 sleep loop with a 100 us tick is the
+  working reap path; it sustains 1 ms URBs.
+- `start_frame` is 0 on every URB on this HCD (known from M1), so continuity
+  is judged by the observed step where available.
+
+## Files
+
+- `results-m2-soak.txt`: 60-minute screen-off soak at 8x4/ring 128.
+- `results-m2-soak-smoke.txt`: 1-minute smoke run (same layout).
+- `results-m2-feedback.txt`, `results-m2-ring.txt`: M2.1/M2.2 evidence.

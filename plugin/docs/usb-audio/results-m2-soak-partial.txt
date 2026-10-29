@@ -1,0 +1,23 @@
+# M2.4 L3 soak (script/usb-scenarios.sh)
+# layout=8 x 4, ring=128, rate=48000, screen_off=true
+timestamp,elapsed_s,capUrb,playUrb,capPkts,playPkts,xruns,ringOver,ringUnder,submitFail,fbErr,fbVal,drift,cap_pkts_per_s,play_pkts_per_s
+2026-10-17T23:59:04-07:00,62,64251,64235,514008,513880,0,0,4,0,0,5.99968,-53.4,7893,7892
+2026-10-18T00:00:05-07:00,61,125553,125525,1004424,1004200,0,0,4,0,0,5.99976,-40.7,8039,8038
+2026-10-18T00:01:07-07:00,61,186823,186785,1494584,1494280,0,0,4,0,1,6.00101,167.8,8035,8034
+2026-10-18T00:02:08-07:00,62,248033,247978,1984264,1983824,0,0,4,0,2,5.99968,-53.4,7898,7895
+2026-10-18T00:03:09-07:00,61,309435,309368,2475480,2474944,0,0,4,0,3,5.99976,-40.7,8052,8051
+2026-10-18T00:04:11-07:00,62,370707,370630,2965656,2965040,0,1,4,0,3,5.99734,-442.5,7906,7904
+2026-10-18T00:05:12-07:00,61,432067,431976,3456536,3455808,0,1,4,0,3,5.99968,-53.4,8047,8045
+2026-10-18T00:06:14-07:00,62,493699,493589,3949592,3948712,0,2,4,0,3,6.00000,0.0,7952,7950
+2026-10-18T00:07:15-07:00,61,554931,554805,4439448,4438440,0,2,4,0,3,6.00000,0.0,8030,8028
+2026-10-18T00:08:17-07:00,62,616231,616096,4929848,4928768,0,3,4,0,4,6.00000,0.0,7909,7908
+
+# The soak logger stopped at 00:08 when the host's Wi-Fi adb transport
+# wedged (adb shell hung; `adb disconnect/connect` recovered it). The probe
+# stream itself kept running. A manual status at 00:14:38 read:
+#   capUrb=998073 capPkts=7984584 playUrb=997883 playPkts=7983064
+#   xruns=0 ringOver=6 ringUnder=4 submitFail=0 submitRetry=0
+# i.e. a continuous 17-minute run at 7,997 packets/s, zero URB xruns, and
+# six ring overruns (during feedback steps to -442 ppm). The formal 60-minute
+# run is pending; script/usb-scenarios.sh now bounds every adb call and
+# reconnects once instead of hanging.

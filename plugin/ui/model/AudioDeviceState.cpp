@@ -26,6 +26,11 @@ AudioDeviceState AudioDeviceState::parse(const juce::var& v) {
   for (double size : numbers(v, "bufferSizes"))
     s.bufferSizes.push_back(static_cast<int>(size));
   s.bufferSize = integer(v, "bufferSize");
+  s.inputLatencySamples = integer(v, "inputLatencySamples");
+  s.outputLatencySamples = integer(v, "outputLatencySamples");
+  s.xrunCount = integer(v, "xrunCount");
+  s.driftPpm = num(v, "driftPpm");
+  s.hasDrift = boolean(v, "hasDrift");
   s.hasControlPanel = boolean(v, "hasControlPanel");
   s.hearYourself = boolean(v, "hearYourself", true);
   s.feedbackRisk = boolean(v, "feedbackRisk");
