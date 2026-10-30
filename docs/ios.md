@@ -77,11 +77,17 @@ What is different about an app extension, and what the build does about it:
   a group: both processes then fall back to their own `~/Library/TONE3000`
   and the plugin is a stranger to the app's data.
 - **The group has to exist on the App ID.** Automatic signing registers the
-  group and adds the capability to the app's and the extension's App IDs on
-  the first signed build (`-allowProvisioningUpdates`); a manually managed
-  profile needs the App Group capability turned on for both IDs and a
-  profile for `<bundle id>.TONE3000AUv3` as well as the app. The TestFlight
-  workflow signs both with the same API key.
+  group, the extension's App ID (`<bundle id>.TONE3000AUv3`) and the
+  capability on both App IDs the first time a developer's Xcode, signed in
+  with an Apple ID, builds for a device (`-allowProvisioningUpdates`). That
+  step is done once per team, from a Mac: the TestFlight workflow's App
+  Store Connect API key can fetch the managed profiles but the portal
+  refuses its writes ("Authentication failed: ... bearer token"), so a
+  release before that local build fails at the archive with "No profiles
+  for ..." for both bundle ids. The same applies after any later change to
+  an App ID's capabilities. A manually managed profile needs the App Group
+  capability turned on for both IDs and a profile for the extension as well
+  as the app.
 - **No browser.** An extension cannot open Safari (`UIApplication` is
   unavailable to it) or present `ASWebAuthenticationSession`, and the
   host backgrounding would suspend the loopback listener anyway. What it

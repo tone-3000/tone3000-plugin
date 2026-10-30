@@ -158,9 +158,12 @@ jobs:
       #
       # The app embeds the AUv3 extension (docs/ios.md, AUv3), so there are
       # two bundle ids to sign, <id> and <id>.TONE3000AUv3, both carrying the
-      # App Group entitlement. Automatic signing with -allowProvisioningUpdates
-      # registers the second App ID, the group and the capability on both,
-      # and makes the two profiles; nothing is listed here by hand.
+      # App Group entitlement. The API key only fetches the managed profiles:
+      # the portal refuses its writes ("Authentication failed: ... bearer
+      # token", then "No profiles for ..."), so the App IDs, the group and
+      # the capability are registered once from a developer's Xcode signed in
+      # with an Apple ID (docs/ios.md, "The group has to exist on the App
+      # ID"), and again whenever an App ID's capabilities change.
       - name: Configure CMake
         run: |
           cmake --preset ios-device \
