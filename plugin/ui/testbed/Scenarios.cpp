@@ -40,6 +40,13 @@ namespace {
 const std::map<juce::String, Drive>& drives() {
   using namespace drive;
   static const std::map<juce::String, Drive> table = {
+      {"chrome-routing-standalone",
+       [](PluginRoot& root, MockBackend&) {
+         root.setCaptureAvailable(true);
+         root.setRoutingAvailable(true);
+         clickByHelp(root, "Account:");
+         wait(200);
+       }},
       {"chrome-capture-standalone",
        [](PluginRoot& root, MockBackend&) {
          root.setCaptureAvailable(true);

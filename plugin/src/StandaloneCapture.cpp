@@ -1,5 +1,6 @@
 #include "StandaloneCapture.h"
 #include "CaptureDsp.h"
+#include "StandaloneIoLease.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_extra/juce_gui_extra.h>
@@ -118,6 +119,9 @@ juce::Result StandaloneCapture::start(const Config& config, bool levelsOnly) {
   clipped_.store(false);
   stoppedUnexpectedly_.store(false);
   sendGain_ = std::pow(10.0f, config.outputDb / 20.0f);
+  const auto lease = standalone_io::acquireCapture(resumeRouting_);
+  if (lease.failed()) return lease;
+  ownsIo_ = true;
   savedSetup_ = manager_->getAudioDeviceSetup();
   recording_.inputDevice = savedSetup_.inputDeviceName;
   recording_.outputDevice = savedSetup_.outputDeviceName;
@@ -179,6 +183,10 @@ void StandaloneCapture::stop() {
     if (auto* h = holder())
       h->player.setProcessor(h->processor.get());
     suspendedPlayer_ = false;
+  }
+  if (ownsIo_) {
+    ownsIo_ = false;
+    if (standalone_io::releaseCapture(resumeRouting_).failed()) stoppedUnexpectedly_.store(true);
   }
 }
 float StandaloneCapture::progress() const {

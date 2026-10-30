@@ -1,4 +1,5 @@
 #include "StandaloneAudioSettings.h"
+#include "StandaloneIoLease.h"
 
 #include "AudioPermissions.h"
 #include "IosAudioRoute.h"
@@ -281,6 +282,8 @@ juce::var StandaloneAudioSettings::getState() {
 // Setters
 
 juce::var StandaloneAudioSettings::setDeviceType(const juce::String& typeName) {
+  if (t3k::standalone_io::settingsLocked())
+    return makeResult("Finish capture and turn Input / Output routing off before changing audio devices or playing a test tone.");
   auto* dm = deviceManager();
   if (dm == nullptr)
     return makeResult("Audio settings are unavailable.");
@@ -300,6 +303,8 @@ juce::var StandaloneAudioSettings::setDeviceType(const juce::String& typeName) {
 
 juce::var StandaloneAudioSettings::setDevice(const juce::String& kind,
                                              const juce::String& name) {
+  if (t3k::standalone_io::settingsLocked())
+    return makeResult("Finish capture and turn Input / Output routing off before changing audio devices or playing a test tone.");
   auto* dm = deviceManager();
   if (dm == nullptr)
     return makeResult("Audio settings are unavailable.");
@@ -378,6 +383,8 @@ static void pinActiveChannels(juce::AudioDeviceManager::AudioDeviceSetup& setup,
 
 juce::var StandaloneAudioSettings::setInputChannels(
     const juce::Array<juce::var>& channelIndices) {
+  if (t3k::standalone_io::settingsLocked())
+    return makeResult("Finish capture and turn Input / Output routing off before changing audio devices or playing a test tone.");
   auto* dm = deviceManager();
   auto* device = dm != nullptr ? dm->getCurrentAudioDevice() : nullptr;
   if (device == nullptr)
@@ -405,6 +412,8 @@ juce::var StandaloneAudioSettings::setInputChannels(
 }
 
 juce::var StandaloneAudioSettings::setOutputPair(int pairIndex) {
+  if (t3k::standalone_io::settingsLocked())
+    return makeResult("Finish capture and turn Input / Output routing off before changing audio devices or playing a test tone.");
   auto* dm = deviceManager();
   auto* device = dm != nullptr ? dm->getCurrentAudioDevice() : nullptr;
   if (device == nullptr)
@@ -430,6 +439,8 @@ juce::var StandaloneAudioSettings::setOutputPair(int pairIndex) {
 }
 
 juce::var StandaloneAudioSettings::setSampleRate(double rate) {
+  if (t3k::standalone_io::settingsLocked())
+    return makeResult("Finish capture and turn Input / Output routing off before changing audio devices or playing a test tone.");
   auto* dm = deviceManager();
   if (dm == nullptr)
     return makeResult("Audio settings are unavailable.");
@@ -476,6 +487,8 @@ juce::var StandaloneAudioSettings::setSampleRate(double rate) {
 }
 
 juce::var StandaloneAudioSettings::setBufferSize(int samples) {
+  if (t3k::standalone_io::settingsLocked())
+    return makeResult("Finish capture and turn Input / Output routing off before changing audio devices or playing a test tone.");
   auto* dm = deviceManager();
   if (dm == nullptr)
     return makeResult("Audio settings are unavailable.");
@@ -500,6 +513,8 @@ juce::var StandaloneAudioSettings::setHearYourself(bool hear) {
 }
 
 juce::var StandaloneAudioSettings::playTestTone() {
+  if (t3k::standalone_io::settingsLocked())
+    return makeResult("Finish capture and turn Input / Output routing off before changing audio devices or playing a test tone.");
   auto* dm = deviceManager();
   if (dm == nullptr || dm->getCurrentAudioDevice() == nullptr)
     return makeResult("No output device is open.");
@@ -508,6 +523,8 @@ juce::var StandaloneAudioSettings::playTestTone() {
 }
 
 juce::var StandaloneAudioSettings::openControlPanel() {
+  if (t3k::standalone_io::settingsLocked())
+    return makeResult("Finish capture and turn Input / Output routing off before changing audio devices or playing a test tone.");
   auto* dm = deviceManager();
   auto* device = dm != nullptr ? dm->getCurrentAudioDevice() : nullptr;
   if (device == nullptr || !device->hasControlPanel())
@@ -534,6 +551,8 @@ juce::var StandaloneAudioSettings::openControlPanel() {
 }
 
 juce::var StandaloneAudioSettings::restartDevice() {
+  if (t3k::standalone_io::settingsLocked())
+    return makeResult("Finish capture and turn Input / Output routing off before changing audio devices or playing a test tone.");
   auto* dm = deviceManager();
   if (dm == nullptr)
     return makeResult("Audio settings are unavailable.");
@@ -649,6 +668,7 @@ juce::var StandaloneAudioSettings::getInputLevels() {
 // Auto-setup policy
 
 void StandaloneAudioSettings::ensureInitialPolicies() {
+  if (t3k::standalone_io::settingsLocked()) return;
   if (initialPoliciesDone)
     return;
   auto* dm = deviceManager();

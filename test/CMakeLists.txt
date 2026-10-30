@@ -24,9 +24,19 @@ target_sources(DspTests PRIVATE
     src/capture_dsp_tests.cpp
     src/capture_file_tests.cpp
     src/kemper_midi_tests.cpp
+    src/kemper_routing_tests.cpp
+    src/routing_tap_tests.cpp
+    src/cabinet_routing_tests.cpp
+    src/routing_mixer_tests.cpp
+    src/standalone_io_tests.cpp
     ../plugin/src/CaptureDsp.cpp
     ../plugin/src/CaptureFiles.cpp
     ../plugin/src/KemperMidi.cpp
+    ../plugin/src/KemperRouting.cpp
+    ../plugin/src/RoutingPlan.cpp
+    ../plugin/src/RoutingMixer.cpp
+    ../plugin/src/RoutingState.cpp
+    ../plugin/src/StandaloneIoLease.cpp
     src/auto_offset_tests.cpp
     src/branch_tests.cpp
     src/clipboard_tests.cpp

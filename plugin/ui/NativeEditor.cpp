@@ -90,7 +90,18 @@ NativeEditor::NativeEditor(TONE3000Processor& owner)
   addAndMakeVisible(root_);
 #if !JUCE_IOS
   root_.setCaptureAvailable(StandaloneAudioSettings::isAvailable());
+  root_.setRoutingAvailable(StandaloneAudioSettings::isAvailable());
+  if (StandaloneAudioSettings::isAvailable()) routing_ = std::make_unique<t3k::routing::StandaloneRouting>(owner);
 #endif
+  root_.onRouting = [this] {
+    if (!routing_) return;
+    if (!routingWindow_) routingWindow_ = std::make_unique<t3k::routing::RoutingWindow>(this, *routing_, [this] {
+      routingWindow_->setVisible(false);
+      root_.openSettings(SettingsScreen::Tab::system);
+      toFront(true);
+    });
+    routingWindow_->setVisible(true); routingWindow_->toFront(true);
+  };
   root_.onCaptureGear = [this] {
     if (!StandaloneAudioSettings::isAvailable()) return;
     if (!captureWindow_) {
@@ -134,7 +145,10 @@ NativeEditor::NativeEditor(TONE3000Processor& owner)
   trace("Constructed: " + juce::String(getWidth()) + "x" + juce::String(getHeight()));
 }
 
-NativeEditor::~NativeEditor() { captureWindow_.reset(); stopTimer(); }
+NativeEditor::~NativeEditor() {
+  if (routing_) routing_->stop();
+  captureWindow_.reset(); routingWindow_.reset(); routing_.reset(); stopTimer();
+}
 
 design::Fit NativeEditor::startFit() const {
   // The persisted shape, cut down to the room the window may open into. In a

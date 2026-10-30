@@ -65,6 +65,7 @@ PluginHeader::PluginHeader(Services& services)
   account_.onCaptureGear = [this] {
     if (onCaptureGear) onCaptureGear();
   };
+  account_.onRouting = [this] { if (onRouting) onRouting(); };
   account_.onOpenSettings = [this] {
     if (onOpenSettings) onOpenSettings();
   };

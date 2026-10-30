@@ -15,6 +15,8 @@
 
 #include "DarkLookAndFeel.h"
 #include "../capture/CaptureWindow.h"
+#include "../routing/RoutingWindow.h"
+#include "StandaloneRouting.h"
 #include "backend/ProcessorBackend.h"
 #include "core/Design.h"
 #include "core/Fonts.h"
@@ -133,6 +135,8 @@ private:
   FontsReady fontsReady_;
   PluginRoot root_;
   std::unique_ptr<t3k::capture::CaptureWindow> captureWindow_;
+  std::unique_ptr<t3k::routing::StandaloneRouting> routing_;
+  std::unique_ptr<t3k::routing::RoutingWindow> routingWindow_;
 };
 
 }  // namespace t3k::ui

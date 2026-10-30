@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <algorithm>
 #include <cassert>
 #include <vector>
 
@@ -120,6 +121,24 @@ public:
     runDownCascade(channels, basePointers, numChannels, numFrames);
     baseFn(basePointers, numFrames / factor);
     runUpCascade(basePointers, channels, numChannels, numFrames / factor);
+  }
+
+  /** Auxiliary tap downsampling only. Own an independent instance prepared
+      with the chain factor/geometry; this duplicates the main wrapper's
+      down-filter phase without interpolating an already-oversampled tap.
+      All channels, including unavailable zero buses, must advance together. */
+  void processDownsampleOnly(float* const* inputs, float* const* outputs,
+                              int numChannels, int numFrames) {
+    assert(numChannels >= 1 && numChannels <= kChannels);
+    assert(numFrames % factor == 0);
+    assert(static_cast<size_t>(numFrames) <= osCapacityPerChannel);
+    if (factor <= 1) {
+      for (int ch = 0; ch < numChannels; ++ch)
+        if (inputs[ch] != outputs[ch])
+          std::copy_n(inputs[ch], numFrames, outputs[ch]);
+      return;
+    }
+    runDownCascade(inputs, outputs, numChannels, numFrames);
   }
 
 private:

@@ -91,6 +91,21 @@ void BlockEq::setPre(bool shouldBePre) {
   pre = shouldBePre;
 }
 
+bool BlockEq::copySettingsFrom(const BlockEq& source) noexcept {
+  if (sampleRate != source.sampleRate) return false;
+  const bool reset = (!enabled && source.enabled) || pre != source.pre ||
+                     (!anyBandActive && source.anyBandActive);
+  bands = source.bands; bandActive = source.bandActive;
+  anyBandActive = source.anyBandActive; enabled = source.enabled; pre = source.pre;
+  for (size_t i = 0; i < filters.size(); ++i) {
+    auto& destination = filters[i]; const auto& donor = source.filters[i];
+    destination.b0 = donor.b0; destination.b1 = donor.b1; destination.b2 = donor.b2;
+    destination.a1 = donor.a1; destination.a2 = donor.a2;
+    if (reset) destination.resetState();
+  }
+  return true;
+}
+
 void BlockEq::process(juce::AudioBuffer<float>& buffer) {
   const int numSamples = buffer.getNumSamples();
   const int numChannels = juce::jmin(buffer.getNumChannels(), 2);

@@ -116,6 +116,181 @@ TONE3000Processor::TONE3000Processor()
   DBG("TONE3000Processor constructed");
 }
 
+// Quiescent setup only: the standalone router detaches before changing
+// these references. All converter allocation is deferred to prepareToPlay.
+void TONE3000Processor::configureRoutingTaps(const t3k::routing::TapPlan& plan) {
+  routingTapPlan = plan;
+  routingCaptureActive = false;
+  routingViewReady = false;
+  routingPreparedFactor = 0;
+  routingTapBuffers.disable();
+}
+
+t3k::routing::TapView TONE3000Processor::routingTap(t3k::routing::Stage stage) const {
+  return routingTapPlan.enabled && routingViewReady ? routingTapBuffers.view(stage) : t3k::routing::TapView{};
+}
+
+void TONE3000Processor::followRoutingControlsFrom(TONE3000Processor* source,
+    const std::array<std::string, 2>& bypassIds) {
+  jassert(source != this);
+  routingControlSource = source == this ? nullptr : source;
+  routingBypassIds = bypassIds;
+  routingMirrorRebuild.store(false, std::memory_order_relaxed);
+  if (routingControlSource != nullptr)
+    paramRefs = routingControlSource->paramRefs;
+  else
+    resolveParamRefs();
+  mirrorRoutingControlModes();
+}
+
+void TONE3000Processor::setRoutingIoOverride(bool active, bool stereoInput) {
+  routingIoOverrideActive = active;
+  routingIoStereoInput = stereoInput;
+}
+
+bool TONE3000Processor::synchronizeRoutingBlockControls() {
+  const auto& source = *routingControlSource;
+  if (source.chainEditFadePending.load(std::memory_order_relaxed) ||
+      hostSampleRate != source.hostSampleRate ||
+      chainOversampleFactor.load(std::memory_order_relaxed) !=
+          source.chainOversampleFactor.load(std::memory_order_relaxed) ||
+      stereoEnabled.load(std::memory_order_relaxed) !=
+          source.stereoEnabled.load(std::memory_order_relaxed) ||
+      branchSourceSide != source.branchSourceSide || branchAfterBlockId != source.branchAfterBlockId)
+    return false;
+  // Validate every lane before copying controls. No JSON, allocated hashes
+  // or transient containers/strings occur on the render thread.
+  for (size_t lane = 0; lane < lanes.size(); ++lane) {
+    if (lanes[lane].size() != source.lanes[lane].size()) return false;
+    for (size_t i = 0; i < lanes[lane].size(); ++i) {
+      const auto& own = *lanes[lane][i]; const auto& from = *source.lanes[lane][i];
+      if (own.id != from.id || own.type != from.type ||
+          own.toneId != from.toneId || own.activeModelId != from.activeModelId ||
+          own.namSlimSize != from.namSlimSize || own.loaded != from.loaded ||
+          own.modelLoading != from.modelLoading) return false;
+      if (own.type == ChainBlockType::NAM && own.loaded &&
+          (own.namEngine == nullptr || from.namEngine == nullptr ||
+           own.namEngine->getVoiceCount() != from.namEngine->getVoiceCount() ||
+           own.namEngine->getOversampleFactor() != from.namEngine->getOversampleFactor()))
+        return false;
+      if (own.type == ChainBlockType::IR && own.loaded &&
+          (own.irNumChannels != from.irNumChannels || own.irIsLong != from.irIsLong ||
+           own.irLengthBaseSamples != from.irLengthBaseSamples)) return false;
+    }
+  }
+  for (size_t lane = 0; lane < lanes.size(); ++lane)
+    for (size_t i = 0; i < lanes[lane].size(); ++i) {
+      auto& own = *lanes[lane][i]; const auto& from = *source.lanes[lane][i];
+      const bool cabinet = own.id == routingBypassIds[0] ||
+          (source.stereoEnabled.load(std::memory_order_relaxed) && own.id == routingBypassIds[1]);
+      own.enabled = cabinet ? false : from.enabled;
+      own.normalizeEnabled = from.normalizeEnabled;
+      own.inputGainNormalized = from.inputGainNormalized;
+      own.outputGainNormalized = from.outputGainNormalized;
+      own.mixNormalized = from.mixNormalized;
+      if (!own.eq.copySettingsFrom(from.eq)) return false;
+    }
+  return true;
+}
+
+void TONE3000Processor::mirrorRoutingControlModes() {
+  if (const auto* source = routingControlSource) {
+    inputMode.store(source->inputMode.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    stereoEnabled.store(source->stereoEnabled.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    standaloneMonoInput.store(source->standaloneMonoInput.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    standaloneMonoOutput.store(source->standaloneMonoOutput.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    stereoInputDetected.store(source->stereoInputDetected.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    stereoOutputDetected.store(source->stereoOutputDetected.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    multiCoreEnabled.store(source->multiCoreEnabled.load(std::memory_order_relaxed), std::memory_order_relaxed);
+  }
+}
+
+void TONE3000Processor::prepareRoutingTaps() {
+  routingCaptureActive = false;
+  routingViewReady = false;
+  routingPreparedFactor = chainOversampleFactor.load();
+  if (routingTapPlan.enabled)
+    routingTapBuffers.prepare(hostSampleRate, juce::jmax(1, maxBlockSize),
+                               chainBaseBlockSize(), routingPreparedFactor);
+  else
+    routingTapBuffers.disable();
+}
+
+void TONE3000Processor::resolveRoutingRoles() {
+  const auto resolve = [this](int output, const std::string& id) {
+    ResolvedRoutingRole result;
+    if (id.empty())
+      return result;
+    const int own = rtStereoChains ? output : 0;
+    const auto& blocks = lanes[static_cast<size_t>(own)];
+    for (int i = 0; i < static_cast<int>(blocks.size()); ++i)
+      if (blocks[static_cast<size_t>(i)]->id == id)
+        return ResolvedRoutingRole{own, i};
+    const int trunk = laneIndex(branchSourceSide);
+    if (rtStereoChains && rtBranchTapIndex >= 0 && own != trunk) {
+      const auto& prefix = lanes[static_cast<size_t>(trunk)];
+      for (int i = 0; i <= rtBranchTapIndex && i < static_cast<int>(prefix.size()); ++i)
+        if (prefix[static_cast<size_t>(i)]->id == id)
+          return ResolvedRoutingRole{trunk, i};
+    }
+    return result;
+  };
+  const std::array<const std::array<std::string, 2>*, 3> ids = {
+      &routingTapPlan.stackEnd, &routingTapPlan.modEnd, &routingTapPlan.wetStart};
+  for (size_t stage = 0; stage < ids.size(); ++stage) {
+    routingRoles[stage][0] = resolve(0, (*ids[stage])[0]);
+    routingRoles[stage][1] = rtStereoChains ? resolve(1, (*ids[stage])[1])
+                                           : routingRoles[stage][0];
+  }
+}
+
+bool TONE3000Processor::routingPathContains(int output, int renderedLane, int block) const {
+  if (!rtStereoChains)
+    return renderedLane == 0;
+  if (renderedLane == output)
+    return true;
+  const int trunk = laneIndex(branchSourceSide);
+  return rtBranchTapIndex >= 0 && output != trunk && renderedLane == trunk && block <= rtBranchTapIndex;
+}
+
+void TONE3000Processor::routingBlockEntered(int renderedLane, int block) {
+  if (!routingCaptureActive)
+    return;
+  for (int output = 0; output < 2; ++output) {
+    const auto& start = routingRoles[2][static_cast<size_t>(output)];
+    if (start.lane == renderedLane && start.block == block) {
+      routingWetActive[static_cast<size_t>(output)] = true;
+      routingObserved[2][static_cast<size_t>(output)] = true;
+    }
+  }
+}
+
+unsigned TONE3000Processor::routingWetMask(int renderedLane, int block) const {
+  unsigned mask = 0;
+  if (routingCaptureActive)
+    for (int output = 0; output < 2; ++output)
+      if (routingPathContains(output, renderedLane, block) && routingWetActive[static_cast<size_t>(output)])
+        mask |= 1u << output;
+  return mask;
+}
+
+void TONE3000Processor::publishRoutingBlock(int renderedLane, int block,
+                                           const juce::AudioBuffer<float>& buffer) {
+  if (!routingCaptureActive)
+    return;
+  for (size_t stage = 0; stage < 2; ++stage)
+    for (int output = 0; output < 2; ++output) {
+      const auto& role = routingRoles[stage][static_cast<size_t>(output)];
+      if (role.lane != renderedLane || role.block != block)
+        continue;
+      const int sourceChannel = !rtStereoChains && buffer.getNumChannels() > 1 ? output : 0;
+      std::memcpy(routingTapBuffers.osChannel(static_cast<t3k::routing::Stage>(stage), output),
+                  buffer.getReadPointer(sourceChannel),
+                  sizeof(float) * static_cast<size_t>(buffer.getNumSamples()));
+      routingObserved[stage][static_cast<size_t>(output)] = true;
+    }
+}
+
 // One-time string-keyed lookups; everything after this reads the atomics.
 void TONE3000Processor::resolveParamRefs() {
   auto get = [this](const char* id) { return parameters.getRawParameterValue(id); };
@@ -444,6 +619,9 @@ void TONE3000Processor::applyOversamplingSettings() {
 
   chainOversampleFactor.store(newFactor);
   chainOversampler.prepare(newFactor, juce::jmax(1, chainBaseBlockSize()));
+  // Auxiliary routing buffers are allocated only in prepareToPlay, with
+  // the player detached. A live factor change invalidates their geometry;
+  // expose no taps until the router re-prepares the complete routing group.
 
   // The chain-domain scratch grows with the factor; the RT path never
   // resizes it.
@@ -728,8 +906,10 @@ static ImageGains imageMatrixGains(bool panActive, bool foldToMono, float balanc
 // summed to mono (see processImageStage; the UI shows a MONO chip). Both
 // reported through getChainState, so bump the revision on change.
 void TONE3000Processor::updateStereoIoDetection() {
-  const bool stereoIn = getMainBusNumInputChannels() >= 2 && !standaloneMonoInput.load();
-  const bool stereoOut = getMainBusNumOutputChannels() >= 2 && !standaloneMonoOutput.load();
+  const bool stereoIn = routingIoOverrideActive ? routingIoStereoInput
+      : getMainBusNumInputChannels() >= 2 && !standaloneMonoInput.load();
+  const bool stereoOut = routingIoOverrideActive ||
+      (getMainBusNumOutputChannels() >= 2 && !standaloneMonoOutput.load());
   const bool inChanged = stereoInputDetected.exchange(stereoIn) != stereoIn;
   const bool outChanged = stereoOutputDetected.exchange(stereoOut) != stereoOut;
   if (inChanged || outChanged)
@@ -829,6 +1009,8 @@ static float clampBelowNyquist(double sampleRate, float frequency) {
 void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   hostSampleRate = sampleRate;
   maxBlockSize = samplesPerBlock;
+  routingMirrorRebuild.store(false, std::memory_order_relaxed);
+  mirrorRoutingControlModes();
 
   tuner.prepare(sampleRate);
 
@@ -850,7 +1032,7 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   standaloneMonoInput.store(false);
   standaloneMonoOutput.store(false);
 #if !HEADLESS && JucePlugin_Build_Standalone && ! JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP
-  if (wrapperType == wrapperType_Standalone) {
+  if (wrapperType == wrapperType_Standalone && !routingIoOverrideActive) {
     if (auto* holder = juce::StandalonePluginHolder::getInstance())
       if (auto* device = holder->deviceManager.getCurrentAudioDevice()) {
         standaloneMonoInput.store(device->getActiveInputChannels().countNumberOfSetBits() == 1);
@@ -859,8 +1041,12 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
       }
   }
 #endif
-
+  if (routingIoOverrideActive) {
+    standaloneMonoInput.store(!routingIoStereoInput);
+    standaloneMonoOutput.store(false);
+  }
   updateStereoIoDetection();
+  mirrorRoutingControlModes();
 
   // Chain-domain resampling boundary.
   // Engaged whenever the host rate differs from the chain base rate, even
@@ -869,7 +1055,7 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   // dropped entirely and the chain stage runs directly on the host buffer.
   const bool boundaryNeeded = std::abs(sampleRate - kChainBaseSampleRate) > 0.1;
   if (boundaryNeeded) {
-    if (chainBoundary == nullptr)
+    if (chainBoundary == nullptr || routingTapPlan.enabled)
       chainBoundary = std::make_unique<ChainBoundaryResampler>(kChainBaseSampleRate);
     chainBoundary->Reset(sampleRate, juce::jmax(1, samplesPerBlock));
     // Not GetLatency(): that under-reports by the Lanczos kernels' group
@@ -898,6 +1084,8 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     chainOversampler.prepare(chainOversampleFactor.load(), juce::jmax(1, chainBaseBlockSize()));
     DBG("Chain oversampling ×" << chainOversampleFactor.load() << " (chain rate: "
         << chainSampleRate() << " Hz)");
+
+    prepareRoutingTaps();
 
     for (auto& l : lanes) {
       // Restore-time loads can land before the host resolves the saved
@@ -1010,6 +1198,7 @@ void TONE3000Processor::releaseResources() {
   // (prepareToPlay restarts it). Stopping here also guarantees no worker
   // outlives the buffers/lanes a stale job could reference.
   rtWorkerPool.stop();
+  routingViewReady = false;
 
   // DO NOT clear chain blocks here! They should persist across bypass/unbypassed states.
   // Chain blocks are managed by the plugin's state system and should only be cleared
@@ -1188,9 +1377,12 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
       lastNamIndex = i;
   }
 
+  const int renderedLane = &blocks == &lanes[1] ? 1 : 0;
   for (int idx = beginIdx; idx < endIdx; ++idx) {
     const auto& block = blocks[idx];
+    routingBlockEntered(renderedLane, idx);
     if (block->type == ChainBlockType::INSERT) {
+      publishRoutingBlock(renderedLane, idx, buffer);
       continue;  // Insert block is pass-through, no audio effect
     }
 
@@ -1220,6 +1412,7 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
         block->spectrum.pushSamples(buffer.getReadPointer(0),
                                     numChannels > 1 ? buffer.getReadPointer(1) : nullptr,
                                     numSamples, rtDualMono);
+      publishRoutingBlock(renderedLane, idx, buffer);
       continue;
     }
 
@@ -1273,6 +1466,7 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
 
         if (block->namEngine == nullptr) {
           DBG("Warning: NAM block " << block->id << " has no engine - skipping");
+          publishRoutingBlock(renderedLane, idx, buffer);
           continue;
         }
 
@@ -1370,6 +1564,7 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
         if (numChannels > 1) {
           buffer.copyFrom(1, 0, dryScratch, 1, 0, numSamples);
         }
+        publishRoutingBlock(renderedLane, idx, buffer);
         continue;
       }
     } else if (block->type == ChainBlockType::IR && block->convolverMono != nullptr) {
@@ -1446,30 +1641,54 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
     block->outputGainSmoother.setTargetValue(juce::Decibels::decibelsToGain(gainDb));
     block->mixSmoother.setTargetValue(juce::jlimit(0.0f, 1.0f, block->mixNormalized));
 
+    const unsigned wetRoutingMask = routingWetMask(renderedLane, idx);
+    float* routedWetL = (wetRoutingMask & 1u) != 0
+        ? routingTapBuffers.osChannel(t3k::routing::Stage::wetFx, 0) : nullptr;
+    float* routedWetR = (wetRoutingMask & 2u) != 0
+        ? routingTapBuffers.osChannel(t3k::routing::Stage::wetFx, 1) : nullptr;
     float blockOutputPeak = 0.0f;
-    for (int i = 0; i < numSamples; ++i) {
-      // wetFadeGain rides the mix (bypass-bound glides crossfade toward
-      // dry) and glides the post-mix Out Gain to unity in step, so a
-      // completed fade lands exactly on the skipped block's pass-through.
-      // swapWetMuteGain and the cab pad ride the wet term only, pre-mix
-      // (engine swaps dip the wet path to silence without exposing the dry
-      // input); see ChainBlock.h.
-      const float wetGain = block->swapWetMuteGain.getNextValue() * cabPadGain;
-      const float outGain = block->outputGainSmoother.getNextValue();
-      const float fade = block->wetFadeGain.getNextValue();
-      const float m = block->mixSmoother.getNextValue() * fade;
-      const float postGain = 1.0f + (outGain - 1.0f) * fade;
-      float wetL = buffer.getWritePointer(0)[i] * wetGain;
-      float dryL = dryScratch.getReadPointer(0)[i];
-      buffer.getWritePointer(0)[i] = (dryL * (1.0f - m) + wetL * m) * postGain;
-      blockOutputPeak = std::max(blockOutputPeak, std::abs(buffer.getWritePointer(0)[i]));
-      if (numChannels > 1) {
-        float wetR = buffer.getWritePointer(1)[i] * wetGain;
-        float dryR = dryScratch.getReadPointer(1)[i];
-        buffer.getWritePointer(1)[i] = (dryR * (1.0f - m) + wetR * m) * postGain;
-        blockOutputPeak = std::max(blockOutputPeak, std::abs(buffer.getWritePointer(1)[i]));
+    const auto mixBlock = [&]<bool captureWet>() {
+      for (int i = 0; i < numSamples; ++i) {
+        // wetFadeGain rides the mix (bypass-bound glides crossfade toward
+        // dry) and glides the post-mix Out Gain to unity in step, so a
+        // completed fade lands exactly on the skipped block's pass-through.
+        // swapWetMuteGain and the cab pad ride the wet term only, pre-mix
+        // (engine swaps dip the wet path to silence without exposing the dry
+        // input); see ChainBlock.h.
+        const float wetGain = block->swapWetMuteGain.getNextValue() * cabPadGain;
+        const float outGain = block->outputGainSmoother.getNextValue();
+        const float fade = block->wetFadeGain.getNextValue();
+        const float m = block->mixSmoother.getNextValue() * fade;
+        const float postGain = 1.0f + (outGain - 1.0f) * fade;
+        float wetL = buffer.getWritePointer(0)[i] * wetGain;
+        float dryL = dryScratch.getReadPointer(0)[i];
+        buffer.getWritePointer(0)[i] = (dryL * (1.0f - m) + wetL * m) * postGain;
+        blockOutputPeak = std::max(blockOutputPeak, std::abs(buffer.getWritePointer(0)[i]));
+        if constexpr (captureWet)
+          if (routedWetL != nullptr)
+            routedWetL[i] = (routedWetL[i] * (1.0f - m) + wetL * m) * postGain;
+        if (numChannels > 1) {
+          float wetR = buffer.getWritePointer(1)[i] * wetGain;
+          float dryR = dryScratch.getReadPointer(1)[i];
+          buffer.getWritePointer(1)[i] = (dryR * (1.0f - m) + wetR * m) * postGain;
+          blockOutputPeak = std::max(blockOutputPeak, std::abs(buffer.getWritePointer(1)[i]));
+          if constexpr (captureWet)
+            if (routedWetR != nullptr)
+              routedWetR[i] = (routedWetR[i] * (1.0f - m) + wetR * m) * postGain;
+        } else {
+          if constexpr (captureWet)
+            if (routedWetR != nullptr)
+              routedWetR[i] = (routedWetR[i] * (1.0f - m) + wetL * m) * postGain;
+        }
       }
-    }
+    };
+    // The disabled specialization is the original mix loop: no tap tests,
+    // arithmetic or stores per sample when workstation taps are off.
+    if (wetRoutingMask != 0)
+      mixBlock.template operator()<true>();
+    else
+      mixBlock.template operator()<false>();
+    publishRoutingBlock(renderedLane, idx, buffer);
 
     // Fade handshake: tell a waiting requester the wet path is fully
     // silent and its change (swap/removal) can splice in silently. Which
@@ -1545,7 +1764,14 @@ void TONE3000Processor::processOversampledChainStage(float** inputs, float** out
                                                      int numFrames) {
   chainOversampler.process(inputs, outputs, numFrames,
                            [this](float** chainIns, float** chainOuts, int chainFrames) {
+                             if (routingCaptureActive) {
+                               routingTapBuffers.beginOversampledSlice(chainFrames);
+                               for (auto& stage : routingObserved) stage.fill(false);
+                               routingWetActive.fill(false);
+                             }
                              processChainStage(chainIns, chainOuts, chainFrames);
+                             if (routingCaptureActive)
+                               routingTapBuffers.appendOversampledSlice(chainFrames, routingObserved);
                            });
 }
 
@@ -1745,6 +1971,7 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   const int numSamples = buffer.getNumSamples();
   const int numChannels = buffer.getNumChannels();
 
+  routingViewReady = false;
   if (numSamples <= 0 || numChannels <= 0) {
     DBG("Invalid buffer: samples=" << numSamples << ", channels=" << numChannels);
     buffer.clear();
@@ -1753,6 +1980,29 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     return;
   }
 
+  // Nonblocking source+own locks remain held through the shadow render,
+  // closing the race between graph validation and a source preset swap.
+  std::optional<juce::ScopedTryLock> routingSourceLock, routingOwnLock;
+  if (routingControlSource != nullptr) {
+    const auto muteStaleMirror = [&] {
+      routingMirrorRebuild.store(true, std::memory_order_relaxed);
+      buffer.clear();
+      outputMeterLevelL.store(-60.0f);
+      outputMeterLevelR.store(-60.0f);
+    };
+    if (routingMirrorRebuild.load(std::memory_order_relaxed)) {
+      muteStaleMirror();
+      return;
+    }
+    routingSourceLock.emplace(routingControlSource->chainMutex);
+    if (!routingSourceLock->isLocked()) { muteStaleMirror(); return; }
+    routingOwnLock.emplace(chainMutex);
+    if (!routingOwnLock->isLocked() || !synchronizeRoutingBlockControls()) {
+      muteStaleMirror();
+      return;
+    }
+  }
+  mirrorRoutingControlModes();
   updateCachedParameters();
 
   // Heartbeat for isAudioActive(): fade handshakes skip their bounded waits
@@ -1910,6 +2160,12 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     // them, so a two-chain rig is heard in full instead of half.
     rtStereoChains = stereoEnabled.load();
     rtChainChannels = juce::jmin(numChannels, 2);
+    routingCaptureActive = routingTapPlan.enabled && routingTapBuffers.isPrepared() &&
+        routingPreparedFactor == chainOversampleFactor.load(std::memory_order_relaxed);
+    if (routingControlSource != nullptr)
+      refreshBranchTapIndex();
+    if (routingCaptureActive)
+      resolveRoutingRoles();
     // rtDualMono was resolved up front, with the input fold.
 
     // One multi-core resolution per callback (under chainMutex): the phase
@@ -1952,10 +2208,16 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
       if (numChannels == 1 && rtStereoChains)
         std::memcpy(channels[1], channels[0], sizeof(float) * static_cast<size_t>(sliceLen));
 
+      if (routingCaptureActive)
+        routingTapBuffers.beginHostSlice();
       if (chainBoundary != nullptr)
         chainBoundary->ProcessBlock(channels, channels, sliceLen, chainStageFunc);
       else
         processOversampledChainStage(channels, channels, sliceLen);
+      if (routingCaptureActive) {
+        routingTapBuffers.finishHostSlice(sliceLen, numSamples <= maxBlockSize);
+        routingViewReady = numSamples <= maxBlockSize;
+      }
 
       // Image stage per slice: on a mono host buffer the scratch channel
       // only holds the Right lane's output for this slice, so it must be

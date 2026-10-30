@@ -59,6 +59,7 @@ PluginRoot::PluginRoot(Services& services)
 
   header_.onOpenSettings = [this] { openSettings(); };
   header_.onCaptureGear = [this] { if (onCaptureGear) onCaptureGear(); };
+  header_.onRouting = [this] { if (onRouting) onRouting(); };
 
   addAndMakeVisible(header_);
   addAndMakeVisible(main_);

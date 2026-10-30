@@ -3,6 +3,7 @@
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <atomic>
+#include <functional>
 #include <vector>
 
 namespace t3k::capture {
@@ -77,6 +78,8 @@ private:
   Recording recording_;
   std::atomic<bool> attached_{false};
   bool suspendedPlayer_ = false, levelsOnly_ = false;
+  bool ownsIo_ = false;
+  std::function<juce::Result()> resumeRouting_;
   int dryPacked_ = 0, wetPacked_ = 1, sendPacked_ = 0;
   int target_ = 0, preroll_ = 24000;
   double deviceRate_ = 48000.0;

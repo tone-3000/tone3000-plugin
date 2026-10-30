@@ -87,6 +87,11 @@ public:
   void setPre(bool shouldBePre);
   bool isPre() const { return pre; }
 
+  /** RT-safe under both owners' chain locks. Copies precomputed settings
+      and coefficients, retaining our own signal history. Resets only on
+      enable/position/flat-to-active transitions. Rates must match. */
+  bool copySettingsFrom(const BlockEq& source) noexcept;
+
   bool isActive() const { return enabled && anyBandActive; }
 
   /** Audio thread (under chainMutex). Processes up to 2 channels in place.

@@ -18,6 +18,7 @@
 #include "NAM/wavenet/model.h"
 #include "ChainBlock.h"
 #include "ChainDomain.h"
+#include "RoutingTaps.h"
 #include "ChainHistory.h"
 #include "AutoOffset.h"
 #include "ChainOversampler.h"
@@ -46,6 +47,24 @@ public:
 
   void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
   using AudioProcessor::processBlock;
+
+  /** Configure/follow only while detached and quiescent, then re-prepare.
+      Workstation routing state never enters tone presets. */
+  void configureRoutingTaps(const t3k::routing::TapPlan& plan);
+  t3k::routing::TapView routingTap(t3k::routing::Stage stage) const;
+  /** Source must outlive this independently-rendered follower. Caller
+      rebuilds chain engines after a source structural/rate revision. */
+  void followRoutingControlsFrom(TONE3000Processor* source,
+      const std::array<std::string, 2>& bypassIds = {});
+  /** Latched after a skipped/stale shadow callback. Rebuild the renderer
+      before reuse, including its fractional-rate converter clock. */
+  bool routingMirrorNeedsRebuild() const {
+    return routingMirrorRebuild.load(std::memory_order_relaxed);
+  }
+  /** Quiescent setup for the standalone router's logical stereo renderer.
+      Physical active masks can include extra DI/Aux/send channels and must
+      not determine the logical renderer's channel capabilities. */
+  void setRoutingIoOverride(bool active, bool stereoInput);
 
   juce::AudioProcessorEditor* createEditor() override;
   bool hasEditor() const override;
@@ -984,6 +1003,30 @@ private:
   // download/prepare failure, so the UI can offer a retry instead of showing
   // loading dots forever. No-op if the block is gone.
   void markBlockLoadFailed(const std::string& blockId);
+
+  t3k::routing::TapPlan routingTapPlan;
+  t3k::routing::detail::TapBuffers routingTapBuffers;
+  struct ResolvedRoutingRole { int lane = -1; int block = -1; };
+  std::array<std::array<ResolvedRoutingRole, 2>, 3> routingRoles{};
+  std::array<std::array<bool, 2>, 3> routingObserved{};
+  std::array<bool, 2> routingWetActive{};
+  bool routingCaptureActive = false;
+  bool routingViewReady = false;
+  int routingPreparedFactor = 0;
+  bool routingIoOverrideActive = false;
+  bool routingIoStereoInput = false;
+  TONE3000Processor* routingControlSource = nullptr;
+  std::array<std::string, 2> routingBypassIds;
+  std::atomic<bool> routingMirrorRebuild{false};
+  bool synchronizeRoutingBlockControls();  // both owners' chain locks held
+  void mirrorRoutingControlModes();
+  void prepareRoutingTaps();
+  void resolveRoutingRoles();  // chainMutex held
+  bool routingPathContains(int output, int renderedLane, int block) const;
+  void routingBlockEntered(int renderedLane, int block);
+  unsigned routingWetMask(int renderedLane, int block) const;
+  void publishRoutingBlock(int renderedLane, int block,
+                            const juce::AudioBuffer<float>& buffer);
 
   // Chain-domain resampling boundary (see ChainDomain.h).
   // Engaged (non-null) only when the host rate differs from the chain base

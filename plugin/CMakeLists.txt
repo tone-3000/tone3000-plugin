@@ -346,6 +346,7 @@ target_sources(${PROJECT_NAME}
         src/ProcessorState.cpp
         src/ProcessorModelLoader.cpp
         include/ChainDomain.h
+        include/RoutingTaps.h
         include/NamEngine.h
         src/NamEngine.cpp
         include/TunerDetector.h
@@ -367,6 +368,20 @@ if (NOT HEADLESS)
             src/CaptureDsp.cpp
             include/KemperMidi.h
             src/KemperMidi.cpp
+            include/KemperRouting.h
+            src/KemperRouting.cpp
+            include/RoutingPlan.h
+            src/RoutingPlan.cpp
+            include/RoutingMixer.h
+            src/RoutingMixer.cpp
+            include/RoutingState.h
+            src/RoutingState.cpp
+            include/StandaloneIoLease.h
+            src/StandaloneIoLease.cpp
+            include/StandaloneRouting.h
+            src/StandaloneRouting.cpp
+            routing/RoutingWindow.h
+            routing/RoutingWindow.cpp
             capture/CaptureWindow.h
             capture/CaptureWindow.cpp
             include/WindowKeyEvents.h
@@ -615,4 +630,4 @@ if (NOT HEADLESS AND BUILD_CLAP)
 endif()
 
 # Visual Studio Only
-source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/..) 
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/..)

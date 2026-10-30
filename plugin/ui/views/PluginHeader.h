@@ -24,10 +24,11 @@ public:
 
   void setTunerShown(bool shown);
   void setCaptureAvailable(bool available) { account_.setCaptureAvailable(available); }
+  void setRoutingAvailable(bool available) { account_.setRoutingAvailable(available); }
 
   std::function<void(bool show)> onToggleTuner;
   std::function<void(bool stereo)> onStereoToggle;
-  std::function<void()> onUndo, onRedo, onOpenSettings, onLogin, onLogout, onCaptureGear;
+  std::function<void()> onUndo, onRedo, onOpenSettings, onLogin, onLogout, onCaptureGear, onRouting;
 
   void paint(juce::Graphics& g) override;
   void resized() override;

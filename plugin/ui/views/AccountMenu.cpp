@@ -18,6 +18,7 @@ constexpr int kMenuGap = 8;  // top: calc(100% + 8)
 // Menu
 AccountMenu::Menu::Menu() {
   addChildComponent(capture);
+  addChildComponent(routing);
   addAndMakeVisible(settings);
   addChildComponent(login);
   addChildComponent(logout);
@@ -33,6 +34,7 @@ void AccountMenu::Menu::paint(juce::Graphics& g) {
 void AccountMenu::Menu::resized() {
   auto area = contentBounds().reduced(kMenuPad);
   if (capture.isVisible()) capture.setBounds(area.removeFromTop(MenuRow::kHeight));
+  if (routing.isVisible()) routing.setBounds(area.removeFromTop(MenuRow::kHeight));
   settings.setBounds(area.removeFromTop(MenuRow::kHeight));
   const auto second = area.removeFromTop(MenuRow::kHeight);
   login.setBounds(second);
@@ -56,6 +58,10 @@ AccountMenu::AccountMenu() : Clickable({}) {
     menu_.close();
     if (onCaptureGear) onCaptureGear();
   };
+  menu_.routing.onClick = [this] {
+    menu_.close();
+    if (onRouting) onRouting();
+  };
   menu_.settings.onClick = [this] {
     menu_.close();
     if (onOpenSettings) onOpenSettings();
@@ -75,7 +81,12 @@ AccountMenu::~AccountMenu() { menu_.close(); }
 
 void AccountMenu::setCaptureAvailable(bool available) {
   menu_.capture.setVisible(available);
-  menu_.setSize(kMenuMinWidth, Menu::kBorder * 2 + kMenuPad * 2 + MenuRow::kHeight * (available ? 3 : 2));
+  menu_.setSize(kMenuMinWidth, Menu::kBorder * 2 + kMenuPad * 2 + MenuRow::kHeight * (2 + (available ? 1 : 0) + (menu_.routing.isVisible() ? 1 : 0)));
+}
+
+void AccountMenu::setRoutingAvailable(bool available) {
+  menu_.routing.setVisible(available);
+  menu_.setSize(kMenuMinWidth, Menu::kBorder * 2 + kMenuPad * 2 + MenuRow::kHeight * (2 + (menu_.capture.isVisible() ? 1 : 0) + (available ? 1 : 0)));
 }
 
 void AccountMenu::setAuthenticated(bool authenticated) {

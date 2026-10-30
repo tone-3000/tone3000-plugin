@@ -24,10 +24,11 @@ public:
 
   void setAuthenticated(bool authenticated);
   void setCaptureAvailable(bool available);
+  void setRoutingAvailable(bool available);
   void setAvatar(ImageLoader& images, const juce::String& url) { avatar_.setImage(images, url); }
   void openMenu();
 
-  std::function<void()> onOpenSettings, onLogin, onLogout, onCaptureGear;
+  std::function<void()> onOpenSettings, onLogin, onLogout, onCaptureGear, onRouting;
 
   void paintButton(juce::Graphics& g, bool highlighted, bool down) override;
   void resized() override;
@@ -39,6 +40,7 @@ private:
     void paint(juce::Graphics& g) override;
     void resized() override;
     MenuRow capture{"Capture gear", std::nullopt};
+    MenuRow routing{"Input / Output", std::nullopt};
     MenuRow settings{"Settings", Icon::Settings};
     MenuRow login{"Login", Icon::LogIn};
     MenuRow logout{"Logout", Icon::LogOut};
