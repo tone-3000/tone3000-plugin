@@ -7,6 +7,7 @@
 #pragma once
 
 #include "services/ToneSession.h"
+#include <map>
 
 namespace t3k::ui::testbed {
 
@@ -34,6 +35,13 @@ public:
   void listTaxonomy(Taxonomy kind, const juce::String& text, Reply<std::vector<TaxonomyEntry>> reply) override;
   // The tone (`api.tone`) with its first model, then onToneSelected.
   void selectTone(int toneId, Done done) override;
+  const std::vector<int>& selectedToneRequests() const { return selectedToneRequests_; }
+  int favoriteRequestCount() const { return favoriteRequests_; }
+  int favoriteCompletionCount() const { return favoriteCompletions_; }
+  int searchRequestCount() const { return searchRequests_; }
+  // `api.favorite: manual` holds replies until a test releases them, so
+  // page requests can finish before the mutation does.
+  void releasePendingFavorites();
   void ensureNativeAuth(Done done) override;
 
   // Login honours `api.authorize`: 'stall' (the browser never comes back:
@@ -71,6 +79,7 @@ private:
   void finishSignIn();
   // The fixture tones that satisfy the catalog part of `query`.
   std::vector<Tone> matching(const ToneQuery& query) const;
+  Tone withFavoriteChanges(Tone tone) const;
 
   JUCE_DECLARE_WEAK_REFERENCEABLE(MockSession)
 
@@ -82,6 +91,11 @@ private:
   juce::var user_;
   juce::var apiTones_;
   juce::var api_;
+  std::map<int, bool> favoriteChanges_;
+  std::vector<int> selectedToneRequests_;
+  std::vector<std::function<void()>> pendingFavorites_;
+  int favoriteRequests_ = 0, favoriteCompletions_ = 0;
+  int searchRequests_ = 0;
 };
 
 }  // namespace t3k::ui::testbed

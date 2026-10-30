@@ -1,8 +1,9 @@
 // In-plugin tone browser: the Select tone takeover that covers everything
 // under the header (meters, chain and faceplate). A pinned header (← SELECT
 // TONE, the search box, the filter bar) and a paginator pinned at the
-// bottom, with the card grid (or loading dots / empty copy / an error with
-// Try again) scrolling between them, fading out under both. The query,
+// bottom, with a card grid or Exchange table between them. The grid's
+// loading dots / empty copy / retry prompts retain their scrolling layout.
+// The query,
 // filter row and last page live in the BrowserState so the screen comes
 // back as it was left.
 //
@@ -34,6 +35,7 @@
 #include "FilterBar.h"
 #include "Paginator.h"
 #include "ToneCard.h"
+#include "ToneTable.h"
 #include "core/AsyncScope.h"
 #include "core/Design.h"
 #include "services/Services.h"
@@ -42,6 +44,7 @@
 #include "widgets/DragScroller.h"
 #include "widgets/LoadingDots.h"
 #include "widgets/PillButton.h"
+#include "widgets/SegmentedText.h"
 #include "widgets/TextField.h"
 
 namespace t3k::ui {
@@ -73,8 +76,11 @@ public:
   // The preview's sign-in CTAs: the browse-intent login that comes back here.
   std::function<void()> onSignIn;
 
-  // The results list: the screen's main scroller.
+  // The grid's results list. Exchange handles its own list navigation.
   DragScroller& scroller() { return *scroller_; }
+  // Exchange owns a virtualized list, separate from the grid's scroller.
+  bool handleNavigationKey(const juce::KeyPress& key);
+  bool exchangeView() const { return state_.exchangeView; }
 
   void paint(juce::Graphics& g) override;
   void resized() override;
@@ -110,7 +116,16 @@ private:
   void fetchTrending();
   void pageLoaded(TonePage page);
   void pageFailed();
+  void setExchangeView(bool exchange);
+  void syncTablePage();
+  void loadTone(int toneId);
   void pick(const Tone& tone);
+  const Tone* findTone(int toneId) const;
+  void toggleFavorite(int toneId);
+  void commitFavorite(Tone tone, std::uint64_t generation);
+  void favoriteFinished(const BrowserState::FavoriteOperation&, const juce::String& error, bool sameAccount);
+  void reconcileFavoriteAccount();
+  void updateFavorite(int toneId, bool favorite, int count);
   // The preview's card click: the sign-in page, and ← back to the cards.
   void setSignInPageShown(bool shown);
   void rebuildCards();
@@ -124,6 +139,7 @@ private:
   BrowserState& state_;
   AsyncScope scope_;       // the component's lifetime (picks)
   AsyncScope fetchScope_;  // the current page request
+  AsyncScope favoriteScope_;  // cancelable, view-scoped favorite-status lookup
 
   // This visit's state; the rest is in state_.
   bool loading_ = true;
@@ -131,9 +147,12 @@ private:
   bool signInPage_ = false;  // the preview's card-click page
   std::optional<int> pickingId_;
   juce::String pickError_;
+  std::optional<int> favoriteBusy_;
+  juce::String favoriteError_;
 
   BackLink back_;         // ← SELECT TONE: closes the browser
   BackLink signInBack_;   // the sign-in page's bare ←: back to the cards
+  std::unique_ptr<SegmentedText> viewToggle_;
 
   // The 1x body: pinned search box and filter row, the scrolled column, the
   // paginator pinned under it.
@@ -142,6 +161,7 @@ private:
   FilterBar filters_;
   std::unique_ptr<DragScroller> scroller_;
   std::unique_ptr<Content> content_;
+  ToneTable table_;
   std::vector<std::unique_ptr<ToneCard>> cards_;
   std::unique_ptr<BusyOverlay> gridBusy_;
   std::unique_ptr<BrowserPrompt> bodyPrompt_;    // the sign-in page, or the fetch error

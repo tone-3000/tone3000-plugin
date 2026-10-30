@@ -299,6 +299,10 @@ bool PluginRoot::FocusPolicy::keyPressed(const juce::KeyPress& key, juce::Compon
   // its document with nothing focused. (With a control focused they bubble
   // up from it to the scroller around it instead, DragScroller::keyPressed,
   // so this is the only route they need here.)
+  if (root_.browserShown() && !root_.tunerShown() && !root_.signInShown() &&
+      root_.settings_ == nullptr && root_.updateNotice_ == nullptr &&
+      root_.connectionModal_ == nullptr && root_.browser_->exchangeView())
+    return root_.browser_->handleNavigationKey(key);
   auto* scroller = root_.frontScroller();
   return scroller != nullptr && scroller->scrollByKey(key);
 }
@@ -313,7 +317,7 @@ DragScroller* PluginRoot::frontScroller() {
   if (updateNotice_ != nullptr || connectionModal_ != nullptr) return nullptr;  // behind a scrim: nothing moves
   if (settings_ != nullptr) return &settings_->scroller();
   if (tunerShown() || signInShown()) return nullptr;  // neither screen scrolls
-  if (browserShown()) return &browser_->scroller();
+  if (browserShown()) return browser_->exchangeView() ? nullptr : &browser_->scroller();
   return &main_.chainScreen().scroller();
 }
 

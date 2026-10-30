@@ -44,6 +44,8 @@ target_sources(UiTestbed PRIVATE
     Scenarios.cpp
     SelfTests.h
     SelfTests.cpp
+    ToneTableSortTests.cpp
+    ToneExchangeTests.cpp
 )
 
 target_compile_definitions(UiTestbed PRIVATE

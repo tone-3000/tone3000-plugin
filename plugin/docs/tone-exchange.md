@@ -1,0 +1,13 @@
+# Tone Exchange view
+
+Open **Add Tone**, then choose **Exchange** beside **Grid**. Exchange presents the same TONE3000 results as a table with title, creator, gear, format, compatible model count, downloads, favorites and publication date. Select a row to inspect its metadata; **Load selected**, Return or a double-click uses the existing tone-loading flow. NAM tones without an A2 model remain inspectable, with loading disabled.
+
+Column headings sort **only the fetched page**, preserving selection by tone ID. Numeric columns sort numerically and publication timestamps compare in UTC. Missing creators and dates remain last in either direction. **API order** restores the page's original order. The existing search/filter Sort menu still controls server ordering across pages. Each request retains the browser's existing 12-tone page size.
+
+Arrow Up/Down, Home/End and Page Up/Down select rows. Left/Right scroll columns when the table is wider than the window. Tab reaches the table and its actions, including **Sort page**, whose menu offers every column and direction; the paginator retains its own Left/Right page navigation. The table exposes complete row and cell metadata to accessibility clients and tooltips, including text truncated visually.
+
+Signed in, the existing **Profile** menu supplies Recently used, Favorites and My tones. Favorite changes show a pending state and roll back on failure. If a list response omits account favorite status, the app fetches that tone's actual status before choosing the mutation. Removing the only favorite on a final page returns to the preceding page after confirmation. Closing during a pending mutation discards the unconfirmed page cache. The write remains owned by the editor, prevents duplicate changes across browser visits and refreshes the current query on completion. Closing during a page request also discards the prior query's stale cache.
+
+Signed out, Exchange shows the existing public trending preview. Loading leads to the sign-in prompt; managing favorites requires sign-in. Grid remains the default. View choice, table sort and selected tone survive browser visits for the current editor lifetime, alongside the existing query and page state.
+
+Exchange uses the existing TONE3000 session, API endpoints and catalog. It does not add a separate sharing service or upload/training endpoint. A locally built app needs its own configured publishable key for live sign-in; see the repository README. Automated tests use offline fixtures for account, paging, load and favorite success/failure flows. Live authenticated account behavior requires separate verification with a configured key.

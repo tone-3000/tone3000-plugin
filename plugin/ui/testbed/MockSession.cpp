@@ -72,7 +72,7 @@ void MockSession::answer(const char* group, Reply<T> reply, std::function<Result
 void MockSession::getTone(int toneId, Reply<Tone> reply) {
   answer<Tone>("tone", std::move(reply), [this, toneId] {
     const auto spec = override("tone");
-    return Result<Tone>::ok(Tone::parse(spec.isObject() ? spec : apiTone(toneId)));
+    return Result<Tone>::ok(withFavoriteChanges(Tone::parse(spec.isObject() ? spec : apiTone(toneId))));
   });
 }
 
@@ -122,7 +122,7 @@ std::vector<Tone> MockSession::matching(const ToneQuery& q) const {
   const auto* rows = apiTones_.getArray();
   if (rows == nullptr) return out;
   for (const auto& row : *rows) {
-    auto tone = Tone::parse(row);
+    auto tone = withFavoriteChanges(Tone::parse(row));
     if (text.isNotEmpty() && !tone.title.containsIgnoreCase(text)) continue;
     if (q.gear.isNotEmpty() && !tone.gear.equalsIgnoreCase(q.gear)) continue;
     if (q.format.isNotEmpty() && !tone.format.equalsIgnoreCase(q.format)) continue;
@@ -135,12 +135,24 @@ std::vector<Tone> MockSession::matching(const ToneQuery& q) const {
 }
 
 void MockSession::searchTones(const ToneQuery& query, int page, int pageSize, Reply<TonePage> reply) {
+  ++searchRequests_;
   if (query.profile != Profile::none) {
-    // The suite's fixed gated page, whatever the page asked for, narrowed
-    // by the title search and gear the stream endpoints take.
-    answer<TonePage>("gated", std::move(reply), [this, query] {
+    // Legacy screenshots carry one representative page. Explicit `pages`
+    // fixtures provide distinct server pages for navigation/flow tests.
+    answer<TonePage>("gated", std::move(reply), [this, query, page] {
       const auto spec = override("gated");
-      auto gated = TonePage::parse(spec.isObject() ? spec : gatedPage_);
+      juce::var payload = spec.isObject() ? spec : gatedPage_;
+      const auto* pages = spec["pages"].getArray();
+      if (pages != nullptr && !pages->isEmpty())
+        payload = pages->getReference(juce::jlimit(0, pages->size() - 1, page - 1));
+      auto gated = TonePage::parse(payload);
+      gated.page = juce::jlimit(1, std::max(1, gated.totalPages), page);
+      for (auto& tone : gated.data) tone = withFavoriteChanges(std::move(tone));
+      if (query.profile == Profile::favorited)
+        std::erase_if(gated.data, [this](const Tone& tone) {
+          const auto it = favoriteChanges_.find(tone.id);
+          return it != favoriteChanges_.end() && !it->second;
+        });
       const auto text = query.text.trim();
       if (text.isNotEmpty() || query.gear.isNotEmpty()) {
         std::erase_if(gated.data, [&](const Tone& tone) {
@@ -176,7 +188,7 @@ void MockSession::listTrending(const juce::String& gear, Reply<std::vector<Tone>
     const auto* rows = spec.isObject() ? spec["data"].getArray() : apiTones_.getArray();
     if (rows == nullptr) return Result<std::vector<Tone>>::ok(std::move(out));
     for (const auto& row : *rows) {
-      auto tone = Tone::parse(row);
+      auto tone = withFavoriteChanges(Tone::parse(row));
       if (gear.isNotEmpty() && !tone.gear.equalsIgnoreCase(gear)) continue;
       out.push_back(std::move(tone));
       if (out.size() == kFeedSize) break;
@@ -214,6 +226,7 @@ void MockSession::listTaxonomy(Taxonomy kind, const juce::String& text, Reply<st
 }
 
 void MockSession::selectTone(int toneId, Done done) {
+  selectedToneRequests_.push_back(toneId);
   getTone(toneId, [self = juce::WeakReference<MockSession>(this), fin = std::move(done)](Result<Tone> tone) {
     if (self == nullptr) return;
     if (!tone) return fin(tone.error);
@@ -222,8 +235,34 @@ void MockSession::selectTone(int toneId, Done done) {
   });
 }
 
-void MockSession::setToneFavorite(int, bool, Done done) {
-  juce::MessageManager::callAsync([cb = std::move(done)] { cb({}); });
+Tone MockSession::withFavoriteChanges(Tone tone) const {
+  const auto it = favoriteChanges_.find(tone.id);
+  if (it == favoriteChanges_.end()) return tone;
+  const int delta = static_cast<int>(it->second) - static_cast<int>(tone.isFavorite.value_or(false));
+  return tone.withFavorite(it->second, std::max(0, tone.favoritesCount + delta));
+}
+
+void MockSession::setToneFavorite(int toneId, bool favorite, Done done) {
+  ++favoriteRequests_;
+  const auto spec = override("favorite").toString();
+  if (spec == "stall") return;
+  auto completion = [self = juce::WeakReference<MockSession>(this), toneId, favorite,
+                                  spec, cb = std::move(done)] {
+    if (self == nullptr) return;
+    ++self->favoriteCompletions_;
+    if (spec == "error") return cb("Request failed (500).");
+    if (!self->authenticated_) return cb("Not signed in.");
+    self->favoriteChanges_[toneId] = favorite;
+    cb({});
+  };
+  if (spec == "manual") pendingFavorites_.push_back(std::move(completion));
+  else juce::MessageManager::callAsync(std::move(completion));
+}
+
+void MockSession::releasePendingFavorites() {
+  auto pending = std::move(pendingFavorites_);
+  pendingFavorites_.clear();
+  for (auto& completion : pending) juce::MessageManager::callAsync(std::move(completion));
 }
 
 void MockSession::ensureNativeAuth(Done done) {

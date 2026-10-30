@@ -26,6 +26,8 @@ install, load tones, and use it.
   (Plugin Settings → Presets opens the folder), so they can be backed up or
   copied between machines.
 - **Capture hardware without a DAW.** The standalone account menu opens a Kemper capture recorder: dry/wet pairs, the official NAM test signal, IR measurement, optional direct MIDI control and mono 24-bit/48 kHz WAV export. Training stays on the TONE3000 website. See [the capture guide](plugin/docs/capture.md).
+- **Route standalone input and output.** Map DI, processed and separate wet-effect signals to interface channels, with per-output controls and documented Kemper MIDI settings. See [the routing guide](plugin/docs/routing.md) for hardware limits and manual settings.
+- **Compare tones in Exchange view.** Switch the existing browser from cards to a sortable catalog table, inspect metadata, manage favorites and load tones through the same account and filters. Column sorting applies to the current page. See [the Exchange guide](plugin/docs/tone-exchange.md).
 - **Cross-platform.** One plugin on macOS, Windows, Linux, and iOS
   (Standalone). The UI is JUCE/C++ (`plugin/ui/`), drawn natively on every
   platform: no browser engine, no web runtime, nothing to install beside the

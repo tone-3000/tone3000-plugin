@@ -6,6 +6,7 @@
 #include "Drive.h"
 #include "views/PluginRoot.h"
 #include "views/browser/FilterChip.h"
+#include "views/browser/Paginator.h"
 #include "widgets/DbMeter.h"
 #include "widgets/DragScroller.h"
 
@@ -40,6 +41,42 @@ namespace {
 const std::map<juce::String, Drive>& drives() {
   using namespace drive;
   static const std::map<juce::String, Drive> table = {
+      {"exchange-search", [](PluginRoot& root, MockBackend&) { clickByHelp(root, "Exchange view:"); wait(200); unhover(root); }},
+      {"exchange-sort-menu",
+       [](PluginRoot& root, MockBackend&) {
+         clickByHelp(root, "Exchange view:");
+         if (auto* sort = buttonNamed(root, "Sort page")) click(root, *sort);
+         wait(200);
+         unhover(root);
+       }},
+      {"exchange-wide", [](PluginRoot& root, MockBackend&) { clickByHelp(root, "Exchange view:"); wait(200); unhover(root); }},
+      {"exchange-signed-out", [](PluginRoot& root, MockBackend&) { clickByHelp(root, "Exchange view:"); wait(200); unhover(root); }},
+      {"exchange-loading", [](PluginRoot& root, MockBackend&) { clickByHelp(root, "Exchange view:"); wait(200); unhover(root); }},
+      {"exchange-error", [](PluginRoot& root, MockBackend&) { clickByHelp(root, "Exchange view:"); wait(200); unhover(root); }},
+      {"exchange-empty", [](PluginRoot& root, MockBackend&) { clickByHelp(root, "Exchange view:"); wait(200); unhover(root); }},
+      {"exchange-long-title", [](PluginRoot& root, MockBackend&) { clickByHelp(root, "Exchange view:"); wait(200); unhover(root); }},
+      {"exchange-unavailable", [](PluginRoot& root, MockBackend&) { clickByHelp(root, "Exchange view:"); wait(200); unhover(root); }},
+      {"exchange-favorite-error",
+       [](PluginRoot& root, MockBackend&) {
+         clickByHelp(root, "Exchange view:");
+         wait(200);
+         if (auto* favorite = buttonNamed(root, "Favorite")) click(root, *favorite);
+         wait(300);
+         unhover(root);
+       }},
+      {"exchange-profile-page2",
+       [](PluginRoot& root, MockBackend&) {
+         clickByHelp(root, "Exchange view:");
+         clickByHelp(root, "Profile:");
+         wait(150);
+         if (auto* recent = buttonNamed(root, "Recently used")) click(root, *recent);
+         wait(250);
+         if (auto* pages = dynamic_cast<Paginator*>(find(root, [](juce::Component& c) {
+               return dynamic_cast<Paginator*>(&c) != nullptr;
+             }))) pages->keyPressed(juce::KeyPress(juce::KeyPress::rightKey));
+         wait(300);
+         unhover(root);
+       }},
       {"chrome-routing-standalone",
        [](PluginRoot& root, MockBackend&) {
          root.setCaptureAvailable(true);
