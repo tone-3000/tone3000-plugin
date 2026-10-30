@@ -112,6 +112,11 @@ public:
   void closeSettings();
   SettingsScreen* settings() { return settings_.get(); }
 
+  // The native shell supplies a standalone-only capture window. Testbed and
+  // hosted roots keep the menu entry hidden and need no device-controller dependency.
+  void setCaptureAvailable(bool available) { header_.setCaptureAvailable(available); }
+  std::function<void()> onCaptureGear;
+
   void paint(juce::Graphics& g) override;
   void resized() override;
   void parentHierarchyChanged() override;

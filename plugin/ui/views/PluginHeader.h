@@ -23,10 +23,11 @@ public:
   PresetBar& presetBar() { return presetBar_; }
 
   void setTunerShown(bool shown);
+  void setCaptureAvailable(bool available) { account_.setCaptureAvailable(available); }
 
   std::function<void(bool show)> onToggleTuner;
   std::function<void(bool stereo)> onStereoToggle;
-  std::function<void()> onUndo, onRedo, onOpenSettings, onLogin, onLogout;
+  std::function<void()> onUndo, onRedo, onOpenSettings, onLogin, onLogout, onCaptureGear;
 
   void paint(juce::Graphics& g) override;
   void resized() override;

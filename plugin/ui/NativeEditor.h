@@ -14,6 +14,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "DarkLookAndFeel.h"
+#include "../capture/CaptureWindow.h"
 #include "backend/ProcessorBackend.h"
 #include "core/Design.h"
 #include "core/Fonts.h"
@@ -131,6 +132,7 @@ private:
   Services services_;
   FontsReady fontsReady_;
   PluginRoot root_;
+  std::unique_ptr<t3k::capture::CaptureWindow> captureWindow_;
 };
 
 }  // namespace t3k::ui

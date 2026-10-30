@@ -88,6 +88,21 @@ NativeEditor::NativeEditor(TONE3000Processor& owner)
   juce::LookAndFeel::setDefaultLookAndFeel(&darkLookAndFeel_.get());
   setOpaque(true);
   addAndMakeVisible(root_);
+#if !JUCE_IOS
+  root_.setCaptureAvailable(StandaloneAudioSettings::isAvailable());
+#endif
+  root_.onCaptureGear = [this] {
+    if (!StandaloneAudioSettings::isAvailable()) return;
+    if (!captureWindow_) {
+      captureWindow_ = std::make_unique<t3k::capture::CaptureWindow>(this, [this] {
+        captureWindow_->setVisible(false);
+        root_.openSettings(SettingsScreen::Tab::system);
+        toFront(true);
+      });
+    }
+    captureWindow_->setVisible(true);
+    captureWindow_->toFront(true);
+  };
   // Nothing polls or repaints while the window is minimised or the editor
   // hidden (isShowing covers both); visibilityChanged /
   // parentHierarchyChanged wake the clock when it is back.
@@ -119,7 +134,7 @@ NativeEditor::NativeEditor(TONE3000Processor& owner)
   trace("Constructed: " + juce::String(getWidth()) + "x" + juce::String(getHeight()));
 }
 
-NativeEditor::~NativeEditor() { stopTimer(); }
+NativeEditor::~NativeEditor() { captureWindow_.reset(); stopTimer(); }
 
 design::Fit NativeEditor::startFit() const {
   // The persisted shape, cut down to the room the window may open into. In a

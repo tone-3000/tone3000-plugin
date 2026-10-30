@@ -360,6 +360,15 @@ if (NOT HEADLESS)
         PRIVATE
             include/StandaloneAudioSettings.h
             src/StandaloneAudioSettings.cpp
+            include/StandaloneCapture.h
+            src/StandaloneCapture.cpp
+            src/CaptureFiles.cpp
+            include/CaptureDsp.h
+            src/CaptureDsp.cpp
+            include/KemperMidi.h
+            src/KemperMidi.cpp
+            capture/CaptureWindow.h
+            capture/CaptureWindow.cpp
             include/WindowKeyEvents.h
     )
     # The editor (plugin/ui, see plugin/docs/native-ui.md): the shared UI

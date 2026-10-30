@@ -58,6 +58,7 @@ PluginRoot::PluginRoot(Services& services)
   services_.session.onAuthenticated = [this] { setBrowserShown(true); };
 
   header_.onOpenSettings = [this] { openSettings(); };
+  header_.onCaptureGear = [this] { if (onCaptureGear) onCaptureGear(); };
 
   addAndMakeVisible(header_);
   addAndMakeVisible(main_);

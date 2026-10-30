@@ -62,6 +62,9 @@ PluginHeader::PluginHeader(Services& services)
   addAndMakeVisible(undo_);
   addAndMakeVisible(redo_);
 
+  account_.onCaptureGear = [this] {
+    if (onCaptureGear) onCaptureGear();
+  };
   account_.onOpenSettings = [this] {
     if (onOpenSettings) onOpenSettings();
   };

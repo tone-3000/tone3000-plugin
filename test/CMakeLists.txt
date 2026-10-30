@@ -21,6 +21,12 @@ add_test(NAME EqPinchTests COMMAND EqPinchTests)
 juce_add_console_app(DspTests PRODUCT_NAME "DspTests")
 
 target_sources(DspTests PRIVATE
+    src/capture_dsp_tests.cpp
+    src/capture_file_tests.cpp
+    src/kemper_midi_tests.cpp
+    ../plugin/src/CaptureDsp.cpp
+    ../plugin/src/CaptureFiles.cpp
+    ../plugin/src/KemperMidi.cpp
     src/auto_offset_tests.cpp
     src/branch_tests.cpp
     src/clipboard_tests.cpp
@@ -115,6 +121,7 @@ target_link_libraries(DspTests
     PRIVATE
         juce::juce_dsp
         juce::juce_audio_formats
+        juce::juce_audio_devices
         juce::juce_audio_processors
         # NAM must be linked whole-archive so its self-registering config
         # parsers (WaveNet/ConvNet/LSTM static initializers) survive the
