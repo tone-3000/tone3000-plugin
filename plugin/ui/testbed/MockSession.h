@@ -37,11 +37,13 @@ public:
   void ensureNativeAuth(Done done) override;
 
   // Login honours `api.authorize`: 'stall' (the browser never comes back:
-  // the sign-in screen stays up) and 'browser-failed' (the same, with the
-  // browser reported as not opened). The initial phase comes from the
-  // suite's `query`: `?code=` lands as returning (with `api.token: 'stall'`
-  // it stays there), `?t3k-nav-error=1` as the failed-navigation error, and
-  // `?canceled=true` with a `browse` login intent lands in the tone browser.
+  // the sign-in screen stays up), 'browser-failed' (the same, with the
+  // browser reported as not opened) and 'app' (the iOS AUv3: no browser,
+  // straight to the device page, `api.device` as below). The initial
+  // phase comes from the suite's `query`: `?code=` lands as returning
+  // (with `api.token: 'stall'` it stays there), `?t3k-nav-error=1` as the
+  // failed-navigation error, and `?canceled=true` with a `browse` login
+  // intent lands in the tone browser.
   void login(LoginIntent intent) override;
   void logout() override;
   const AuthFlow& authFlow() const override { return flow_; }

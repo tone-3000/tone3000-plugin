@@ -233,6 +233,15 @@ void MockSession::ensureNativeAuth(Done done) {
 void MockSession::login(LoginIntent intent) {
   intent_ = intent;
   const auto authorize = override("authorize").toString();
+  if (authorize == "app") {
+    // The iOS AUv3: no browser, so the flow opens on the device page
+    // (`api.device` drives the code as below) with the app named as the
+    // other way in.
+    setFlow(AuthFlow::Phase::leaving);
+    flow_.deviceOnly = true;
+    startDeviceFlow();
+    return;
+  }
   if (authorize == "stall" || authorize == "browser-failed") {
     // The browser never comes back: the flow sits leaving with what the
     // screen needs from it.

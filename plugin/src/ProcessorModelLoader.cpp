@@ -1,4 +1,5 @@
 #include "Processor.h"
+#include "AppData.h"
 #include "json.hpp"
 #include "NAM/wavenet/a2_fast.h"
 #include <algorithm>
@@ -124,15 +125,10 @@ bool namConfigIsA2(const nlohmann::json& modelJson) {
 // remove, undo across a tone swap) re-reads this copy even after the user's
 // original file moved. Content-addressed names dedupe re-drops of the same
 // file; stale entries age out (see cleanLocalModelStash). Same app-data
-// root as PresetManager. Persisted URLs are resolved back to this folder by
-// resolveLocalModelFile, which is what survives the iOS container rotating.
-juce::File localModelsDir() {
-  juce::File base = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory);
-#if JUCE_MAC
-  base = base.getChildFile("Application Support");
-#endif
-  return base.getChildFile("TONE3000").getChildFile("LocalModels");
-}
+// root as PresetManager (AppData.h). Persisted URLs are resolved back to
+// this folder by resolveLocalModelFile, which is what survives the iOS
+// container rotating (and the move into the App Group container).
+juce::File localModelsDir() { return t3k::appdata::root().getChildFile("LocalModels"); }
 
 // FNV-1a over the file bytes: stable across sessions and platforms without
 // pulling in juce_cryptography. The size suffix in the stash name backs up

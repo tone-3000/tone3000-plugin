@@ -69,12 +69,20 @@ public:
   // flow (RFC 8628: a code entered on another device) once
   // startDeviceFlow() is called. `browserProblem` is set when the launcher
   // itself refused to open the system browser, so the copy says so.
+  //
+  // `deviceOnly`: this process has no browser to send anywhere (the AUv3 on
+  // iPadOS: an app extension cannot open Safari or present the in-app
+  // sheet), so the flow went straight to the device code, there is no
+  // `authorizeUrl` to copy, and the screen says that signing in with the
+  // TONE3000 app works too: the plugin shares the app's session and the
+  // session adopts a sign-in made there while the flow is up.
   struct AuthFlow {
     enum class Phase { idle, leaving, returning, error };
     Phase phase = Phase::idle;
     juce::String error;
     juce::String authorizeUrl;
     juce::String browserProblem;
+    bool deviceOnly = false;
 
     struct Device {
       enum class State { requesting, waiting, failed };

@@ -35,8 +35,8 @@
     },
     {
       "name": "ios-simulator",
-      "displayName": "iOS Standalone (Simulator)",
-      "description": "Standalone-only iOS app for the iPad Simulator. Xcode is multi-config, so pick the configuration at build time. Build with: cmake --build build-ios --config Release --target TONE3000_Standalone -- -sdk iphonesimulator",
+      "displayName": "iOS app + AUv3 (Simulator)",
+      "description": "iPad app with the AUv3 plugin embedded (building TONE3000_Standalone builds and embeds TONE3000_AUv3) for the Simulator. Xcode is multi-config, so pick the configuration at build time. Build with: cmake --build build-ios --config Release --target TONE3000_Standalone -- -sdk iphonesimulator",
       "generator": "Xcode",
       "binaryDir": "build-ios",
       "cacheVariables": {
@@ -46,7 +46,7 @@
     },
     {
       "name": "ios-device",
-      "displayName": "iOS Standalone (device)",
+      "displayName": "iOS app + AUv3 (device)",
       "description": "Same as ios-simulator but code signed for a physical iPad. Build with -sdk iphoneos -allowProvisioningUpdates; add -DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=<id> if Xcode cannot pick your team.",
       "inherits": "ios-simulator",
       "binaryDir": "build-ios-device",

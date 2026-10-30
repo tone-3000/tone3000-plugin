@@ -1,13 +1,13 @@
 # iOS (iPad) build
 
-Standalone-only iPad port of the plugin: the same C++ and the same JUCE UI,
-with every difference gated. `#if JUCE_IOS` covers the platform code; the UI
-reads two compile-time flags from `plugin/ui/core/Design.h` (see Touch
-adaptation below): `design::kIos` for the app shell and
-`design::kCoarsePointer` for touch-first ergonomics on any device, plus
-`MouseInputSource::isTouch()` per event for behaviours. Desktop behaviour is
-unchanged. AUv3 is out of scope; the app is iPad only (`TARGETED_DEVICE_FAMILY
-2`).
+iPad port of the plugin: the Standalone app with the AUv3 plugin embedded in
+it (see AUv3 below), the same C++ and the same JUCE UI, with every difference
+gated. `#if JUCE_IOS` covers the platform code; the UI reads two compile-time
+flags from `plugin/ui/core/Design.h` (see Touch adaptation below):
+`design::kIos` for the app shell and `design::kCoarsePointer` for touch-first
+ergonomics on any device, plus `MouseInputSource::isTouch()` per event for
+behaviours. Desktop behaviour is unchanged. The app is iPad only
+(`TARGETED_DEVICE_FAMILY 2`).
 
 Deployment target iOS 16. Landscape only.
 
@@ -36,6 +36,108 @@ uploads the unsigned `.app` as an artifact.
 device that already holds the app gives a fresh, empty Documents folder, so
 keep it stable once models are loaded. Add
 `-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=<id>` if Xcode cannot pick your team.
+The `TONE3000_Standalone` target is the whole product: JUCE makes it depend
+on `TONE3000_AUv3` and copies the extension into the app bundle, so there is
+nothing separate to build for the plugin.
+
+## AUv3
+
+The plugin ships inside the app: `TONE3000.app/PlugIns/TONE3000.appex`, an
+Audio Unit app extension that hosts (AUM, GarageBand, Logic for iPad,
+Cubasis, Loopy Pro, ...) discover once the app is installed. There is no
+separate download, no plugin installer and nothing to enable; deleting the
+app removes the plugin. The same `juce_add_plugin` call builds both formats
+(`FORMATS AUv3 Standalone` on iOS in `plugin/CMakeLists.txt`), so the DSP, the
+state format and the UI are one build of one source, and the UI runs in the
+AUv3 exactly as it does in a desktop host: the host sizes the view, the root
+fits into it (`NativeEditor::fitRoot`; the design's resize range is published
+through the constrainer for `supportedViewConfigurations`), and the window is
+not the screen, so none of the kiosk-window assumptions apply. The two
+regimes are one runtime flag in `NativeEditor` (`kiosk_`: iOS *and* the
+Standalone wrapper), not a platform `#if`, so the iPad app is unchanged and
+nothing is compiled differently per format.
+
+What is different about an app extension, and what the build does about it:
+
+- **Its own process and sandbox.** The extension's `~/Library` is not the
+  app's. One App Group (`T3K_IOS_APP_GROUP`, default
+  `group.<bundle id>`; CMake passes it as `APP_GROUPS_ENABLED` /
+  `APP_GROUP_IDS`, which JUCE turns into the
+  `com.apple.security.application-groups` entitlement on both bundles) gives
+  them a shared container, and `plugin/include/AppData.h` makes that the data
+  root for both: `<group container>/Library/TONE3000` holds `Presets`,
+  `LocalModels` and the two settings files (`preferences.settings`, the
+  UI's `ui-preferences.settings`). So a preset saved in the app is in the
+  plugin's list, a model stashed from Files in the app is loadable from a
+  preset in the plugin, and the sign-in is one sign-in. The first launch of
+  the app build that has the group moves what the previous build kept in
+  the app's own container into the shared one (`AppData.cpp`, child by
+  child, only where the shared copy does not exist yet; the log says what
+  moved under `[AppData]`). Setting `-DT3K_IOS_APP_GROUP=""` builds without
+  a group: both processes then fall back to their own `~/Library/TONE3000`
+  and the plugin is a stranger to the app's data.
+- **The group has to exist on the App ID.** Automatic signing registers the
+  group, the extension's App ID (`<bundle id>.TONE3000AUv3`) and the
+  capability on both App IDs the first time a developer's Xcode, signed in
+  with an Apple ID, builds for a device (`-allowProvisioningUpdates`). That
+  step is done once per team, from a Mac: the TestFlight workflow's App
+  Store Connect API key can fetch the managed profiles but the portal
+  refuses its writes ("Authentication failed: ... bearer token"), so a
+  release before that local build fails at the archive with "No profiles
+  for ..." for both bundle ids. The same applies after any later change to
+  an App ID's capabilities. A manually managed profile needs the App Group
+  capability turned on for both IDs and a profile for the extension as well
+  as the app.
+- **No browser.** An extension cannot open Safari (`UIApplication` is
+  unavailable to it) or present `ASWebAuthenticationSession`, and the
+  host backgrounding would suspend the loopback listener anyway. What it
+  can do is the device flow (RFC 8628), which never leaves the process: so
+  with `Tone3000Session::Config::signInViaApp` (set for the iOS AUv3 in
+  `NativeEditor.cpp`) `login()` first re-reads the shared preferences and
+  simply proceeds when the app has signed in; otherwise it opens the
+  sign-in screen straight on the device page (`AuthFlow::deviceOnly`: scan
+  the QR code with a phone, or type the code at tone3000.com/activate, no
+  browser page and no Copy Link) and, alongside the device poll, re-reads
+  the preferences every second for a sign-in made in the TONE3000 app.
+  Whichever lands first finishes exactly like a sign-in of the plugin's
+  own (identity refreshed, a browse-intent login lands in the tone
+  browser), and the tokens are the app's too. Signing out in either signs
+  both out (same tokens, same file).
+- **The factory presets are the app's.** The extension has none of its own:
+  `PresetManager::defaultSystemFactoryDir` walks from the `.appex` up to the
+  app bundle's `FactoryPresets`.
+- **Two privacy manifests.** App Store Connect checks every bundle in the
+  upload, so `PrivacyInfo.xcprivacy` is a resource of both the app and the
+  extension.
+- **The log stays per process** (`~/Library/TONE3000/TONE3000.log` of the
+  app or of the extension's container): two processes appending to one
+  file would interleave. `xcrun simctl get_app_container <udid>
+  <bundle-id>.TONE3000AUv3 data` finds the extension's.
+- **Memory.** iPadOS gives an app extension a much smaller memory budget
+  than the app. The plugin's model set is the app's, so this is a budget
+  question only for a session that loads many large models at once; the
+  host, not the plugin, reports the kill.
+
+Known limitation: JUCE's `InterProcessLock` is a stub on iOS, so the merge
+of preference writes between the app and the extension (`UiPrefs`) is not
+lock-protected there. Each save is still a whole-file atomic replace, and
+the two sides write different keys at different moments (the app writes the
+tokens; the plugin reads them), so the practical exposure is a lost toggle
+if both are changed within the same instant.
+
+Trying the plugin needs a host, and App Store hosts do not install in the
+Simulator: use a device with any AUv3 host (GarageBand is free). It lists
+under TONE3000 as a music effect (`AU_MAIN_TYPE` follows `NEEDS_MIDI_INPUT`).
+The Simulator still verifies the packaging: `PlugIns/TONE3000.appex` is in
+the app, its `Info.plist` carries the `NSExtension` / `AudioComponents`
+entry (`plutil -extract NSExtension json -o - <appex>/Info.plist`), `xcrun
+simctl spawn <udid> pluginkit -m -p com.apple.AudioUnit-UI` lists the
+extension once the app is installed, and `xcrun simctl get_app_container
+<udid> <bundle-id> groups` shows the group container the app's log names as
+its settings path. The group entitlement itself is in the generated
+`build-ios/plugin/TONE3000_artefacts/JuceLibraryCode/TONE3000_{Standalone,AUv3}.entitlements`;
+a Simulator build is unsigned, so `codesign -d --entitlements` shows it only
+on a device build.
 
 ## Install and log
 
@@ -54,6 +156,8 @@ xcrun devicectl device install app --device <udid> \
 
 # The app's own log (juce::Logger; the UI's HTTP, OAuth and load flows all
 # write to it), the most useful debugging channel on Simulator and device.
+# The log is the one file that stays in the app's own container (presets,
+# models and settings live in the App Group container, see AUv3 below).
 tail -f "$(xcrun simctl get_app_container <udid> <bundle-id> data)/Library/TONE3000/TONE3000.log"
 ```
 
@@ -242,11 +346,12 @@ picker instead (see Known gaps).
   so the Standalone target carries them as bundle resources and
   `PresetManager::defaultSystemFactoryDir` points there (`plugin/CMakeLists.txt`
   and `plugin/src/PresetManager.cpp`). iOS bundles are flat, so they land at
-  `TONE3000.app/FactoryPresets`. The bundle is read-only, which is the contract
-  that directory already has, and a file carrying the same preset id in
-  `Library/TONE3000/Presets/Factory` inside the app container still overrides a
-  bundled entry in `list()`. The glob runs at configure time, so a
-  new preset file needs a reconfigure.
+  `TONE3000.app/FactoryPresets`; the AUv3 reads the same copy (see AUv3
+  above). The bundle is read-only, which is the contract that directory
+  already has, and a file carrying the same preset id in
+  `Presets/Factory` under the data root still overrides a bundled entry in
+  `list()`. The glob runs at configure time, so a new preset file needs a
+  reconfigure.
 - **Sign-in runs in an in-app sheet, not Safari.** App Store review
   rejected the hand-off to the system browser (Guideline 4, Design: "the
   user is taken to the default web browser to sign in"), and Apple's answer
@@ -267,7 +372,8 @@ picker instead (see Known gaps).
   `canceled=true` redirect does; a sheet the system refuses to present
   leaves the sign-in page up with its Copy Link and device-flow fallbacks.
   The app no longer leaves the foreground to sign in, so the listener no
-  longer depends on background audio for this.
+  longer depends on background audio for this. The AUv3 cannot present the
+  sheet at all and hands sign-in to the app (see AUv3 above).
 - **Account deletion.** The same rejection notes that an app offering
   account creation must also offer account deletion in the app (Guideline
   5.1.1(v)). The sign-in sheet reaches tone3000.com's own register page, so
@@ -287,4 +393,18 @@ picker instead (see Known gaps).
 - No haptics: the iPad has no Taptic Engine, so
   `UIImpactFeedbackGenerator` does nothing there and the tile lift and drop
   are silent.
-- AUv3 is not built. Only the Standalone app exists on iOS.
+- Signing in inside the AUv3 is by device code (see AUv3 above). Scanning
+  the QR code needs a second device; typing the code on the same iPad
+  means leaving the host (Slide Over Safari works), during which the host
+  may suspend the extension: the poll then resumes on return, and the code
+  stays valid for the server's `expires_in`. A sign-in made in the
+  TONE3000 app is picked up within a second while the page is up, or on
+  the next gated action otherwise.
+- The AUv3's local import (Load File / Load Folder) presents the document
+  picker over the plugin's view (`LocalFiles::pick` passes the editor as
+  the chooser's parent in an app extension, which JUCE requires there);
+  this is untested across hosts.
+- Links out of the AUv3 (the header logo, a tone's page, the update
+  notice's download) go through `URL::launchInDefaultBrowser`, which on
+  iOS is `UIApplication openURL:`; an app extension is not allowed to open
+  URLs that way, so in a host these do nothing. The app is unaffected.
