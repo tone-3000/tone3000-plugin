@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstring>
 
+#include "AppData.h"
 #include "LegacyParamIds.h"
 
 // #############################
@@ -13,9 +14,7 @@
 // Shared PropertiesFile for preferences that belong to the machine, not the
 // session/preset (multi-core processing, the default A2 size for new
 // blocks, and the machine defaults for the calibration and oversampling
-// parameters). Same app-data root as PresetManager: ~/Library/Application
-// Support/TONE3000 on macOS, %APPDATA%/TONE3000 on Windows,
-// $XDG_CONFIG_HOME/TONE3000 (default ~/.config/TONE3000) on Linux.
+// parameters). Same app-data root as PresetManager (AppData.h).
 namespace {
 
 constexpr auto kMultiCoreKey = "multiCore";
@@ -46,18 +45,13 @@ juce::PropertiesFile::Options userSettingsOptions() {
   // other, since each save rewrites the whole file from its in-memory copy.
   options.applicationName = "preferences";
   options.filenameSuffix = ".settings";
+  // Only read when folderName is relative; set so getDefaultFile() accepts
+  // the options at all on macOS / iOS (it asserts on the legacy default).
   options.osxLibrarySubFolder = "Application Support";
-#if JUCE_LINUX || JUCE_BSD
-  // PropertiesFile puts a bare folderName directly under ~ on Linux, so pass
-  // the XDG config location as an absolute path instead (same root as
-  // PresetManager and the logs).
-  options.folderName =
-      juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-          .getChildFile("TONE3000")
-          .getFullPathName();
-#else
-  options.folderName = "TONE3000";
-#endif
+  // The data root as an absolute path (getDefaultFile() takes one verbatim),
+  // so the file sits beside the presets and the stash on every platform,
+  // including the App Group container on iOS.
+  options.folderName = t3k::appdata::root().getFullPathName();
   return options;
 }
 

@@ -529,9 +529,10 @@ jobs:
           path: build/TONE3000-v*-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
           if-no-files-found: error
 
-  # iOS Simulator: configure and build the Standalone app for the iPad
-  # Simulator so the iOS target cannot silently rot. No signing, no
-  # installer: the unsigned Simulator .app is uploaded for QA. Xcode is the
+  # iOS Simulator: configure and build the iPad app (with the AUv3 extension
+  # it embeds) for the Simulator so the iOS target cannot silently rot. No
+  # signing, no installer: the unsigned Simulator .app is uploaded for QA.
+  # Xcode is the
   # generator here (the iOS presets need it for the app bundle and the
   # multi-config build), and it does not honour the sccache compiler
   # launchers, so this job builds cold.
@@ -574,6 +575,11 @@ jobs:
           set -euo pipefail
           APP="build-ios/plugin/TONE3000_artefacts/${{ env.BUILD_TYPE }}/Standalone/TONE3000.app"
           test -d "$APP"
+          # The AUv3 ships inside the app (docs/ios.md): an app without it
+          # would still run, so check the extension and its component entry.
+          APPEX="$APP/PlugIns/TONE3000.appex"
+          test -d "$APPEX"
+          plutil -extract NSExtension.NSExtensionAttributes.AudioComponents json -o - "$APPEX/Info.plist" | grep -q '"type"'
           ditto -c -k --keepParent "$APP" \
             "build-ios/TONE3000-v${T3K_VERSION}-ios-simulator.zip"
 

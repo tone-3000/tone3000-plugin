@@ -2,6 +2,7 @@
 #if !HEADLESS
 #include "NativeEditor.h"
 #endif
+#include "AppData.h"
 #include "StandaloneStateAutosave.h"
 #include <cmath>
 #include <mutex>
@@ -45,10 +46,16 @@ TONE3000Processor::TONE3000Processor()
   // Heal the per-user app-data folder before anything writes to it: a
   // root-owned folder fails every settings save and drop-stash write while
   // reads keep working (github issue #76; see ensureWritableDir, which logs
-  // whatever it does). Once per process, like the stash GC below.
+  // whatever it does). Once per process, like the stash GC below. The
+  // folder itself was resolved (and, on iOS, filled from an earlier build's
+  // container) by the member initialisers above, before the logger existed;
+  // say here what that did.
   static std::once_flag appDataHealFlag;
-  std::call_once(appDataHealFlag,
-                 [] { ensureWritableDir(getSettingsFile().getParentDirectory()); });
+  std::call_once(appDataHealFlag, [] {
+    if (const auto adopted = t3k::appdata::adoptionReport(); adopted.isNotEmpty())
+      juce::Logger::writeToLog("[AppData] " + adopted);
+    ensureWritableDir(getSettingsFile().getParentDirectory());
+  });
 
   // One-line snapshot of everything read from the shared machine-wide
   // settings file at construction, plus the file's own path and whether its

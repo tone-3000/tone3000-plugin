@@ -16,7 +16,7 @@ void LocalFiles::drop(const std::string& targetBlockId, const juce::StringArray&
   report(chain_.loadLocalTonePath(juce::File(paths[0]), targetBlockId));
 }
 
-void LocalFiles::pick(const std::string& targetBlockId, Kind kind) {
+void LocalFiles::pick(const std::string& targetBlockId, Kind kind, juce::Component& from) {
   if (chooser_ != nullptr) return;
   const bool folder = kind == Kind::folder;
 
@@ -24,12 +24,19 @@ void LocalFiles::pick(const std::string& targetBlockId, Kind kind) {
   // iOS has no usable folder route: the document picker's folder URLs are
   // security scoped and can't be enumerated, so "Load Folder" asks for the
   // files themselves and the same many-models-at-once path runs on them.
+  //
+  // An app extension (the AUv3) may not open a window of its own, so JUCE
+  // presents the picker over a parent component there (and refuses, with
+  // nothing shown, without one). The app keeps the parentless, full-screen
+  // presentation it has always had.
+  juce::Component* parent = juce::SystemStats::isRunningInAppExtensionSandbox() ? from.getTopLevelComponent() : nullptr;
   chooser_ = std::make_unique<juce::FileChooser>(folder ? "Load Files" : "Load File", juce::File{},
-                                                 juce::String("*.nam;*.wav"));
+                                                 juce::String("*.nam;*.wav"), true, false, parent);
   const int flags = juce::FileBrowserComponent::openMode |
                     juce::FileBrowserComponent::canSelectFiles |
                     (folder ? juce::FileBrowserComponent::canSelectMultipleItems : 0);
 #else
+  juce::ignoreUnused(from);
   chooser_ = std::make_unique<juce::FileChooser>(folder ? "Load Folder" : "Load File", juce::File{},
                                                  folder ? juce::String("*") : juce::String("*.nam;*.wav"));
   const int flags = juce::FileBrowserComponent::openMode |

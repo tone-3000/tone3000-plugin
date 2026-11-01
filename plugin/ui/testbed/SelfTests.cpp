@@ -33,6 +33,7 @@
 #include "services/OAuth.h"
 #include "services/Pointer.h"
 #include "services/Tone3000Client.h"
+#include "services/Tone3000Session.h"
 #include "services/UiPrefs.h"
 #include "services/UpdateCheck.h"
 #include "views/Faceplate.h"
@@ -60,6 +61,7 @@
 #include "widgets/Knob.h"
 #include "widgets/form/FormControls.h"
 #include "widgets/Popover.h"
+#include "widgets/QrCode.h"
 #include "widgets/SegmentedText.h"
 
 namespace t3k::ui::testbed {
@@ -605,6 +607,154 @@ struct Tone3000ClientTests : juce::UnitTest {
     expect(granted && granted->access == "A6" && granted->refresh == "R6");
   }
 };
+
+// Sign-in in a process with no browser (Config::signInViaApp, the iOS
+// AUv3): the device flow is the sign-in, and a sign-in made in the TONE3000
+// app is adopted from the shared preferences. Two UiPrefs on one file stand
+// in for the app's and the plugin's processes.
+struct Tone3000SessionTests : juce::UnitTest {
+  Tone3000SessionTests() : juce::UnitTest("Tone3000Session", "ui") {}
+
+  struct Process {
+    Process(const juce::File& file, juce::InterProcessLock& lock)
+        : props(file,
+                [&] {
+                  juce::PropertiesFile::Options o;
+                  o.millisecondsBeforeSaving = -1;
+                  o.processLock = &lock;
+                  return o;
+                }()),
+          prefs(&props, &lock) {}
+    juce::PropertiesFile props;
+    UiPrefs prefs;
+  };
+
+  struct Ears : ToneSession::Listener {
+    explicit Ears(const ToneSession& s) : session(s) {}
+    const ToneSession& session;
+    int sessionChanges = 0;
+    bool sawScreen = false;  // the flow was seen leaving (the sign-in screen came up)
+    void reset() { sessionChanges = 0, sawScreen = false; }
+    void sessionChanged() override { ++sessionChanges; }
+    void authFlowChanged() override {
+      sawScreen |= session.authFlow().phase == ToneSession::AuthFlow::Phase::leaving;
+    }
+  };
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    using Phase = ToneSession::AuthFlow::Phase;
+    using DeviceState = ToneSession::AuthFlow::Device::State;
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("main-stereo");
+    if (scenario == nullptr) {
+      expect(false, "main-stereo scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    ScriptedHttp http;
+    // The device endpoints as the server answers them: a code at once, then
+    // "not yet" to every poll until `approved` is set.
+    bool approved = false;
+    http.answer = [&](const HttpRequest& r) {
+      const auto path = r.url.toString(false);
+      if (path.endsWith("/oauth/device_authorization"))
+        return jsonResponse(200, R"({"device_code":"D1","user_code":"BCDF-GHJK",
+          "verification_uri":"https://www.tone3000.com/activate",
+          "verification_uri_complete":"https://www.tone3000.com/activate?user_code=BCDF-GHJK",
+          "expires_in":600,"interval":1})");
+      if (path.endsWith("/oauth/token"))
+        return approved ? jsonResponse(200, R"({"access_token":"A2","refresh_token":"R2","expires_in":3600})")
+                        : jsonResponse(400, R"({"error":"authorization_pending"})");
+      return jsonResponse(200, R"({"id":7,"username":"ada"})");
+    };
+    const auto file = juce::File::createTempFile("t3k-session.xml");
+    juce::InterProcessLock lock("TONE3000.ui-preferences.session-test");
+    Process app(file, lock), plugin(file, lock);
+    Tone3000Session::Config config;
+    config.apiOrigin = "https://api.test";
+    config.publishableKey = "pk_test";
+    config.signInViaApp = true;
+    Tone3000Session session(backend, plugin.prefs, http, config);
+    Ears ears(session);
+    session.addListener(&ears);
+    int browserOpens = 0;
+    session.onAuthenticated = [&] { ++browserOpens; };
+    const Tokens tokens{"A1", "R1", juce::Time::currentTimeMillis() + 3'600'000};
+    const auto access = [&] {
+      const auto t = Tokens::fromVar(plugin.prefs.getJson(UiPrefs::kTokens));
+      return t ? t->access : juce::String();
+    };
+    const auto deviceRequests = [&] {
+      return static_cast<int>(std::count_if(http.sent.begin(), http.sent.end(), [](const ScriptedHttp::Sent& s) {
+        return s.url.endsWith("/oauth/device_authorization");
+      }));
+    };
+
+    beginTest("signed out, login goes straight to the device code, no browser");
+    session.login(ToneSession::LoginIntent::plain);
+    const auto& flow = session.authFlow();
+    expect(flow.phase == Phase::leaving && flow.deviceOnly);
+    expect(flow.device && flow.device->state == DeviceState::waiting && flow.device->userCode == "BCDF-GHJK");
+    expect(flow.authorizeUrl.isEmpty());  // nothing to copy: there is no browser path
+    expectEquals(deviceRequests(), 1);
+    expect(!session.authenticated());
+
+    beginTest("the back arrow abandons it: the code poll and the app watch both stop");
+    session.cancelFlow();
+    expect(flow.phase == Phase::idle && !flow.device);
+    const auto polls = static_cast<int>(http.sent.size());
+    app.prefs.setJson(UiPrefs::kTokens, tokens.toVar());  // the app signs in after the dismissal
+    pump(Tone3000Session::kAppSignInPollMs + 300);
+    expect(flow.phase == Phase::idle);
+    expectEquals(ears.sessionChanges, 0);
+    expectEquals(static_cast<int>(http.sent.size()), polls);  // no device poll either
+    app.prefs.remove(UiPrefs::kTokens);
+
+    beginTest("the app signing in while the page is up finishes the flow by itself");
+    ears.reset();
+    session.login(ToneSession::LoginIntent::browse);
+    expect(flow.phase == Phase::leaving && flow.device.has_value());
+    app.prefs.setJson(UiPrefs::kTokens, tokens.toVar());
+    expect(!session.authenticated());  // not until the poll re-reads the file
+    pump(Tone3000Session::kAppSignInPollMs + 300);
+    expect(session.authenticated() && access() == "A1");
+    expect(flow.phase == Phase::idle && !flow.device);
+    expect(ears.sessionChanges >= 1);
+    expectEquals(browserOpens, 1);  // a browse-intent login still lands in the browser
+    expect(session.user().has_value() && session.user()->username == "ada");
+    session.logout();
+    app.prefs.sync();  // the app re-reads the file on its own schedule
+    expect(!session.authenticated() && !app.prefs.getJson(UiPrefs::kTokens).isObject());  // one sign-out for both
+
+    beginTest("the code being approved finishes it, and the app watch stops");
+    ears.reset();
+    http.sent.clear();
+    session.login(ToneSession::LoginIntent::plain);
+    expect(flow.phase == Phase::leaving && flow.deviceOnly);
+    approved = true;
+    pump(1500);  // the server's interval is 1 s
+    expect(session.authenticated() && access() == "A2");
+    expect(flow.phase == Phase::idle);
+    expectEquals(browserOpens, 1);  // plain intent: no browser
+    app.prefs.sync();
+    expect(Tokens::fromVar(app.prefs.getJson(UiPrefs::kTokens)).has_value());  // the app has them too
+    approved = false;
+
+    beginTest("already signed in by the app, a gated action simply goes ahead");
+    ears.reset();
+    http.sent.clear();
+    session.login(ToneSession::LoginIntent::plain);
+    expect(flow.phase == Phase::idle);
+    expect(!ears.sawScreen);  // never showed the page
+    expectEquals(deviceRequests(), 0);
+
+    session.removeListener(&ears);
+    file.deleteFile();
+  }
+};
+
 
 struct DragScrollerTests : juce::UnitTest {
   DragScrollerTests() : juce::UnitTest("DragScroller", "ui") {}
@@ -2811,6 +2961,60 @@ struct WindowFitTests : juce::UnitTest {
   }
 };
 
+// AuthFlow::deviceOnly (the iOS AUv3): Login opens the sign-in screen on
+// the device page itself, with no Copy Link (the app line under the cards
+// is in the scenario capture); the expired code offers New code alone.
+// Drives the `load-oauth-app-device*` scenarios.
+struct DeviceOnlySignInTests : juce::UnitTest {
+  DeviceOnlySignInTests() : juce::UnitTest("Sign-in: device only", "ui") {}
+
+  void runTest() override {
+    using Phase = ToneSession::AuthFlow::Phase;
+    {
+      beginTest("Login lands on the device page: code shown, nothing to copy");
+      LiveScenario live(*this, "load-oauth-app-device");
+      if (live.backend == nullptr || live.peer == nullptr) return;
+      auto& root = live.root();
+      live.drive();  // Account: → Login
+      const auto& flow = root.services().session.authFlow();
+      expect(flow.phase == Phase::leaving && flow.deviceOnly && flow.device.has_value());
+      expect(root.signInShown());
+      auto* screen = drive::find(root, [](juce::Component& c) { return c.getName() == "sign in"; });
+      expect(screen != nullptr);
+      if (screen == nullptr) return;
+      const auto shown = [&](const juce::String& name) {
+        auto* b = drive::buttonNamed(*screen, name);
+        return b != nullptr && b->isShowing();
+      };
+      expect(!shown("Copy Link"), "Copy Link has no URL to copy in an extension");
+      expect(!shown("Sign in on a different device"), "the device page is the page");
+      expect(drive::find(*screen, [](juce::Component& c) { return dynamic_cast<QrCode*>(&c) != nullptr && c.isShowing(); }) !=
+             nullptr);
+
+      beginTest("the back arrow abandons the flow and takes the screen down");
+      if (auto* back = drive::find(*screen, [](juce::Component& c) { return dynamic_cast<BackLink*>(&c) != nullptr; }))
+        drive::click(root, *back);
+      expect(LiveScenario::until([&] { return !root.signInShown(); }));
+      expect(flow.phase == Phase::idle);
+    }
+    {
+      beginTest("an expired code offers New code alone");
+      LiveScenario live(*this, "load-oauth-app-device-expired");
+      if (live.backend == nullptr || live.peer == nullptr) return;
+      auto& root = live.root();
+      live.drive();
+      auto* screen = drive::find(root, [](juce::Component& c) { return c.getName() == "sign in"; });
+      expect(screen != nullptr);
+      if (screen == nullptr) return;
+      auto* newCode = drive::buttonNamed(*screen, "New code");
+      expect(newCode != nullptr && newCode->isShowing());
+      auto* copy = drive::buttonNamed(*screen, "Copy Link");
+      expect(copy == nullptr || !copy->isShowing(), "no authorize URL to copy in an extension");
+    }
+  }
+};
+
+
 HtmlTests htmlTests;
 FontTests fontTests;
 RichFlowTests richFlowTests;
@@ -2839,6 +3043,8 @@ PaginatorTests paginatorTests;
 DragScrollerTests dragScrollerTests;
 UiPrefsTests uiPrefsTests;
 Tone3000ClientTests tone3000ClientTests;
+Tone3000SessionTests tone3000SessionTests;
+DeviceOnlySignInTests deviceOnlySignInTests;
 ToneModelTests toneModelTests;
 ToneQueryTests toneQueryTests;
 ReadoutTests readoutTests;

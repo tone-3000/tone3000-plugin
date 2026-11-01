@@ -45,12 +45,15 @@ option(BUILD_LV2 "Build LV2 format (native Linux plugin standard)" ON)
 option(BUILD_CLAP "Build CLAP format (via clap-juce-extensions)" ON)
 set(_plugin_formats "VST3") # Default plugin format
 
-# iOS has no desktop plugin host, so none of the plugin formats apply: VST3,
-# AU (the desktop v2 wrapper), AAX, LV2 and CLAP are all macOS/Windows/Linux
-# only. The app that ships on an iPad is the Standalone. AUv3 would be the
-# in-host format there and is deliberately out of scope for this spike.
+# iOS has no desktop plugin host, so none of the desktop formats apply: VST3,
+# AU (the v2 wrapper), AAX, LV2 and CLAP are all macOS/Windows/Linux only.
+# What ships on an iPad is the Standalone app with an AUv3 app extension
+# inside it (TONE3000.app/PlugIns/TONE3000.appex): installing the app is what
+# registers the plugin with GarageBand, AUM, Logic and the other hosts. JUCE
+# makes the Standalone depend on the AUv3 and embeds it, so building the app
+# target builds both (see docs/ios.md).
 if (T3K_IOS)
-    set(_plugin_formats "")
+    set(_plugin_formats "AUv3")
     set(BUILD_AAX OFF)
     set(BUILD_LV2 OFF)
     set(BUILD_CLAP OFF)
@@ -187,6 +190,16 @@ endif()
 #   marketing version. App Store Connect refuses a build number it has already
 #   seen for that marketing version, so with the default every upload after the
 #   first bounces. T3K_IOS_BUILD_NUMBER is a plain integer for CI to override.
+# - APP_GROUPS_ENABLED / APP_GROUP_IDS: the AUv3 runs in its own process with
+#   its own sandbox, so without a shared container the plugin inside
+#   GarageBand would see none of the presets, downloaded models or the
+#   sign-in the app holds. One App Group (T3K_IOS_APP_GROUP, which defaults
+#   to group.<bundle id>) puts the TONE3000 data folder in the shared
+#   container for both (plugin/include/AppData.h). JUCE writes the
+#   entitlement into every iOS target; the group also has to exist on the
+#   App ID, which automatic signing registers. Set T3K_IOS_APP_GROUP to ""
+#   for a team without the capability: both still build and run, each on its
+#   own container.
 # The microphone and Bluetooth permission strings the plugin already declares
 # are the same keys iOS wants, so they are left in the shared block below.
 set(_t3k_ios_args "")
@@ -195,6 +208,8 @@ if (T3K_IOS)
         "Bundle identifier for the iOS app (override to sign under a personal team)")
     set(T3K_IOS_BUILD_NUMBER "1" CACHE STRING
         "CFBundleVersion for the iOS app: bump on every upload of one marketing version")
+    set(T3K_IOS_APP_GROUP "group.${T3K_IOS_BUNDLE_ID}" CACHE STRING
+        "App Group shared by the iOS app and its AUv3 (empty: no shared container)")
     set(_t3k_ios_args
         BUNDLE_ID "${T3K_IOS_BUNDLE_ID}"
         BUILD_VERSION "${T3K_IOS_BUILD_NUMBER}"
@@ -205,6 +220,11 @@ if (T3K_IOS)
         IPAD_SCREEN_ORIENTATIONS UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         REQUIRES_FULL_SCREEN TRUE
     )
+    if (T3K_IOS_APP_GROUP)
+        list(APPEND _t3k_ios_args
+            APP_GROUPS_ENABLED TRUE
+            APP_GROUP_IDS "${T3K_IOS_APP_GROUP}")
+    endif()
 endif()
 
 # LSMinimumSystemVersion is a macOS Launch Services key; on iOS the deployment
@@ -260,11 +280,21 @@ juce_add_plugin(${PROJECT_NAME}
 if (T3K_IOS)
     # Apple's privacy manifest. An upload whose binary calls a "required
     # reason" API the manifest does not declare is rejected with ITMS-91053.
-    # It belongs to the app target rather than the shared code, and iOS
-    # bundles are flat, so "Resources" is the bundle root.
+    # It belongs to the bundles rather than the shared code: the app and the
+    # AUv3 extension each carry a copy, since the extension is its own
+    # executable reaching the same APIs. iOS bundles are flat, so "Resources"
+    # is the bundle root.
     set(_t3k_privacy "${CMAKE_CURRENT_SOURCE_DIR}/PrivacyInfo.xcprivacy")
-    target_sources(${PROJECT_NAME}_Standalone PRIVATE "${_t3k_privacy}")
+    foreach(_t3k_bundle ${PROJECT_NAME}_Standalone ${PROJECT_NAME}_AUv3)
+        if (TARGET ${_t3k_bundle})
+            target_sources(${_t3k_bundle} PRIVATE "${_t3k_privacy}")
+        endif()
+    endforeach()
     set_source_files_properties("${_t3k_privacy}" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+
+    # The shared data root (AppData.cpp) asks the OS for this group's
+    # container; an empty group means each process keeps its own.
+    target_compile_definitions(${PROJECT_NAME} PRIVATE T3K_IOS_APP_GROUP="${T3K_IOS_APP_GROUP}")
 
     # The 1024 App Store icon must carry no alpha channel: with one, App Store
     # Connect returns ITMS-90717 and the icon never appears in TestFlight.
@@ -317,6 +347,8 @@ endif()
 
 target_sources(${PROJECT_NAME}
     PRIVATE
+        include/AppData.h
+        src/AppData.cpp
         include/BlockEq.h
         src/BlockEq.cpp
         include/BlockSpectrum.h
@@ -422,7 +454,9 @@ endif()
 # location on macOS and Windows (script/create-pkg.sh, the Inno Setup script),
 # the per-user Factory folder on Linux (script/installer/linux/install.sh).
 # iOS has no installer, so the app bundle carries them itself and
-# PresetManager::defaultSystemFactoryDir points at them there.
+# PresetManager::defaultSystemFactoryDir points at them there. One copy: the
+# AUv3 lives inside the app bundle and reads the app's set rather than
+# carrying the same files again.
 if (T3K_IOS AND TARGET ${PROJECT_NAME}_Standalone)
     file(GLOB _t3k_factory_presets "${CMAKE_CURRENT_SOURCE_DIR}/../resources/factory-presets/*.t3kpreset")
     if (_t3k_factory_presets)

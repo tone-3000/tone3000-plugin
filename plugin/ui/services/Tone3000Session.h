@@ -20,6 +20,18 @@
 // outcome is the sheet closing without a redirect, which the user's Cancel
 // turns into an abandoned sign-in and a presentation failure into the
 // browser-problem copy over the fallbacks.
+//
+// The AUv3 on iPadOS can do neither: an app extension has no browser to
+// hand off to and cannot present the sheet. What it can do is the device
+// flow, which never leaves the process (two HTTPS calls and a poll), and it
+// shares the app's preferences file (the App Group container,
+// plugin/include/AppData.h), so a sign-in made in the TONE3000 app is its
+// sign-in too. With Config::signInViaApp, login() first re-reads that file
+// and simply proceeds when the app has already signed in; otherwise it
+// opens the sign-in screen straight on the device page
+// (AuthFlow::deviceOnly) and, alongside the device poll, re-reads the file
+// until the app's tokens appear. Whichever lands first finishes exactly as
+// a sign-in of its own would.
 #pragma once
 
 #include <juce_core/juce_core.h>
@@ -46,6 +58,10 @@ public:
     juce::String apiOrigin;
     juce::String publishableKey;
     int architecture = 2;  // NAM model architecture filter; < 0 disables
+    // This process has no browser: sign in by device code, or in the
+    // TONE3000 app, whose tokens arrive through the shared preferences (see
+    // the header comment). The iOS AUv3.
+    bool signInViaApp = false;
 
     // The build's .env values (T3kConfig.h).
     static Config fromBuild();
@@ -53,6 +69,10 @@ public:
 
   // useConnectionGate.ts PROBE_TIMEOUT_MS.
   static constexpr int kProbeTimeoutMs = 8000;
+  // How often, while a signInViaApp flow is up, the shared preferences are
+  // re-read for the app's sign-in. The file is small and the poll runs only
+  // while the screen is up; a second keeps the hand-back feeling immediate.
+  static constexpr int kAppSignInPollMs = 1000;
 
   Tone3000Session(Backend& backend, UiPrefs& prefs, HttpTransport& http, Config config);
   ~Tone3000Session() override;
@@ -87,6 +107,13 @@ private:
   void handleCallback(const juce::String& query);
   // Tokens landed (from either path): adopt them and close the flow.
   void finishSignIn(const Tokens& tokens);
+  // The session is signed in (our own tokens just stored, or the app's just
+  // read): tell everyone, and land a browse-intent login in the browser.
+  void settleSignIn();
+  // Config::signInViaApp: finish with the app's sign-in if the shared
+  // preferences hold one; whether they did.
+  bool adoptAppSignIn();
+  void pollAppSignIn();
   // Show `url` to the user: the in-app sheet where there is one, else the
   // system browser. "" on success, else why not.
   juce::String openBrowser(const juce::String& url);
@@ -122,6 +149,8 @@ private:
   int devicePollMs_ = 0;
   juce::int64 deviceDeadlineMs_ = 0;
   DelayedCall devicePoll_;
+  // The appSignIn watch (Config::signInViaApp).
+  DelayedCall appSignInPoll_;
 };
 
 }  // namespace t3k::ui

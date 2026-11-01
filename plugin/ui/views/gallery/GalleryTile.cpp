@@ -46,9 +46,9 @@ void GalleryTile::filesDropped(const juce::StringArray& files, int, int) {
 std::vector<ContextMenu::Item> GalleryTile::localLoadItems() {
   return {
       {"Load File", Icon::File, help::Key::loadFileTile,
-       [this] { services_.localFiles.pick(blockId_, LocalFiles::Kind::file); }},
+       [this] { services_.localFiles.pick(blockId_, LocalFiles::Kind::file, *this); }},
       {"Load Folder", Icon::FolderClosed, help::Key::loadFolderTile,
-       [this] { services_.localFiles.pick(blockId_, LocalFiles::Kind::folder); }},
+       [this] { services_.localFiles.pick(blockId_, LocalFiles::Kind::folder, *this); }},
   };
 }
 

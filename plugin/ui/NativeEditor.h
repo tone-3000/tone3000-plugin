@@ -9,6 +9,12 @@
 // content column, and the root sits top-anchored and horizontally centred in
 // whatever box the host actually gives us, so a refused resize letterboxes
 // instead of squishing.
+//
+// Two window regimes. A hosted editor (every desktop format, the iOS AUv3)
+// is resizable within the design's range and asks the host for its size;
+// the iPad app's window is the screen (kiosk_): one fixed box, no corner
+// drags, no host to ask and no persisted size, the root simply fitted into
+// it.
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -101,6 +107,8 @@ private:
   bool loggedFirstPaint_ = false;
 
   TONE3000Processor& processor_;
+  // The window is the iPad's screen (the iOS Standalone); see the header.
+  const bool kiosk_;
   // Keep the UI's rasterised resources alive for as long as any editor
   // exists, and no longer: on Windows they are Direct2D/DirectWrite-backed
   // and must be gone before the host unloads the module (see KnobFaceCache

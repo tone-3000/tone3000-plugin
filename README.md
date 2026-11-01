@@ -25,8 +25,9 @@ install, load tones, and use it.
   undo/redo, and presets. Presets are plain files named after the preset
   (Plugin Settings → Presets opens the folder), so they can be backed up or
   copied between machines.
-- **Cross-platform.** One plugin on macOS, Windows, Linux, and iOS
-  (Standalone). The UI is JUCE/C++ (`plugin/ui/`), drawn natively on every
+- **Cross-platform.** One plugin on macOS, Windows, Linux, and iPad (the
+  Standalone app, with the AUv3 plugin inside it for hosts; see
+  [`docs/ios.md`](docs/ios.md)). The UI is JUCE/C++ (`plugin/ui/`), drawn natively on every
   platform: no browser engine, no web runtime, nothing to install beside the
   plugin (see [`plugin/ui/README.md`](plugin/ui/README.md) and the design
   record in [`plugin/docs/native-ui.md`](plugin/docs/native-ui.md)).
