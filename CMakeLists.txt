@@ -856,9 +856,20 @@ static bool t3kRaiseUiaNotification (const String& text, AccessibilityHandler::A
             if (auto* h = c->getAccessibilityHandler())
                 return h;
 
+        std::function<AccessibilityHandler*(Component&)> findH = [&findH](Component& comp) -> AccessibilityHandler*
+        {
+            if (auto* h = comp.getAccessibilityHandler())
+                return h;
+            for (int i = 0; i < comp.getNumChildComponents(); ++i)
+                if (auto* child = comp.getChildComponent (i))
+                    if (auto* h = findH (*child))
+                        return h;
+            return nullptr;
+        };
+
         for (int i = ComponentPeer::getNumPeers(); --i >= 0;)
             if (auto* peer = ComponentPeer::getPeer (i))
-                if (auto* h = peer->getComponent().getAccessibilityHandler())
+                if (auto* h = findH (peer->getComponent()))
                     return h;
 
         return nullptr;
@@ -926,6 +937,33 @@ void AccessibilityHandler::postAnnouncement (const String& announcementString, A
         endif()
         file(WRITE "${_juce_a11y_win_cpp}" "${_juce_a11y_win_src}")
         message(STATUS "Patched JUCE Accessibility (Windows): announcements go to the screen reader via UIA, not in-process SAPI speech")
+    endif()
+endif()
+
+# T3K_A11Y_PUBLIC_ACTIVE: expose areAnyAccessibilityClientsActive() publicly
+# so views (e.g. PluginRoot) can adapt keyboard focus policies when a screen
+# reader or accessibility client is listening.
+set(_juce_a11y_h "${LIB_DIR}/juce/modules/juce_gui_basics/accessibility/juce_AccessibilityHandler.h")
+if (EXISTS "${_juce_a11y_h}")
+    file(READ "${_juce_a11y_h}" _juce_a11y_h_src)
+    if (NOT _juce_a11y_h_src MATCHES "T3K_A11Y_PUBLIC_ACTIVE")
+        if (_juce_a11y_h_src MATCHES "\r\n")
+            set(_juce_nl "\r\n")
+        else()
+            set(_juce_nl "\n")
+        endif()
+        set(_juce_a11y_active_old "static bool areAnyAccessibilityClientsActive();${_juce_nl}")
+        set(_juce_a11y_priv_old "private:${_juce_nl}")
+        set(_juce_a11y_priv_new "// T3K_A11Y_PUBLIC_ACTIVE: public accessibility client query${_juce_nl}    static bool areAnyAccessibilityClientsActive();${_juce_nl}${_juce_nl}private:${_juce_nl}")
+        string(REPLACE "${_juce_a11y_active_old}" "" _juce_a11y_h_src "${_juce_a11y_h_src}")
+        string(REPLACE "${_juce_a11y_priv_old}" "${_juce_a11y_priv_new}" _juce_a11y_h_src "${_juce_a11y_h_src}")
+        if (NOT _juce_a11y_h_src MATCHES "T3K_A11Y_PUBLIC_ACTIVE")
+            message(FATAL_ERROR
+                "T3K_A11Y_PUBLIC_ACTIVE: failed to patch ${_juce_a11y_h}. "
+                "The JUCE source layout likely changed in this version.")
+        endif()
+        file(WRITE "${_juce_a11y_h}" "${_juce_a11y_h_src}")
+        message(STATUS "Patched JUCE Accessibility: areAnyAccessibilityClientsActive() made public")
     endif()
 endif()
 

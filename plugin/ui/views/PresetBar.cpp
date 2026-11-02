@@ -32,7 +32,10 @@ public:
   GlyphButton(Icon icon, int glyph, int pad, help::Key key)
       : Clickable({}), icon_(icon), glyph_(glyph) {
     setSize(glyph + pad * 2, glyph + pad * 2);
-    setHelpText(help::text(key));
+    const auto hint = help::text(key);
+    setHelpText(hint);
+    setDescription(hint);
+    setTitle(help::lead(hint));
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
   }
   void setColour(juce::Colour c) { colour_ = c; repaint(); }
@@ -75,7 +78,10 @@ private:
 class PresetBar::Chevron : public Clickable {
 public:
   Chevron(Icon icon, help::Key key) : Clickable({}), icon_(icon) {
-    setHelpText(help::text(key));
+    const auto hint = help::text(key);
+    setHelpText(hint);
+    setDescription(hint);
+    setTitle(help::lead(hint));
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
   }
   void setLit(bool lit) { lit_ = lit; repaint(); }
@@ -92,12 +98,16 @@ private:
 class PresetBar::NameButton : public Clickable {
 public:
   NameButton() : Clickable({}) {
-    setHelpText(help::text(help::Key::presetBrowse));
+    const auto hint = help::text(help::Key::presetBrowse);
+    setHelpText(hint);
+    setDescription(hint);
+    setTitle("Preset");
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
   }
   void set(const juce::String& text, bool active) {
     text_ = text;
     active_ = active;
+    setTitle(text.isNotEmpty() ? ("Preset: " + text) : juce::String("Presets"));
     repaint();
   }
   void paintButton(juce::Graphics& g, bool, bool) override {
@@ -638,6 +648,12 @@ void PresetBar::loadAndClose(const juce::String& id) {
   closePanels();
   if (beforeLoad) beforeLoad();
   services_.presets.load(id);
+  for (const auto& p : presets()) {
+    if (p.id == id) {
+      help::announce("Loaded preset: " + p.name);
+      break;
+    }
+  }
 }
 
 void PresetBar::openSavePanel() {

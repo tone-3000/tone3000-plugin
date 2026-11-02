@@ -21,7 +21,11 @@ Paginator::Paginator() {
 }
 
 void Paginator::turnTo(int page) {
-  if (page >= 1 && page <= totalPages_ && page != page_ && onPageChange) onPageChange(page);
+  if (page >= 1 && page <= totalPages_ && page != page_) {
+    if (auto* handler = getAccessibilityHandler())
+      handler->notifyAccessibilityEvent(juce::AccessibilityEvent::valueChanged);
+    if (onPageChange) onPageChange(page);
+  }
 }
 
 bool Paginator::keyPressed(const juce::KeyPress& key) {
@@ -61,6 +65,8 @@ void Paginator::set(int page, int totalPages) {
   page_ = page;
   totalPages_ = totalPages;
   rebuild();
+  if (auto* handler = getAccessibilityHandler())
+    handler->notifyAccessibilityEvent(juce::AccessibilityEvent::valueChanged);
 }
 
 std::vector<int> Paginator::pagesFor(int page, int totalPages) {

@@ -157,6 +157,18 @@ void GalleryTile::mouseUp(const juce::MouseEvent& e) {
 }
 
 bool GalleryTile::keyPressed(const juce::KeyPress& key) {
+  if (travelling()) {
+    if (auto* h = host()) return h->tileKey(*this, key);
+  }
+  if (key == juce::KeyPress::returnKey) {
+    open();
+    return true;
+  }
+  if ((key.getModifiers().isShiftDown() && key.isKeyCode(juce::KeyPress::F10Key)) ||
+      key.getKeyCode() == 0x5D) {  // Shift+F10 or Apps key
+    openMenu(getLocalBounds().getCentre());
+    return true;
+  }
   if (auto* h = host()) return h->tileKey(*this, key);
   return false;
 }

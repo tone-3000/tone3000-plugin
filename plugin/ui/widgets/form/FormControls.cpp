@@ -20,6 +20,7 @@ void PillToggle::setValue(bool on, bool animate) {
   if (on == on_ && !progress_.running()) return;
   on_ = on;
   setToggleState(on, juce::dontSendNotification);
+  notifyStateChanged();
   if (animate)
     progress_.animateTo(on ? 1.0f : 0.0f, kAnimMs);
   else
@@ -83,6 +84,8 @@ class SegmentedControl::Cell : public Clickable {
 public:
   Cell(SegmentedControl& owner, juce::String label, int index)
       : Clickable(label), owner_(owner), label_(std::move(label)), index_(index) {
+    setToggleable(true);
+    setToggleState(owner_.selected_ == index_, juce::dontSendNotification);
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
     onClick = [this] {
       if (owner_.selected_ == index_) return;
@@ -124,6 +127,10 @@ SegmentedControl::~SegmentedControl() = default;
 
 void SegmentedControl::setSelected(int index) {
   selected_ = index;
+  for (size_t i = 0; i < cells_.size(); ++i) {
+    cells_[i]->setToggleState(static_cast<int>(i) == index, juce::dontSendNotification);
+    cells_[i]->notifyStateChanged();
+  }
   repaint();
 }
 

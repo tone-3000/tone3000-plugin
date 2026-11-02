@@ -270,10 +270,21 @@ void PluginRoot::parentHierarchyChanged() {
   watchedParent_ = parent;
   if (watchedParent_ != nullptr) watchedParent_->addComponentListener(this);
   componentMovedOrResized(*this, false, true);
+
+  if (juce::AccessibilityHandler::areAnyAccessibilityClientsActive()) {
+    juce::MessageManager::callAsync([this] {
+      if (isShowing() && juce::Component::getCurrentlyFocusedComponent() == nullptr) {
+        const auto order = juce::KeyboardFocusTraverser().getAllComponents(this);
+        if (!order.empty()) order.front()->grabKeyboardFocus();
+      }
+    });
+  }
 }
 
 // Keyboard focus (see the header): JUCE's tab order, with no default.
 std::unique_ptr<juce::ComponentTraverser> PluginRoot::createKeyboardFocusTraverser() {
+  if (juce::AccessibilityHandler::areAnyAccessibilityClientsActive())
+    return std::make_unique<juce::KeyboardFocusTraverser>();
   return std::make_unique<NoDefaultFocus>();
 }
 

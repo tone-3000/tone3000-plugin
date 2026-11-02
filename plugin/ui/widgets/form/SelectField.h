@@ -50,15 +50,19 @@ public:
 
   std::function<void(const juce::String& value)> onChange;
 
+  const Option* selected() const;
+  const juce::String& placeholder() const { return placeholder_; }
+
   float heightFor(float) const override;
 
   void paint(juce::Graphics& g) override;
   void resized() override;
   void mouseUp(const juce::MouseEvent& e) override;
+  bool keyPressed(const juce::KeyPress& key) override;
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
 private:
   class Dropdown;
-  const Option* selected() const;
   void pick(const juce::String& value);
 
   std::vector<Option> options_;

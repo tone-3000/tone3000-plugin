@@ -5,6 +5,7 @@
 
 #include "GalleryGeometry.h"
 #include "core/Fonts.h"
+#include "core/Help.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
 #include "widgets/Popover.h"
@@ -402,17 +403,22 @@ void ChainView::commitSort() {
 
   if (duplicating && !items[static_cast<size_t>(finalIndex)].isInsert) {
     services_.chain.duplicateBlock(id, *side, finalIndex);
+    help::announce("Duplicated to slot " + juce::String(finalIndex + 1));
     return;
   }
   if (origin != *side) {
     services_.chain.moveBlockToChain(id, *side, finalIndex);
+    help::announce("Moved to " + juce::String(*side == ChainSide::left ? "Left" : "Right") + " slot " + juce::String(finalIndex + 1));
     return;
   }
   if (idsOf(native_.of(*side)) != idsOf(items)) services_.chain.reorderBlocks(idsOf(items));
+  help::announce("Placed in slot " + juce::String(finalIndex + 1));
 }
 
 void ChainView::cancelSort() {
+  const bool wasKeyboard = keyboardSort_;
   finishSort();
+  if (wasKeyboard) help::announce("Move cancelled");
 }
 
 void ChainView::finishSort() {
@@ -443,6 +449,7 @@ bool ChainView::tileKey(GalleryTile& tile, const juce::KeyPress& key) {
     if (!pick) return false;
     beginSort(tile, /*pointer=*/false);
     markActive();
+    help::announce("Moving. Use arrows to position, Space or Enter to place, Escape to cancel.");
     return true;
   }
   if (!keyboardSort_ || tile.blockId() != activeId_) return false;
@@ -454,12 +461,15 @@ bool ChainView::tileKey(GalleryTile& tile, const juce::KeyPress& key) {
   if (!side) return false;
   const int index = lane(*side).indexOf(activeId_);
   if (key == juce::KeyPress::leftKey || key == juce::KeyPress::rightKey) {
-    moveActiveTo(*side, index + (key == juce::KeyPress::leftKey ? -1 : 1));
+    const int nextIdx = index + (key == juce::KeyPress::leftKey ? -1 : 1);
+    moveActiveTo(*side, nextIdx);
+    help::announce("Slot " + juce::String(juce::jlimit(0, static_cast<int>(lane(*side).items().size()) - 1, nextIdx) + 1));
   } else if (key == juce::KeyPress::upKey || key == juce::KeyPress::downKey) {
     if (!stereo()) return false;
     const auto other = *side == ChainSide::left ? ChainSide::right : ChainSide::left;
     if ((key == juce::KeyPress::upKey) != (other == ChainSide::left)) return true;
     moveActiveTo(other, index);
+    help::announce(juce::String(other == ChainSide::left ? "Left" : "Right") + " slot " + juce::String(index + 1));
   } else {
     return false;
   }
