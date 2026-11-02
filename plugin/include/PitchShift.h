@@ -54,7 +54,13 @@
  * over kBlendSeconds and the engine keeps running until a fade-out lands
  * (isRunning), after which the processor stops calling it, so a powered-off
  * PitchShift is a bit-exact, zero-latency passthrough (the "fresh default
- * chain is transparent" invariant in processor_tests). A Window change
+ * chain is transparent" invariant in processor_tests). The deck's Mix sets
+ * the shifted signal's share of the output (the same dry/wet blend as a
+ * block's Mix, at 1 by default), inside the power fade so a power-off still
+ * lands on the untouched input. The dry it blends in is the input held by
+ * the floor, the same alignment the tonality band uses, so a partial Mix
+ * lands the dry with the re-synced attacks rather than leading the shift by
+ * the tap's drift. A Window change
  * keeps the rings (they are sized for the largest window) and lets a tap
  * outside the new range splice back in like any drift splice.
  *
@@ -98,14 +104,19 @@ public:
     return static_cast<Window>(juce::jlimit(0, static_cast<int>(kWindowMs.size()) - 1, index));
   }
 
-  /** The user-facing controls, in real units (the APVTS stores them the
-      same way). Semitones is continuous; the processor rounds it when the
+  /** The user-facing controls (the APVTS stores them the same way):
+      semitones, tonality and window in real units, mix as its 0-1 knob
+      position. Semitones is continuous; the processor rounds it when the
       STEP toggle is on, so the engine never knows about the toggle. */
   struct Params {
     float semitones = 0.0f;
     // Frequency above which the dry bypasses the shifter. 0: off.
     float tonalityHz = 0.0f;
     Window window = kDefaultWindow;
+    // Dry/wet balance of the output: 0 is the input held by the floor (the
+    // same alignment the tonality band uses), 1 the pure shift (the
+    // default). In between mixes the dry signal with the shifted one.
+    float mix = 1.0f;
   };
 
   PitchShift();

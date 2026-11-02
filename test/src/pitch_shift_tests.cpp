@@ -9,7 +9,9 @@
 //                   and unity gain; the shift lands on the expected frequency
 //                   at ±1 and ±2 octaves and at a fractional shift; a splice
 //                   between uncorrelated taps holds the level; the tonality
-//                   limit passes the highs unshifted; a pick attack re-syncs
+//                   limit passes the highs unshifted; Mix blends the dry
+//                   signal back in (0 = the input held by the floor); a pick
+//                   attack re-syncs
 //                   the tap to the floor; stereo channels share one tap; a
 //                   mono buffer against the stereo engine is safe; rate /
 //                   block-size / window changes and ±24 extremes stay
@@ -216,6 +218,27 @@ TEST(PitchShiftTest, TonalityLimitPassesTheHighsUnshifted) {
   // ... while a partial below the limit still shifts.
   const auto low = makeSine(3 * 48000, 440.0, 0.5f);
   expectShiftedTo(runPitchShift(low, p), 440.0, 880.0);
+}
+
+TEST(PitchShiftTest, MixBlendsTheDryBackIn) {
+  // Half Mix: an octave down carries the note and its octave at the same
+  // level. The dry is held by the floor so a partial Mix lands it with the
+  // re-synced attacks: Mix 0 is the input at the floor delay, not the
+  // untouched input.
+  const auto in = makeSine(3 * 48000, 440.0, 0.5f);
+  PitchShift::Params p;
+  p.semitones = -12;
+  p.mix = 0.5f;
+  const auto out = runPitchShift(in, p);
+  constexpr int kSettle = 48000, kWindow = 65536;
+  const double atDry = db(goertzelPower(out.data() + kSettle, kWindow, 440.0));
+  const double atOctave = db(goertzelPower(out.data() + kSettle, kWindow, 220.0));
+  EXPECT_NEAR(atDry, atOctave, 1.0);
+  p.mix = 0.0f;
+  const auto dry = runPitchShift(in, p);
+  const int floor = PitchShift::minDelaySamples(kFs);
+  for (size_t i = kSettle; i < dry.size(); ++i)
+    ASSERT_FLOAT_EQ(dry[i], in[i - static_cast<size_t>(floor)]) << i;
 }
 
 TEST(PitchShiftTest, PickAttackReSyncsTheTapToTheFloor) {
@@ -517,6 +540,7 @@ TEST(ProcessorTest, PitchDefaultsAreOffAndMatchTheDsp) {
   EXPECT_FLOAT_EQ(proc.parameters.getRawParameterValue("pitchStep")->load(), 1.0f);  // whole semitones
   EXPECT_FLOAT_EQ(denormalised(proc, "pitchTonality"), PitchShift::kTonalityOffHz);  // off
   EXPECT_FLOAT_EQ(denormalised(proc, "pitchWindow"), static_cast<float>(p.window));
+  EXPECT_FLOAT_EQ(denormalised(proc, "pitchMix"), p.mix);  // fully shifted
   // The knob's ends and centre: ±24, 0 at noon; the range is continuous.
   auto* semis = proc.parameters.getParameter("pitchSemitones");
   EXPECT_FLOAT_EQ(semis->convertFrom0to1(0.0f), -24.0f);
@@ -594,6 +618,7 @@ TEST(ProcessorTest, PitchSurvivesStateRoundTrip) {
     a.parameters.getParameter("pitchStep")->setValueNotifyingHost(0.0f);
     setDenormalised(a, "pitchTonality", 4000.0f);
     setDenormalised(a, "pitchWindow", 2.0f);
+    setDenormalised(a, "pitchMix", 0.4f);
     a.getStateInformation(state);
   }
   TONE3000Processor b;
@@ -603,6 +628,7 @@ TEST(ProcessorTest, PitchSurvivesStateRoundTrip) {
   EXPECT_FLOAT_EQ(b.parameters.getRawParameterValue("pitchStep")->load(), 0.0f);
   EXPECT_NEAR(denormalised(b, "pitchTonality"), 4000.0f, 1.0f);
   EXPECT_FLOAT_EQ(denormalised(b, "pitchWindow"), 2.0f);
+  EXPECT_NEAR(denormalised(b, "pitchMix"), 0.4f, 1e-4f);
 }
 
 TEST(ProcessorTest, StateFromBeforePitchShiftLandsOnItsDefaults) {
@@ -622,7 +648,7 @@ TEST(ProcessorTest, StateFromBeforePitchShiftLandsOnItsDefaults) {
   juce::ValueTree params = tree.getChildWithName("PARAMETERS");
   ASSERT_TRUE(params.isValid());
   for (const auto* id : {"pitchEnabled", "pitchSemitones", "pitchStep", "pitchTonality",
-                         "pitchWindow"}) {
+                         "pitchWindow", "pitchMix"}) {
     const auto child = params.getChildWithProperty("id", id);
     ASSERT_TRUE(child.isValid()) << id;
     params.removeChild(child, nullptr);
@@ -643,6 +669,7 @@ TEST(ProcessorTest, StateFromBeforePitchShiftLandsOnItsDefaults) {
   EXPECT_FLOAT_EQ(proc.parameters.getRawParameterValue("pitchEnabled")->load(), 0.0f);
   EXPECT_NEAR(denormalised(proc, "pitchSemitones"), 0.0f, 1e-4f);
   EXPECT_FLOAT_EQ(proc.parameters.getRawParameterValue("pitchStep")->load(), 1.0f);
+  EXPECT_NEAR(denormalised(proc, "pitchMix"), 1.0f, 1e-4f);
 }
 
 TEST(ProcessorTest, PitchStepRoundsTheShiftForTheEngine) {
