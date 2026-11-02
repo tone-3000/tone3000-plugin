@@ -119,6 +119,7 @@ public:
   // Meters / tuner / auto-measure
   virtual juce::var getMeterLevels() = 0;
   virtual void setTunerEnabled(bool enabled) = 0;
+  virtual void setTunerMuted(bool muted) = 0;
   virtual juce::var getTunerReading() = 0;
   virtual void startAutoBalance() = 0;
   virtual void cancelAutoBalance() = 0;

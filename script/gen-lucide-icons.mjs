@@ -28,7 +28,7 @@ const ICONS = [
   'Gauge', 'GripVertical', 'Info', 'Laptop', 'Link', 'ListFilter', 'LogIn', 'LogOut',
   'MidiPort', 'Pencil', 'Plus', 'PlusCircle', 'Power', 'Redo2', 'RotateCcw', 'Save',
   'Search', 'Settings', 'Share', 'ShieldAlert', 'Smartphone', 'Trash2', 'Undo2', 'Upload',
-  'Volume2', 'WifiOff', 'X',
+  'Volume2', 'VolumeX', 'WifiOff', 'X',
 ];
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
