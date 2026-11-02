@@ -309,6 +309,15 @@ scrollbars anywhere; the ways in are:
   jitters a few sideways pixels of either sign, so it stuttered back and
   forth until the gesture was big enough to read as purely vertical; it also
   rounded every event up to a whole pixel.
+  **Burst ownership.** Panning moves content under the pointer, so a control
+  that also takes the wheel can arrive under a cursor that has not moved.
+  A burst therefore belongs to whatever was under the pointer when it began:
+  the first actor claims it (`DragScroller::claimWheelBurst`) and the other
+  side stands down for the rest of the burst (`wheelBurstOwnedByOther`).
+  This is needed because a `Viewport` is a recursive mouse listener on its
+  content, so it hears the wheel over any descendant whether or not the
+  child handled it — a child cannot "consume" the event. See "Knob wheel" in
+  §5.13 for the other half.
 - **Drag, with any pointer** (`ScrollOnDragMode::all`). A finger or a mouse
   that moves 8px before release pans the content, with the viewport's own
   inertia; a shorter press is a click. JUCE leaves out one rule: once a drag
@@ -495,6 +504,29 @@ scenario and the `Faceplate dual mono` self-test see the same state.
 Faceplate knobs and toggles bind via `juce::ParameterAttachment` to
 `backend.parameter(id)`. `MockBackend` owns a minimal `juce::AudioProcessor`
 with the same parameter ids so attachments behave identically in the testbed.
+
+**Knob wheel.** `Knob` also takes the scroll wheel, over the face only (the
+label slot stays a tap target for the type-in editor) and never while the
+editor is open. One click moves what one arrow key moves — 1 % of the range —
+and a forward turn (away from the user) raises the value, the same direction
+as this knob's drag and arrow keys, the EQ curve's Q and the EQ faders. Shift
+divides by 8, the same rule as a drag and as the EQ curve's handler. A
+detented knob (`Options::steps`) steps exactly one detent per click and
+carries fractional clicks, so a slow trackpad gesture still lands on a detent.
+Inertial events are ignored: momentum outlives the finger, and a value that
+creeps after release is a bug.
+
+One click is `wheel::kNotchPixels` — `WHEEL_DELTA` (120) through JUCE's
+0.5/256 page scaling, i.e. 120 px — so `kWheelSensitivity` is `kKeyStep / 120`,
+not a hand-picked fraction. An earlier version calibrated against 0.04 pages
+(a trackpad's fine delta) and moved 5.9× too far per click.
+
+A burst of wheel events is one host gesture (`beginGesture` on the first,
+`endGesture` ~250 ms after the last) so automation records one point, not one
+per tick; inbound echoes are ignored for the whole burst, as they are mid-drag.
+Inside a scrolling lane the burst belongs to whatever was under the pointer
+when it began (§5.8), so a knob there edits without the lane panning, and a
+pan never edits a knob it slides under the pointer.
 
 ### 5.14 OAuth in the system browser
 Replaces `useT3kSelect` navigation. `OAuthFlow`:
