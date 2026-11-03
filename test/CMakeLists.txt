@@ -18,6 +18,12 @@ add_executable(EqPinchTests ui/eq_pinch_tests.cpp)
 target_include_directories(EqPinchTests PRIVATE ../plugin/ui)
 add_test(NAME EqPinchTests COMMAND EqPinchTests)
 
+# The audition loop's recorder is plain C++ over a float buffer: no JUCE,
+# no DSP build, seconds to compile.
+add_executable(LoopRecorderTests loop/loop_recorder_tests.cpp)
+target_include_directories(LoopRecorderTests PRIVATE ../plugin/include)
+add_test(NAME LoopRecorderTests COMMAND LoopRecorderTests)
+
 juce_add_console_app(DspTests PRODUCT_NAME "DspTests")
 
 target_sources(DspTests PRIVATE
