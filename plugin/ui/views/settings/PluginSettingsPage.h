@@ -48,7 +48,7 @@ private:
   ToggleRow infoBar_;
   // View-only toggles for the faceplate's gate / pitch groups; the
   // Faceplate shows a powered effect regardless.
-  ToggleRow showGate_, showPitch_;
+  ToggleRow showGate_, showPitch_, showLooper_;
   FieldRow namSize_;
   RadioOption lite_, full_;
   ToggleRow blockSize_;

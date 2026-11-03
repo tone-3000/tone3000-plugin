@@ -91,6 +91,10 @@ void MidiMapper::applyEvent(Mapping& mapping, const juce::MidiMessage& msg) {
         return;
     }
     switch (mapping.kind) {
+      case Kind::looperRecord:
+        // Lightweight transport request; no message-thread scheduling lag.
+        if (onLooperRecordToggle) onLooperRecordToggle();
+        return;
       case Kind::blockPower:
         // Block enable is a locked, undoable chain edit, so hop to the message
         // thread. XOR keeps rapid double-stomps parity-correct if they land
@@ -210,7 +214,8 @@ MidiMapper::Mapping MidiMapper::makeMapping(const juce::String& targetId, Source
   const int presetDelta = targetId == kPresetNextTarget   ? 1
                           : targetId == kPresetPrevTarget ? -1
                                                           : 0;
-  const Kind kind = presetDelta != 0          ? Kind::presetStep
+  const Kind kind = targetId == kLooperRecordTarget ? Kind::looperRecord
+                    : presetDelta != 0          ? Kind::presetStep
                     : targetId == kStereoTarget ? Kind::stereoMode
                     : block.index >= 0          ? Kind::blockPower
                                                 : Kind::parameter;

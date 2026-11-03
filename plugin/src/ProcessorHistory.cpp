@@ -125,6 +125,9 @@ void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState
     if (!blockState.hasType("ChainBlock"))
       continue;
 
+    if (blockState.getProperty("type").toString() == "looper")
+      continue;  // retired experimental looper blocks; remaining preset stays intact
+
     const std::string blockId = blockState.getProperty("id").toString().toStdString();
     const ChainBlockType type =
         chainBlockTypeFromString(blockState.getProperty("type").toString());
