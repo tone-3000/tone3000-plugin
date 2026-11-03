@@ -113,6 +113,7 @@ plugin/ui/
                       ChainStore, MeterStore, PresetStore, AudioDeviceStore,
                       MidiMapStore, UiPrefs, HintBus, Toast, Banners,
                       ParamBinding, AutoMeasure, SpectrumFeed, TunerFeed,
+                      LoopFeed (the audition loop's state and taps),
                       ModelLoads, LocalFiles, ImageLoader, ConnectionGate,
                       UpdateCheck, ToneLoadFlow, Zoom, Pointer (touch or
                       mouse, read off the input at run time); the TONE3000 stack:
@@ -126,7 +127,8 @@ plugin/ui/
   vendor/             third-party code carried in-tree, each with its licence:
                       qrcodegen (Nayuki's QR Code generator, MIT)
   views/              screens, wiring widgets to services: PluginRoot,
-                      PluginHeader, Faceplate, MainScreen, TunerView,
+                      PluginHeader, LoopButton (the top bar's one-switch
+                      audition loop pedal), Faceplate, MainScreen, TunerView,
                       SignInScreen, …
     gallery/          ChainView, GalleryLane, ToneTile, AddTile, StereoPanRail
     block/            BlockDetail, BlockCard, BlockInfoPanel, BlockEqView

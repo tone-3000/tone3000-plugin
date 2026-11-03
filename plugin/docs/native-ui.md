@@ -626,7 +626,9 @@ against another renderer.
   first (`drive::scrollIntoView`), and controls are found by their help text.
 - `testbed/fixtures/scenarios.json` is the scenario table: one mock backend
   state per screen, plus `hasDrive` for the ones that need interaction to
-  reach. It is edited in place; a new screen gets a new entry.
+  reach. It is edited in place; a new screen gets a new entry. An entry
+  with `base` starts from an earlier entry's state and overrides only what
+  it lists (the loop button's states over `main-mono`, for instance).
 
 Behavioural verification during the port: each phase ended with the
 scenario set for that screen green in the testbed, then a manual pass in the

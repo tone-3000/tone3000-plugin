@@ -20,6 +20,7 @@ public:
   // Live pokes for drive steps.
   void setChain(juce::var chain);
   void setTuner(juce::var tuner) { tuner_ = std::move(tuner); }
+  void setLoop(juce::var loop) { loop_ = std::move(loop); }
   void setAutoMeasure(juce::var state) { autoMeasure_ = std::move(state); }
   void setDevice(juce::var device);
   // Live: meters, spectrum, tuner and input levels follow a moving signal
@@ -118,6 +119,11 @@ public:
   juce::var getMeterLevels() override;
   void setTunerEnabled(bool) override {}
   juce::var getTunerReading() override { return signal_ != nullptr ? signal_->tuner() : tuner_; }
+  // The loop's state machine without audio: a tap advances it the way a
+  // take would (armed records at once, a take closes at four seconds).
+  void loopTap() override;
+  void loopClear() override;
+  juce::var getLoopState() override { return loop_; }
   void startAutoBalance() override {}
   void cancelAutoBalance() override {}
   juce::var pollAutoBalance() override { return autoMeasure_; }
@@ -155,6 +161,7 @@ private:
   std::vector<juce::String> machineDefaults_;
   juce::var meters_;
   juce::var tuner_;
+  juce::var loop_;
   juce::var autoMeasure_;
   juce::String version_;
   std::unique_ptr<MockSignal> signal_;

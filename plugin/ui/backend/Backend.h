@@ -120,6 +120,11 @@ public:
   virtual juce::var getMeterLevels() = 0;
   virtual void setTunerEnabled(bool enabled) = 0;
   virtual juce::var getTunerReading() = 0;
+  // Audition loop (LoopRecorder): the pedal's tap
+  // and its hold, and { state, position, lengthSeconds } for the header.
+  virtual void loopTap() = 0;
+  virtual void loopClear() = 0;
+  virtual juce::var getLoopState() = 0;
   virtual void startAutoBalance() = 0;
   virtual void cancelAutoBalance() = 0;
   virtual juce::var pollAutoBalance() = 0;

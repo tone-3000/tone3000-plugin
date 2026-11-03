@@ -126,6 +126,11 @@ std::map<Key, String> buildTable() {
 
   // Top bar
   t[Key::tuner] = U("Tuner: chromatic tuner. Click again: back.");
+  t[Key::loopEmpty] = U("Loop: record a riff to audition tones with. Click: arm.");
+  t[Key::loopArmed] = U("Loop: armed. Play to start recording, or click to start now.");
+  t[Key::loopRecording] = U("Loop: recording. Click: close the loop and play it.");
+  t[Key::loopPlaying] = U("Loop: playing in place of your input. Click: stop. Right-click: clear.");
+  t[Key::loopStopped] = U("Loop: stopped. Click: play. Right-click: clear.");
   t[Key::undo] = U("Undo: revert last chain edit.");
   t[Key::redo] = U("Redo: re-apply undone edit.");
   t[Key::settings] = U("Settings: plugin and audio options.");

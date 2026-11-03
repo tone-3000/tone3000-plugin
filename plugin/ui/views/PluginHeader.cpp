@@ -35,6 +35,7 @@ PluginHeader::PluginHeader(Services& services)
     : services_(services),
       logo_(std::make_unique<LogoLink>()),
       presetBar_(services),
+      loop_(services.loop),
       tuner_(custom_icons::kTuningFork, 28, 18) {
   addAndMakeVisible(*logo_);
   addAndMakeVisible(presetBar_);
@@ -43,6 +44,7 @@ PluginHeader::PluginHeader(Services& services)
     if (onStereoToggle) onStereoToggle(stereo);
   };
   addAndMakeVisible(stereo_);
+  addAndMakeVisible(loop_);
 
   tuner_.setHelpText(help::text(help::Key::tuner));
   tuner_.setFillWhenActive(true);
@@ -130,11 +132,12 @@ void PluginHeader::resized() {
   logo_->setBounds(area.getX(), cy - kLogoHeight / 2, kLogoWidth, kLogoHeight);
 
   // Right group, laid out from the right edge: account · undo/redo · tuner ·
-  // stereo · presets, 40px apart (16px inside the undo/redo pair).
+  // loop · stereo · presets, 40px apart (16px inside the undo/redo pair).
   int x = place(account_, area.getRight()) - kGroupGap;
   x = place(redo_, x) - kPairGap;
   x = place(undo_, x) - kGroupGap;
   x = place(tuner_, x) - kGroupGap;
+  x = place(loop_, x) - kGroupGap;
   x = place(stereo_, x) - kGroupGap;
   place(presetBar_, x);
 }

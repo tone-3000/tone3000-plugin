@@ -29,6 +29,7 @@
 #include "model/Tone.h"
 #include "model/ToneQuery.h"
 #include "services/ConnectionGate.h"
+#include "services/LoopFeed.h"
 #include "services/LoopbackServer.h"
 #include "services/OAuth.h"
 #include "services/Pointer.h"
@@ -3015,6 +3016,58 @@ struct DeviceOnlySignInTests : juce::UnitTest {
 };
 
 
+// LoopFeed over the mock: the one-switch state machine as the header sees
+// it, and a help line (so a screen-reader name) for every phase.
+struct LoopTests : juce::UnitTest {
+  LoopTests() : juce::UnitTest("loop", "ui") {}
+  void runTest() override {
+    using Phase = LoopFeed::Phase;
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("main-mono");
+    if (scenario == nullptr) {
+      expect(false, "main-mono scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    UiClock clock;
+    LoopFeed feed(backend, clock);
+    struct Ears : LoopFeed::Listener {
+      int changes = 0;
+      void loopChanged(const LoopFeed::State&) override { ++changes; }
+    } ears;
+    feed.addListener(&ears);
+
+    beginTest("taps walk the pedal's states; clear empties from anywhere");
+    expect(feed.state().phase == Phase::empty && !feed.playing());
+    feed.tap();
+    expect(feed.state().phase == Phase::armed);
+    feed.tap();
+    expect(feed.state().phase == Phase::recording);
+    feed.tap();
+    expect(feed.state().phase == Phase::playing && feed.playing());
+    expectWithinAbsoluteError(feed.state().lengthSeconds, 4.0, 1e-9);
+    feed.tap();
+    expect(feed.state().phase == Phase::stopped && !feed.playing());
+    feed.tap();
+    expect(feed.state().phase == Phase::playing);
+    expectEquals(ears.changes, 5);
+    feed.poll();
+    expectEquals(ears.changes, 5);  // an unchanged poll is silent
+    feed.clear();
+    expect(feed.state().phase == Phase::empty);
+    expectEquals(feed.state().lengthSeconds, 0.0);
+    feed.removeListener(&ears);
+
+    beginTest("phase names round-trip; every phase has a Loop: hint");
+    for (auto phase : {Phase::empty, Phase::armed, Phase::recording, Phase::playing, Phase::stopped})
+      expect(LoopFeed::parsePhase(LoopFeed::phaseName(phase)) == phase);
+    expect(LoopFeed::parsePhase("nonsense") == Phase::empty);
+    for (auto key : {help::Key::loopEmpty, help::Key::loopArmed, help::Key::loopRecording, help::Key::loopPlaying,
+                     help::Key::loopStopped})
+      expect(help::text(key).startsWith("Loop:"));
+  }
+};
+
 HtmlTests htmlTests;
 FontTests fontTests;
 RichFlowTests richFlowTests;
@@ -3037,6 +3090,7 @@ FaceplateDualMonoTests faceplateDualMonoTests;
 UpdateCheckTests updateCheckTests;
 ConnectionGateTests connectionGateTests;
 PitchTests pitchTests;
+LoopTests loopTests;
 OAuthTests oauthTests;
 LoopbackServerTests loopbackServerTests;
 PaginatorTests paginatorTests;

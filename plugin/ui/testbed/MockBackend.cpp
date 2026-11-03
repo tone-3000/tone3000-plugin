@@ -129,6 +129,8 @@ MockBackend::MockBackend(const juce::var& scenario)
       meters_(scenario["meters"]),
       tuner_(scenario["tuner"].isObject() ? scenario["tuner"]
                                           : obj({{"frequency", 0}, {"confidence", 0}, {"level", -60}})),
+      loop_(scenario["loop"].isObject() ? scenario["loop"]
+                                        : obj({{"state", "empty"}, {"position", 0.0}, {"lengthSeconds", 0.0}})),
       autoMeasure_(obj({{"state", "listening"}})),
       version_(scenario["version"].isVoid() ? "1.4.2" : scenario["version"].toString()) {
   if (!chain_["revision"].isInt() && !chain_["revision"].isDouble())
@@ -136,6 +138,19 @@ MockBackend::MockBackend(const juce::var& scenario)
 }
 
 MockBackend::~MockBackend() = default;
+
+void MockBackend::loopTap() {
+  const auto state = loop_["state"].toString();
+  if (state == "empty") loop_ = obj({{"state", "armed"}, {"position", 0.0}, {"lengthSeconds", 0.0}});
+  else if (state == "armed") loop_ = obj({{"state", "recording"}, {"position", 0.1}, {"lengthSeconds", 0.0}});
+  else if (state == "recording") loop_ = obj({{"state", "playing"}, {"position", 0.0}, {"lengthSeconds", 4.0}});
+  else if (state == "playing") loop_ = obj({{"state", "stopped"}, {"position", loop_["position"]}, {"lengthSeconds", 4.0}});
+  else loop_ = obj({{"state", "playing"}, {"position", 0.0}, {"lengthSeconds", 4.0}});
+}
+
+void MockBackend::loopClear() {
+  loop_ = obj({{"state", "empty"}, {"position", 0.0}, {"lengthSeconds", 0.0}});
+}
 
 juce::RangedAudioParameter* MockBackend::parameter(const juce::String& id) {
   return params_->find(id);

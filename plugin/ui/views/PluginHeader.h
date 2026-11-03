@@ -1,10 +1,11 @@
 // Full-width top bar (port of PluginHeader.tsx): logo, preset controls,
-// stereo toggle, tuner, undo/redo and the account menu.
+// stereo toggle, the audition loop, tuner, undo/redo and the account menu.
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "AccountMenu.h"
+#include "LoopButton.h"
 #include "PresetBar.h"
 #include "StereoModeToggle.h"
 #include "core/Design.h"
@@ -44,6 +45,7 @@ private:
   std::unique_ptr<LogoLink> logo_;
   PresetBar presetBar_;
   StereoModeToggle stereo_;
+  LoopButton loop_;
   IconButton tuner_;
   IconButton undo_{Icon::Undo2, 28};
   IconButton redo_{Icon::Redo2, 28};

@@ -29,6 +29,7 @@
 #include "StereoOffset.h"
 #include "PresetManager.h"
 #include "TunerDetector.h"
+#include "LoopRecorder.h"
 
 class TONE3000Processor;
 
@@ -485,6 +486,29 @@ public:
   // (pre-gain, pre-gate) input so gating never starves the pitch detector.
   void setTunerEnabled(bool enabled) { tuner.setEnabled(enabled); }
   juce::var getTunerReading() { return tuner.getReading(); }
+
+  // Audition loop: the header's one-switch pedal,
+  // and its state for the button. Session state only: never in presets,
+  // DAW state or undo.
+  void loopTap() { loop.tap(); }
+  void loopClear() { loop.clear(); }
+  juce::var getLoopState() {
+    auto* o = new juce::DynamicObject();
+    o->setProperty("state", loopStateName(loop.state()));
+    o->setProperty("position", loop.position());
+    o->setProperty("lengthSeconds", hostSampleRate > 0 ? loop.lengthSamples() / hostSampleRate : 0.0);
+    return o;
+  }
+  static const char* loopStateName(LoopRecorder::State s) {
+    switch (s) {
+      case LoopRecorder::State::armed: return "armed";
+      case LoopRecorder::State::recording: return "recording";
+      case LoopRecorder::State::playing: return "playing";
+      case LoopRecorder::State::stopped: return "stopped";
+      case LoopRecorder::State::empty: break;
+    }
+    return "empty";
+  }
 
   // Auto balance: one-shot chain energy match.
   // startAutoBalance() arms a "listening" measurement: the audio thread
@@ -1287,6 +1311,9 @@ private:
 
   // Tuner pitch detection (fed from processBlock when enabled)
   TunerDetector tuner;
+
+  // Audition loop: a take of the dry input, looped in place of it.
+  LoopRecorder loop;
 
   // Auto balance measurement state.
   // Lock-free audio↔message thread handshake. The audio thread only touches

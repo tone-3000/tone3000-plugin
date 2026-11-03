@@ -1,6 +1,7 @@
 // The scenario table: fixtures/scenarios.json (one mock backend state per
-// screen the UI can show) plus the drive steps (clicks, hovers, scrolls)
-// that take the UI from that state to the screen being captured.
+// screen the UI can show; an entry with `base` is an earlier entry with
+// the listed properties overridden) plus the drive steps (clicks, hovers,
+// scrolls) that take the UI from that state to the screen being captured.
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>

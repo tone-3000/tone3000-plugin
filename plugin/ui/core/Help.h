@@ -22,6 +22,7 @@ enum class Key {
   alignDiffuse, alignAdvert, alignPower, autoAlign,
   // Top bar
   tuner, undo, redo, settings, account, monoMode, stereoMode,
+  loopEmpty, loopArmed, loopRecording, loopPlaying, loopStopped,
   // Presets
   presetPrev, presetNext, presetBrowse, presetSave, presetNew, presetRename, presetDelete,
   presetReorder, presetDrag, presetPcToggle, presetPc,
