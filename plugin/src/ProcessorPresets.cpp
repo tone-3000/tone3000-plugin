@@ -49,10 +49,16 @@ juce::var TONE3000Processor::getPresetList() const {
     obj->setProperty("id", info.id);
     obj->setProperty("name", info.name);
     obj->setProperty("factory", info.factory);
+    obj->setProperty("category", info.category);
+    obj->setProperty("favorite", info.favorite);
     presetArray.add(juce::var(obj.get()));
   }
+  juce::Array<juce::var> categoryArray;
+  for (const auto& category : presetManager.listCategories())
+    categoryArray.add(category);
   juce::DynamicObject::Ptr root = new juce::DynamicObject();
   root->setProperty("presets", presetArray);
+  root->setProperty("categories", categoryArray);
   return root.get();
 }
 
@@ -226,6 +232,71 @@ bool TONE3000Processor::deletePreset(const juce::String& presetId) {
   // active one may be gone entirely), so host program state moved.
   updateHostDisplay(ChangeDetails{}.withProgramChanged(true));
   return true;
+}
+
+bool TONE3000Processor::addPresetCategory(const juce::String& name) {
+  return presetManager.addCategory(name);
+}
+
+bool TONE3000Processor::deletePresetCategory(const juce::String& name) {
+  return presetManager.deleteCategory(name);
+}
+
+bool TONE3000Processor::setPresetCategory(const juce::String& presetId,
+                                          const juce::String& category) {
+  return presetManager.setPresetCategory(presetId, category);
+}
+
+bool TONE3000Processor::movePresetsToCategory(const juce::StringArray& ids,
+                                              const juce::String& category) {
+  return presetManager.movePresetsToCategory(ids, category);
+}
+
+bool TONE3000Processor::setPresetFavorite(const juce::String& presetId, bool isFavorite) {
+  return presetManager.setPresetFavorite(presetId, isFavorite);
+}
+
+bool TONE3000Processor::setPresetsFavorite(const juce::StringArray& ids, bool isFavorite) {
+  return presetManager.setPresetsFavorite(ids, isFavorite);
+}
+
+juce::var TONE3000Processor::duplicatePresets(const juce::StringArray& ids) {
+  const auto created = presetManager.duplicatePresets(ids);
+  juce::Array<juce::var> result;
+  for (const auto& info : created) {
+    juce::DynamicObject::Ptr obj = new juce::DynamicObject();
+    obj->setProperty("id", info.id);
+    obj->setProperty("name", info.name);
+    obj->setProperty("category", info.category);
+    obj->setProperty("favorite", info.favorite);
+    obj->setProperty("factory", info.factory);
+    result.add(juce::var(obj.get()));
+  }
+  if (!created.empty()) {
+    // New user presets shift every factory preset's program slot.
+    hostProgramInfoCache.clear();
+    updateHostDisplay(ChangeDetails{}.withProgramChanged(true));
+  }
+  return result;
+}
+
+bool TONE3000Processor::deletePresets(const juce::StringArray& ids) {
+  // Remove first, then clear the active preset only if it really went: a
+  // failed delete must not drop the loaded preset's identity.
+  const juce::StringArray removed = presetManager.removePresets(ids);
+  if (removed.isEmpty())
+    return false;
+  hostProgramInfoCache.clear();
+  {
+    juce::ScopedLock lock(chainMutex);
+    if (removed.contains(activePresetId)) {
+      activePresetId.clear();
+      activePresetName.clear();
+      bumpChainRevision();
+    }
+  }
+  updateHostDisplay(ChangeDetails{}.withProgramChanged(true));
+  return removed.size() == ids.size();
 }
 
 bool TONE3000Processor::movePreset(const juce::String& presetId, int delta) {

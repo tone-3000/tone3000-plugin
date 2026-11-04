@@ -23,11 +23,11 @@ const LUCIDE_VERSION = '1.33.0';
 
 const ICONS = [
   'ArrowLeft', 'ArrowLeftRight', 'ArrowRight', 'ArrowUpDown', 'Bluetooth', 'Bookmark',
-  'Check', 'ChevronDown', 'ChevronLeft', 'ChevronRight', 'ChevronUp', 'Circle',
-  'ClipboardPaste', 'Copy', 'Download', 'Equal', 'ExternalLink', 'File', 'FolderClosed',
+  'Check', 'CheckSquare', 'ChevronDown', 'ChevronLeft', 'ChevronRight', 'ChevronUp', 'Circle',
+  'ClipboardPaste', 'Copy', 'Download', 'Equal', 'ExternalLink', 'File', 'Folder', 'FolderClosed', 'FolderPlus', 'FolderX',
   'Gauge', 'GripVertical', 'Info', 'Laptop', 'Link', 'ListFilter', 'LogIn', 'LogOut',
   'MidiPort', 'Pencil', 'Plus', 'PlusCircle', 'Power', 'Redo2', 'RotateCcw', 'Save',
-  'Search', 'Settings', 'Share', 'ShieldAlert', 'Smartphone', 'Trash2', 'Undo2', 'Upload',
+  'Search', 'Settings', 'Share', 'ShieldAlert', 'Smartphone', 'Square', 'Star', 'Trash2', 'Undo2', 'Upload',
   'Volume2', 'WifiOff', 'X',
 ];
 

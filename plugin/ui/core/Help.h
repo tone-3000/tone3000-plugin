@@ -25,6 +25,9 @@ enum class Key {
   // Presets
   presetPrev, presetNext, presetBrowse, presetSave, presetNew, presetRename, presetDelete,
   presetReorder, presetDrag, presetPcToggle, presetPc,
+  presetFavorite, presetUnfavorite, presetSelect, presetDeselect, presetMultiSelectToggle,
+  presetDeselectAll, bulkMove, bulkDuplicate, bulkDelete,
+  categoryCreate, categoryDelete, categoryToggle,
   // Tone browser
   browserSearch, browserSearchProfile, browserMoreFilters, browserFewerFilters, browserVerified, browserProfile, browserGear,
   browserSort, browserFormat, browserTags, browserMakes, browserCreators, browserCalibrated,

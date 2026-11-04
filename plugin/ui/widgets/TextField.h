@@ -27,6 +27,8 @@ public:
   // Any face (the MIDI CC field is Roboto Mono).
   void setFont(const juce::Font& font);
   void setCornerRadius(float radius) { radius_ = radius; }
+  // Typing and pasting stop at `chars` characters.
+  void setMaxLength(int chars) { editor_.setInputRestrictions(chars); }
   // CSS padding: vertical, left, right.
   void setPadding(int vertical, int left, int right);
   void setBackground(juce::Colour colour) { background_ = colour; }

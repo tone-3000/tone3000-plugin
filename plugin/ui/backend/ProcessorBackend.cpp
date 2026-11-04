@@ -154,6 +154,32 @@ bool ProcessorBackend::deletePreset(const juce::String& presetId) {
 bool ProcessorBackend::movePreset(const juce::String& presetId, int delta) {
   return processor_.movePreset(presetId, delta);
 }
+bool ProcessorBackend::addPresetCategory(const juce::String& name) {
+  return processor_.addPresetCategory(name);
+}
+bool ProcessorBackend::deletePresetCategory(const juce::String& name) {
+  return processor_.deletePresetCategory(name);
+}
+bool ProcessorBackend::setPresetCategory(const juce::String& presetId,
+                                         const juce::String& category) {
+  return processor_.setPresetCategory(presetId, category);
+}
+bool ProcessorBackend::movePresetsToCategory(const juce::StringArray& ids,
+                                             const juce::String& category) {
+  return processor_.movePresetsToCategory(ids, category);
+}
+bool ProcessorBackend::setPresetFavorite(const juce::String& presetId, bool isFavorite) {
+  return processor_.setPresetFavorite(presetId, isFavorite);
+}
+bool ProcessorBackend::setPresetsFavorite(const juce::StringArray& ids, bool isFavorite) {
+  return processor_.setPresetsFavorite(ids, isFavorite);
+}
+juce::var ProcessorBackend::duplicatePresets(const juce::StringArray& ids) {
+  return processor_.duplicatePresets(ids);
+}
+bool ProcessorBackend::deletePresets(const juce::StringArray& ids) {
+  return processor_.deletePresets(ids);
+}
 
 // Audio device settings (standalone only)
 juce::var ProcessorBackend::getAudioDeviceState() {

@@ -89,6 +89,14 @@ public:
   virtual bool renamePreset(const juce::String& presetId, const juce::String& newName) = 0;
   virtual bool deletePreset(const juce::String& presetId) = 0;
   virtual bool movePreset(const juce::String& presetId, int delta) = 0;
+  virtual bool addPresetCategory(const juce::String& name) = 0;
+  virtual bool deletePresetCategory(const juce::String& name) = 0;
+  virtual bool setPresetCategory(const juce::String& presetId, const juce::String& category) = 0;
+  virtual bool movePresetsToCategory(const juce::StringArray& ids, const juce::String& category) = 0;
+  virtual bool setPresetFavorite(const juce::String& presetId, bool isFavorite) = 0;
+  virtual bool setPresetsFavorite(const juce::StringArray& ids, bool isFavorite) = 0;
+  virtual juce::var duplicatePresets(const juce::StringArray& ids) = 0;
+  virtual bool deletePresets(const juce::StringArray& ids) = 0;
 
   // Audio device settings (standalone only; void var elsewhere)
   virtual juce::var getAudioDeviceState() = 0;
