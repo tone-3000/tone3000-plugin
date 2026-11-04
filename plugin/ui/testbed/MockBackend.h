@@ -33,9 +33,17 @@ public:
   juce::uint32 chainRevision() override;
   bool undoChain() override { return true; }
   bool redoChain() override { return true; }
+  bool beginChainPreview() override;
+  bool commitChainPreview() override;
+  bool cancelChainPreview() override;
   bool resetToDefault() override { return true; }
 
-  std::string loadTone(const juce::String&, const std::string&) override { return {}; }
+  // A landed tone gets a block id like the processor hands back (the mock
+  // chain itself does not change); flows that keep the id (the audition's
+  // pending swap) need one.
+  std::string loadTone(const juce::String& toneJson, const std::string&) override {
+    return "blk-mock-" + juce::JSON::parse(toneJson)["id"].toString().toStdString();
+  }
   juce::var loadLocalTonePath(const juce::File&, const std::string&) override;
   juce::var loadLocalToneUrls(const juce::Array<juce::URL>&, const std::string&) override;
   bool swapTone(const std::string&, const juce::String&) override { return true; }
@@ -153,6 +161,7 @@ private:
   std::unique_ptr<Params> params_;
 
   juce::var chain_;
+  juce::var previewSnapshot_;  // the chain before the open preview session
   juce::var device_;
   juce::var midiMap_;
   juce::var presets_;

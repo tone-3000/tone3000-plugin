@@ -32618,6 +32618,19 @@
     "position": 0.6,
     "lengthSeconds": 4.0
    }
+  },
+  {
+   "id": "browser-auditioning",
+   "base": "browser-picking",
+   "title": "Tone browser - auditioning on the loop",
+   "description": "With the loop playing, a click previews the tone in the pending slot instead of landing it: the browser stays open, the card wears the play pill and a blue border, and the hint bar pins the rules. Clicking the card again keeps it; Back or Escape puts the chain back.",
+   "api": {},
+   "hasDrive": true,
+   "loop": {
+    "state": "playing",
+    "position": 0.4,
+    "lengthSeconds": 4.0
+   }
   }
  ]
 }

@@ -248,6 +248,12 @@ const std::map<juce::String, Drive>& drives() {
          wait(600);
          unhover(root);
        }},
+      {"browser-auditioning",
+       [](PluginRoot& root, MockBackend&) {
+         if (auto* card = buttonNamed(root, "'02 Vox AC30/6 Top Boost")) click(root, *card);
+         wait(800);
+         unhover(root);
+       }},
       {"browser-scrolled",
        [](PluginRoot& root, MockBackend&) {
          // The browser's vertical DragScroller: the one whose content is taller than it.

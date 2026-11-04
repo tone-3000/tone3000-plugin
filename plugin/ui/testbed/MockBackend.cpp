@@ -120,7 +120,10 @@ struct MockBackend::Params : juce::AudioProcessor {
 
 MockBackend::MockBackend(const juce::var& scenario)
     : params_(std::make_unique<Params>(scenario)),
-      chain_(scenario["chain"].isObject() ? scenario["chain"] : defaultChain()),
+      // Cloned: a var shares its object, and this backend mutates the chain
+      // (revision bumps, the preview flag), which must never reach the
+      // fixture another backend is built from.
+      chain_(scenario["chain"].isObject() ? scenario["chain"].clone() : defaultChain()),
       device_(scenario["device"]),
       midiMap_(scenario["midiMap"].isObject()
                    ? scenario["midiMap"]
@@ -170,6 +173,36 @@ void MockBackend::notifyMidiMapChanged() {
 void MockBackend::setChain(juce::var chain) {
   chain_ = std::move(chain);
   bumpChain();
+}
+
+bool MockBackend::beginChainPreview() {
+  if (previewSnapshot_.isObject()) return true;
+  previewSnapshot_ = chain_.clone();
+  chain_.getDynamicObject()->setProperty("previewing", true);
+  chain_.getDynamicObject()->setProperty("canUndo", false);  // refused while a session is open
+  chain_.getDynamicObject()->setProperty("canRedo", false);
+  bumpChain();
+  return true;
+}
+
+bool MockBackend::commitChainPreview() {
+  if (!previewSnapshot_.isObject()) return false;
+  previewSnapshot_ = juce::var();
+  chain_.getDynamicObject()->setProperty("previewing", false);
+  chain_.getDynamicObject()->setProperty("canUndo", true);
+  bumpChain();
+  return true;
+}
+
+bool MockBackend::cancelChainPreview() {
+  if (!previewSnapshot_.isObject()) return false;
+  const int revision = static_cast<int>(chain_["revision"]);
+  chain_ = previewSnapshot_.clone();
+  previewSnapshot_ = juce::var();
+  chain_.getDynamicObject()->setProperty("previewing", false);
+  chain_.getDynamicObject()->setProperty("revision", revision);
+  bumpChain();
+  return true;
 }
 
 void MockBackend::setDevice(juce::var device) {

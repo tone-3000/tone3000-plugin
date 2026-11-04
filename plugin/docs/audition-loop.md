@@ -64,6 +64,8 @@ on the UiClock tick like `TunerFeed` and notifies on change only. The
 `main-loop-*` scenarios capture each state over the mock, and the `loop`
 self-test pins the walk and the help copy.
 
+![The loop button's five states](audition-loop/loop-button-states.gif)
+
 Follow-ups: a bare `L` / `Shift+L` with nothing focused, and a MIDI
 footswitch for the tap.
 

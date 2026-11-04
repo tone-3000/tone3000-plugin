@@ -30,6 +30,7 @@ enum class Key {
   browserSearch, browserSearchProfile, browserMoreFilters, browserFewerFilters, browserVerified, browserProfile, browserGear,
   browserSort, browserFormat, browserTags, browserMakes, browserCreators, browserCalibrated,
   browserClearFilter, browserProfileLocked, browserCalibratedIr, browserBackToTrending,
+  browserAudition, browserAuditionKeep, browserAuditioning,
   // Sign-in screen
   signInBack, signInCopyLink, signInPhone, signInNewCode, signInRetry, signInDismiss,
   // Chain gallery

@@ -171,6 +171,10 @@ std::map<Key, String> buildTable() {
       U("Unavailable while a profile filter is set: your own tones list by title and gear only. Clear the profile to use it.");
   t[Key::browserCalibratedIr] = U("Not for impulse responses: cabinets and spaces carry no calibration data.");
   t[Key::browserBackToTrending] = U("Back: to the trending tones.");
+  t[Key::browserAudition] = U("Audition: click to hear this tone on your loop. Nothing is kept until you say so.");
+  t[Key::browserAuditionKeep] = U("Playing on your loop. Click again: keep it.");
+  t[Key::browserAuditioning] =
+      U("Auditioning on your loop: click a tone to hear it, click it again to keep it. Back or Escape: put the old one back.");
 
   // Sign-in screen
   t[Key::signInBack] = U("Back: stop signing in and return.");

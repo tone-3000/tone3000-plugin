@@ -63,6 +63,12 @@ void ToneCard::setDisabled(bool disabled) {
   syncState();
 }
 
+void ToneCard::setAuditioning(bool auditioning) {
+  if (auditioning == auditioning_) return;
+  auditioning_ = auditioning;
+  repaint();
+}
+
 void ToneCard::syncState() {
   setEnabled(!disabled_);
   // JUCE has no not-allowed cursor; the dimmed card carries the meaning.
@@ -95,6 +101,19 @@ void ToneCard::measure(int width) {
 
 // The grid stretches every card in a row to the tallest; the image and the
 // text column each centre in that (fractional) height, align-items: center.
+void ToneCard::paintOverChildren(juce::Graphics& g) {
+  if (!auditioning_) return;
+  // The play pill in the artwork's top-left corner, over the image.
+  const auto img = image_.getBounds().toFloat();
+  const juce::Rectangle<float> pill(img.getX() + 6, img.getY() + 6, 24, 20);
+  paint::fill(g, pill, 10, theme::kBrandBlue);
+  juce::Path play;
+  const float h = 9, w = 8, x0 = pill.getCentreX() - w / 2 + 1, y0 = pill.getCentreY() - h / 2;
+  play.addTriangle(x0, y0, x0, y0 + h, x0 + w, pill.getCentreY());
+  g.setColour(theme::kWhite);
+  g.fillPath(play);
+}
+
 void ToneCard::resized() {
   measure(getWidth());
   const float x = kPad + kImage + kGapX;
@@ -131,6 +150,7 @@ void ToneCard::paintButton(juce::Graphics& g, bool, bool) {
   paint::fill(g, getLocalBounds().toFloat(), kCorner, theme::kSurface);
   // The image box's raised backdrop shows through until artwork paints.
   paint::fill(g, image_.getBounds().toFloat(), kImageCorner, theme::kSurfaceRaised);
+  if (auditioning_) paint::border(g, getLocalBounds().toFloat(), kCorner, theme::kBrandBlue, 2.0f);
 
   if (title_) title_->draw(g, titleBox_.getTopLeft(), theme::kWhite, kTitleLines, /*ellipsis=*/true);
 

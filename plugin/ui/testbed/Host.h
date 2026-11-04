@@ -26,6 +26,8 @@ public:
   ScaledHost(Backend& backend, const Scenario& scenario, const juce::var& fixtures);
 
   PluginRoot& pluginRoot() { return *root; }
+  // The service bundle under the root, for self-tests that read a flow's state.
+  Services& bundle() { return services; }
   // The resize policy for a window around us (TestbedWindow), tracking the
   // chrome as NativeEditor's does.
   design::FitConstrainer& constrainer() { return bounds_; }

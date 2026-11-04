@@ -64,7 +64,7 @@ public:
         localFiles(chain, toast),
         modelLoads(chain, t),
         connection(t),
-        loadFlow(chain, connection, t),
+        loadFlow(chain, connection, t, loop),
         updates(t, prefs, b.pluginVersion(), updateNotice) {}
 
   Backend& backend;
