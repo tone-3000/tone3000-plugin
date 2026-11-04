@@ -116,6 +116,9 @@ public:
   void resized() override;
   void parentHierarchyChanged() override;
   // Escape drops a focused control's focus (a text field takes its own Escape).
+  // The model keys (see the definition); the editor calls it with the keys
+  // that reach it unfocused.
+  bool handleModelKey(const juce::KeyPress& key);
   bool keyPressed(const juce::KeyPress& key) override;
   std::unique_ptr<juce::ComponentTraverser> createKeyboardFocusTraverser() override;
 
@@ -198,6 +201,7 @@ private:
     PluginRoot& root_;
   };
   FocusPolicy focusPolicy_{*this};
+  class BlockCard* openCard();
   juce::Component::SafePointer<juce::Component> keyWindow_;
 };
 

@@ -113,6 +113,8 @@ public:
   bool canOpenDateTimeSettings() override;
   bool openDateTimeSettings() override;
   bool forwardKeyToHost(HostKey key) override;
+  bool forwardOtherKeyToHost(int juceKeyCode) override;
+  bool takesKeyboardOnClick() const override;
 
 private:
   // Standalone-only calls resolve to void in hosts.

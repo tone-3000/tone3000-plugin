@@ -20,4 +20,14 @@ enum class HostKey { space, enter };
  */
 void forwardKeyToHost(void* nativeHandle, HostKey key);
 
+/**
+ * Windows: hand any other key the plugin didn't use back to the host, by its
+ * JUCE key code, the same way (focus back to the host, the press posted to
+ * it), so the host's shortcuts keep working while the plugin holds the
+ * keyboard (it takes it on a click: see PluginRoot's FocusPolicy). Returns
+ * false where it doesn't apply (no-op): the other platforms give the plugin
+ * focus on a click by themselves.
+ */
+bool forwardKeyCodeToHost(void* nativeHandle, int juceKeyCode);
+
 }  // namespace HostKeys

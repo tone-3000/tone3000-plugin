@@ -247,6 +247,12 @@ void BlockCard::setBlock(const ChainItem& block, bool namDownstream) {
   syncFromBlock();
 }
 
+bool BlockCard::stepModel(int delta) {
+  if (!select_.isShowing()) return false;
+  select_.step(delta);
+  return true;
+}
+
 void BlockCard::syncFromBlock() {
   power_.setOn(enabled_);
   body_.setOff(!enabled_);

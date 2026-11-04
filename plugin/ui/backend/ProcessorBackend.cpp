@@ -299,6 +299,20 @@ bool ProcessorBackend::openDateTimeSettings() {
 #endif
 }
 
+bool ProcessorBackend::takesKeyboardOnClick() const {
+#if JUCE_WINDOWS
+  return !juce::JUCEApplicationBase::isStandaloneApp();
+#else
+  return false;
+#endif
+}
+
+bool ProcessorBackend::forwardOtherKeyToHost(int juceKeyCode) {
+  if (!takesKeyboardOnClick()) return false;
+  if (auto* peer = peerHost_.getPeer()) return HostKeys::forwardKeyCodeToHost(peer->getNativeHandle(), juceKeyCode);
+  return false;
+}
+
 bool ProcessorBackend::forwardKeyToHost(HostKey key) {
   if (juce::JUCEApplicationBase::isStandaloneApp()) return false;
   if (auto* peer = peerHost_.getPeer())
