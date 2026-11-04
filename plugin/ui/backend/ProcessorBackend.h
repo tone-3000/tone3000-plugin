@@ -24,6 +24,9 @@ public:
   juce::var getChainState(int knownRevision) override;
   juce::uint32 chainRevision() override;
   bool undoChain() override;
+  bool beginChainPreview() override;
+  bool commitChainPreview() override;
+  bool cancelChainPreview() override;
   bool redoChain() override;
   bool resetToDefault() override;
 

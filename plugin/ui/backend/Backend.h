@@ -38,6 +38,12 @@ public:
   virtual juce::uint32 chainRevision() = 0;
   virtual bool undoChain() = 0;
   virtual bool redoChain() = 0;
+  // Preview session (the browser's audition): edits between begin and
+  // commit / cancel record no history; commit makes them one undo step,
+  // cancel puts the chain back. The state's `previewing` says one is open.
+  virtual bool beginChainPreview() = 0;
+  virtual bool commitChainPreview() = 0;
+  virtual bool cancelChainPreview() = 0;
   virtual bool resetToDefault() = 0;
 
   // Chain mutations

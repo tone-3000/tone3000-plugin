@@ -41,6 +41,9 @@ juce::var ProcessorBackend::getChainState(int knownRevision) {
 }
 juce::uint32 ProcessorBackend::chainRevision() { return processor_.getCurrentChainRevision(); }
 bool ProcessorBackend::undoChain() { return processor_.undoChain(); }
+bool ProcessorBackend::beginChainPreview() { return processor_.beginChainPreview(); }
+bool ProcessorBackend::commitChainPreview() { return processor_.commitChainPreview(); }
+bool ProcessorBackend::cancelChainPreview() { return processor_.cancelChainPreview(); }
 bool ProcessorBackend::redoChain() { return processor_.redoChain(); }
 bool ProcessorBackend::resetToDefault() { return processor_.resetToDefault(); }
 

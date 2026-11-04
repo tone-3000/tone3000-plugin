@@ -383,8 +383,10 @@ void TONE3000Processor::setStateInformation(const void* data, int sizeInBytes) {
     activePresetId = state.getProperty("activePresetId").toString();
     activePresetName = state.getProperty("activePresetName").toString();
     // A project/state load replaces the whole session; undoing across it
-    // would resurrect chains the user never saw in this session.
+    // would resurrect chains the user never saw in this session, and an
+    // open preview session would later "cancel" back to the old project.
     chainHistory.clear();
+    previewSnapshot = {};
   }
 
   editFade.releaseWhenChainLoadsSettle();

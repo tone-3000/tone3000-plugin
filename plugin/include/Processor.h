@@ -449,6 +449,17 @@ public:
   bool undoChain();
   bool redoChain();
 
+  // Preview session (the browser's audition): from
+  // begin to commit or cancel, no chain edit records history. Commit pushes
+  // the snapshot taken at begin as the one undo step for the whole session
+  // (none when nothing changed); cancel restores that snapshot the way undo
+  // would, without touching the stack. Begin inside an open session is a
+  // no-op; commit and cancel without one return false.
+  bool beginChainPreview();
+  bool commitChainPreview();
+  bool cancelChainPreview();
+  bool isChainPreviewing() const;
+
   // Internal presets (ProcessorPresets.cpp).
   // A preset = chain snapshot (with embedded model bytes, so it loads
   // offline) + the faceplate parameter values (kPresetParameterIds). The
@@ -853,6 +864,9 @@ private:
   void queueActiveModelLoad(ChainBlock& block);
 
   ChainHistory chainHistory;
+  // The chain as it was when the open preview session began (invalid = no
+  // session). Guarded by chainMutex.
+  juce::ValueTree previewSnapshot;
 
   // Block clipboard (see copyChainBlock/pasteChainBlock). `settings` is a
   // serializeBlockSettings tree (invalid = nothing copied); the model bytes

@@ -991,7 +991,7 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
 
   juce::uint32 revision = 0;
   std::vector<BlockRow> left, right;
-  bool stereo = false, canUndo = false, canRedo = false, branched = false;
+  bool stereo = false, canUndo = false, canRedo = false, branched = false, previewing = false;
   bool canPaste = false, atDefault = false;
   juce::String presetId, presetName, branchSide, activeSide, branchAfter;
 
@@ -1062,8 +1062,9 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
     if (stereo)
       copyLane(lane(ChainSide::Right), right);
 
-    canUndo = chainHistory.canUndo();
-    canRedo = chainHistory.canRedo();
+    previewing = previewSnapshot.isValid();
+    canUndo = chainHistory.canUndo() && !previewing;  // refused while a session is open
+    canRedo = chainHistory.canRedo() && !previewing;
     canPaste = blockClipboardSettings.isValid();
     atDefault = isChainAtDefault();
     presetId = activePresetId;
@@ -1147,6 +1148,9 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
   // together with a revision bump (mutation, undo/redo or a state load).
   state->setProperty("canUndo", canUndo);
   state->setProperty("canRedo", canRedo);
+  // An open preview session (beginChainPreview): edits are not recorded
+  // until it commits, and cancel puts the chain back.
+  state->setProperty("previewing", previewing);
   // Whether the in-app block clipboard holds a copied block (Paste enabled
   // on insert slots). The clipboard snapshot is self-contained, so this
   // stays true across preset switches and after the source block is gone.
