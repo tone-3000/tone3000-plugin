@@ -162,6 +162,11 @@ void MockBackend::setDevice(juce::var device) {
   listeners.call([](Listener& l) { l.audioDeviceChanged(); });
 }
 
+juce::var MockBackend::setHearYourself(bool hear) {
+  if (auto* device = device_.getDynamicObject()) device->setProperty("hearYourself", hear);
+  return okResult();
+}
+
 juce::var MockBackend::getChainState(int knownRevision) {
   if (knownRevision == static_cast<int>(chain_["revision"]))
     return obj({{"revision", chain_["revision"]}, {"unchanged", true}});

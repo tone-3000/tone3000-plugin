@@ -98,7 +98,7 @@ public:
   juce::var setAudioOutputPair(int) override { return okResult(); }
   juce::var setAudioSampleRate(double) override { return okResult(); }
   juce::var setAudioBufferSize(int) override { return okResult(); }
-  juce::var setHearYourself(bool) override { return okResult(); }
+  juce::var setHearYourself(bool hear) override;
   juce::var playTestTone() override { return okResult(); }
   juce::var openAudioControlPanel() override { return okResult(); }
   juce::var restartAudioDevice() override { return okResult(); }
