@@ -269,6 +269,14 @@ void TONE3000Processor::serializeChainToTree(
   }
 }
 
+// The metronome is a practice aid, not part of the tone: loading any state,
+// into a fresh or a running instance, returns it to its defaults (stopped).
+static void dropMetronomeParams(juce::ValueTree& parameterState) {
+  for (int i = parameterState.getNumChildren() - 1; i >= 0; --i)
+    if (parameterState.getChild(i).getProperty("id").toString().startsWith("metronome"))
+      parameterState.removeChild(i, nullptr);
+}
+
 void TONE3000Processor::getStateInformation(juce::MemoryBlock& destData) {
   juce::ValueTree state("TONE3000State");
   state.setProperty("schemaVersion", kStateSchemaVersion, nullptr);
@@ -342,6 +350,7 @@ void TONE3000Processor::setStateInformation(const void* data, int sizeInBytes) {
     juce::Logger::writeToLog("[Restore] Renamed " + juce::String(renamed) + " legacy parameter ids");
 
   if (parameterState.isValid()) {
+    dropMetronomeParams(parameterState);
     parameters.replaceState(parameterState);
     DBG("Parameters restored from state");
   }

@@ -168,6 +168,9 @@ void TONE3000Processor::resolveParamRefs() {
   paramRefs.pitchStep = get("pitchStep");
   paramRefs.pitchTonality = get("pitchTonality");
   paramRefs.pitchWindow = get("pitchWindow");
+  paramRefs.metronomeEnabled = get("metronomeEnabled");
+  paramRefs.metronomeBpm = get("metronomeBpm");
+  paramRefs.metronomeVolume = get("metronomeVolume");
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createParameterLayout() {
@@ -370,6 +373,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
       juce::ParameterID{"pitchWindow", 43}, "pitchWindow", windows,
       static_cast<int>(PitchShift::kDefaultWindow),
       juce::AudioParameterChoiceAttributes().withAutomatable(false)));
+
+  // Metronome (header popover). Whole beats per minute; 0 is silence.
+  layout.add(std::make_unique<juce::AudioParameterBool>(
+      juce::ParameterID{"metronomeEnabled", 44}, "metronomeEnabled", false));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"metronomeBpm", 45}, "metronomeBpm",
+      juce::NormalisableRange<float>(20.0f, 400.0f, 1.0f), 100.0f, wholeUnitText("BPM")));
+  layout.add(normParam("metronomeVolume", 46, 0.8f));
 
   return layout;
 }
@@ -945,6 +956,8 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   chainEditFadeGain.setCurrentAndTargetValue(editFadeHeld ? 0.0f : 1.0f);
   if (editFadeHeld)
     chainEditFadeDone.store(true);
+
+  metronome.prepare(sampleRate);
 
   // Output-stage gain, primed from the current parameters so a restored
   // session doesn't glide in from the wrong level.
@@ -2071,6 +2084,19 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     outputMeterLevelL.store(peakToDb(peakL));
     outputMeterLevelR.store(peakToDb(peakR));
   }
+
+  // After the output meter on purpose: the meter and its clip dot judge the
+  // tone, and a practice click must not trip them. The click can still sum
+  // past 0 dBFS on a hot signal; the volume knob is the guard.
+  addMetronomeClick(buffer);
+}
+
+// Squared so the knob has more resolution toward quiet clicks.
+void TONE3000Processor::addMetronomeClick(juce::AudioBuffer<float>& buffer) {
+  const bool running = paramRefs.metronomeEnabled->load() > 0.5f;
+  const float volume = paramRefs.metronomeVolume->load();
+  metronome.process(buffer, running ? paramRefs.metronomeBpm->load() : 0.0f, volume * volume);
+  metronomeBeats.store(metronome.beats(), std::memory_order_relaxed);
 }
 
 // ##################
