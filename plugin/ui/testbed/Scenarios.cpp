@@ -84,6 +84,11 @@ const std::map<juce::String, Drive>& drives() {
          clickByHelp(root, "Gate:", /*right=*/true);
          wait(200);
        }},
+      {"metronome-view",
+       [](PluginRoot& root, MockBackend&) {
+         clickByHelp(root, "Metronome:");
+         wait(200);
+       }},
       {"chrome-pitch-deck",
        [](PluginRoot& root, MockBackend&) {
          clickByHelp(root, "Pitch Shift:", /*right=*/true);

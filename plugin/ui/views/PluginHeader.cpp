@@ -35,7 +35,9 @@ PluginHeader::PluginHeader(Services& services)
     : services_(services),
       logo_(std::make_unique<LogoLink>()),
       presetBar_(services),
-      tuner_(custom_icons::kTuningFork, 28, 18) {
+      tuner_(custom_icons::kTuningFork, 28, 18),
+      metronome_(custom_icons::kMetronome, 28, 18),
+      metronomeRunning_(services.backend, "metronomeEnabled") {
   addAndMakeVisible(*logo_);
   addAndMakeVisible(presetBar_);
 
@@ -50,6 +52,15 @@ PluginHeader::PluginHeader(Services& services)
     if (onToggleTuner) onToggleTuner(!tunerShown_);
   };
   addAndMakeVisible(tuner_);
+
+  metronome_.setHelpText(help::text(help::Key::metronome));
+  metronome_.setActive(true);
+  metronome_.onClick = [this] {
+    if (onToggleMetronome) onToggleMetronome(!metronomeShown_);
+  };
+  metronomeRunning_.onChange = [this] { syncMetronomeButton(); };
+  addAndMakeVisible(metronome_);
+  syncMetronomeButton();
 
   undo_.setHelpText(help::text(help::Key::undo));
   undo_.onClick = [this] {
@@ -103,6 +114,16 @@ void PluginHeader::setTunerShown(bool shown) {
   tuner_.setFillWhenActive(shown);
 }
 
+void PluginHeader::setMetronomeShown(bool shown) {
+  metronomeShown_ = shown;
+  syncMetronomeButton();
+}
+
+// Lit while the click runs or the view is up, so it reads with the panel closed.
+void PluginHeader::syncMetronomeButton() {
+  metronome_.setFillWhenActive(metronomeRunning_.boolValue() || metronomeShown_);
+}
+
 void PluginHeader::chainChanged(const ChainState& state) {
   undo_.setEnabled(state.canUndo);
   redo_.setEnabled(state.canRedo);
@@ -134,6 +155,7 @@ void PluginHeader::resized() {
   int x = place(account_, area.getRight()) - kGroupGap;
   x = place(redo_, x) - kPairGap;
   x = place(undo_, x) - kGroupGap;
+  x = place(metronome_, x) - kPairGap;
   x = place(tuner_, x) - kGroupGap;
   x = place(stereo_, x) - kGroupGap;
   place(presetBar_, x);
