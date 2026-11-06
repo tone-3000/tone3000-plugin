@@ -1,8 +1,12 @@
 #include "ProcessorBackend.h"
 
 #include "WindowKeyEvents.h"
+#include "core/BeatPulse.h"
 
 namespace t3k::ui {
+
+static_assert(kMetronomeLeadInBeats == Metronome::kLeadInBeats,
+              "the UI animation and the click must count in together");
 
 ProcessorBackend::ProcessorBackend(TONE3000Processor& processor, juce::Component& peerHost)
     : processor_(processor), peerHost_(peerHost) {
@@ -225,6 +229,7 @@ bool ProcessorBackend::setMidiCcMapping(const juce::String& targetId, int cc) {
 juce::var ProcessorBackend::getMeterLevels() { return processor_.getMeterLevels(); }
 void ProcessorBackend::setTunerEnabled(bool enabled) { processor_.setTunerEnabled(enabled); }
 juce::var ProcessorBackend::getTunerReading() { return processor_.getTunerReading(); }
+double ProcessorBackend::getMetronomeBeats() { return processor_.getMetronomeBeats(); }
 void ProcessorBackend::startAutoBalance() { processor_.startAutoBalance(); }
 void ProcessorBackend::cancelAutoBalance() { processor_.cancelAutoBalance(); }
 juce::var ProcessorBackend::pollAutoBalance() { return processor_.pollAutoBalance(); }

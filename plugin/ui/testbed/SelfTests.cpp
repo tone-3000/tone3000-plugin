@@ -16,6 +16,7 @@
 
 #include "Drive.h"
 #include "Host.h"
+#include "core/BeatPulse.h"
 #include "core/Design.h"
 #include "core/Fonts.h"
 #include "core/Help.h"
@@ -31,6 +32,7 @@
 #include "services/ConnectionGate.h"
 #include "services/LoopbackServer.h"
 #include "services/OAuth.h"
+#include "services/ParamBinding.h"
 #include "services/Pointer.h"
 #include "services/Tone3000Client.h"
 #include "services/Tone3000Session.h"
@@ -38,6 +40,7 @@
 #include "services/UpdateCheck.h"
 #include "views/Faceplate.h"
 #include "views/HintBar.h"
+#include "views/MetronomeView.h"
 #include "views/PluginHeader.h"
 #include "views/block/BlockCard.h"
 #include "views/block/BlockDetail.h"
@@ -964,6 +967,53 @@ struct ToneModelTests : juce::UnitTest {
   }
 };
 
+struct BeatPulseTests : juce::UnitTest {
+  BeatPulseTests() : juce::UnitTest("Beat pulse", "ui") {}
+
+  static float levelAt(BeatPulse& pulse, double beats) {
+    pulse.set(beats);
+    return pulse.level();
+  }
+
+  void runTest() override {
+    constexpr float kTolerance = 1e-6f;
+    constexpr double kBeforeTheClick = -0.25, kOnTheClick = 0.0, kAfterTheClick = 0.25;
+    constexpr double kAtPowerOn = -0.5, kCrossedOver = 0.5, kNextClick = 1.0;
+    BeatPulse pulse;
+
+    beginTest("dark and on the left at power-on");
+    const float atPowerOn = levelAt(pulse, kAtPowerOn);
+    expectWithinAbsoluteError(atPowerOn, 0.0f, kTolerance);
+    expect(pulse.leftSide());
+
+    beginTest("half bright a quarter beat before the click");
+    expectWithinAbsoluteError(levelAt(pulse, kBeforeTheClick), 0.5f, kTolerance);
+
+    beginTest("full on the click, on the left");
+    expectWithinAbsoluteError(levelAt(pulse, kOnTheClick), 1.0f, kTolerance);
+    expect(pulse.leftSide());
+
+    beginTest("half bright a quarter beat after the click");
+    expectWithinAbsoluteError(levelAt(pulse, kAfterTheClick), 0.5f, kTolerance);
+
+    beginTest("dark again half a beat after the click");
+    expectWithinAbsoluteError(levelAt(pulse, kCrossedOver), 0.0f, kTolerance);
+
+    beginTest("the next click is full on the right");
+    expectWithinAbsoluteError(levelAt(pulse, kNextClick), 1.0f, kTolerance);
+    expect(!pulse.leftSide());
+
+    beginTest("dark until it is fed a beat position");
+    BeatPulse neverFed;
+    expectWithinAbsoluteError(neverFed.level(), 0.0f, kTolerance);
+
+    beginTest("dark again after a reset");
+    levelAt(pulse, kOnTheClick);
+    pulse.reset();
+    expectWithinAbsoluteError(pulse.level(), 0.0f, kTolerance);
+  }
+};
+
 struct ReadoutTests : juce::UnitTest {
   ReadoutTests() : juce::UnitTest("Readouts", "ui") {}
   void runTest() override {
@@ -1026,6 +1076,11 @@ struct ReadoutTests : juce::UnitTest {
     expectEquals(scales::pan(true).format(0.5), juce::String("C"));
     expectEquals(scales::pan(true).format(0.0), juce::String("100L"));
     expectEquals(scales::pan(false).format(0.75), juce::String("50R"));
+
+    beginTest("metronome tempo reads whole beats, 20-400");
+    expectEquals(scales::bpm().format(0.0), juce::String("20 BPM"));
+    expectEquals(scales::bpm().format(1.0), juce::String("400 BPM"));
+    expectWithinAbsoluteError(scales::bpm().fromDisplay(100), 80.0 / 380, 1e-6);  // the default, and MockBackend's seed
   }
 };
 
@@ -3015,6 +3070,171 @@ struct DeviceOnlySignInTests : juce::UnitTest {
 };
 
 
+struct MetronomeViewTests : juce::UnitTest {
+  MetronomeViewTests() : juce::UnitTest("Metronome view", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+  static bool pumpUntil(const std::function<bool()>& done, int maxMs = 2000) {
+    for (int waited = 0; !done() && waited < maxMs; waited += 20) pump(20);
+    return done();
+  }
+  static MetronomeView* viewIn(PluginRoot& root) {
+    return dynamic_cast<MetronomeView*>(
+        drive::find(root, [](juce::Component& c) { return dynamic_cast<MetronomeView*>(&c) != nullptr; }));
+  }
+  static bool press(MetronomeView& view, int code, juce::ModifierKeys mods = {}) {
+    return view.keyPressed(juce::KeyPress(code, mods, 0));
+  }
+  static bool windowTakesFocus(juce::ComponentPeer* peer, juce::DocumentWindow& window) {
+    juce::Process::makeForegroundProcess();
+    window.toFront(true);
+    if (peer != nullptr) peer->grabFocus();
+    for (int i = 0; peer != nullptr && i < 20 && !peer->isFocused(); ++i) pump(50);
+    return peer != nullptr && peer->isFocused();
+  }
+
+  void expectHintHas(help::Key key, const juce::String& text) {
+    expect(help::text(key).contains(text), "hint lacks: " + text);
+  }
+
+  void runTest() override {
+    constexpr double kStartBpm = 100, kStartPercent = 50;
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("main-mono");
+    if (scenario == nullptr) {
+      expect(false, "main-mono scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("metronome view", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(400);
+    auto& root = host.pluginRoot();
+    ParamBinding running(backend, "metronomeEnabled"), tempo(backend, "metronomeBpm"),
+        volume(backend, "metronomeVolume");
+    const auto bpm = [&] { return std::round(scales::bpm().toDisplay(tempo.normalised())); };
+    const auto percent = [&] { return std::round(scales::percent().toDisplay(volume.normalised())); };
+    const auto openMetronome = [&] {
+      if (!root.metronomeShown()) drive::clickByHelp(root, "Metronome:");
+      pumpUntil([&] { return root.metronomeShown(); });
+    };
+    const auto openViewAtStartValues = [&]() -> MetronomeView& {
+      openMetronome();
+      running.set(false);
+      tempo.set(static_cast<float>(scales::bpm().fromDisplay(kStartBpm)));
+      volume.set(static_cast<float>(scales::percent().fromDisplay(kStartPercent)));
+      return *viewIn(root);
+    };
+
+    beginTest("opening the metronome closes the tuner");
+    drive::clickByHelp(root, "Tuner:");
+    expect(pumpUntil([&] { return root.tunerShown(); }));
+    drive::clickByHelp(root, "Metronome:");
+    expect(pumpUntil([&] { return !root.tunerShown() && root.metronomeShown(); }));
+
+    beginTest("the power button flips the running parameter");
+    auto* powerButton = drive::byHelpPrefix(root, "Metronome power:");
+    expect(powerButton != nullptr);
+    if (powerButton == nullptr) return;
+    running.set(false);
+    drive::click(root, *powerButton);
+    expect(running.boolValue());
+    drive::click(root, *powerButton);
+    expect(!running.boolValue());
+
+    beginTest("Space starts and stops the click");
+    auto& spaceView = openViewAtStartValues();
+    expect(press(spaceView, juce::KeyPress::spaceKey));
+    expect(running.boolValue());
+    expect(press(spaceView, juce::KeyPress::spaceKey));
+    expect(!running.boolValue());
+
+    beginTest("Up and Down step the tempo by one BPM");
+    auto& tempoView = openViewAtStartValues();
+    expect(press(tempoView, juce::KeyPress::upKey));
+    expectEquals(bpm(), kStartBpm + 1);
+    expect(press(tempoView, juce::KeyPress::downKey));
+    expectEquals(bpm(), kStartBpm);
+
+    beginTest("Right and Left step the volume by one percent");
+    auto& volumeView = openViewAtStartValues();
+    expect(press(volumeView, juce::KeyPress::rightKey));
+    expectEquals(percent(), kStartPercent + 1);
+    expect(press(volumeView, juce::KeyPress::leftKey));
+    expectEquals(percent(), kStartPercent);
+
+    beginTest("Shift steps the tempo and the volume by ten");
+    auto& shiftView = openViewAtStartValues();
+    const auto shift = juce::ModifierKeys::shiftModifier;
+    expect(press(shiftView, juce::KeyPress::upKey, shift));
+    expectEquals(bpm(), kStartBpm + 10);
+    expect(press(shiftView, juce::KeyPress::rightKey, shift));
+    expectEquals(percent(), kStartPercent + 10);
+
+    beginTest("keys the view does not use are left to the host");
+    auto& hostKeysView = openViewAtStartValues();
+    const bool returnTaken = press(hostKeysView, juce::KeyPress::returnKey);
+    const bool commandArrowTaken = press(hostKeysView, juce::KeyPress::upKey, juce::ModifierKeys::commandModifier);
+    expect(!returnTaken);
+    expect(!commandArrowTaken);
+    expectEquals(bpm(), kStartBpm);
+
+    beginTest("the hints name each hotkey on the control it drives");
+    const auto shiftChord = juce::String::fromUTF8(design::kAppleModifierGlyphs ? "\xe2\x87\xa7-" : "Shift+");
+    const auto upDown = juce::String::fromUTF8("\xe2\x86\x91/\xe2\x86\x93");
+    const auto leftRight = juce::String::fromUTF8("\xe2\x86\x90/\xe2\x86\x92");
+    const auto dot = juce::String::fromUTF8(" \xc2\xb7 ");
+    const auto plusMinus = juce::String::fromUTF8("\xc2\xb1");
+    expectHintHas(help::Key::metronome, "M:");
+    expectHintHas(help::Key::metronome, "Esc");
+    expectHintHas(help::Key::metronomeToggle, "Space");
+    expectHintHas(help::Key::metronomeTempo,
+                  upDown + ": " + plusMinus + "1" + dot + shiftChord + upDown + ": " + plusMinus + "10" + dot + shiftChord + "drag");
+    expectHintHas(help::Key::metronomeVolume, leftRight + ": " + plusMinus + "1%" + dot + shiftChord + leftRight + ": " +
+                                                  plusMinus + "10%" + dot + shiftChord + "drag");
+
+    beginTest("clicking the header icon again closes the view");
+    openMetronome();
+    drive::clickByHelp(root, "Metronome:");
+    expect(pumpUntil([&] { return !root.metronomeShown(); }));
+
+    beginTest("Escape closes the view like the close button");
+    auto& escapeView = openViewAtStartValues();
+    expect(press(escapeView, juce::KeyPress::escapeKey));
+    expect(pumpUntil([&] { return !root.metronomeShown(); }));
+
+    beginTest("M closes the open view like Escape");
+    auto& mView = openViewAtStartValues();
+    expect(mView.keyPressed(juce::KeyPress('M')));
+    expect(pumpUntil([&] { return !root.metronomeShown(); }));
+
+    auto* peer = host.getPeer();
+    if (!windowTakesFocus(peer, window)) {
+      logMessage("the window could not take OS focus here; window keys not exercised");
+      return;
+    }
+
+    beginTest("with nothing focused, the window's keys reach the view");
+    openViewAtStartValues();
+    expect(peer->handleKeyPress(juce::KeyPress(juce::KeyPress::spaceKey, {}, 0)));
+    expect(running.boolValue());
+    expect(peer->handleKeyPress(juce::KeyPress(juce::KeyPress::upKey, {}, 0)));
+    expectEquals(bpm(), kStartBpm + 1);
+
+    beginTest("M from the main view opens the metronome, and M again closes it");
+    drive::clickByHelp(root, "Metronome:");
+    expect(pumpUntil([&] { return !root.metronomeShown(); }));
+    expect(peer->handleKeyPress(juce::KeyPress('M', {}, 'm')));
+    expect(pumpUntil([&] { return root.metronomeShown(); }));
+    expect(peer->handleKeyPress(juce::KeyPress('M', {}, 'm')));
+    expect(pumpUntil([&] { return !root.metronomeShown(); }));
+  }
+};
+
+
+BeatPulseTests beatPulseTests;
 HtmlTests htmlTests;
 FontTests fontTests;
 RichFlowTests richFlowTests;
@@ -3048,6 +3268,7 @@ DeviceOnlySignInTests deviceOnlySignInTests;
 ToneModelTests toneModelTests;
 ToneQueryTests toneQueryTests;
 ReadoutTests readoutTests;
+MetronomeViewTests metronomeViewTests;
 
 }  // namespace
 

@@ -120,6 +120,9 @@ public:
   virtual juce::var getMeterLevels() = 0;
   virtual void setTunerEnabled(bool enabled) = 0;
   virtual juce::var getTunerReading() = 0;
+  // Where the metronome click is, in beats: a click lands on each whole beat,
+  // and the count starts at -kMetronomeLeadInBeats (also the stopped value).
+  virtual double getMetronomeBeats() = 0;
   virtual void startAutoBalance() = 0;
   virtual void cancelAutoBalance() = 0;
   virtual juce::var pollAutoBalance() = 0;
