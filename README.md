@@ -25,6 +25,7 @@ install, load tones, and use it.
   undo/redo, and presets. Presets are plain files named after the preset
   (Plugin Settings → Presets opens the folder), so they can be backed up or
   copied between machines.
+- **Metronome.** Header button: 20-400 BPM click with its own volume, started and stopped from its own view.
 - **Cross-platform.** One plugin on macOS, Windows, Linux, and iPad (the
   Standalone app, with the AUv3 plugin inside it for hosts; see
   [`docs/ios.md`](docs/ios.md)). The UI is JUCE/C++ (`plugin/ui/`), drawn natively on every
