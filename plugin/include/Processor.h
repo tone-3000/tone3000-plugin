@@ -23,6 +23,7 @@
 #include "ChainOversampler.h"
 #include "RtWorkerPool.h"
 #include "MidiMapper.h"
+#include "Metronome.h"
 #include "NoiseGate.h"
 #include "PitchShift.h"
 #include "Spread.h"
@@ -485,6 +486,8 @@ public:
   // (pre-gain, pre-gate) input so gating never starves the pitch detector.
   void setTunerEnabled(bool enabled) { tuner.setEnabled(enabled); }
   juce::var getTunerReading() { return tuner.getReading(); }
+  // Where the metronome is, in beats (-0.5 stopped): the UI animation follows it.
+  double getMetronomeBeats() const { return metronomeBeats.load(std::memory_order_relaxed); }
 
   // Auto balance: one-shot chain energy match.
   // startAutoBalance() arms a "listening" measurement: the audio thread
@@ -1088,6 +1091,10 @@ private:
   NoiseGate inputGate;
   bool gateWasEnabled = true;
 
+  // Click track on top of the final output, independent of the chain.
+  Metronome metronome;
+  std::atomic<double> metronomeBeats{-Metronome::kLeadInBeats};
+
   // Input-stage pitch shifter (post gate, host rate; see PitchShift.h). Runs
   // while powered and through its power-off blend, then not at all, so a
   // powered-off plugin stays bit-exact and zero-latency. The latency it
@@ -1141,8 +1148,12 @@ private:
     std::atomic<float>* pitchStep = nullptr;
     std::atomic<float>* pitchTonality = nullptr;
     std::atomic<float>* pitchWindow = nullptr;
+    std::atomic<float>* metronomeEnabled = nullptr;
+    std::atomic<float>* metronomeBpm = nullptr;
+    std::atomic<float>* metronomeVolume = nullptr;
   } paramRefs;
   void resolveParamRefs();
+  void addMetronomeClick(juce::AudioBuffer<float>&);
 
   /** The oversampling factor the osEnabled/osFactor parameters currently
       request: 1 when disabled, else 2/4/8. */

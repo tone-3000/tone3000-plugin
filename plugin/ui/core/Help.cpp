@@ -37,6 +37,14 @@ String knobDesktop(const char* name, const char* desc) {
   return U(name) + ": " + U(desc) + " " + knobKeys();
 }
 
+// A metronome knob's arrow keys, one step and Shift's ten, ready to lead the
+// knob legend; touch has no keyboard.
+String arrowSteps(const char* arrows, const char* unit) {
+  if (kTouch) return {};
+  const String shifted = (design::kAppleModifierGlyphs ? U("\u21e7-") : String("Shift+")) + U(arrows);
+  return U(arrows) + U(": \u00b11") + unit + U(" \u00b7 ") + shifted + U(": \u00b110") + unit + U(" \u00b7 ");
+}
+
 // Desktop pointer vocabulary rewritten for touch. `Right-click` first, since
 // it contains `click`; everything a right-click reaches answers a touch and
 // hold on a touch screen.
@@ -126,7 +134,12 @@ std::map<Key, String> buildTable() {
 
   // Top bar
   t[Key::tuner] = U("Tuner: chromatic tuner. Click again: back.");
+  t[Key::metronome] = U("Metronome: click track with its own tempo and volume. ") +
+                      (kTouch ? U("Click again: back.") : U("M: toggle \u00b7 Esc or click again: back."));
   t[Key::undo] = U("Undo: revert last chain edit.");
+  t[Key::metronomeToggle] = U("Metronome power: turn the click on or off.") + (kTouch ? String() : U(" Space: toggle."));
+  t[Key::metronomeTempo] = U("Tempo: 20-400 BPM. ") + arrowSteps("\u2191/\u2193", "") + knobKeys();
+  t[Key::metronomeVolume] = U("Volume: click level. ") + arrowSteps("\u2190/\u2192", "%") + knobKeys();
   t[Key::redo] = U("Redo: re-apply undone edit.");
   t[Key::settings] = U("Settings: plugin and audio options.");
   t[Key::account] = U("Account: settings and TONE3000 sign-out.");

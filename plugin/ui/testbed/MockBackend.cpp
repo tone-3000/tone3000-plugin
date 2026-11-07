@@ -46,6 +46,8 @@ constexpr SliderDefault kSliders[] = {
     {"gateRelease", 0.5f},       {"gateHold", 0.1f},      {"gateRange", 1.0f},
     // Pitch shift at 0 st (centre) with its deck at the defaults: tonality
     // Off (top), the 30 ms buffer (second of four detents).
+    // Metronome: 100 of 20-400 BPM, 80% volume.
+    {"metronomeBpm", 80.0f / 380},      {"metronomeVolume", 0.8f},
     {"pitchSemitones", 0.5f},    {"pitchTonality", 1.0f},  {"pitchWindow", 1.0f / 3.0f},
 };
 struct ToggleDefault {
@@ -63,6 +65,7 @@ constexpr ToggleDefault kToggles[] = {
     {"gateEnabled", true},             {"toneEqEnabled", true},
     {"pitchEnabled", false},           {"pitchStep", true},
     {"calibrateInput", false},         {"osEnabled", false},
+    {"metronomeEnabled", false},
 };
 
 }  // namespace

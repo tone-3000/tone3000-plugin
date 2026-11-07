@@ -9,6 +9,7 @@
 
 #include "MockSignal.h"
 #include "backend/Backend.h"
+#include "core/BeatPulse.h"
 
 namespace t3k::ui::testbed {
 
@@ -118,6 +119,7 @@ public:
   juce::var getMeterLevels() override;
   void setTunerEnabled(bool) override {}
   juce::var getTunerReading() override { return signal_ != nullptr ? signal_->tuner() : tuner_; }
+  double getMetronomeBeats() override { return -kMetronomeLeadInBeats; }
   void startAutoBalance() override {}
   void cancelAutoBalance() override {}
   juce::var pollAutoBalance() override { return autoMeasure_; }

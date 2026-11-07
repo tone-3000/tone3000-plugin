@@ -95,6 +95,7 @@ public:
   juce::var getMeterLevels() override;
   void setTunerEnabled(bool enabled) override;
   juce::var getTunerReading() override;
+  double getMetronomeBeats() override;
   void startAutoBalance() override;
   void cancelAutoBalance() override;
   juce::var pollAutoBalance() override;
