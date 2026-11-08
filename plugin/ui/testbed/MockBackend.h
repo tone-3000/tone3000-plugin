@@ -20,6 +20,7 @@ public:
   // Live pokes for drive steps.
   void setChain(juce::var chain);
   void setTuner(juce::var tuner) { tuner_ = std::move(tuner); }
+  void setLoop(juce::var loop) { loop_ = std::move(loop); }
   void setAutoMeasure(juce::var state) { autoMeasure_ = std::move(state); }
   void setDevice(juce::var device);
   // Live: meters, spectrum, tuner and input levels follow a moving signal
@@ -32,9 +33,17 @@ public:
   juce::uint32 chainRevision() override;
   bool undoChain() override { return true; }
   bool redoChain() override { return true; }
+  bool beginChainPreview() override;
+  bool commitChainPreview() override;
+  bool cancelChainPreview() override;
   bool resetToDefault() override { return true; }
 
-  std::string loadTone(const juce::String&, const std::string&) override { return {}; }
+  // A landed tone gets a block id like the processor hands back (the mock
+  // chain itself does not change); flows that keep the id (the audition's
+  // pending swap) need one.
+  std::string loadTone(const juce::String& toneJson, const std::string&) override {
+    return "blk-mock-" + juce::JSON::parse(toneJson)["id"].toString().toStdString();
+  }
   juce::var loadLocalTonePath(const juce::File&, const std::string&) override;
   juce::var loadLocalToneUrls(const juce::Array<juce::URL>&, const std::string&) override;
   bool swapTone(const std::string&, const juce::String&) override { return true; }
@@ -118,6 +127,11 @@ public:
   juce::var getMeterLevels() override;
   void setTunerEnabled(bool) override {}
   juce::var getTunerReading() override { return signal_ != nullptr ? signal_->tuner() : tuner_; }
+  // The loop's state machine without audio: a tap advances it the way a
+  // take would (armed records at once, a take closes at four seconds).
+  void loopTap() override;
+  void loopClear() override;
+  juce::var getLoopState() override { return loop_; }
   void startAutoBalance() override {}
   void cancelAutoBalance() override {}
   juce::var pollAutoBalance() override { return autoMeasure_; }
@@ -147,6 +161,7 @@ private:
   std::unique_ptr<Params> params_;
 
   juce::var chain_;
+  juce::var previewSnapshot_;  // the chain before the open preview session
   juce::var device_;
   juce::var midiMap_;
   juce::var presets_;
@@ -155,6 +170,7 @@ private:
   std::vector<juce::String> machineDefaults_;
   juce::var meters_;
   juce::var tuner_;
+  juce::var loop_;
   juce::var autoMeasure_;
   juce::String version_;
   std::unique_ptr<MockSignal> signal_;

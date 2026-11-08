@@ -24,6 +24,9 @@ public:
   juce::var getChainState(int knownRevision) override;
   juce::uint32 chainRevision() override;
   bool undoChain() override;
+  bool beginChainPreview() override;
+  bool commitChainPreview() override;
+  bool cancelChainPreview() override;
   bool redoChain() override;
   bool resetToDefault() override;
 
@@ -95,6 +98,9 @@ public:
   juce::var getMeterLevels() override;
   void setTunerEnabled(bool enabled) override;
   juce::var getTunerReading() override;
+  void loopTap() override;
+  void loopClear() override;
+  juce::var getLoopState() override;
   void startAutoBalance() override;
   void cancelAutoBalance() override;
   juce::var pollAutoBalance() override;

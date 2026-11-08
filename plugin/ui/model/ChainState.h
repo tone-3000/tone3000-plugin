@@ -144,6 +144,7 @@ struct ChainState {
   int revision = 0;
   bool canUndo = false;
   bool canRedo = false;
+  bool previewing = false;  // an open preview session (the browser's audition)
   bool canPasteBlock = false;
   bool atDefault = false;
   std::optional<ActivePreset> preset;

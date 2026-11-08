@@ -21,6 +21,10 @@
 // comes straight back here signed in. Signed in, every query goes to the
 // TONE3000 API through the session; native is only involved for the final
 // load (selectTone), which the parent completes by closing the browser.
+//
+// While the audition loop plays a pick previews
+// instead: the browser stays open, the previewed card wears the play pill,
+// the hint bar pins the rules, and clicking that card again keeps it.
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -46,7 +50,10 @@
 
 namespace t3k::ui {
 
-class ToneBrowser : public juce::Component, private ToneSession::Listener, private Zoom::Listener {
+class ToneBrowser : public juce::Component,
+                    private ToneSession::Listener,
+                    private Zoom::Listener,
+                    private LoopFeed::Listener {
 public:
   // Plugin.tsx's shared 24px pad under the header (design px); half that
   // closes the screen under the paginator (1x body, screen px).
@@ -93,6 +100,9 @@ private:
   void sessionChanged() override;
   void authFlowChanged() override;
   void zoomChanged() override { resized(); }
+  // The loop started or stopped under an open browser: the cards' hints
+  // (preview vs. land) follow it.
+  void loopChanged(const LoopFeed::State&) override;
 
   bool signedOut() const { return !services_.session.authenticated(); }
   // The signed-out screen: the trending preview, or its sign-in page.
@@ -111,6 +121,8 @@ private:
   void pageLoaded(TonePage page);
   void pageFailed();
   void pick(const Tone& tone);
+  // The audition changed (a preview landed, or ended): cards and the hint.
+  void auditionChanged();
   // The preview's card click: the sign-in page, and ← back to the cards.
   void setSignInPageShown(bool shown);
   void rebuildCards();
@@ -129,6 +141,7 @@ private:
   bool loading_ = true;
   bool error_ = false;
   bool signInPage_ = false;  // the preview's card-click page
+  bool loopPlaying_ = false;  // what the cards' hints were last built for
   std::optional<int> pickingId_;
   juce::String pickError_;
 

@@ -151,6 +151,7 @@ ChainState ChainState::parse(const juce::var& v) {
   s.revision = integer(v, "revision");
   s.canUndo = boolean(v, "canUndo");
   s.canRedo = boolean(v, "canRedo");
+  s.previewing = boolean(v, "previewing");
   s.canPasteBlock = boolean(v, "canPasteBlock");
   s.atDefault = boolean(v, "atDefault");
   if (v["preset"].isObject())

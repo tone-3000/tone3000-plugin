@@ -41,6 +41,9 @@ juce::var ProcessorBackend::getChainState(int knownRevision) {
 }
 juce::uint32 ProcessorBackend::chainRevision() { return processor_.getCurrentChainRevision(); }
 bool ProcessorBackend::undoChain() { return processor_.undoChain(); }
+bool ProcessorBackend::beginChainPreview() { return processor_.beginChainPreview(); }
+bool ProcessorBackend::commitChainPreview() { return processor_.commitChainPreview(); }
+bool ProcessorBackend::cancelChainPreview() { return processor_.cancelChainPreview(); }
 bool ProcessorBackend::redoChain() { return processor_.redoChain(); }
 bool ProcessorBackend::resetToDefault() { return processor_.resetToDefault(); }
 
@@ -225,6 +228,9 @@ bool ProcessorBackend::setMidiCcMapping(const juce::String& targetId, int cc) {
 juce::var ProcessorBackend::getMeterLevels() { return processor_.getMeterLevels(); }
 void ProcessorBackend::setTunerEnabled(bool enabled) { processor_.setTunerEnabled(enabled); }
 juce::var ProcessorBackend::getTunerReading() { return processor_.getTunerReading(); }
+void ProcessorBackend::loopTap() { processor_.loopTap(); }
+void ProcessorBackend::loopClear() { processor_.loopClear(); }
+juce::var ProcessorBackend::getLoopState() { return processor_.getLoopState(); }
 void ProcessorBackend::startAutoBalance() { processor_.startAutoBalance(); }
 void ProcessorBackend::cancelAutoBalance() { processor_.cancelAutoBalance(); }
 juce::var ProcessorBackend::pollAutoBalance() { return processor_.pollAutoBalance(); }

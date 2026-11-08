@@ -1,5 +1,6 @@
 #include "Processor.h"
 #include <map>
+#include <utility>
 
 // #############################
 // UNDO / REDO (chain history)
@@ -34,6 +35,10 @@ juce::ValueTree TONE3000Processor::captureChainSnapshot(bool includeModelData) c
 }
 
 void TONE3000Processor::pushChainHistory(const juce::String& coalesceKey) {
+  // An open preview session owns the stack: its snapshot lands on commit
+  // (commitChainPreview), nothing in between.
+  if (previewSnapshot.isValid())
+    return;
   // Mid-gesture updates skip the (comparatively pricey) serialization
   // entirely; the entry on top of the stack already holds the pre-gesture
   // state, which is exactly what undo should restore.
@@ -277,12 +282,65 @@ TONE3000Processor::Lane TONE3000Processor::restoreChainSnapshot(const juce::Valu
   return retired;
 }
 
-bool TONE3000Processor::undoChain() {
-  // No-op undos (hotkey spam at the stack end) must not dip the audio, so
-  // check the stack before arming the fade.
+bool TONE3000Processor::beginChainPreview() {
+  juce::ScopedLock lock(chainMutex);
+  if (!previewSnapshot.isValid()) {
+    previewSnapshot = captureChainSnapshot();
+    bumpChainRevision();  // `previewing` rides the chain state
+  }
+  return true;
+}
+
+bool TONE3000Processor::commitChainPreview() {
+  juce::ScopedLock lock(chainMutex);
+  if (!previewSnapshot.isValid())
+    return false;
+  // A session that changed nothing leaves no undo step behind.
+  if (!captureChainSnapshot().isEquivalentTo(previewSnapshot))
+    chainHistory.push(previewSnapshot, {});
+  previewSnapshot = {};
+  bumpChainRevision();
+  return true;
+}
+
+bool TONE3000Processor::cancelChainPreview() {
   {
     juce::ScopedLock lock(chainMutex);
-    if (!chainHistory.canUndo())
+    if (!previewSnapshot.isValid())
+      return false;
+  }
+
+  // See undoChain: a restore can restructure the chain, so mute-splice it.
+  ChainEditFade editFade(*this);
+
+  Lane retired;  // destroyed after the lock; see restoreChainSnapshot
+  {
+    juce::ScopedLock lock(chainMutex);
+    if (!previewSnapshot.isValid())
+      return false;
+    const juce::ValueTree snapshot = std::exchange(previewSnapshot, {});
+    retired = restoreChainSnapshot(snapshot);
+  }
+  DBG("Chain preview cancelled");
+
+  editFade.releaseWhenChainLoadsSettle();
+  return true;
+}
+
+bool TONE3000Processor::isChainPreviewing() const {
+  juce::ScopedLock lock(chainMutex);
+  return previewSnapshot.isValid();
+}
+
+bool TONE3000Processor::undoChain() {
+  // No-op undos (hotkey spam at the stack end) must not dip the audio, so
+  // check the stack before arming the fade. An open preview session owns
+  // the chain until it commits or cancels: an undo underneath it would
+  // leave the session's snapshot and the stack disagreeing about what the
+  // chain was, so it is refused (the header greys the buttons meanwhile).
+  {
+    juce::ScopedLock lock(chainMutex);
+    if (!chainHistory.canUndo() || previewSnapshot.isValid())
       return false;
   }
 
@@ -294,7 +352,7 @@ bool TONE3000Processor::undoChain() {
   Lane retired;  // destroyed after the lock; see restoreChainSnapshot
   {
     juce::ScopedLock lock(chainMutex);
-    if (!chainHistory.canUndo())
+    if (!chainHistory.canUndo() || previewSnapshot.isValid())
       return false;
     retired = restoreChainSnapshot(chainHistory.undo(captureChainSnapshot()));
   }
@@ -311,7 +369,7 @@ bool TONE3000Processor::undoChain() {
 bool TONE3000Processor::redoChain() {
   {
     juce::ScopedLock lock(chainMutex);
-    if (!chainHistory.canRedo())
+    if (!chainHistory.canRedo() || previewSnapshot.isValid())  // see undoChain
       return false;
   }
 
@@ -321,7 +379,7 @@ bool TONE3000Processor::redoChain() {
   Lane retired;  // destroyed after the lock; see restoreChainSnapshot
   {
     juce::ScopedLock lock(chainMutex);
-    if (!chainHistory.canRedo())
+    if (!chainHistory.canRedo() || previewSnapshot.isValid())
       return false;
     retired = restoreChainSnapshot(chainHistory.redo(captureChainSnapshot()));
   }

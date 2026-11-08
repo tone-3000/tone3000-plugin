@@ -118,6 +118,10 @@ ToneBrowser::ToneBrowser(Services& services)
 
   services_.session.addListener(this);
   services_.zoom.addListener(this);
+  services_.loop.addListener(this);
+  loopPlaying_ = services_.loop.playing();
+  services_.loadFlow.onAuditionChanged = [this] { auditionChanged(); };
+  if (services_.loadFlow.auditioning()) services_.hints.pin(help::text(help::Key::browserAuditioning));
   // Back to the page this screen was left on, so long as it is the same
   // kind of page (a signed-in search page, or the signed-out trending feed);
   // a fresh visit, or one across a sign-in / out, fetches.
@@ -131,6 +135,9 @@ ToneBrowser::ToneBrowser(Services& services)
 }
 
 ToneBrowser::~ToneBrowser() {
+  services_.loadFlow.onAuditionChanged = nullptr;
+  services_.hints.unpin(help::text(help::Key::browserAuditioning));
+  services_.loop.removeListener(this);
   services_.zoom.removeListener(this);
   services_.session.removeListener(this);
 }
@@ -235,13 +242,27 @@ void ToneBrowser::pick(const Tone& tone) {
   pickError_.clear();
   pickingId_ = tone.id;
   rebuildBody();
-  // On success the parent closes the browser; the scope guards the reply.
+  // On success the parent closes the browser, unless the pick was a
+  // preview and the browser stays; the scope guards the reply either way.
   services_.session.selectTone(tone.id, scope_.wrap([this](const juce::String& error) {
-    if (error.isEmpty()) return;
-    pickError_ = kPickError;
+    if (error.isNotEmpty()) pickError_ = kPickError;
     pickingId_.reset();
     rebuildBody();
   }));
+}
+
+void ToneBrowser::loopChanged(const LoopFeed::State&) {
+  const bool playing = services_.loop.playing();
+  if (playing == loopPlaying_) return;  // position ticks are not a change of contract
+  loopPlaying_ = playing;
+  rebuildBody();
+}
+
+void ToneBrowser::auditionChanged() {
+  const auto rule = help::text(help::Key::browserAuditioning);
+  if (services_.loadFlow.auditioning()) services_.hints.pin(rule);
+  else services_.hints.unpin(rule);
+  rebuildBody();
 }
 
 void ToneBrowser::setSignInPageShown(bool shown) {
@@ -275,6 +296,11 @@ void ToneBrowser::rebuildCards() {
       // the sign-in page.
       if (preview()) {
         setSignInPageShown(true);
+        return;
+      }
+      // The previewed card, clicked again: keep it.
+      if (services_.loadFlow.previewToneId() == id) {
+        services_.loadFlow.commitPreview();
         return;
       }
       const auto it = std::find_if(cards_.begin(), cards_.end(), [id](const auto& c) { return c->tone().id == id; });
@@ -337,11 +363,17 @@ void ToneBrowser::rebuildBody() {
   // Cards stay mounted while a new page loads, dimmed and inert under the
   // busy overlay. Other cards dim while one pick resolves.
   const bool cardsVisible = !signInPage && !showError && hasCards;
+  const bool auditioning = services_.loop.playing() || services_.loadFlow.auditioning();
+  const int previewId = services_.loadFlow.previewToneId();
   for (auto& card : cards_) {
     card->setVisible(cardsVisible);
     const bool picking = pickingId_ && *pickingId_ == card->tone().id;
     card->setLoading(picking);
     card->setDisabled(ToneCard::unavailable(card->tone()) || pickingId_.has_value() || loading_);
+    const bool previewed = previewId != 0 && card->tone().id == previewId;
+    card->setAuditioning(previewed);
+    card->setHelpText(previewed ? help::text(help::Key::browserAuditionKeep)
+                                : auditioning ? help::text(help::Key::browserAudition) : juce::String());
   }
   if (cardsVisible && loading_) {
     if (!gridBusy_) {

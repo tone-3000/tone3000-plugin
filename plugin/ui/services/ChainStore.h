@@ -71,6 +71,10 @@ public:
   bool resetBlockEq(const std::string& blockId);
   bool undo();
   bool redo();
+  // The preview session (Backend::beginChainPreview and friends).
+  bool beginPreview();
+  bool commitPreview();
+  bool cancelPreview();
   bool resetToDefault();
 
 private:

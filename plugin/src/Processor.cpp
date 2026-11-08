@@ -838,6 +838,7 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   maxBlockSize = samplesPerBlock;
 
   tuner.prepare(sampleRate);
+  loop.prepare(sampleRate, LoopRecorder::Params{});
 
   // CPU readout: proportion of the callback budget spent in processBlock.
   loadMeasurer.reset(sampleRate, samplesPerBlock);
@@ -1783,28 +1784,50 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // stage below always agree on it (a mode change landing between the two
   // reads could otherwise fold the input and then run two voices on it).
   rtDualMono = numChannels > 1 && dualMonoEngaged();
+  bool foldedMono = false;  // the fold left both channels equal (the loop below mirrors into that)
   if (numChannels > 1) {
     if (standaloneMonoInput.load()) {
       buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
+      foldedMono = true;
     } else {
       const auto mode = static_cast<InputMode>(inputMode.load());
       const bool sumToMono =
           !stereoEnabled.load() &&
           (mode == InputMode::Stereo || (mode == InputMode::DualMono && !rtDualMono));
       switch (mode) {
-        case InputMode::Left: buffer.copyFrom(1, 0, buffer, 0, 0, numSamples); break;
-        case InputMode::Right: buffer.copyFrom(0, 0, buffer, 1, 0, numSamples); break;
+        case InputMode::Left:
+          buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
+          foldedMono = true;
+          break;
+        case InputMode::Right:
+          buffer.copyFrom(0, 0, buffer, 1, 0, numSamples);
+          foldedMono = true;
+          break;
         case InputMode::Stereo:
         case InputMode::DualMono:
           if (sumToMono) {
             buffer.applyGain(0, 0, numSamples, 0.5f);
             buffer.addFrom(0, 0, buffer, 1, 0, numSamples, 0.5f);
             buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
+            foldedMono = true;
           }
           break;
       }
     }
   }
+
+  // Audition loop: a recorded take of the dry input stands in for the
+  // player while it plays. After the fold-down, so
+  // the take is what the chain would hear and the meters show it. Always
+  // called: it consumes the pedal's taps and keeps the pre-roll ring warm
+  // (one write per sample while idle). Channel 0 carries the loop; whenever
+  // the fold just made the two channels equal (a mono rig, a mono device,
+  // Input L or R) the loop is mirrored so both chains hear it. Only a real
+  // stereo source into stereo chains, or an engaged dual mono, keeps its
+  // live right channel.
+  loop.process(buffer.getWritePointer(0), numSamples);
+  if (foldedMono && loop.state() != LoopRecorder::State::empty)
+    buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
 
   // #########################
   // Input gain + noise gate

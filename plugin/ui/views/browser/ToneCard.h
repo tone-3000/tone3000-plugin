@@ -45,8 +45,12 @@ public:
   void setContentHeight(float height);
   void setLoading(bool loading);
   void setDisabled(bool disabled);
+  // The tone playing on the loop right now: a brand
+  // blue border and a play pill on the artwork.
+  void setAuditioning(bool auditioning);
 
   void paintButton(juce::Graphics& g, bool highlighted, bool down) override;
+  void paintOverChildren(juce::Graphics& g) override;
   void resized() override;
 
 private:
@@ -69,6 +73,7 @@ private:
   Tone tone_;
   bool loading_ = false;
   bool disabled_ = false;
+  bool auditioning_ = false;
 
   ToneImage image_;
   FormatBadge badge_;

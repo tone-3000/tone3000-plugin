@@ -29,6 +29,7 @@
 #include "model/Tone.h"
 #include "model/ToneQuery.h"
 #include "services/ConnectionGate.h"
+#include "services/LoopFeed.h"
 #include "services/LoopbackServer.h"
 #include "services/OAuth.h"
 #include "services/Pointer.h"
@@ -3015,6 +3016,186 @@ struct DeviceOnlySignInTests : juce::UnitTest {
 };
 
 
+// LoopFeed over the mock: the one-switch state machine as the header sees
+// it, and a help line (so a screen-reader name) for every phase.
+struct LoopTests : juce::UnitTest {
+  LoopTests() : juce::UnitTest("loop", "ui") {}
+  void runTest() override {
+    using Phase = LoopFeed::Phase;
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("main-mono");
+    if (scenario == nullptr) {
+      expect(false, "main-mono scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    UiClock clock;
+    LoopFeed feed(backend, clock);
+    struct Ears : LoopFeed::Listener {
+      int changes = 0;
+      void loopChanged(const LoopFeed::State&) override { ++changes; }
+    } ears;
+    feed.addListener(&ears);
+
+    beginTest("taps walk the pedal's states; clear empties from anywhere");
+    expect(feed.state().phase == Phase::empty && !feed.playing());
+    feed.tap();
+    expect(feed.state().phase == Phase::armed);
+    feed.tap();
+    expect(feed.state().phase == Phase::recording);
+    feed.tap();
+    expect(feed.state().phase == Phase::playing && feed.playing());
+    expectWithinAbsoluteError(feed.state().lengthSeconds, 4.0, 1e-9);
+    feed.tap();
+    expect(feed.state().phase == Phase::stopped && !feed.playing());
+    feed.tap();
+    expect(feed.state().phase == Phase::playing);
+    expectEquals(ears.changes, 5);
+    feed.poll();
+    expectEquals(ears.changes, 5);  // an unchanged poll is silent
+    feed.clear();
+    expect(feed.state().phase == Phase::empty);
+    expectEquals(feed.state().lengthSeconds, 0.0);
+    feed.removeListener(&ears);
+
+    beginTest("phase names round-trip; every phase has a Loop: hint");
+    for (auto phase : {Phase::empty, Phase::armed, Phase::recording, Phase::playing, Phase::stopped})
+      expect(LoopFeed::parsePhase(LoopFeed::phaseName(phase)) == phase);
+    expect(LoopFeed::parsePhase("nonsense") == Phase::empty);
+    for (auto key : {help::Key::loopEmpty, help::Key::loopArmed, help::Key::loopRecording, help::Key::loopPlaying,
+                     help::Key::loopStopped})
+      expect(help::text(key).startsWith("Loop:"));
+  }
+};
+
+// The audition in the browser, headless over the
+// mock: with the loop playing a card click previews and the browser stays,
+// the same card again keeps it, Escape puts the chain back; with the loop
+// stopped a click lands and closes the browser as it always did.
+struct AuditionTests : juce::UnitTest {
+  AuditionTests() : juce::UnitTest("audition", "ui") {}
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+  void runTest() override {
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("browser-auditioning");
+    if (scenario == nullptr) {
+      expect(false, "browser-auditioning scenario missing");
+      return;
+    }
+    const auto previewing = [](MockBackend& b) { return static_cast<bool>(b.getChainState(-1)["previewing"]); };
+
+    beginTest("loop playing: a pick previews, the browser stays, the card is marked");
+    {
+      MockBackend backend(scenario->data);
+      ScaledHost host(backend, *scenario, fixtures.root);
+      pump(300);
+      auto& root = host.pluginRoot();
+      auto& flow = host.bundle().loadFlow;
+      expect(root.browserShown() && host.bundle().loop.playing());
+      auto* vox = drive::buttonNamed(root, "'02 Vox AC30/6 Top Boost");
+      auto* jc = drive::buttonNamed(root, "Roland JC-40");
+      if (vox == nullptr || jc == nullptr) {
+        expect(false, "cards missing");
+        return;
+      }
+      vox->triggerClick();
+      pump(400);
+      expect(root.browserShown(), "the browser stays open on a preview");
+      expect(previewing(backend) && flow.auditioning());
+      expectEquals(flow.previewToneId(), 101);
+      expect(host.bundle().hints.current().startsWith("Auditioning"), "the rule is pinned in the hint bar");
+      expect(!host.bundle().chain.state().canUndo, "undo is greyed for the session");
+
+      beginTest("another pick replaces the preview; the same card again keeps it");
+      jc->triggerClick();
+      pump(400);
+      expect(previewing(backend) && root.browserShown());
+      expectEquals(flow.previewToneId(), 102);
+      jc = drive::buttonNamed(root, "Roland JC-40");  // the grid rebuilt on the change
+      if (jc != nullptr) jc->triggerClick();
+      pump(200);
+      expect(!previewing(backend) && !flow.auditioning(), "commit closes the session");
+      expect(!root.browserShown(), "and the browser");
+      expect(static_cast<bool>(backend.getChainState(-1)["canUndo"]), "as one undo step");
+    }
+
+    beginTest("Escape puts the chain back and closes the browser");
+    {
+      MockBackend backend(scenario->data);
+      ScaledHost host(backend, *scenario, fixtures.root);
+      pump(300);
+      auto& root = host.pluginRoot();
+      if (auto* vox = drive::buttonNamed(root, "'02 Vox AC30/6 Top Boost")) vox->triggerClick();
+      pump(400);
+      expect(previewing(backend));
+      expect(root.keyPressed(juce::KeyPress(juce::KeyPress::escapeKey)));
+      pump(100);
+      expect(!previewing(backend) && !host.bundle().loadFlow.auditioning());
+      expect(!root.browserShown());
+      expect(host.bundle().hints.current().isEmpty(), "the pinned rule is gone");
+    }
+
+    beginTest("loop stopped: a pick lands and the browser closes, no session");
+    {
+      // The same browser, with the loop empty (browser-picking stalls its
+      // pick on purpose, for its busy-overlay capture).
+      MockBackend backend(scenario->data);
+      backend.setLoop(juce::JSON::parse(R"({"state":"empty","position":0,"lengthSeconds":0})"));
+      ScaledHost host(backend, *scenario, fixtures.root);
+      pump(300);
+      auto& root = host.pluginRoot();
+      expect(!host.bundle().loop.playing());
+      auto* vox = drive::buttonNamed(root, "'02 Vox AC30/6 Top Boost");
+      expect(vox != nullptr && vox->isEnabled(), "the card is there and clickable");
+      if (vox != nullptr) vox->triggerClick();
+      pump(400);
+      expect(!previewing(backend), "no session");
+      expect(!host.bundle().loadFlow.auditioning(), "no audition");
+      expect(!root.browserShown(), "the browser closed on the landing");
+    }
+
+    beginTest("the loop starting under an open browser turns the cards into previews");
+    {
+      MockBackend backend(scenario->data);
+      backend.setLoop(juce::JSON::parse(R"({"state":"empty","position":0,"lengthSeconds":0})"));
+      ScaledHost host(backend, *scenario, fixtures.root);
+      pump(300);
+      auto& root = host.pluginRoot();
+      auto& loop = host.bundle().loop;
+      const auto cardHelp = [&root] {
+        auto* vox = drive::buttonNamed(root, "'02 Vox AC30/6 Top Boost");
+        return vox != nullptr ? vox->getHelpText() : juce::String("<no card>");
+      };
+      expect(cardHelp().isEmpty(), "with no loop a card is a plain pick");
+      loop.tap();
+      loop.tap();
+      loop.tap();  // armed, recording, playing: the header's button, not the browser
+      pump(100);
+      expect(loop.playing());
+      expect(cardHelp().startsWith("Audition"), "the cards now say they preview");
+      loop.tap();  // stopped
+      pump(100);
+      expect(cardHelp().isEmpty(), "and stop saying so when the loop stops");
+    }
+
+    beginTest("a session the backend ends drops the audition");
+    {
+      MockBackend backend(scenario->data);
+      ScaledHost host(backend, *scenario, fixtures.root);
+      pump(300);
+      auto& root = host.pluginRoot();
+      if (auto* vox = drive::buttonNamed(root, "'02 Vox AC30/6 Top Boost")) vox->triggerClick();
+      pump(400);
+      expect(previewing(backend) && host.bundle().loadFlow.auditioning());
+      // A host state load: the processor drops the session with the history.
+      backend.cancelChainPreview();
+      pump(100);
+      expect(!host.bundle().loadFlow.auditioning(), "the flow saw `previewing` go");
+      expect(host.bundle().hints.current().isEmpty(), "and the pinned rule with it");
+    }
+  }
+};
+
 HtmlTests htmlTests;
 FontTests fontTests;
 RichFlowTests richFlowTests;
@@ -3037,6 +3218,8 @@ FaceplateDualMonoTests faceplateDualMonoTests;
 UpdateCheckTests updateCheckTests;
 ConnectionGateTests connectionGateTests;
 PitchTests pitchTests;
+LoopTests loopTests;
+AuditionTests auditionTests;
 OAuthTests oauthTests;
 LoopbackServerTests loopbackServerTests;
 PaginatorTests paginatorTests;

@@ -32574,6 +32574,63 @@
    "banner": false,
    "auth": false,
    "hasDrive": false
+  },
+  {
+   "id": "main-loop-armed",
+   "base": "main-mono",
+   "title": "Loop - armed",
+   "description": "Loop armed (red ring): the take starts on the first signal, or on a second click.",
+   "loop": {
+    "state": "armed",
+    "position": 0.0,
+    "lengthSeconds": 0.0
+   }
+  },
+  {
+   "id": "main-loop-recording",
+   "base": "main-mono",
+   "title": "Loop - recording",
+   "description": "Loop recording: the ring fills as the take runs toward the 20 s cap; a click closes it.",
+   "loop": {
+    "state": "recording",
+    "position": 0.35,
+    "lengthSeconds": 0.0
+   }
+  },
+  {
+   "id": "main-loop-playing",
+   "base": "main-mono",
+   "title": "Loop - playing",
+   "description": "Loop playing in place of the input (blue ring sweeping): a click stops, right-click clears. The browser previews cards while this is on.",
+   "loop": {
+    "state": "playing",
+    "position": 0.6,
+    "lengthSeconds": 4.0
+   }
+  },
+  {
+   "id": "main-loop-stopped",
+   "base": "main-mono",
+   "title": "Loop - stopped",
+   "description": "Loop stopped: the ring frozen where it was, the play glyph muted; a click plays again from the top.",
+   "loop": {
+    "state": "stopped",
+    "position": 0.6,
+    "lengthSeconds": 4.0
+   }
+  },
+  {
+   "id": "browser-auditioning",
+   "base": "browser-picking",
+   "title": "Tone browser - auditioning on the loop",
+   "description": "With the loop playing, a click previews the tone in the pending slot instead of landing it: the browser stays open, the card wears the play pill and a blue border, and the hint bar pins the rules. Clicking the card again keeps it; Back or Escape puts the chain back.",
+   "api": {},
+   "hasDrive": true,
+   "loop": {
+    "state": "playing",
+    "position": 0.4,
+    "lengthSeconds": 4.0
+   }
   }
  ]
 }

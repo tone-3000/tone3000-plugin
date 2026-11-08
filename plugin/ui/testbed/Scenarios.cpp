@@ -19,7 +19,19 @@ Fixtures Fixtures::load(const juce::File& scenariosJson) {
       Scenario s;
       s.id = entry["id"].toString();
       s.data = entry;
-      s.hasDrive = static_cast<bool>(entry.getProperty("hasDrive", false));
+      // An entry with `base` is an earlier entry's state with the listed
+      // properties overridden (a screen that differs from another by one
+      // object, like the loop button's states over main-mono).
+      if (entry.hasProperty("base")) {
+        if (const auto* base = f.find(entry["base"].toString())) {
+          s.data = base->data.clone();
+          if (auto* o = s.data.getDynamicObject())
+            for (const auto& p : entry.getDynamicObject()->getProperties()) o->setProperty(p.name, p.value);
+        } else {
+          jassertfalse;  // the base must come first in the table
+        }
+      }
+      s.hasDrive = static_cast<bool>(s.data.getProperty("hasDrive", false));
       f.scenarios.push_back(std::move(s));
     }
   }
@@ -234,6 +246,12 @@ const std::map<juce::String, Drive>& drives() {
        [](PluginRoot& root, MockBackend&) {
          if (auto* card = buttonNamed(root, "'02 Vox AC30/6 Top Boost")) click(root, *card);
          wait(600);
+         unhover(root);
+       }},
+      {"browser-auditioning",
+       [](PluginRoot& root, MockBackend&) {
+         if (auto* card = buttonNamed(root, "'02 Vox AC30/6 Top Boost")) click(root, *card);
+         wait(800);
          unhover(root);
        }},
       {"browser-scrolled",

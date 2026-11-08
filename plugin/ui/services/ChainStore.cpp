@@ -156,6 +156,18 @@ bool ChainStore::redo() {
   return run([&] { return backend_.redoChain(); });
 }
 
+bool ChainStore::beginPreview() {
+  return run([&] { return backend_.beginChainPreview(); });
+}
+
+bool ChainStore::commitPreview() {
+  return run([&] { return backend_.commitChainPreview(); });
+}
+
+bool ChainStore::cancelPreview() {
+  return run([&] { return backend_.cancelChainPreview(); });
+}
+
 bool ChainStore::resetToDefault() {
   return run([&] { return backend_.resetToDefault(); });
 }

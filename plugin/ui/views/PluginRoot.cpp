@@ -330,9 +330,17 @@ void PluginRoot::FocusPolicy::mouseDown(const juce::MouseEvent& e) {
 bool PluginRoot::keyPressed(const juce::KeyPress& key) {
   if (key != juce::KeyPress::escapeKey) return false;
   auto* focused = getCurrentlyFocusedComponent();
-  if (focused == nullptr || !isParentOf(focused)) return false;
-  focused->giveAwayKeyboardFocus();
-  return true;
+  if (focused != nullptr && isParentOf(focused)) {
+    focused->giveAwayKeyboardFocus();
+    return true;
+  }
+  // Escape with nothing focused ends an audition: the chain goes back and
+  // the browser closes, exactly like its ←.
+  if (browserShown() && services_.loadFlow.auditioning() && browser_->onClose) {
+    browser_->onClose();
+    return true;
+  }
+  return false;
 }
 
 void PluginRoot::bannerShow() {

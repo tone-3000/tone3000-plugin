@@ -22,6 +22,7 @@
 #include "T3kConfig.h"
 #include "ToneLoadFlow.h"
 #include "ToneSession.h"
+#include "LoopFeed.h"
 #include "UiClock.h"
 #include "UiPrefs.h"
 #include "UpdateCheck.h"
@@ -50,6 +51,7 @@ public:
         session(t),
         shell(s),
         prefs(p),
+        loop(b, clock),
         hints(prefs),
         chain(b, clock),
         meters(b, clock),
@@ -62,7 +64,7 @@ public:
         localFiles(chain, toast),
         modelLoads(chain, t),
         connection(t),
-        loadFlow(chain, connection, t),
+        loadFlow(chain, connection, t, loop),
         updates(t, prefs, b.pluginVersion(), updateNotice) {}
 
   Backend& backend;
@@ -70,6 +72,7 @@ public:
   Shell& shell;
   UiPrefs& prefs;
   UiClock clock;  // before the stores and feeds that subscribe to it
+  LoopFeed loop;
   HintBus hints;
   ChainStore chain;
   MeterStore meters;

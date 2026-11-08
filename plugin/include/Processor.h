@@ -29,6 +29,7 @@
 #include "StereoOffset.h"
 #include "PresetManager.h"
 #include "TunerDetector.h"
+#include "LoopRecorder.h"
 
 class TONE3000Processor;
 
@@ -448,6 +449,17 @@ public:
   bool undoChain();
   bool redoChain();
 
+  // Preview session (the browser's audition): from
+  // begin to commit or cancel, no chain edit records history. Commit pushes
+  // the snapshot taken at begin as the one undo step for the whole session
+  // (none when nothing changed); cancel restores that snapshot the way undo
+  // would, without touching the stack. Begin inside an open session is a
+  // no-op; commit and cancel without one return false.
+  bool beginChainPreview();
+  bool commitChainPreview();
+  bool cancelChainPreview();
+  bool isChainPreviewing() const;
+
   // Internal presets (ProcessorPresets.cpp).
   // A preset = chain snapshot (with embedded model bytes, so it loads
   // offline) + the faceplate parameter values (kPresetParameterIds). The
@@ -485,6 +497,29 @@ public:
   // (pre-gain, pre-gate) input so gating never starves the pitch detector.
   void setTunerEnabled(bool enabled) { tuner.setEnabled(enabled); }
   juce::var getTunerReading() { return tuner.getReading(); }
+
+  // Audition loop: the header's one-switch pedal,
+  // and its state for the button. Session state only: never in presets,
+  // DAW state or undo.
+  void loopTap() { loop.tap(); }
+  void loopClear() { loop.clear(); }
+  juce::var getLoopState() {
+    auto* o = new juce::DynamicObject();
+    o->setProperty("state", loopStateName(loop.state()));
+    o->setProperty("position", loop.position());
+    o->setProperty("lengthSeconds", hostSampleRate > 0 ? loop.lengthSamples() / hostSampleRate : 0.0);
+    return o;
+  }
+  static const char* loopStateName(LoopRecorder::State s) {
+    switch (s) {
+      case LoopRecorder::State::armed: return "armed";
+      case LoopRecorder::State::recording: return "recording";
+      case LoopRecorder::State::playing: return "playing";
+      case LoopRecorder::State::stopped: return "stopped";
+      case LoopRecorder::State::empty: break;
+    }
+    return "empty";
+  }
 
   // Auto balance: one-shot chain energy match.
   // startAutoBalance() arms a "listening" measurement: the audio thread
@@ -829,6 +864,9 @@ private:
   void queueActiveModelLoad(ChainBlock& block);
 
   ChainHistory chainHistory;
+  // The chain as it was when the open preview session began (invalid = no
+  // session). Guarded by chainMutex.
+  juce::ValueTree previewSnapshot;
 
   // Block clipboard (see copyChainBlock/pasteChainBlock). `settings` is a
   // serializeBlockSettings tree (invalid = nothing copied); the model bytes
@@ -1287,6 +1325,9 @@ private:
 
   // Tuner pitch detection (fed from processBlock when enabled)
   TunerDetector tuner;
+
+  // Audition loop: a take of the dry input, looped in place of it.
+  LoopRecorder loop;
 
   // Auto balance measurement state.
   // Lock-free audio↔message thread handshake. The audio thread only touches
