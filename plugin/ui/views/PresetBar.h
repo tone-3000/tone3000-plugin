@@ -35,6 +35,10 @@ public:
   // New: back to the factory-default state.
   std::function<void()> onReset;
 
+  // The browser rows' "PC n" label: font size and box width.
+  static constexpr float kPcLabelPx = 11;
+  static int pcLabelWidth(int pc);
+
   void openSavePanel();
   void openBrowsePanel();
   void closePanels();
