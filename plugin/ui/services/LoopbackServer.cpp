@@ -55,11 +55,11 @@ LoopbackServer::~LoopbackServer() {
   stop();
 }
 
-bool LoopbackServer::start() {
+bool LoopbackServer::start(const juce::String& address) {
   stop();
   listener_ = std::make_unique<juce::StreamingSocket>();
   // Port 0: the OS picks a free ephemeral port; read it back.
-  if (!listener_->createListener(0, "127.0.0.1")) {
+  if (!listener_->createListener(0, address)) {
     listener_.reset();
     return false;
   }

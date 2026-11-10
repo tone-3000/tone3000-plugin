@@ -17,8 +17,9 @@ public:
   LoopbackServer();
   ~LoopbackServer() override;
 
-  // Bind and start accepting; false when no port could be bound.
-  bool start();
+  // Bind and start accepting; false when no port could be bound. `address`
+  // is only ever another one in a test.
+  bool start(const juce::String& address = "127.0.0.1");
   void stop();
   bool running() const { return isThreadRunning(); }
   int port() const { return port_; }

@@ -752,6 +752,23 @@ struct Tone3000SessionTests : juce::UnitTest {
     expect(!ears.sawScreen);  // never showed the page
     expectEquals(deviceRequests(), 0);
 
+    beginTest("a loopback that will not bind falls back to the device code");
+    session.logout();
+    http.sent.clear();
+    auto unbound = config;
+    unbound.signInViaApp = false;
+    unbound.loopbackAddress = "192.0.2.1";  // TEST-NET-1: on no interface
+    Tone3000Session desktop(backend, plugin.prefs, http, unbound);
+    desktop.login(ToneSession::LoginIntent::plain);
+    const auto& fallback = desktop.authFlow();
+    expect(fallback.phase == Phase::leaving && !fallback.deviceOnly);
+    expect(fallback.device && fallback.device->state == DeviceState::waiting);
+    expect(fallback.authorizeUrl.isEmpty());  // no listener, so no link to copy
+    expectEquals(deviceRequests(), 1);
+    approved = true;
+    pump(1500);
+    expect(desktop.authenticated() && fallback.phase == Phase::idle);
+
     session.removeListener(&ears);
     file.deleteFile();
   }

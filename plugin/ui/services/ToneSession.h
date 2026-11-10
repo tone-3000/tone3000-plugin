@@ -68,7 +68,9 @@ public:
   // takes the redirect from whichever browser completes it), and the device
   // flow (RFC 8628: a code entered on another device) once
   // startDeviceFlow() is called. `browserProblem` is set when the launcher
-  // itself refused to open the system browser, so the copy says so.
+  // itself refused to open the system browser, so the copy says so. With no
+  // listener to take the redirect, `authorizeUrl` stays empty and the flow
+  // starts on the device code.
   //
   // `deviceOnly`: this process has no browser to send anywhere (the AUv3 on
   // iPadOS: an app extension cannot open Safari or present the in-app
