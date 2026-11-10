@@ -50,10 +50,11 @@ private:
   void paintReadout(juce::Graphics& g, juce::Rectangle<int> box) const;
 
   Backend& backend_;
+  UiPrefs& prefs_;
   TunerFeed feed_;
   IconButton close_{Icon::X, kCloseBox, kCloseGlyph};
-  // Silences the plugin output while the tuner is open; the backend clears it
-  // when the tuner closes, and this view is rebuilt unmuted each time.
+  // Silences the plugin output while the tuner is open. The backend clears the
+  // mute when the tuner closes; the choice is saved and applied on each open.
   IconButton mute_{Icon::Volume2, kCloseBox, kCloseGlyph};
   bool muted_ = false;
   std::unique_ptr<Triangle> up_, down_;

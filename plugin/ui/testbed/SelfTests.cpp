@@ -2523,7 +2523,8 @@ struct MidiMapCommitTests : juce::UnitTest {
 };
 
 // The tuner's speaker toggle: each click flips the backend mute and swaps the
-// button's name (its accessible title), and a reopened tuner starts unmuted.
+// button's name (its accessible title), and the choice is saved, so the
+// tuner reopens the way it was left.
 struct TunerMuteTests : juce::UnitTest {
   TunerMuteTests() : juce::UnitTest("Tuner mute", "ui") {}
 
@@ -2568,15 +2569,40 @@ struct TunerMuteTests : juce::UnitTest {
     expect(!backend.tunerMuted());
     expect(named(root, "Mute output") == mute);
 
-    beginTest("a reopened tuner starts unmuted");
+    beginTest("closing a muted tuner brings the output back");
     mute->onClick();
+    root.setTunerShown(false);
+    pump(50);
+    expect(!backend.tunerMuted());
+
+    beginTest("a reopened tuner is still muted");
+    root.setTunerShown(true);
+    pump(100);
+    expect(backend.tunerMuted());
+    auto* unmute = named(root, "Unmute output");
+    expect(unmute != nullptr);
+    if (unmute == nullptr) return;
+
+    beginTest("unmuting is kept the same way");
+    unmute->onClick();
     root.setTunerShown(false);
     pump(50);
     root.setTunerShown(true);
     pump(100);
+    expect(!backend.tunerMuted());
     expect(named(root, "Mute output") != nullptr);
-    expect(named(root, "Unmute output") == nullptr);
     window.setVisible(false);
+
+    beginTest("a new editor opens the tuner muted too");
+    Scenario saved{scenario->id, scenario->data.clone(), scenario->hasDrive};
+    auto* storage = new juce::DynamicObject();
+    storage->setProperty(UiPrefs::kTunerMuted, "true");
+    saved.data.getDynamicObject()->setProperty("localStorage", juce::var(storage));
+    MockBackend nextBackend(saved.data);
+    ScaledHost nextHost(nextBackend, saved, fixtures.root);
+    nextHost.pluginRoot().setTunerShown(true);
+    pump(100);
+    expect(nextBackend.tunerMuted());
   }
 };
 

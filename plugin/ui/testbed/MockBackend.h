@@ -120,7 +120,10 @@ public:
   bool setMidiCcMapping(const juce::String& targetId, int cc) override;
 
   juce::var getMeterLevels() override;
-  void setTunerEnabled(bool) override {}
+  // As the processor: closing the tuner clears the mute.
+  void setTunerEnabled(bool enabled) override {
+    if (!enabled) tunerMuted_ = false;
+  }
   void setTunerMuted(bool muted) override { tunerMuted_ = muted; }
   bool tunerMuted() const { return tunerMuted_; }
   juce::var getTunerReading() override { return signal_ != nullptr ? signal_->tuner() : tuner_; }

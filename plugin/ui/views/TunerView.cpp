@@ -74,6 +74,7 @@ private:
 
 TunerView::TunerView(Services& services)
     : backend_(services.backend),
+      prefs_(services.prefs),
       feed_(services.backend, services.clock),
       up_(std::make_unique<Triangle>(true)), down_(std::make_unique<Triangle>(false)) {
   setOpaque(true);
@@ -82,9 +83,12 @@ TunerView::TunerView(Services& services)
     if (onClose) onClose();
   };
   addAndMakeVisible(close_);
-  mute_.setName("Mute output");
-  mute_.onClick = [this] { setMuted(!muted_); };
+  mute_.onClick = [this] {
+    setMuted(!muted_);
+    prefs_.setBool(UiPrefs::kTunerMuted, muted_);
+  };
   addAndMakeVisible(mute_);
+  setMuted(prefs_.getBool(UiPrefs::kTunerMuted, false));
   addAndMakeVisible(*up_);
   addAndMakeVisible(*down_);
   feed_.onChange = [this] { feedChanged(); };
