@@ -224,6 +224,7 @@ bool ProcessorBackend::setMidiCcMapping(const juce::String& targetId, int cc) {
 // Meters / tuner / auto-measure
 juce::var ProcessorBackend::getMeterLevels() { return processor_.getMeterLevels(); }
 void ProcessorBackend::setTunerEnabled(bool enabled) { processor_.setTunerEnabled(enabled); }
+void ProcessorBackend::setTunerMuted(bool muted) { processor_.setTunerMuted(muted); }
 juce::var ProcessorBackend::getTunerReading() { return processor_.getTunerReading(); }
 void ProcessorBackend::startAutoBalance() { processor_.startAutoBalance(); }
 void ProcessorBackend::cancelAutoBalance() { processor_.cancelAutoBalance(); }
