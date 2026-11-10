@@ -491,6 +491,16 @@ output meter; the UI never re-derives it from the flags. `MockBackend::
 setInputMode` mirrors the derivation so the testbed's `chrome-dual-mono`
 scenario and the `Faceplate dual mono` self-test see the same state.
 
+An IR block's card shows how the IR runs: the processor reports `irImage` per
+loaded IR block (`stereo`, or `mono-user` / `mono-file` / `mono-nam-after` /
+`mono-stereo-chains` / `mono-dual-mono` / `mono-output`) by the audio loop's
+own rule, and `stereoIrActive` for the chain, which splits the output meter.
+The glyph is a button only for `stereo` and `mono-user`
+(`setBlockIrStereo`). While it shows stereo the card's Out meter splits too
+(`outLR` in the meter payload). Spread on/off does not bump the chain
+revision, so the card reads the `spreadEnabled` parameter itself and shows
+mono with Spread as the reason.
+
 ### 5.13 Parameters
 Faceplate knobs and toggles bind via `juce::ParameterAttachment` to
 `backend.parameter(id)`. `MockBackend` owns a minimal `juce::AudioProcessor`

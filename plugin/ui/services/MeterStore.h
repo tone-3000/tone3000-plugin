@@ -31,11 +31,12 @@ public:
   static constexpr float kClipDb = 0;
 
   // Meter ids: "input" / "output" (max of both channels), "input:l",
-  // "output:r", …, and per block "block:<id>:in" / "block:<id>:out".
+  // "output:r", …, and per block "block:<id>:in" / "block:<id>:out", the
+  // latter also as "block:<id>:out:l" / ":r".
   enum class Channel { both, left, right };
   static juce::String mainId(bool input, Channel channel = Channel::both);
   static juce::String blockInId(const std::string& blockId);
-  static juce::String blockOutId(const std::string& blockId);
+  static juce::String blockOutId(const std::string& blockId, Channel channel = Channel::both);
 
   MeterStore(Backend& backend, UiClock& clock);
   ~MeterStore() override;

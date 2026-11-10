@@ -101,6 +101,10 @@ bool ChainStore::setBlockSlimSize(const std::string& blockId, double slimSize) {
   return run([&] { return backend_.setBlockSlimSize(blockId, slimSize); });
 }
 
+bool ChainStore::setBlockIrStereo(const std::string& blockId, bool stereo) {
+  return run([&] { return backend_.setBlockIrStereo(blockId, stereo); });
+}
+
 void ChainStore::setNamSlimSizeDefault(double slimSize) {
   backend_.setNamSlimSizeDefault(slimSize);
   refresh();

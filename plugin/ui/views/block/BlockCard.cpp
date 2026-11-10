@@ -20,6 +20,7 @@ constexpr int kImageSizeInfo = 160;
 constexpr int kImageRadius = 8;
 constexpr int kRailMeterLength = 160;
 constexpr int kRailGap = 12;
+constexpr int kStereoMeterPitch = 8;  // a stereo IR's two Out columns, centre to centre
 constexpr int kNormalizeGap = 10;
 constexpr int kInfoBottomPad = 24;
 constexpr int kEqPillPadX = 12, kEqPillPadY = 4, kEqPillGap = 16;
@@ -64,13 +65,60 @@ private:
   bool active_ = false;
 };
 
+// An IR block's stereo/mono state (ChainItem::irImage): two circles for
+// stereo, one for mono. A button where the choice is the user's, an indicator
+// otherwise. Spread builds its image from the left channel, so while it is on
+// every IR reads mono and there is nothing to choose.
+class BlockCard::IrImageButton : public Clickable {
+public:
+  IrImageButton() { setSize(theme::kIconBoxSize, theme::kIconBoxSize); }
+
+  void set(IrImage image, bool spread) {
+    const bool choice = (image == IrImage::stereo || image == IrImage::monoUser) && !spread;
+    stereo_ = choice && image == IrImage::stereo;
+    setEnabled(choice);
+    setMouseCursor(choice ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+    setHelpText(help::text(helpKey(image, spread)));
+    repaint();
+  }
+
+  void paintButton(juce::Graphics& g, bool, bool) override {
+    const auto box = getLocalBounds().toFloat();
+    // Mono by choice looks like a switched-off button; mono by circumstance is just a gray glyph.
+    if (isEnabled() && !stereo_) paint::fill(g, box, theme::kIconBoxRadius, theme::kHighlight);
+    const auto glyph = juce::Rectangle<float>(stereo_ ? 17.4f : 12.0f, 12.0f).withCentre(box.getCentre());
+    Icons::draw(g, stereo_ ? custom_icons::kStereoCircles : custom_icons::kCircleBold, glyph,
+                stereo_ ? theme::kWhite : theme::kGray);
+  }
+
+private:
+  static help::Key helpKey(IrImage image, bool spread) {
+    switch (image) {
+      case IrImage::stereo: return spread ? help::Key::irMonoSpread : help::Key::irStereo;
+      case IrImage::monoUser: return spread ? help::Key::irMonoSpread : help::Key::irMonoUser;
+      case IrImage::monoNamAfter: return help::Key::irMonoNamAfter;
+      case IrImage::monoStereoChains: return help::Key::irMonoStereoChains;
+      case IrImage::monoDualMono: return help::Key::irMonoDualMono;
+      case IrImage::monoOutput: return help::Key::irMonoOutput;
+      case IrImage::monoFile:
+      case IrImage::none: break;
+    }
+    return help::Key::irMonoFile;
+  }
+
+  bool stereo_ = false;
+};
+
 BlockCard::BlockCard(Services& services, const ChainItem& block, bool namDownstream)
     : services_(services),
       block_(block),
       namDownstream_(namDownstream),
       calibrateInput_(services.backend, "calibrateInput"),
+      spreadEnabled_(services.backend, "spreadEnabled"),
       inMeter_(services.meters, MeterStore::blockInId(block.blockId), kRailMeterLength, /*vertical=*/true),
       outMeter_(services.meters, MeterStore::blockOutId(block.blockId), kRailMeterLength, /*vertical=*/true),
+      outMeterR_(services.meters, MeterStore::blockOutId(block.blockId, MeterStore::Channel::right), kRailMeterLength,
+                 /*vertical=*/true),
       in_(trimKnob("In", scales::gainDb(), 0.5f, help::Key::blockIn)),
       out_(trimKnob("Out", scales::gainDb(), 0.5f, help::Key::blockOut)),
       mix_(trimKnob("Mix", scales::percent(), 1.0f, help::Key::blockMix)),
@@ -81,6 +129,7 @@ BlockCard::BlockCard(Services& services, const ChainItem& block, bool namDownstr
   buildBody();
 
   calibrateInput_.onChange = [this] { syncHeader(); };
+  spreadEnabled_.onChange = [this] { syncFromBlock(); };
   services_.session.addListener(this);
   services_.prefs.addListener(this);
 
@@ -171,6 +220,7 @@ void BlockCard::buildBody() {
 
   body_.addAndMakeVisible(inMeter_);
   body_.addAndMakeVisible(outMeter_);
+  body_.addChildComponent(outMeterR_);
 
   in_.onChange = [this](float v) { services_.chain.setBlockParam(block_.blockId, "inputGain", static_cast<double>(v)); };
   out_.onChange = [this](float v) { services_.chain.setBlockParam(block_.blockId, "outputGain", static_cast<double>(v)); };
@@ -185,6 +235,12 @@ void BlockCard::buildBody() {
   normalizeWrap_.addAndMakeVisible(normalize_);
   normalizeWrap_.setSize(theme::kIconBoxSize, theme::kIconBoxSize);
   body_.addChildComponent(normalizeWrap_);
+
+  irImage_ = std::make_unique<IrImageButton>();
+  irImage_->onClick = [this] {
+    services_.chain.setBlockIrStereo(block_.blockId, block_.irImage != IrImage::stereo);
+  };
+  body_.addChildComponent(*irImage_);
 
   image_.setCornerRadius(kImageRadius);
   imageFrame_.addAndMakeVisible(image_);
@@ -274,6 +330,14 @@ void BlockCard::syncFromBlock() {
   normalizeWrap_.setHelpText(help::text(overridden ? help::Key::blockNormalizeOverridden : help::Key::blockNormalize));
   normalizeWrap_.setMouseCursor(juce::MouseCursor::NormalCursor);
   normalizeWrap_.setVisible(showsNormalize());
+
+  irImage_->set(block_.irImage, spreadEnabled_.boolValue());
+  irImage_->setVisible(showsIrImage());
+  // The Out meter follows the glyph: two columns while the IR runs stereo.
+  const bool stereoOut = irRunsStereo();
+  outMeter_.setId(MeterStore::blockOutId(block_.blockId,
+                                         stereoOut ? MeterStore::Channel::left : MeterStore::Channel::both));
+  outMeterR_.setVisible(stereoOut && body() == Body::tone);
 
   image_.setTone(block_.tone.image, block_.tone.gear, block_.tone.local);
   const bool busy = modelBusy() || block_.loadFailed;
@@ -417,6 +481,11 @@ bool BlockCard::normalizeOverridden() const {
   return isNam() && calibrateInput_.boolValue() && namDownstream_ && handOffSane;
 }
 
+bool BlockCard::showsIrImage() const { return body() == Body::tone && block_.irImage != IrImage::none; }
+
+// Spread builds its image from the left channel, so the IR's stereo is not heard under it.
+bool BlockCard::irRunsStereo() const { return block_.irImage == IrImage::stereo && !spreadEnabled_.boolValue(); }
+
 bool BlockCard::favorited() const {
   if (favoriteOverride_) return favoriteOverride_->on;
   if (infoTone_ && infoTone_->isFavorite) return *infoTone_->isFavorite;
@@ -469,6 +538,8 @@ void BlockCard::setBodyView() {
   for (auto* c : std::initializer_list<juce::Component*>{&inMeter_, &outMeter_, &in_, &out_, &mix_, &selectWrap_})
     c->setVisible(view == Body::tone);
   normalizeWrap_.setVisible(showsNormalize());
+  irImage_->setVisible(showsIrImage());
+  outMeterR_.setVisible(view == Body::tone && irRunsStereo());
   imageFrame_.setVisible(view != Body::eq);
   meta_.setVisible(view != Body::eq);
   syncHeader();
@@ -557,19 +628,24 @@ void BlockCard::layoutToneBody(juce::Rectangle<int> body) {
   inMeter_.setCentrePosition(meterSlot.getCentre());
 
   // Out rail (right-aligned): the meter stays over the Out knob whether or
-  // not the normalize button widens the bottom row to its left.
+  // not a button (NAM normalize, or an IR's stereo/mono) widens the bottom
+  // row to its left.
   const bool normalize = normalizeWrap_.isVisible();
-  const int outRailW = knobW + (normalize ? theme::kIconBoxSize + kNormalizeGap : 0);
+  const bool irImage = irImage_->isVisible();
+  const int outRailW = knobW + (normalize || irImage ? theme::kIconBoxSize + kNormalizeGap : 0);
   const int outX = content.getRight() - outRailW;
   pinBottom(out_, content.getRight() - knobW, knobW, bottom);
   meterSlot = juce::Rectangle<int>(content.getRight() - knobW, content.getY(), knobW, out_.getY() - kRailGap - content.getY());
-  outMeter_.setCentrePosition(meterSlot.getCentre());
+  const int half = outMeterR_.isVisible() ? kStereoMeterPitch / 2 : 0;
+  outMeter_.setCentrePosition(meterSlot.getCentre().translated(-half, 0));
+  outMeterR_.setCentrePosition(meterSlot.getCentre().translated(half, 0));
+  // Bottom-aligned with the knob, nudged up to centre on the knob face.
+  const int buttonY = bottom - theme::kIconBoxSize - (knobW - theme::kIconBoxSize) / 2;
   if (normalize) {
-    // Bottom-aligned with the knob, nudged up to centre on the knob face.
-    const int nudge = (knobW - theme::kIconBoxSize) / 2;
-    normalizeWrap_.setTopLeftPosition(outX, bottom - theme::kIconBoxSize - nudge);
+    normalizeWrap_.setTopLeftPosition(outX, buttonY);
     normalize_.setTopLeftPosition(0, 0);
   }
+  if (irImage) irImage_->setTopLeftPosition(outX, buttonY);
 
   // Mix column.
   const int mixX = outX - kBodyGap - knobW;

@@ -30,10 +30,11 @@ void MainScreen::syncMeters() {
   inputMeter_.setStereo(chain.stereoInput && (chain.inputMode == InputMode::stereo ||
                                               chain.inputMode == InputMode::dualMono));
   // The output carries a real stereo image only when a stereo-image feature
-  // is on (stereo mode, mono-mode spread, or dual mono's two voices) AND the
-  // rig can reproduce it (dualMonoActive already implies that).
+  // is on (stereo mode, mono-mode spread, dual mono's two voices, or an IR
+  // running in stereo) AND the rig can reproduce it (dualMonoActive and
+  // stereoIrActive already imply that).
   outputMeter_.setStereo(((chain.stereoEnabled || spreadEnabled_.boolValue()) && chain.stereoOutput) ||
-                         chain.dualMonoActive);
+                         chain.dualMonoActive || chain.stereoIrActive);
 }
 
 void MainScreen::resized() {

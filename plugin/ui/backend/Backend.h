@@ -77,6 +77,7 @@ public:
   // Per-block params / EQ / spectrum
   virtual bool setBlockParam(const std::string& blockId, const juce::String& param, double value) = 0;
   virtual bool setBlockSlimSize(const std::string& blockId, double slimSize) = 0;
+  virtual bool setBlockIrStereo(const std::string& blockId, bool stereo) = 0;
   virtual bool setBlockEqBand(const std::string& blockId, int bandIndex, const juce::var& band) = 0;
   virtual bool setBlockEqEnabled(const std::string& blockId, bool enabled) = 0;
   virtual bool setBlockEqPre(const std::string& blockId, bool pre) = 0;

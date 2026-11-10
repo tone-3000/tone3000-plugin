@@ -78,6 +78,10 @@ public:
   LiveDotMeter(MeterStore& meters, juce::String id, int length, bool vertical);
   ~LiveDotMeter() override;
 
+  // Follow another meter id (a block's output: both channels or one).
+  void setId(juce::String id);
+  const juce::String& id() const { return id_; }
+
 private:
   void meterChanged(const juce::String& id) override;
   void sync();

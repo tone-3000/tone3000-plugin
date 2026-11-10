@@ -54,6 +54,7 @@ public:
   void setStereoMode(bool enabled);
   void setInputMode(InputMode mode);
   bool setBlockSlimSize(const std::string& blockId, double slimSize);
+  bool setBlockIrStereo(const std::string& blockId, bool stereo);
   void setNamSlimSizeDefault(double slimSize);
   void setMultiCore(bool enabled);
   void setActiveSide(ChainSide side);

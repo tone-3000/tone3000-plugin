@@ -37,6 +37,8 @@ enum class Key {
   soloRight, invertLeft, invertRight, swapChains, branchGap, branchJunction,
   // Block card
   blockIn, blockOut, blockOutIr, blockMix, blockNormalize, blockNormalizeOverridden, blockSize,
+  irStereo, irMonoUser, irMonoFile, irMonoNamAfter, irMonoStereoChains, irMonoDualMono, irMonoOutput,
+  irMonoSpread,
   blockSizeChip, blockCalibrated, blockUncalibrated, eqToggle, toneInfo, toneInfoLogin, viewOnT3k,
   favoriteTone, unfavoriteTone, eqSlidersView, eqCurveView, eqReset, eqPre, eqPower, shareTone,
   modelSelectSignedOut, backToChain,
