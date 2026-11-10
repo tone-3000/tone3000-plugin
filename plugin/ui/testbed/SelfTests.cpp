@@ -40,6 +40,7 @@
 #include "views/Faceplate.h"
 #include "views/HintBar.h"
 #include "views/PluginHeader.h"
+#include "views/PresetBar.h"
 #include "views/block/BlockCard.h"
 #include "views/block/BlockDetail.h"
 #include "views/browser/FilterChip.h"
@@ -2579,6 +2580,20 @@ struct TunerMuteTests : juce::UnitTest {
   }
 };
 
+// The preset browser's "PC n" label gets a box at least as wide as its text;
+// a narrower one draws as "PC…" (issue #257).
+struct PresetPcLabelTests : juce::UnitTest {
+  PresetPcLabelTests() : juce::UnitTest("Preset PC label", "ui") {}
+
+  void runTest() override {
+    beginTest("every program number fits its label");
+    for (int pc = 0; pc < 128; ++pc) {
+      const auto text = Fonts::width(Fonts::mono(PresetBar::kPcLabelPx), "PC " + juce::String(pc));
+      expect(static_cast<float>(PresetBar::pcLabelWidth(pc)) >= text, "PC " + juce::String(pc));
+    }
+  }
+};
+
 // A MIDI control mapped to the tuner opens and closes the tuner screen, and
 // leaves Settings to show it.
 struct TunerMidiToggleTests : juce::UnitTest {
@@ -3231,6 +3246,7 @@ BlockNormalizeControlTests blockNormalizeControlTests;
 MidiMapCommitTests midiMapCommitTests;
 TunerMuteTests tunerMuteTests;
 TunerMidiToggleTests tunerMidiToggleTests;
+PresetPcLabelTests presetPcLabelTests;
 KnobReadoutTests knobReadoutTests;
 FaceplateEffectsTests faceplateEffectsTests;
 FaceplateDualMonoTests faceplateDualMonoTests;
