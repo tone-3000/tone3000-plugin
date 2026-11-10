@@ -38,6 +38,7 @@ target_sources(DspTests PRIVATE
     src/local_load_tests.cpp
     src/midi_map_tests.cpp
     src/multicore_tests.cpp
+    src/nam_normalize_tests.cpp
     src/outgain_tests.cpp
     src/padless_wav_tests.cpp
     src/pitch_shift_tests.cpp
