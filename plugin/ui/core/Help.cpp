@@ -217,6 +217,14 @@ std::map<Key, String> buildTable() {
   t[Key::blockNormalize] = U("Normalize: level this block’s loudness. Off: raw capture level.");
   t[Key::blockNormalizeOverridden] =
       U("Normalize: overridden — calibration hands this model’s true output level to the next NAM block.");
+  t[Key::irStereo] = U("Stereo IR: left and right use their own channels. Click: mono.");
+  t[Key::irMonoUser] = U("Stereo IR in mono: the left channel on both sides. Click: stereo.");
+  t[Key::irMonoFile] = U("Mono IR.");
+  t[Key::irMonoNamAfter] = U("Stereo IR in mono: a NAM after it makes the signal mono.");
+  t[Key::irMonoStereoChains] = U("Stereo IR in mono: each chain is mono in Stereo mode.");
+  t[Key::irMonoDualMono] = U("Stereo IR in mono: Dual Mono runs each side on its own.");
+  t[Key::irMonoOutput] = U("Stereo IR in mono: the output is mono.");
+  t[Key::irMonoSpread] = U("Stereo IR in mono: Spread builds its image from the left channel.");
   t[Key::blockSize] = U("NAM Size: LITE saves CPU · FULL is highest quality. Sets this block only.");
   t[Key::blockSizeChip] =
       U("NAM Size: this block’s size differs from your default. To choose per block, enable it in Settings.");

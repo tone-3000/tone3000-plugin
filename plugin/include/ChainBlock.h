@@ -214,6 +214,9 @@ struct ChainBlock {
   // Bypass (zero-cost) at factor 1. See ChainOversampler.h.
   ChainOversampler irBaseRateIsland;
   int irNumChannels{1};  // channels in the loaded IR file (1 or 2)
+  // Off: a stereo IR runs its left channel on both sides. Chain state, on by
+  // default; inert for mono IRs and NAM blocks.
+  bool irStereoEnabled{true};
   // Loaded IR length in base-rate samples (post trim + resample, read off
   // the built engine). Feeds refreshIrTailLength / getTailLengthSeconds so
   // hosts render real reverb tails.
@@ -259,9 +262,11 @@ struct ChainBlock {
   // Per-block meter levels (dB, -60 floor). Written by the audio thread every
   // block, read by the UI via getMeterLevels(). Input is measured post
   // input-gain (what the model actually receives), output post mix + Out
-  // Gain.
+  // Gain. The output is kept per channel (equal on a one-channel lane) so
+  // the card can show a stereo IR's two sides.
   std::atomic<float> inputMeterDb{-60.0f};
-  std::atomic<float> outputMeterDb{-60.0f};
+  std::atomic<float> outputMeterDbL{-60.0f};
+  std::atomic<float> outputMeterDbR{-60.0f};
 
   // Per-block 6-band EQ: on the wet signal after the model by default
   // (before Out Gain and the mix), or between the input gain and the model

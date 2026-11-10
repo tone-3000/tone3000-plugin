@@ -62,6 +62,13 @@ inline constexpr double kSlimSizeLite = 0;
 inline constexpr double kSlimSizeFull = 1;
 inline bool isSlimSizeFull(double slimSize) { return slimSize >= 0.5; }
 
+// How an IR block runs its file (the processor's `irImage`): in stereo, or
+// in mono (the left channel on both sides) and why. Only `stereo` and
+// `monoUser` are the user's choice; the rest are the chain's or the rig's.
+// `none`: not a loaded IR block.
+enum class IrImage { none, stereo, monoUser, monoFile, monoNamAfter, monoStereoChains, monoDualMono, monoOutput };
+IrImage irImageFromString(const juce::String& s);
+
 struct BlockParams {
   bool enabled = true;
   bool normalize = true;
@@ -117,6 +124,7 @@ struct ChainItem {
   bool loadFailed = false;
   bool modelLoading = false;
   bool irLong = false;
+  IrImage irImage = IrImage::none;
   std::optional<double> inputLevelDbu;
   std::optional<double> outputLevelDbu;
   BlockParams params;
@@ -157,6 +165,9 @@ struct ChainState {
   // source and a stereo rig). The faceplate shows Balance and the stereo
   // output meter, and dims Spread, while this is set.
   bool dualMonoActive = false;
+  // An enabled IR block is running in true stereo, so the output is stereo
+  // even on a mono chain. The output meter splits while this is set.
+  bool stereoIrActive = false;
   double namSlimSizeDefault = 0;
   bool multiCore = true;
   double sampleRate = 48000;
@@ -180,6 +191,7 @@ struct MeterLevels {
   struct Block {
     std::string id;
     float in = -60, out = -60;
+    float outLR[2] = {-60, -60};  // `out` per channel
   };
   std::vector<Block> blocks;
   float cpu = 0;

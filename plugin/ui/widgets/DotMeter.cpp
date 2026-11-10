@@ -100,6 +100,12 @@ LiveDotMeter::LiveDotMeter(MeterStore& meters, juce::String id, int length, bool
 
 LiveDotMeter::~LiveDotMeter() { meters_.removeListener(this); }
 
+void LiveDotMeter::setId(juce::String id) {
+  if (id == id_) return;
+  id_ = std::move(id);
+  sync();
+}
+
 void LiveDotMeter::meterChanged(const juce::String& id) {
   if (id == id_) sync();
 }

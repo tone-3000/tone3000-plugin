@@ -27,6 +27,17 @@ InputMode inputModeFromString(const juce::String& s) {
   return InputMode::stereo;
 }
 
+IrImage irImageFromString(const juce::String& s) {
+  if (s == "stereo") return IrImage::stereo;
+  if (s == "mono-user") return IrImage::monoUser;
+  if (s == "mono-file") return IrImage::monoFile;
+  if (s == "mono-nam-after") return IrImage::monoNamAfter;
+  if (s == "mono-stereo-chains") return IrImage::monoStereoChains;
+  if (s == "mono-dual-mono") return IrImage::monoDualMono;
+  if (s == "mono-output") return IrImage::monoOutput;
+  return IrImage::none;
+}
+
 juce::String toString(EqBandType type) {
   switch (type) {
     case EqBandType::lowcut: return "lowcut";
@@ -134,6 +145,7 @@ ChainItem parseItem(const juce::var& v) {
   item.loadFailed = boolean(v, "loadFailed", false);
   item.modelLoading = boolean(v, "modelLoading", false);
   item.irLong = boolean(v, "irLong", false);
+  item.irImage = irImageFromString(str(v, "irImage"));
   item.inputLevelDbu = optNum(v, "inputLevelDbu");
   item.outputLevelDbu = optNum(v, "outputLevelDbu");
   item.params = parseParams(v["params"]);
@@ -162,6 +174,7 @@ ChainState ChainState::parse(const juce::var& v) {
   s.standalone = boolean(v, "standalone");
   s.inputMode = inputModeFromString(str(v, "inputMode", "stereo"));
   s.dualMonoActive = boolean(v, "dualMonoActive");
+  s.stereoIrActive = boolean(v, "stereoIrActive");
   s.namSlimSizeDefault = num(v, "namSlimSizeDefault", 0);
   s.multiCore = boolean(v, "multiCore", true);
   s.sampleRate = num(v, "sampleRate", 48000);
@@ -195,19 +208,22 @@ std::vector<const ChainItem*> ChainState::toneBlocks() const {
 
 MeterLevels MeterLevels::parse(const juce::var& v) {
   MeterLevels m;
-  auto pair = [&](const char* key, float* out) {
-    if (const auto* arr = v[key].getArray(); arr != nullptr && arr->size() >= 2) {
+  auto pair = [](const juce::var& from, const char* key, float* out) {
+    if (const auto* arr = from[key].getArray(); arr != nullptr && arr->size() >= 2) {
       out[0] = static_cast<float>(static_cast<double>((*arr)[0]));
       out[1] = static_cast<float>(static_cast<double>((*arr)[1]));
     }
   };
-  pair("input", m.input);
-  pair("output", m.output);
+  pair(v, "input", m.input);
+  pair(v, "output", m.output);
   if (auto* blocks = v["blocks"].getDynamicObject()) {
-    for (const auto& prop : blocks->getProperties())
-      m.blocks.push_back({prop.name.toString().toStdString(),
-                          static_cast<float>(num(prop.value, "in", -60)),
-                          static_cast<float>(num(prop.value, "out", -60))});
+    for (const auto& prop : blocks->getProperties()) {
+      Block b{prop.name.toString().toStdString(), static_cast<float>(num(prop.value, "in", -60)),
+              static_cast<float>(num(prop.value, "out", -60))};
+      b.outLR[0] = b.outLR[1] = b.out;  // a payload without the pair
+      pair(prop.value, "outLR", b.outLR);
+      m.blocks.push_back(std::move(b));
+    }
   }
   m.cpu = static_cast<float>(num(v, "cpu", 0));
   m.correlation = static_cast<float>(num(v, "correlation", 1));

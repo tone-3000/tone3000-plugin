@@ -2,6 +2,7 @@
 // a 45px chrome header (power, size/calibration, EQ menu, info, share, swap,
 // trash) over a body that shows one of three views:
 //   tone:  In rail | artwork + ToneMeta over the model picker | Mix | Out rail
+//          (the Out rail carries NAM normalize or an IR's stereo/mono state)
 //   eq:    BlockEqView, edge to edge
 //   info:  smaller artwork + ToneMeta with BlockInfoPanel; grows past the
 //          fixed height and the owner scrolls it.
@@ -73,6 +74,7 @@ public:
 private:
   enum class Body { tone, eq, info };
   class Indicator;
+  class IrImageButton;
 
   // ToneSession::Listener / UiPrefs::Listener
   void sessionChanged() override;
@@ -98,6 +100,8 @@ private:
   bool modelBusy() const { return block_.modelLoading || (!block_.loaded && !block_.loadFailed); }
   bool showsNormalize() const;
   bool normalizeOverridden() const;
+  bool showsIrImage() const;
+  bool irRunsStereo() const;
   bool favorited() const;
   int favoritesCount() const;
   juce::String tonePageUrl() const;
@@ -113,6 +117,7 @@ private:
   ChainItem block_;
   bool namDownstream_ = false;
   ParamBinding calibrateInput_;
+  ParamBinding spreadEnabled_;
 
   // Header
   ChromeIconButton power_{Icon::Power, ChromeIconButton::Tone::power, help::Key::blockPower};
@@ -133,9 +138,11 @@ private:
   // Body (tone / info views live in `body_`, which dims while bypassed)
   DimGroup body_;
   LiveDotMeter inMeter_, outMeter_;
+  LiveDotMeter outMeterR_;  // a stereo IR's right side; outMeter_ then shows the left
   Knob in_, out_, mix_;
   juce::Component normalizeWrap_;
   ChromeIconButton normalize_{Icon::Equal, ChromeIconButton::Tone::power, help::Key::blockNormalize};
+  std::unique_ptr<IrImageButton> irImage_;
   juce::Component imageFrame_;
   ToneImage image_;
   LoadingDots loading_;

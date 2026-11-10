@@ -34,6 +34,7 @@ target_sources(DspTests PRIVATE
     src/host_program_tests.cpp
     src/ir_block_size_tests.cpp
     src/ir_classification_tests.cpp
+    src/ir_stereo_tests.cpp
     src/ir_temp_file_tests.cpp
     src/local_load_tests.cpp
     src/midi_map_tests.cpp

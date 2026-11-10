@@ -987,12 +987,13 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
     float inputGain = 0.5f, outputGain = 0.5f, mix = 1.0f;
     juce::var eq;
     bool rtFailed = false;
+    juce::String irImage;  // loaded IR blocks only
   };
 
   juce::uint32 revision = 0;
   std::vector<BlockRow> left, right;
   bool stereo = false, canUndo = false, canRedo = false, branched = false;
-  bool canPaste = false, atDefault = false;
+  bool canPaste = false, atDefault = false, stereoIr = false;
   juce::String presetId, presetName, branchSide, activeSide, branchAfter;
 
   {
@@ -1011,9 +1012,36 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
       return unchanged.get();
     }
 
-    auto copyLane = [](const Lane& l, std::vector<BlockRow>& out) {
+    stereo = stereoEnabled.load();
+
+    // What a loaded IR block does with its file, by the audio loop's rule
+    // (useStereoIr in processChainOnBuffer). The first mono reason wins.
+    const bool stereoOut = stereoOutputDetected.load();
+    const bool dualMono = dualMonoEngaged();
+    auto irImageOf = [&](const ChainBlock& block, bool namAfter) {
+      if (block.irNumChannels < 2 || block.convolverStereo == nullptr)
+        return "mono-file";
+      if (!stereoOut)
+        return "mono-output";
+      if (stereo)
+        return "mono-stereo-chains";
+      if (dualMono)
+        return "mono-dual-mono";
+      if (namAfter)
+        return "mono-nam-after";
+      return block.irStereoEnabled ? "stereo" : "mono-user";
+    };
+
+    auto copyLane = [&](const Lane& l, std::vector<BlockRow>& out) {
+      int lastNamIndex = -1;
+      for (int i = 0; i < static_cast<int>(l.size()); ++i) {
+        if (l[i]->type == ChainBlockType::NAM && l[i]->loaded && l[i]->enabled)
+          lastNamIndex = i;
+      }
+
       out.reserve(l.size());
-      for (const auto& block : l) {
+      for (int i = 0; i < static_cast<int>(l.size()); ++i) {
+        const auto& block = l[i];
         BlockRow row;
         row.id = juce::String(block->id);
         // Drain the audio thread's failure flag; the RT path can't build
@@ -1031,6 +1059,10 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
         row.loadFailed = block->loadFailed;
         row.modelLoading = block->modelLoading;
         row.irLong = block->type == ChainBlockType::IR && block->irIsLong;
+        if (block->type == ChainBlockType::IR && block->loaded && block->convolverMono != nullptr) {
+          row.irImage = irImageOf(*block, i < lastNamIndex);
+          stereoIr = stereoIr || (block->enabled && row.irImage == "stereo");
+        }
         // NAM calibration metadata off the loaded engine, absent when the
         // model carries none. Non-finite values never ship: the DSP rejects
         // them and JSON (presets) can't carry them.
@@ -1058,7 +1090,6 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
     };
 
     copyLane(lane(ChainSide::Left), left);
-    stereo = stereoEnabled.load();
     if (stereo)
       copyLane(lane(ChainSide::Right), right);
 
@@ -1117,6 +1148,10 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
       // Long (reverb-like) IR: drives the UI's Mix knob default/Alt-click
       // reset and the Out knob help (long IRs carry no -18 dB pad).
       item->setProperty("irLong", row.irLong);
+      // How an IR block runs its file: "stereo", or "mono-<why>". The block
+      // card shows it and offers the stereo/mono choice where there is one.
+      if (row.irImage.isNotEmpty())
+        item->setProperty("irImage", row.irImage);
 
       if (row.hasInputDbu)
         item->setProperty("inputLevelDbu", row.inputDbu);
@@ -1187,6 +1222,9 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
   // with a stereo source *and* a stereo rig; see dualMonoEngaged). The UI
   // shows stereo output meters and the Balance control, and dims Spread.
   state->setProperty("dualMonoActive", dualMonoEngaged());
+  // True while an enabled IR block runs in true stereo, so a mono chain puts
+  // two different channels out. The UI shows stereo output meters.
+  state->setProperty("stereoIrActive", stereoIr);
   // Machine-wide settings ride this payload because they change together
   // with a revision bump, like everything else Settings displays.
   state->setProperty("namSlimSizeDefault", namSlimSizeDefault.load());
@@ -1231,7 +1269,10 @@ juce::var TONE3000Processor::getMeterLevels() const {
           continue;
         juce::DynamicObject::Ptr levels = new juce::DynamicObject();
         levels->setProperty("in", block->inputMeterDb.load());
-        levels->setProperty("out", block->outputMeterDb.load());
+        // "out" is the louder channel; "outLR" keeps the two apart.
+        const float outL = block->outputMeterDbL.load(), outR = block->outputMeterDbR.load();
+        levels->setProperty("out", std::max(outL, outR));
+        levels->setProperty("outLR", channelPair(outL, outR));
         blocks->setProperty(juce::String(block->id), juce::var(levels.get()));
       }
     }
@@ -1558,6 +1599,39 @@ bool TONE3000Processor::setBlockSlimSize(const std::string& blockId, double slim
   // block's size when that engine lands.
   if (block->namEngine != nullptr)
     block->namEngine->setSlimmableSize(slimSize);
+
+  bumpChainRevision();
+  return true;
+}
+
+bool TONE3000Processor::setBlockIrStereo(const std::string& blockId, bool stereo) {
+  {
+    juce::ScopedLock lock(chainMutex);
+    const ChainBlock* block = findBlockById(blockId);
+    if (block == nullptr || block->type != ChainBlockType::IR)
+      return false;
+    if (block->irStereoEnabled == stereo)
+      return true;
+  }
+
+  // The two convolvers differ on the right channel, so switching mid-signal
+  // would click: mute-splice like a structural edit.
+  ChainEditFade editFade(*this);
+  juce::ScopedLock lock(chainMutex);
+
+  ChainBlock* block = findBlockById(blockId);
+  if (block == nullptr || block->type != ChainBlockType::IR)
+    return false;
+  if (block->irStereoEnabled == stereo)
+    return true;
+
+  pushChainHistory();
+  block->irStereoEnabled = stereo;
+  // The convolver coming back in last ran a while ago; drop its old tail.
+  if (block->convolverMono != nullptr)
+    block->convolverMono->reset();
+  if (block->convolverStereo != nullptr)
+    block->convolverStereo->reset();
 
   bumpChainRevision();
   return true;

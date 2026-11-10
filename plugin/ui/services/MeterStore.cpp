@@ -12,29 +12,34 @@ constexpr float kQuantize = 2;
 constexpr juce::int64 kCpuUiIntervalMs = 400;
 constexpr float kCpuEmaAlpha = 0.15f;
 
+juce::String withChannel(const juce::String& base, MeterStore::Channel channel) {
+  switch (channel) {
+    case MeterStore::Channel::left: return base + ":l";
+    case MeterStore::Channel::right: return base + ":r";
+    case MeterStore::Channel::both: break;
+  }
+  return base;
+}
+
 // The main meters' mono and L/R ids are three views of one signal and which
 // is on screen changes with stereo mode, so their clip latches clear together.
+// A block's output is the same (the card splits it for a stereo IR).
 juce::StringArray clipGroup(const juce::String& id) {
-  const auto base = id.upToFirstOccurrenceOf(":", false, false);
-  if (base == "input" || base == "output") return {base, base + ":l", base + ":r"};
+  const auto base = id.endsWith(":l") || id.endsWith(":r") ? id.dropLastCharacters(2) : id;
+  if (base == "input" || base == "output" || (base.startsWith("block:") && base.endsWith(":out")))
+    return {base, base + ":l", base + ":r"};
   return {id};
 }
 }  // namespace
 
 juce::String MeterStore::mainId(bool input, Channel channel) {
-  const juce::String base = input ? "input" : "output";
-  switch (channel) {
-    case Channel::left: return base + ":l";
-    case Channel::right: return base + ":r";
-    case Channel::both: break;
-  }
-  return base;
+  return withChannel(input ? "input" : "output", channel);
 }
 juce::String MeterStore::blockInId(const std::string& blockId) {
   return "block:" + juce::String(blockId) + ":in";
 }
-juce::String MeterStore::blockOutId(const std::string& blockId) {
-  return "block:" + juce::String(blockId) + ":out";
+juce::String MeterStore::blockOutId(const std::string& blockId, Channel channel) {
+  return withChannel("block:" + juce::String(blockId) + ":out", channel);
 }
 
 MeterStore::MeterStore(Backend& backend, UiClock& clock) : backend_(backend), clock_(clock) {}
@@ -80,6 +85,8 @@ void MeterStore::apply(const MeterLevels& m) {
   for (const auto& b : m.blocks) {
     update(blockInId(b.id), b.in);
     update(blockOutId(b.id), b.out);
+    update(blockOutId(b.id, Channel::left), b.outLR[0]);
+    update(blockOutId(b.id, Channel::right), b.outLR[1]);
   }
   applyCpu(m.cpu);
   applyCorrelation(m.correlation);

@@ -2462,6 +2462,173 @@ struct BlockNormalizeControlTests : juce::UnitTest {
   }
 };
 
+// An IR block's card shows whether the IR runs stereo or mono, and why. The
+// glyph is a button only where the choice is the user's, and the output
+// meter splits while an IR runs stereo (issue #122).
+struct IrImageTests : juce::UnitTest {
+  IrImageTests() : juce::UnitTest("IR stereo indicator", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  static Clickable* button(juce::Component& root) {
+    return dynamic_cast<Clickable*>(drive::find(root, [](juce::Component& c) {
+      const auto help = c.getHelpText();
+      return dynamic_cast<Clickable*>(&c) != nullptr && c.isShowing() &&
+             (help.startsWith("Stereo IR") || help.startsWith("Mono IR")) &&
+             c.findParentComponentOfClass<BlockCard>() != nullptr;
+    }));
+  }
+
+  static bool meterSplit(juce::Component& root) {
+    auto* out = dynamic_cast<DbMeter*>(
+        drive::find(root, [](juce::Component& c) { return c.getName() == "output meter"; }));
+    return out != nullptr && out->stereo();
+  }
+
+  // The ids of the Out meter columns the card shows, left to right.
+  static juce::String outColumns(juce::Component& root) {
+    juce::StringArray ids;
+    drive::find(root, [&](juce::Component& c) {
+      auto* m = dynamic_cast<LiveDotMeter*>(&c);
+      if (m != nullptr && c.isShowing() && m->id().contains(":out")) ids.add(m->id());
+      return false;
+    });
+    ids.sort(false);
+    return ids.joinIntoString("|");
+  }
+
+  // What the processor would report for the scenario's IR block (blk-3).
+  static void report(juce::var chain, const char* image) {
+    for (auto& block : *chain["chain"].getArray())
+      if (block["blockId"].toString() == "blk-3") block.getDynamicObject()->setProperty("irImage", image);
+    chain.getDynamicObject()->setProperty("stereoIrActive", juce::String(image) == "stereo");
+  }
+
+  static juce::String reported(MockBackend& backend) {
+    for (const auto& block : *backend.getChainState(-1)["chain"].getArray())
+      if (block["blockId"].toString() == "blk-3") return block["irImage"].toString();
+    return {};
+  }
+
+  // main-detail with the card open on `blockId` and the IR reporting `image`.
+  static Scenario opened(const Scenario& base, const char* blockId, const char* image) {
+    Scenario copy{base.id, base.data.clone(), base.hasDrive};
+    copy.data["sessionStorage"].getDynamicObject()->setProperty("t3k.detailBlockId", blockId);
+    report(copy.data["chain"], image);
+    return copy;
+  }
+
+  void runTest() override {
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* detail = fixtures.find("main-detail");
+    if (detail == nullptr) {
+      expect(false, "main-detail scenario missing");
+      return;
+    }
+
+    {
+      const auto scenario = opened(*detail, "blk-3", "stereo");
+      MockBackend backend(scenario.data);
+      juce::DocumentWindow window("ir stereo", juce::Colours::black, 0);
+      ScaledHost host(backend, scenario, fixtures.root);
+      window.setContentNonOwned(&host, true);
+      window.setVisible(true);
+      pump(400);
+      auto& root = host.pluginRoot();
+
+      beginTest("a stereo IR shows a lit button and splits the output meter");
+      auto* stereo = button(root);
+      expect(stereo != nullptr);
+      if (stereo == nullptr) return;
+      expectEquals(stereo->getHelpText(), help::text(help::Key::irStereo));
+      expect(stereo->isEnabled());
+      expect(meterSplit(root));
+      expectEquals(outColumns(root), juce::String("block:blk-3:out:l|block:blk-3:out:r"));
+
+      beginTest("a click picks mono, and the meters go back to one column");
+      drive::click(root, *stereo);
+      pump(30);
+      expectEquals(reported(backend), juce::String("mono-user"));
+      expectEquals(stereo->getHelpText(), help::text(help::Key::irMonoUser));
+      expect(stereo->isEnabled());
+      expect(!meterSplit(root));
+      expectEquals(outColumns(root), juce::String("block:blk-3:out"));
+
+      beginTest("a second click brings stereo back");
+      drive::click(root, *stereo);
+      pump(30);
+      expectEquals(reported(backend), juce::String("stereo"));
+      expectEquals(stereo->getHelpText(), help::text(help::Key::irStereo));
+      expect(meterSplit(root));
+      expectEquals(outColumns(root), juce::String("block:blk-3:out:l|block:blk-3:out:r"));
+
+      beginTest("Spread on: the IR reads mono, names Spread, and has no choice to make");
+      auto* spread = root.services().backend.parameter("spreadEnabled");
+      spread->setValueNotifyingHost(1.0f);
+      pump(30);
+      expectEquals(stereo->getHelpText(), help::text(help::Key::irMonoSpread));
+      expect(!stereo->isEnabled());
+      expectEquals(outColumns(root), juce::String("block:blk-3:out"));
+      drive::click(root, *stereo);
+      pump(30);
+      expectEquals(reported(backend), juce::String("stereo"));
+      spread->setValueNotifyingHost(0.0f);
+      pump(30);
+      expectEquals(stereo->getHelpText(), help::text(help::Key::irStereo));
+      expect(stereo->isEnabled());
+
+      beginTest("a mono reason from the chain or the rig is display only");
+      const std::pair<const char*, help::Key> reasons[] = {
+          {"mono-file", help::Key::irMonoFile},
+          {"mono-nam-after", help::Key::irMonoNamAfter},
+          {"mono-stereo-chains", help::Key::irMonoStereoChains},
+          {"mono-dual-mono", help::Key::irMonoDualMono},
+          {"mono-output", help::Key::irMonoOutput},
+      };
+      for (const auto& [image, key] : reasons) {
+        auto chain = backend.getChainState(-1);
+        report(chain, image);
+        backend.setChain(chain);
+        pump(100);
+        expectEquals(stereo->getHelpText(), help::text(key), image);
+        expect(!stereo->isEnabled(), image);
+        drive::click(root, *stereo);
+        pump(30);
+        expectEquals(reported(backend), juce::String(image));
+        expect(!meterSplit(root), image);
+      }
+      window.setVisible(false);
+    }
+
+    beginTest("a block's output level parses per channel, or as one value for both");
+    {
+      const auto levels = MeterLevels::parse(juce::JSON::parse(
+          R"({"blocks": {"a": {"in": -20, "out": -6, "outLR": [-6, -12]}, "b": {"in": -20, "out": -9}}})"));
+      expectEquals(static_cast<int>(levels.blocks.size()), 2);
+      if (levels.blocks.size() != 2) return;
+      expectEquals(levels.blocks[0].outLR[0], -6.0f);
+      expectEquals(levels.blocks[0].outLR[1], -12.0f);
+      expectEquals(levels.blocks[1].outLR[0], -9.0f);
+      expectEquals(levels.blocks[1].outLR[1], -9.0f);
+    }
+
+    beginTest("a NAM block has no stereo/mono button");
+    {
+      const auto scenario = opened(*detail, "blk-2", "stereo");
+      MockBackend backend(scenario.data);
+      juce::DocumentWindow window("ir stereo", juce::Colours::black, 0);
+      ScaledHost host(backend, scenario, fixtures.root);
+      window.setContentNonOwned(&host, true);
+      window.setVisible(true);
+      pump(400);
+      auto& root = host.pluginRoot();
+      expect(drive::find(root, [](juce::Component& c) { return dynamic_cast<BlockCard*>(&c) != nullptr; }) != nullptr);
+      expect(button(root) == nullptr);
+      window.setVisible(false);
+    }
+  }
+};
+
 // Committing a typed CC number swaps the listening row for a mapping row of
 // the same height. The form host only re-flows on a height change, so the
 // card has to place its new rows itself or they sit at 0×0 and the card
@@ -3286,6 +3453,7 @@ PresetReorderTests presetReorderTests;
 ChainCrossLaneDragTests chainCrossLaneDragTests;
 BlockSizeToggleTests blockSizeToggleTests;
 BlockNormalizeControlTests blockNormalizeControlTests;
+IrImageTests irImageTests;
 MidiMapCommitTests midiMapCommitTests;
 TunerMuteTests tunerMuteTests;
 TunerMidiToggleTests tunerMidiToggleTests;

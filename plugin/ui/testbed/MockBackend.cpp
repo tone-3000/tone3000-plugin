@@ -215,6 +215,25 @@ bool MockBackend::setBlockSlimSize(const std::string& blockId, double slimSize) 
   return false;
 }
 
+// The processor's rule for a block that has the choice: the image follows
+// the setting, and the chain puts out stereo while any block runs stereo.
+bool MockBackend::setBlockIrStereo(const std::string& blockId, bool stereo) {
+  auto* blocks = chain_["chain"].getArray();
+  if (blocks == nullptr) return false;
+  bool found = false, anyStereo = false;
+  for (auto& block : *blocks) {
+    if (block["blockId"].toString().toStdString() == blockId) {
+      block.getDynamicObject()->setProperty("irImage", stereo ? "stereo" : "mono-user");
+      found = true;
+    }
+    anyStereo = anyStereo || block["irImage"].toString() == "stereo";
+  }
+  if (!found) return false;
+  chain_.getDynamicObject()->setProperty("stereoIrActive", anyStereo);
+  bumpChain();
+  return true;
+}
+
 bool MockBackend::moveBlockToChain(const std::string& blockId, const juce::String& side, int index) {
   chainMoves_.push_back({blockId, side, index});
   auto* from = chain_[side == "left" ? "chainRight" : "chain"].getArray();

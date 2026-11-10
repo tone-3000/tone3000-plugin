@@ -191,6 +191,7 @@ juce::ValueTree TONE3000Processor::serializeBlockSettings(const ChainBlock& bloc
   blockState.setProperty("enabled", block.enabled, nullptr);
   blockState.setProperty("normalize", block.normalizeEnabled, nullptr);
   blockState.setProperty("slimSize", block.namSlimSize, nullptr);
+  blockState.setProperty("irStereo", block.irStereoEnabled, nullptr);
   blockState.setProperty("inputGain", block.inputGainNormalized, nullptr);
   blockState.setProperty("outputGain", block.outputGainNormalized, nullptr);
   blockState.setProperty("mix", block.mixNormalized, nullptr);
@@ -208,6 +209,7 @@ juce::ValueTree TONE3000Processor::serializeBlockSettings(const ChainBlock& bloc
 void TONE3000Processor::applyBlockSettings(ChainBlock& block, const juce::ValueTree& blockState) {
   block.enabled = static_cast<bool>(blockState.getProperty("enabled", true));
   block.normalizeEnabled = static_cast<bool>(blockState.getProperty("normalize", true));
+  block.irStereoEnabled = static_cast<bool>(blockState.getProperty("irStereo", true));
   block.inputGainNormalized = static_cast<float>(blockState.getProperty("inputGain", 0.5f));
   block.outputGainNormalized = static_cast<float>(blockState.getProperty("outputGain", 0.5f));
   block.mixNormalized = static_cast<float>(blockState.getProperty("mix", 1.0f));

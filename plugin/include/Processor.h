@@ -256,6 +256,10 @@ public:
   // dip the audio.
   bool setBlockSlimSize(const std::string& blockId, double slimSize);
 
+  // Per-block stereo/mono choice for a stereo IR (ChainBlock::irStereoEnabled).
+  // Chain state, undoable. Rides the chain-edit fade like setBlockSlimSize.
+  bool setBlockIrStereo(const std::string& blockId, bool stereo);
+
   // Default NAM A2 size for newly added blocks (machine-wide user setting,
   // like multi-core), in the same slimmable-size domain. Existing blocks
   // keep their own per-block size; this only stamps blocks as loadTone

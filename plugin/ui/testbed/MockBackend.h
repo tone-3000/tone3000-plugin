@@ -74,6 +74,7 @@ public:
 
   bool setBlockParam(const std::string&, const juce::String&, double) override { return true; }
   bool setBlockSlimSize(const std::string& blockId, double slimSize) override;
+  bool setBlockIrStereo(const std::string& blockId, bool stereo) override;
   bool setBlockEqBand(const std::string&, int, const juce::var&) override { return true; }
   bool setBlockEqEnabled(const std::string&, bool) override { return true; }
   bool setBlockEqPre(const std::string&, bool) override { return true; }
