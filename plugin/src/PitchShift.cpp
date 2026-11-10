@@ -125,6 +125,11 @@ struct PitchShift::Impl {
   // edge where the audio arrives).
   bool enabled = false, running = false;
   juce::LinearSmoothedValue<float> wetMix;
+  // Dry/wet balance (the deck's Mix): the shifted signal's share of the
+  // output, 0 = dry, 1 = wet (the default). Blended inside the power fade,
+  // which anchors on the bypassed input, so a power-off still lands on the
+  // untouched input whatever Mix is set to.
+  juce::LinearSmoothedValue<float> mixSmoother;
   int primeLeft = 0;
 
   // Rings: one per channel for the audio, one for the control signal (the
@@ -179,8 +184,9 @@ struct PitchShift::Impl {
   // shifted signal and the high band from the dry (delayed by the floor so
   // it lands with the re-synced attacks), blended against the plain shift.
   // The filters run whether or not the limit is engaged (four biquads a
-  // channel), so engaging it never starts them cold.
-  juce::dsp::LinkwitzRileyFilter<float> wetLowpass, dryHighpass;
+  // channel), so engaging it never starts them cold. dryAllpass is the
+  // crossover's phase for the dry that Mix blends in.
+  juce::dsp::LinkwitzRileyFilter<float> wetLowpass, dryHighpass, dryAllpass;
   juce::LinearSmoothedValue<float> tonalityMix;
 
   void applyWindow() {
@@ -243,6 +249,7 @@ struct PitchShift::Impl {
       const float cutoff = juce::jlimit(kTonalityMinHz, kTonalityOffHz, hz);
       wetLowpass.setCutoffFrequency(cutoff);
       dryHighpass.setCutoffFrequency(cutoff);
+      dryAllpass.setCutoffFrequency(cutoff);
     }
     tonalityMix.setTargetValue(on ? 1.0f : 0.0f);
   }
@@ -417,12 +424,16 @@ void PitchShift::prepare(double sampleRate, int maxBlockSamples) {
   s.wetLowpass.setType(juce::dsp::LinkwitzRileyFilterType::lowpass);
   s.dryHighpass.prepare(spec);
   s.dryHighpass.setType(juce::dsp::LinkwitzRileyFilterType::highpass);
+  s.dryAllpass.prepare(spec);
+  s.dryAllpass.setType(juce::dsp::LinkwitzRileyFilterType::allpass);
   s.tonalityMix.reset(sampleRate, kBlendSeconds);  // lands on its target
   s.setTonality(s.params.tonalityHz);
   // The rings are empty again, so even a running engine blends back in
   // once the tap has audio under it (see primeLeft).
   s.wetMix.reset(sampleRate, kBlendSeconds);
   s.wetMix.setCurrentAndTargetValue(0.0f);
+  s.mixSmoother.reset(sampleRate, kBlendSeconds);
+  s.mixSmoother.setCurrentAndTargetValue(juce::jlimit(0.0f, 1.0f, s.params.mix));
   s.running = s.enabled;
   s.applyWindow();
   s.reset();
@@ -480,6 +491,10 @@ void PitchShift::setParams(const Params& p) {
   if (!juce::exactlyEqual(p.tonalityHz, s.params.tonalityHz)) {
     s.params.tonalityHz = p.tonalityHz;
     s.setTonality(p.tonalityHz);
+  }
+  if (!juce::exactlyEqual(p.mix, s.params.mix)) {
+    s.params.mix = p.mix;
+    s.mixSmoother.setTargetValue(juce::jlimit(0.0f, 1.0f, p.mix));
   }
 }
 
@@ -582,17 +597,29 @@ void PitchShift::process(juce::AudioBuffer<float>& buffer) {
       s.fade += s.fadeInc;
     }
     if (s.primeLeft > 0 && --s.primeLeft == 0 && s.enabled) s.wetMix.setTargetValue(1.0f);
-    const float wetMix = s.wetMix.getNextValue();
+    // Power fades the whole engine against the bypassed (zero-latency) input,
+    // so a power-on/off is seamless whatever Mix is set to. Mix is the
+    // dry/wet blend inside that: the dry it crossfades against is the input
+    // held by the floor, the same alignment the tonality band uses, because
+    // attacks re-sync the tap to the floor. Without it the dry would lead
+    // the shift by the tap's drift and comb against it.
+    const float powerFade = s.wetMix.getNextValue();
+    const float mix = s.mixSmoother.getNextValue();
     const float tonalityMix = s.tonalityMix.getNextValue();
     for (int ch = 0; ch < numChannels; ++ch) {
       auto& ring = s.rings[static_cast<size_t>(ch)];
       float wet = ring.read(s.rA);
       if (s.fading) wet = wet * gainA + gainB * ring.read(s.rB);
+      const float dryRef = ring.at(now - s.dMin);
       auto& dryRing = s.dryRings[static_cast<size_t>(ch)];
       dryRing.write(now, s.dryHighpass.processSample(ch, dry[ch]));
       const float split = s.wetLowpass.processSample(ch, wet) + dryRing.at(now - s.dMin);
       wet += tonalityMix * (split - wet);
-      out[ch][i] = dry[ch] + wetMix * (wet - dry[ch]);
+      // With the limit engaged the dry takes the crossover's phase, or it
+      // would cancel against the dry band around the cutoff.
+      const float dryMix = dryRef + tonalityMix * (s.dryAllpass.processSample(ch, dryRef) - dryRef);
+      const float mixOut = dryMix + mix * (wet - dryMix);
+      out[ch][i] = (1.0f - powerFade) * dry[ch] + powerFade * mixOut;
     }
     if (s.fading && s.fade >= 1.0) {
       s.rA = s.rB;
