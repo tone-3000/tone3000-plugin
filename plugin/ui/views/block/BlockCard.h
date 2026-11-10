@@ -96,6 +96,7 @@ private:
   bool isLocal() const { return block_.tone.local; }
   bool authenticated() const { return services_.session.authenticated(); }
   bool modelBusy() const { return block_.modelLoading || (!block_.loaded && !block_.loadFailed); }
+  bool showsNormalize() const;
   bool normalizeOverridden() const;
   bool favorited() const;
   int favoritesCount() const;
