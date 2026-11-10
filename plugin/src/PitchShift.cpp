@@ -184,8 +184,9 @@ struct PitchShift::Impl {
   // shifted signal and the high band from the dry (delayed by the floor so
   // it lands with the re-synced attacks), blended against the plain shift.
   // The filters run whether or not the limit is engaged (four biquads a
-  // channel), so engaging it never starts them cold.
-  juce::dsp::LinkwitzRileyFilter<float> wetLowpass, dryHighpass;
+  // channel), so engaging it never starts them cold. dryAllpass is the
+  // crossover's phase for the dry that Mix blends in.
+  juce::dsp::LinkwitzRileyFilter<float> wetLowpass, dryHighpass, dryAllpass;
   juce::LinearSmoothedValue<float> tonalityMix;
 
   void applyWindow() {
@@ -248,6 +249,7 @@ struct PitchShift::Impl {
       const float cutoff = juce::jlimit(kTonalityMinHz, kTonalityOffHz, hz);
       wetLowpass.setCutoffFrequency(cutoff);
       dryHighpass.setCutoffFrequency(cutoff);
+      dryAllpass.setCutoffFrequency(cutoff);
     }
     tonalityMix.setTargetValue(on ? 1.0f : 0.0f);
   }
@@ -422,6 +424,8 @@ void PitchShift::prepare(double sampleRate, int maxBlockSamples) {
   s.wetLowpass.setType(juce::dsp::LinkwitzRileyFilterType::lowpass);
   s.dryHighpass.prepare(spec);
   s.dryHighpass.setType(juce::dsp::LinkwitzRileyFilterType::highpass);
+  s.dryAllpass.prepare(spec);
+  s.dryAllpass.setType(juce::dsp::LinkwitzRileyFilterType::allpass);
   s.tonalityMix.reset(sampleRate, kBlendSeconds);  // lands on its target
   s.setTonality(s.params.tonalityHz);
   // The rings are empty again, so even a running engine blends back in
@@ -611,7 +615,10 @@ void PitchShift::process(juce::AudioBuffer<float>& buffer) {
       dryRing.write(now, s.dryHighpass.processSample(ch, dry[ch]));
       const float split = s.wetLowpass.processSample(ch, wet) + dryRing.at(now - s.dMin);
       wet += tonalityMix * (split - wet);
-      const float mixOut = dryRef + mix * (wet - dryRef);
+      // With the limit engaged the dry takes the crossover's phase, or it
+      // would cancel against the dry band around the cutoff.
+      const float dryMix = dryRef + tonalityMix * (s.dryAllpass.processSample(ch, dryRef) - dryRef);
+      const float mixOut = dryMix + mix * (wet - dryMix);
       out[ch][i] = (1.0f - powerFade) * dry[ch] + powerFade * mixOut;
     }
     if (s.fading && s.fade >= 1.0) {

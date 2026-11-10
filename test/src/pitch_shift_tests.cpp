@@ -241,6 +241,23 @@ TEST(PitchShiftTest, MixBlendsTheDryBackIn) {
     ASSERT_FLOAT_EQ(dry[i], in[i - static_cast<size_t>(floor)]) << i;
 }
 
+TEST(PitchShiftTest, MixStaysInPhaseWithTheTonalityBand) {
+  // At the crossover the tonality band is the dry at half level, so a tone
+  // there comes out at 1 - Mix / 2. Out of phase, the two cancel at Mix 2/3.
+  const auto in = makeSine(3 * 48000, 4000.0, 0.5f);
+  constexpr int kSettle = 48000, kWindow = 65536;
+  const double ref = db(goertzelPower(in.data() + kSettle, kWindow, 4000.0));
+  PitchShift::Params p;
+  p.semitones = -12;
+  p.tonalityHz = 4000.0f;
+  for (const float mix : {1.0f, 2.0f / 3.0f, 0.5f, 0.0f}) {
+    p.mix = mix;
+    const auto out = runPitchShift(in, p);
+    const double level = db(goertzelPower(out.data() + kSettle, kWindow, 4000.0)) - ref;
+    EXPECT_NEAR(level, 20.0 * std::log10(1.0 - 0.5 * mix), 0.25) << mix;
+  }
+}
+
 TEST(PitchShiftTest, PickAttackReSyncsTheTapToTheFloor) {
   // On a sustained note the tap drifts across the buffer; a pick attack
   // must not wait for it. The burst has to appear in the output within the

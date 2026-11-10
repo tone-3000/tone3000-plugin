@@ -473,7 +473,9 @@ bass note's period does not fit it.
   untouched input. The dry it blends in is held by the floor (the same
   alignment the tonality band uses), so it lands with the re-synced attacks
   instead of leading the shift by the tap's drift; at 0 the output is the
-  input at the floor delay.
+  input at the floor delay. With Tonality engaged the dry also passes the
+  crossover's allpass, so it stays in phase with the tonality band instead
+  of cancelling against it around the cutoff.
 
 A smooth sweep asks the engine for a new ratio every block. A pending lag
 search is planned for a drift, so a same-direction change of up to 0.1 in
