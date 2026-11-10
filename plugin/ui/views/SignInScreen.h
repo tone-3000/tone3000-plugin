@@ -20,7 +20,9 @@
 //                   until approved or expired
 // The browser path stays live throughout, so finishing in the browser
 // still works from the device page. A failed flow shows its reason with Try
-// again / Dismiss in place of the dots.
+// again / Dismiss in place of the dots. A flow with no authorize URL (the
+// redirect listener did not start) opens on the device page, and its
+// expired code offers New code alone.
 //
 // With no browser at all (AuthFlow::deviceOnly, the iOS AUv3) the flow
 // starts on the device page and never shows the browser one: no Copy Link,

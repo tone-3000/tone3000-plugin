@@ -9,7 +9,6 @@ namespace t3k::ui {
 namespace {
 constexpr const char* kNoKeyMessage =
     "TONE3000 publishable key not configured. Set T3K_PUBLISHABLE_KEY at build time.";
-constexpr const char* kLoopbackFailed = "Could not start the local sign-in listener. Try again.";
 // The launcher itself refused (AuthFlow::browserProblem; the screen adds
 // what to do instead). A browser that starts and then dies reports nothing
 // here: that is what the always-on fallbacks are for.
@@ -271,8 +270,11 @@ void Tone3000Session::login(LoginIntent intent) {
   stopDeviceFlow();
   // The sign-in screen comes up at once; the browser takes a beat.
   setFlow(AuthFlow::Phase::leaving);
-  if (!loopback_.start()) {
-    setFlow(AuthFlow::Phase::error, kLoopbackFailed);
+  if (!loopback_.start(config_.loopbackAddress)) {
+    // Nothing can take the browser's redirect, so the device code is the
+    // sign-in: the screen opens on it, with no link to copy.
+    juce::Logger::writeToLog("Sign-in: the loopback listener did not start, using the device code");
+    startDeviceFlow();
     return;
   }
   pkce_ = oauth::Pkce::generate();

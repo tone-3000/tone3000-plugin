@@ -11,7 +11,9 @@
 // the sign-in screen always carries the authorize URL to copy into any
 // browser, and the device flow (RFC 8628) polls for a code entered on a
 // phone. All three paths feed the same loopback / token endpoints, so the
-// first to finish signs in and the others are dropped.
+// first to finish signs in and the others are dropped. If the listener
+// itself cannot start (a machine with no 127.0.0.1), nothing could take the
+// browser's redirect, so login() goes straight to the device flow.
 //
 // On iOS the system browser is replaced by an in-app sheet
 // (webauth::Sheet, ASWebAuthenticationSession): App Store review rejects a
@@ -62,6 +64,9 @@ public:
     // TONE3000 app, whose tokens arrive through the shared preferences (see
     // the header comment). The iOS AUv3.
     bool signInViaApp = false;
+    // Where the redirect listener binds. A test names an address no
+    // interface has, to play a machine whose loopback will not bind.
+    juce::String loopbackAddress = "127.0.0.1";
 
     // The build's .env values (T3kConfig.h).
     static Config fromBuild();

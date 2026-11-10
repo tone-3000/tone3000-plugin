@@ -254,6 +254,11 @@ exchanged for tokens (`Tone3000Client`, persisted in `UiPrefs`, refreshed
 transparently with a single in-flight refresh and one 401 retry). Closing
 the editor stops the listener and the polling; a stale callback is ignored.
 
+If the listener cannot bind (a machine whose loopback interface has no
+`127.0.0.1`), no browser could hand the redirect back, so `login()` skips
+the browser and starts the device flow: the screen opens on the device
+page with no Copy Link.
+
 The iOS AUv3 can do neither browser path (an app extension cannot open
 Safari or present the sheet), but the device flow never leaves the
 process, so `Tone3000Session::Config::signInViaApp` turns `login()` into:

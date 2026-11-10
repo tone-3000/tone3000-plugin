@@ -29,6 +29,9 @@ constexpr const char* kOr = "OR";
 constexpr const char* kGettingCode = "Getting a code for your phone";
 // After AuthFlow::Device::error's sentence.
 constexpr const char* kDeviceHelp = "Get a new one, or finish on your browser.";
+// No authorize URL (the redirect listener did not start): the code is the
+// only way in.
+constexpr const char* kDeviceHelpCode = "Get a new one.";
 // AuthFlow::deviceOnly (the iOS AUv3): no browser to finish on, but the
 // TONE3000 app's sign-in is the plugin's too.
 constexpr const char* kDeviceHelpApp = "Get a new one, or sign in with the TONE3000 app.";
@@ -254,10 +257,11 @@ void SignInScreen::rebuild() {
       addText(kAppCopy, kCopyPx, theme::kGray, kWideMaxWidth, kSectionGap);
     }
   } else if (flow.device && flow.device->state == DeviceState::failed) {
-    headline = flow.device->error + " " + (flow.deviceOnly ? kDeviceHelpApp : kDeviceHelp);
+    const bool browser = flow.authorizeUrl.isNotEmpty();
+    headline = flow.device->error + " " + (flow.deviceOnly ? kDeviceHelpApp : browser ? kDeviceHelp : kDeviceHelpCode);
     addText(headline, kCopyPx, theme::kWhite, kWideMaxWidth, 0);
-    if (flow.deviceOnly) addButtons({&newCode_}, kGap);  // no authorize URL to copy
-    else addButtons({&newCode_, &copyLink_}, kGap);
+    if (browser) addButtons({&newCode_, &copyLink_}, kGap);
+    else addButtons({&newCode_}, kGap);  // no authorize URL to copy
   } else {
     // Waiting on the browser (mockup 13342:46017), the fallbacks under it.
     const juce::String copy = flow.browserProblem.isNotEmpty() ? flow.browserProblem + " " + kProblemHelp
