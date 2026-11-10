@@ -273,6 +273,7 @@ void BlockCard::syncFromBlock() {
   normalize_.setInterceptsMouseClicks(!overridden, false);
   normalizeWrap_.setHelpText(help::text(overridden ? help::Key::blockNormalizeOverridden : help::Key::blockNormalize));
   normalizeWrap_.setMouseCursor(juce::MouseCursor::NormalCursor);
+  normalizeWrap_.setVisible(showsNormalize());
 
   image_.setTone(block_.tone.image, block_.tone.gear, block_.tone.local);
   const bool busy = modelBusy() || block_.loadFailed;
@@ -405,6 +406,10 @@ void BlockCard::prefChanged(const juce::String& key) {
 }
 
 // Derived state
+bool BlockCard::showsNormalize() const {
+  return body() == Body::tone && isNam() && services_.prefs.getBool(UiPrefs::kShowBlockNormalizeControl, false);
+}
+
 bool BlockCard::normalizeOverridden() const {
   // Mirrors the DSP's calibrated hand-off (Processor.cpp): calibration on,
   // sane output_level_dbu metadata, and another NAM downstream.
@@ -463,8 +468,7 @@ void BlockCard::setBodyView() {
   if (eqEditor_) eqEditor_->setVisible(view == Body::eq);
   for (auto* c : std::initializer_list<juce::Component*>{&inMeter_, &outMeter_, &in_, &out_, &mix_, &selectWrap_})
     c->setVisible(view == Body::tone);
-  normalizeWrap_.setVisible(view == Body::tone && isNam() &&
-                            services_.prefs.getBool(UiPrefs::kShowBlockNormalizeControl, false));
+  normalizeWrap_.setVisible(showsNormalize());
   imageFrame_.setVisible(view != Body::eq);
   meta_.setVisible(view != Body::eq);
   syncHeader();

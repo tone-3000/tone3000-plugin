@@ -2346,6 +2346,103 @@ struct BlockSizeToggleTests : juce::UnitTest {
   }
 };
 
+// The block card's "=" button shows when the card opens with Per-Block
+// Normalization on, and follows the setting while open (issue #269).
+struct BlockNormalizeControlTests : juce::UnitTest {
+  BlockNormalizeControlTests() : juce::UnitTest("Block normalize control", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  static Clickable* named(juce::Component& root, const juce::String& name) {
+    return dynamic_cast<Clickable*>(drive::find(root, [&](juce::Component& c) {
+      auto* b = dynamic_cast<Clickable*>(&c);
+      return b != nullptr && b->accessibleName() == name && c.isShowing()
+             && c.findParentComponentOfClass<BlockCard>() != nullptr;
+    }));
+  }
+  static Clickable* button(juce::Component& root) { return named(root, "Normalize"); }
+
+  // The scenario with the setting already saved.
+  static Scenario withSetting(const Scenario& base, bool on) {
+    Scenario copy{base.id, base.data.clone(), base.hasDrive};
+    auto* storage = new juce::DynamicObject();
+    storage->setProperty(UiPrefs::kShowBlockNormalizeControl, on ? "true" : "false");
+    copy.data.getDynamicObject()->setProperty("localStorage", juce::var(storage));
+    return copy;
+  }
+
+  void runTest() override {
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* detail = fixtures.find("main-detail");
+    if (detail == nullptr) {
+      expect(false, "main-detail scenario missing");
+      return;
+    }
+
+    beginTest("a card opened with the setting on shows the button, beside the Out knob");
+    {
+      MockBackend backend(detail->data);
+      juce::DocumentWindow window("block normalize", juce::Colours::black, 0);
+      ScaledHost host(backend, withSetting(*detail, true), fixtures.root);
+      window.setContentNonOwned(&host, true);
+      window.setVisible(true);
+      pump(400);
+      auto& root = host.pluginRoot();
+      auto* card = dynamic_cast<BlockCard*>(
+          drive::find(root, [](juce::Component& c) { return dynamic_cast<BlockCard*>(&c) != nullptr; }));
+      expect(card != nullptr);
+      if (card == nullptr) return;
+      auto* normalize = button(root);
+      expect(normalize != nullptr);
+      if (normalize != nullptr) {
+        // Laid out in the card's bottom-right corner.
+        const auto inCard = card->getLocalArea(normalize, normalize->getLocalBounds());
+        expect(!inCard.isEmpty() && card->getLocalBounds().contains(inCard));
+        expect(inCard.getCentreX() > card->getWidth() / 2 && inCard.getCentreY() > card->getHeight() / 2);
+      }
+
+      beginTest("the button follows the setting while the card is open");
+      root.services().prefs.setBool(UiPrefs::kShowBlockNormalizeControl, false);
+      pump(30);
+      expect(button(root) == nullptr);
+      root.services().prefs.setBool(UiPrefs::kShowBlockNormalizeControl, true);
+      pump(30);
+      expect(button(root) != nullptr);
+
+      beginTest("the EQ view hides it and the tone view brings it back");
+      auto* eq = named(root, "EQ");
+      expect(eq != nullptr);
+      if (eq == nullptr) return;
+      drive::click(root, *eq);
+      pump(30);
+      expect(button(root) == nullptr);
+      // A setting change must not show it over the EQ.
+      root.services().prefs.setBool(UiPrefs::kShowBlockNormalizeControl, false);
+      root.services().prefs.setBool(UiPrefs::kShowBlockNormalizeControl, true);
+      pump(30);
+      expect(button(root) == nullptr);
+      drive::click(root, *eq);
+      pump(30);
+      expect(button(root) != nullptr);
+      window.setVisible(false);
+    }
+
+    beginTest("a card opened with the setting off has no button");
+    {
+      MockBackend backend(detail->data);
+      juce::DocumentWindow window("block normalize", juce::Colours::black, 0);
+      ScaledHost host(backend, withSetting(*detail, false), fixtures.root);
+      window.setContentNonOwned(&host, true);
+      window.setVisible(true);
+      pump(400);
+      auto& root = host.pluginRoot();
+      expect(named(root, "EQ") != nullptr);  // the card is up
+      expect(button(root) == nullptr);
+      window.setVisible(false);
+    }
+  }
+};
+
 // Committing a typed CC number swaps the listening row for a mapping row of
 // the same height. The form host only re-flows on a height change, so the
 // card has to place its new rows itself or they sit at 0×0 and the card
@@ -3088,6 +3185,7 @@ GlowCornerTests glowCornerTests;
 PresetReorderTests presetReorderTests;
 ChainCrossLaneDragTests chainCrossLaneDragTests;
 BlockSizeToggleTests blockSizeToggleTests;
+BlockNormalizeControlTests blockNormalizeControlTests;
 MidiMapCommitTests midiMapCommitTests;
 TunerMuteTests tunerMuteTests;
 KnobReadoutTests knobReadoutTests;
