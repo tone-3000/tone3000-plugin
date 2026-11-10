@@ -69,6 +69,7 @@ class PluginRoot : public juce::Component,
                    private ConnectionGate::Listener,
                    private UpdateCheck::Listener,
                    private ToneSession::Listener,
+                   private Backend::Listener,
                    private juce::ComponentListener {
 public:
   // A host may refuse or delay the resize; show the banner anyway after a beat.
@@ -128,6 +129,7 @@ private:
   void updateNoticeChanged() override;
   void sessionChanged() override {}
   void authFlowChanged() override;
+  void tunerToggleRequested() override;
   void componentMovedOrResized(juce::Component& parent, bool moved, bool resized) override;
   // Modals stack in the overlay layer (Plugin.tsx z-order): update notice,
   // then the connection modal on top, all above popovers and the toast.

@@ -16,7 +16,7 @@
  * in hosts (the DAW hands us the buffer). The map serializes with plugin
  * state (getStateInformation), so it travels with DAW sessions.
  *
- * Targets come in four kinds:
+ * Targets come in five kinds:
  *   - APVTS parameters ("gateThreshold").
  *   - Positional block powers ("block1Power" = the first tone block in the
  *     Left lane, "rightBlock1Power" = the first in the Right lane; stereo
@@ -28,6 +28,8 @@
  *   - Preset steps ("presetPrevious" / "presetNext"): fire-per-press
  *     triggers that walk the preset list, for footswitches programmed with
  *     CC / note buttons instead of program changes.
+ *   - Tuner ("tuner"): opens / closes the tuner screen. The screen is the
+ *     editor's, so this does nothing while the editor is closed.
  *
  * Model: one source per target (mapping identity == targetId); one physical
  * control may drive any number of targets. A global channel filter (omni by
@@ -106,10 +108,13 @@ public:
   /** Mapped preset prev/next controls fired; delta is the net step count
       (+1 per next press, -1 per previous, coalesced like the toggles). */
   std::function<void(int delta)> onPresetStep;
+  /** A mapped tuner control fired (net of parity coalescing). Set by the
+      editor, which owns the tuner screen. */
+  std::function<void()> onTunerToggle;
 
 private:
   enum class Source : int { cc = 0, note = 1 };
-  enum class Kind : int { parameter = 0, blockPower = 1, stereoMode = 2, presetStep = 3 };
+  enum class Kind : int { parameter = 0, blockPower = 1, stereoMode = 2, presetStep = 3, tuner = 4 };
 
   /** Virtual target id for the chain's stereo on/off (chain state, not an
       APVTS parameter; the UI catalog uses the same id). */
@@ -118,6 +123,8 @@ private:
       ids). Triggers, not toggles: each press walks the preset list. */
   static constexpr const char* kPresetPrevTarget = "presetPrevious";
   static constexpr const char* kPresetNextTarget = "presetNext";
+  /** Virtual target id for the tuner screen (the UI catalog uses the same id). */
+  static constexpr const char* kTunerTarget = "tuner";
 
   struct Mapping {
     juce::String targetId;
@@ -152,7 +159,7 @@ private:
   bool isValidTarget(const juce::String& targetId) const {
     return blockPowerTargetFor(targetId).index >= 0 || targetId == kStereoTarget ||
            targetId == kPresetPrevTarget || targetId == kPresetNextTarget ||
-           parameters.getParameter(targetId) != nullptr;
+           targetId == kTunerTarget || parameters.getParameter(targetId) != nullptr;
   }
 
   Mapping makeMapping(const juce::String& targetId, Source source, int number) const;
@@ -187,6 +194,7 @@ private:
   std::atomic<juce::uint64> pendingBlockToggles{0};
   std::atomic<juce::uint64> pendingRightBlockToggles{0};
   std::atomic<int> pendingStereoToggles{0};  // flip count; parity applies
+  std::atomic<int> pendingTunerToggles{0};   // flip count; parity applies
   std::atomic<int> pendingPresetSteps{0};    // signed sum of ±1 steps
   std::atomic<bool> mapDirty{false};                 // gate for onChanged
 

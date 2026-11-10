@@ -14,6 +14,7 @@
 //   - CC on a continuous parameter tracks absolutely,
 //   - block-power targets deliver their position and lane (left / right),
 //   - preset prev/next virtual targets deliver coalesced step deltas,
+//   - the tuner target delivers one toggle per stomp,
 //   - program changes deliver their program number unmapped.
 //
 // The mapper defers non-parameter work to the message thread via
@@ -215,6 +216,34 @@ TEST(MidiMapperTest, PresetStepTargetsDeliverCoalescedDeltas) {
   pumpMessages();
   ASSERT_EQ(deltas.size(), 1u);
   EXPECT_EQ(deltas[0], 2);
+}
+
+TEST(MidiMapperTest, TunerTargetTogglesOncePerStomp) {
+  TONE3000Processor proc;
+  learn(proc, "tuner", ccEvent(28, 127));
+
+  int toggles = 0;
+  proc.midiMapper.onTunerToggle = [&toggles] { ++toggles; };
+
+  proc.midiMapper.processMidi(ccEvent(28, 127));
+  proc.midiMapper.processMidi(ccEvent(28, 0));
+  pumpMessages();
+  EXPECT_EQ(toggles, 1);
+
+  // Two presses before the async hop cancel out.
+  proc.midiMapper.processMidi(ccEvent(28, 127));
+  proc.midiMapper.processMidi(ccEvent(28, 127));
+  pumpMessages();
+  EXPECT_EQ(toggles, 1);
+
+  // The mapping survives a state round trip.
+  TONE3000Processor restored;
+  restored.midiMapper.restoreFromValueTree(proc.midiMapper.toValueTree());
+  const juce::var state = restored.midiMapper.getState();
+  const auto* mappings = state["mappings"].getArray();
+  ASSERT_NE(mappings, nullptr);
+  ASSERT_EQ(mappings->size(), 1);
+  EXPECT_EQ((*mappings)[0]["targetId"].toString(), "tuner");
 }
 
 TEST(MidiMapperTest, ProgramChangeDeliversProgramNumber) {

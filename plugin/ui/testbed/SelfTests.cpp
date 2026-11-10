@@ -21,6 +21,7 @@
 #include "core/Help.h"
 #include "core/KnobScale.h"
 #include "core/Labels.h"
+#include "core/MidiCatalog.h"
 #include "core/Pitch.h"
 #include "core/RichText.h"
 #include "core/TextFlow.h"
@@ -2578,6 +2579,47 @@ struct TunerMuteTests : juce::UnitTest {
   }
 };
 
+// A MIDI control mapped to the tuner opens and closes the tuner screen, and
+// leaves Settings to show it.
+struct TunerMidiToggleTests : juce::UnitTest {
+  TunerMidiToggleTests() : juce::UnitTest("Tuner MIDI toggle", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("main-mono");
+    if (scenario == nullptr) {
+      expect(false, "main-mono scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    pump(100);
+    auto& root = host.pluginRoot();
+
+    beginTest("the tuner is a mappable toggle");
+    const auto* target = midi::targetById("tuner");
+    expect(target != nullptr && target->kind == midi::TargetKind::toggle);
+
+    beginTest("each press opens or closes the tuner");
+    expect(!root.tunerShown());
+    backend.fireTunerToggle();
+    expect(root.tunerShown());
+    backend.fireTunerToggle();
+    expect(!root.tunerShown());
+
+    beginTest("opening it from Settings closes Settings");
+    root.openSettings();
+    pump(50);
+    expect(root.settings() != nullptr);
+    backend.fireTunerToggle();
+    pump(50);
+    expect(root.tunerShown());
+    expect(root.settings() == nullptr);
+  }
+};
+
 // A readout wider than its knob ("-100 dB" under the 36px gate, whose dim
 // group is exactly the knob's width) shows whole: it floats in the overlay
 // layer, past the column and the parents that clip the knob.
@@ -3188,6 +3230,7 @@ BlockSizeToggleTests blockSizeToggleTests;
 BlockNormalizeControlTests blockNormalizeControlTests;
 MidiMapCommitTests midiMapCommitTests;
 TunerMuteTests tunerMuteTests;
+TunerMidiToggleTests tunerMidiToggleTests;
 KnobReadoutTests knobReadoutTests;
 FaceplateEffectsTests faceplateEffectsTests;
 FaceplateDualMonoTests faceplateDualMonoTests;
