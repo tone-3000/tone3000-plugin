@@ -82,7 +82,7 @@ reconfigure.
 
 ### 3. TONE3000 publishable key
 
-The plugin reads your TONE3000 publishable key at configure time from a
+The plugin reads a TONE3000 publishable key at configure time from a
 `.env` file at the repo root (`.env.local` overrides it and a variable in
 the configure environment overrides both; [`.env.example`](.env.example)
 documents every key). Set it before the first build, and reconfigure after
@@ -90,9 +90,19 @@ changing it:
 
 ```sh
 # .env
-T3K_PUBLISHABLE_KEY=t3k_pub_your_key_here
+T3K_PUBLISHABLE_KEY=t3k_pub_Ej7NYu-huVjA5TwLPTb_7xTblnD4ghQG
 # Optional: point at staging or self-hosted TONE3000
 # T3K_API_DOMAIN=https://staging.tone3000.com
+```
+
+That is the community key, for source builds and distro packages. It is the
+OAuth client ID, not a secret, so it is fine to ship in a binary. Official
+releases use their own key; to use yours, make one in TONE3000 > Settings >
+API Keys. A package build with no `.env` can pass it in the configure
+environment instead:
+
+```sh
+T3K_PUBLISHABLE_KEY=t3k_pub_Ej7NYu-huVjA5TwLPTb_7xTblnD4ghQG cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 ```
 
 Sign-in opens in the system browser (an in-app sheet on iOS) and returns
