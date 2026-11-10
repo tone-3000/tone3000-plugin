@@ -25,6 +25,10 @@ public:
   // Live: meters, spectrum, tuner and input levels follow a moving signal
   // (MockSignal) instead of the scenario's frozen values.
   void setLive(bool live) { signal_ = live ? std::make_unique<MockSignal>() : nullptr; }
+  // As a MIDI control mapped to the tuner firing.
+  void fireTunerToggle() {
+    listeners.call([](Listener& l) { l.tunerToggleRequested(); });
+  }
 
   juce::RangedAudioParameter* parameter(const juce::String& id) override;
 

@@ -77,6 +77,7 @@ PluginRoot::PluginRoot(Services& services)
   services_.connection.addListener(this);
   services_.updates.addListener(this);
   services_.session.addListener(this);
+  services_.backend.addListener(this);
   hintsVisible_ = services_.hints.enabled();
   updateChromeHeight();
   bannerChanged();
@@ -91,6 +92,7 @@ PluginRoot::~PluginRoot() {
   services_.session.onAuthenticated = nullptr;
   services_.loadFlow.onShowBrowser = nullptr;
   if (watchedParent_ != nullptr) watchedParent_->removeComponentListener(this);
+  services_.backend.removeListener(this);
   services_.session.removeListener(this);
   services_.updates.removeListener(this);
   services_.connection.removeListener(this);
@@ -375,6 +377,13 @@ void PluginRoot::setTunerShown(bool shown) {
   syncTakeovers();
   header_.setTunerShown(shown);
   resized();
+}
+
+// The MIDI-mapped tuner control.
+void PluginRoot::tunerToggleRequested() {
+  // Settings covers the whole window: close it so the tuner shows.
+  if (!tunerShown()) closeSettings();
+  setTunerShown(!tunerShown());
 }
 
 void PluginRoot::setBrowserShown(bool shown) {

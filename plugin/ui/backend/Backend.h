@@ -26,6 +26,8 @@ public:
     virtual ~Listener() = default;
     virtual void audioDeviceChanged() {}
     virtual void midiMapChanged() {}
+    // A MIDI control mapped to the tuner fired: open or close the screen.
+    virtual void tunerToggleRequested() {}
   };
   void addListener(Listener* l) { listeners.add(l); }
   void removeListener(Listener* l) { listeners.remove(l); }

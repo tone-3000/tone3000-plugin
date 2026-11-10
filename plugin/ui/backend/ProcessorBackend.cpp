@@ -18,11 +18,15 @@ ProcessorBackend::ProcessorBackend(TONE3000Processor& processor, juce::Component
   processor_.midiMapper.onChanged = [this] {
     listeners.call([](Listener& l) { l.midiMapChanged(); });
   };
+  processor_.midiMapper.onTunerToggle = [this] {
+    listeners.call([](Listener& l) { l.tunerToggleRequested(); });
+  };
 }
 
 ProcessorBackend::~ProcessorBackend() {
-  // The mapper outlives the editor (it's the processor's): detach our hook.
+  // The mapper outlives the editor (it's the processor's): detach our hooks.
   processor_.midiMapper.onChanged = nullptr;
+  processor_.midiMapper.onTunerToggle = nullptr;
   // Tear down the audio settings controller before the listeners it reports to.
   audioSettings_.reset();
   // The tuner and block spectrum analyzers are only useful while the UI is

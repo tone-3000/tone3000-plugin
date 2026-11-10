@@ -105,6 +105,10 @@ void MidiMapper::applyEvent(Mapping& mapping, const juce::MidiMessage& msg) {
         pendingStereoToggles.fetch_add(1);
         triggerAsyncUpdate();
         return;
+      case Kind::tuner:
+        pendingTunerToggles.fetch_add(1);
+        triggerAsyncUpdate();
+        return;
       case Kind::presetStep:
         // Preset loads are heavyweight message-thread work; the signed sum
         // nets rapid prev/next stomps to the right landing spot.
@@ -212,6 +216,7 @@ MidiMapper::Mapping MidiMapper::makeMapping(const juce::String& targetId, Source
                                                           : 0;
   const Kind kind = presetDelta != 0          ? Kind::presetStep
                     : targetId == kStereoTarget ? Kind::stereoMode
+                    : targetId == kTunerTarget  ? Kind::tuner
                     : block.index >= 0          ? Kind::blockPower
                                                 : Kind::parameter;
   auto* param = kind == Kind::parameter ? parameters.getParameter(targetId) : nullptr;
@@ -258,6 +263,9 @@ void MidiMapper::handleAsyncUpdate() {
 
   if (pendingStereoToggles.exchange(0) % 2 != 0 && onStereoToggle)
     onStereoToggle();
+
+  if (pendingTunerToggles.exchange(0) % 2 != 0 && onTunerToggle)
+    onTunerToggle();
 
   if (const int steps = pendingPresetSteps.exchange(0); steps != 0 && onPresetStep)
     onPresetStep(steps);
