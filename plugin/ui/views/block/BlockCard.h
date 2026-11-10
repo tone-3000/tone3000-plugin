@@ -57,6 +57,9 @@ public:
   // A chain resync: same block, fresher fields.
   void setBlock(const ChainItem& block, bool namDownstream);
   const std::string& blockId() const { return block_.blockId; }
+  // Left / right (PluginRoot): the picker's model before / after; false when
+  // the picker isn't showing (the EQ or info view).
+  bool stepModel(int delta);
 
   // Info view open/closed: the owner drops the meter-band pads so the card
   // can scroll to the faceplate, and lets the card grow.
