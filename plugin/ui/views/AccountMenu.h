@@ -1,6 +1,6 @@
 // Account pill for the header (port of AccountMenu.tsx): hamburger + avatar
-// in a bordered rounded-full button opening a dark dropdown with Settings
-// and Login/Logout.
+// in a bordered rounded-full button opening a dark dropdown with the signed-in
+// profile (avatar + username), Settings and Login/Logout.
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -23,27 +23,48 @@ public:
   ~AccountMenu() override;
 
   void setAuthenticated(bool authenticated);
-  void setAvatar(ImageLoader& images, const juce::String& url) { avatar_.setImage(images, url); }
+  void setUsername(const juce::String& username);
+  void setAvatar(ImageLoader& images, const juce::String& url);
   void openMenu();
 
-  std::function<void()> onOpenSettings, onLogin, onLogout;
+  std::function<void()> onOpenProfile, onOpenSettings, onLogin, onLogout;
 
   void paintButton(juce::Graphics& g, bool highlighted, bool down) override;
   void resized() override;
 
 private:
+  // Avatar + username in the dropdown's row style.
+  class ProfileRow : public Clickable {
+  public:
+    ProfileRow();
+    void setUsername(const juce::String& username);
+    void paintButton(juce::Graphics& g, bool highlighted, bool down) override;
+    void resized() override;
+    Avatar avatar;
+
+  private:
+    juce::String username_;
+  };
+
   class Menu : public Popover {
   public:
     Menu();
     void paint(juce::Graphics& g) override;
     void resized() override;
+    // Height follows the visible rows.
+    void relayout();
+    ProfileRow profile;
     MenuRow settings{"Settings", Icon::Settings};
     MenuRow login{"Login", Icon::LogIn};
     MenuRow logout{"Logout", Icon::LogOut};
   };
 
+  void updateProfileRow();
+
   Avatar avatar_;
   Menu menu_;
+  bool authenticated_ = false;
+  juce::String username_;
 };
 
 }  // namespace t3k::ui

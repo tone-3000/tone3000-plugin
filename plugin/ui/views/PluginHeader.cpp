@@ -6,6 +6,7 @@
 #include "core/Help.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
+#include "T3kConfig.h"
 #include "widgets/Clickable.h"
 
 namespace t3k::ui {
@@ -62,6 +63,12 @@ PluginHeader::PluginHeader(Services& services)
   addAndMakeVisible(undo_);
   addAndMakeVisible(redo_);
 
+  account_.onOpenProfile = [this] {
+    const auto user = services_.session.user();
+    if (!user || user->username.isEmpty()) return;
+    juce::URL(juce::String(config::kApiOrigin) + "/" + juce::URL::addEscapeChars(user->username, false))
+        .launchInDefaultBrowser();
+  };
   account_.onOpenSettings = [this] {
     if (onOpenSettings) onOpenSettings();
   };
@@ -90,6 +97,7 @@ void PluginHeader::sessionChanged() {
   const auto& session = services_.session;
   account_.setAuthenticated(session.authenticated());
   const auto user = session.user();
+  account_.setUsername(session.authenticated() && user ? user->username : juce::String());
   const auto url = user ? user->avatarUrl : juce::String();
   if (url == avatarUrl_ && (url.isNotEmpty() || !session.authenticated())) return;
   avatarUrl_ = url;
