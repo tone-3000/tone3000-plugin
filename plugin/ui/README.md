@@ -194,6 +194,12 @@ from (`port of KnobControl.tsx`); that is lineage, recorded in
   rest (Tab from nothing, Escape / press elsewhere blur). Decorative
   components call `setAccessible(false)`; status that only paints elsewhere
   goes through `help::announce()`. See native-ui.md §5.8a.
+- **Wheel.** A knob takes the wheel over its face (not the label). A forward
+  turn raises the value; one click moves what one arrow key moves, and Shift
+  divides by 8. A wheel burst belongs to whatever was under the pointer when
+  it began, so a pan that slides a knob under a stationary pointer does not
+  edit it; a control that takes the wheel claims the burst
+  (`DragScroller::claimWheelBurst`). Rules in native-ui.md §5.13.
 - **Pixels.** New or changed visuals get a scenario (an entry in
   `testbed/fixtures/scenarios.json`) and a matching drive in `Scenarios.cpp`
   if it needs one. The before/after capture diff is the acceptance test;
