@@ -25,12 +25,13 @@ PluginRoot::PluginRoot(Services& services)
   setFocusContainerType(FocusContainerType::keyboardFocusContainer);
 
   header_.onToggleTuner = [this](bool show) { setTunerShown(show); };
+  header_.onToggleMetronome = [this](bool show) { setMetronomeShown(show); };
   header_.onStereoToggle = [this](bool stereo) {
-    closeTunerThen([&] { services_.chain.setStereoMode(stereo); });
+    closeBandViewsThen([&] { services_.chain.setStereoMode(stereo); });
   };
-  header_.onUndo = [this] { closeTunerThen([&] { services_.chain.undo(); }); };
-  header_.onRedo = [this] { closeTunerThen([&] { services_.chain.redo(); }); };
-  header_.presetBar().beforeSave = [this] { closeTunerThen({}); };
+  header_.onUndo = [this] { closeBandViewsThen([&] { services_.chain.undo(); }); };
+  header_.onRedo = [this] { closeBandViewsThen([&] { services_.chain.redo(); }); };
+  header_.presetBar().beforeSave = [this] { closeBandViewsThen({}); };
   header_.presetBar().beforeLoad = [this] { showChainThen({}); };
   header_.presetBar().onReset = [this] { showChainThen([&] { services_.chain.resetToDefault(); }); };
 
@@ -284,6 +285,12 @@ bool PluginRoot::FocusPolicy::keyPressed(const juce::KeyPress& key, juce::Compon
   // it when the OS activates it) is nothing focused as far as the UI goes.
   auto* focused = juce::Component::getCurrentlyFocusedComponent();
   if (focused != nullptr && root_.isParentOf(focused)) return false;
+  if (root_.metronome_ != nullptr && root_.metronome_->keyPressed(key)) return true;
+  if (MetronomeView::isToggleKey(key) && root_.settings_ == nullptr && root_.updateNotice_ == nullptr &&
+      root_.connectionModal_ == nullptr) {
+    root_.setMetronomeShown(true);
+    return true;
+  }
   if (key.isKeyCode(juce::KeyPress::tabKey)) {
     // The Settings takeover is its own Tab cycle while it is up: its content
     // is out of the root's order, and the chrome under it must stay out of
@@ -312,7 +319,7 @@ SettingsScreen* PluginRoot::settingsInFront() const {
 DragScroller* PluginRoot::frontScroller() {
   if (updateNotice_ != nullptr || connectionModal_ != nullptr) return nullptr;  // behind a scrim: nothing moves
   if (settings_ != nullptr) return &settings_->scroller();
-  if (tunerShown() || signInShown()) return nullptr;  // neither screen scrolls
+  if (tunerShown() || metronomeShown() || signInShown()) return nullptr;  // neither screen scrolls
   if (browserShown()) return &browser_->scroller();
   return &main_.chainScreen().scroller();
 }
@@ -367,6 +374,7 @@ void PluginRoot::handleBannerAction(BannerAction action) {
 void PluginRoot::setTunerShown(bool shown) {
   if (shown == tunerShown()) return;
   if (shown) {
+    setMetronomeShown(false);
     tuner_ = std::make_unique<TunerView>(services_);
     tuner_->onClose = [this] { setTunerShown(false); };
     addAndMakeVisible(*tuner_);
@@ -384,6 +392,22 @@ void PluginRoot::tunerToggleRequested() {
   // Settings covers the whole window: close it so the tuner shows.
   if (!tunerShown()) closeSettings();
   setTunerShown(!tunerShown());
+}
+
+void PluginRoot::setMetronomeShown(bool shown) {
+  if (shown == metronomeShown()) return;
+  if (shown) {
+    setTunerShown(false);
+    metronome_ = std::make_unique<MetronomeView>(services_);
+    metronome_->onClose = [this] { setMetronomeShown(false); };
+    addAndMakeVisible(*metronome_);
+    overlay_.toFront(false);
+  } else {
+    metronome_.reset();
+  }
+  syncTakeovers();
+  header_.setMetronomeShown(shown);
+  resized();
 }
 
 void PluginRoot::setBrowserShown(bool shown) {
@@ -413,7 +437,7 @@ void PluginRoot::setBrowserShown(bool shown) {
 // What a takeover covers is hidden, not left painting underneath: the meters
 // tick at 30 Hz and would otherwise repaint for nothing.
 void PluginRoot::syncTakeovers() {
-  const bool tuner = tunerShown(), browser = browserShown(), signIn = signInShown();
+  const bool tuner = tunerShown() || metronomeShown(), browser = browserShown(), signIn = signInShown();
   const bool column = browser || signIn;  // something covers the whole column
   main_.setVisible(!tuner && !column);
   faceplate_.setVisible(tuner || !column);
@@ -421,13 +445,15 @@ void PluginRoot::syncTakeovers() {
   if (signIn_) signIn_->setVisible(!tuner);
 }
 
-void PluginRoot::closeTunerThen(const std::function<void()>& fn) {
+void PluginRoot::closeBandViewsThen(const std::function<void()>& fn) {
   setTunerShown(false);
+  setMetronomeShown(false);
   if (fn) fn();
 }
 
 void PluginRoot::showChainThen(const std::function<void()>& fn) {
   setTunerShown(false);
+  setMetronomeShown(false);
   if (browserShown()) {
     services_.loadFlow.clearPendingTargets();
     setBrowserShown(false);
@@ -489,6 +515,7 @@ void PluginRoot::resized() {
   faceplate_.setBounds(column.removeFromBottom(Faceplate::kHeight));
   main_.setBounds(column);
   if (tuner_) tuner_->setBounds(column);
+  if (metronome_) metronome_->setBounds(column);
 
   // The toast floats above the faceplate, measured from the overlay's bottom.
   const int belowColumn = getHeight() - (slotH + coreH + hintH);

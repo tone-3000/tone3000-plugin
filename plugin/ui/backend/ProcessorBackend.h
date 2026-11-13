@@ -97,6 +97,7 @@ public:
   void setTunerEnabled(bool enabled) override;
   void setTunerMuted(bool muted) override;
   juce::var getTunerReading() override;
+  double getMetronomeBeats() override;
   void startAutoBalance() override;
   void cancelAutoBalance() override;
   juce::var pollAutoBalance() override;
