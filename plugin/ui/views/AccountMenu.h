@@ -1,6 +1,7 @@
 // Account pill for the header (port of AccountMenu.tsx): hamburger + avatar
-// in a bordered rounded-full button opening a dark dropdown with the signed-in
-// profile (avatar + username), Settings and Login/Logout.
+// in a bordered rounded-full button opening a dark dropdown with Settings,
+// the signed-in profile (avatar + username, opens in the browser) and
+// Login/Logout.
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -33,7 +34,8 @@ public:
   void resized() override;
 
 private:
-  // Avatar + username in the dropdown's row style.
+  // Avatar + username in the dropdown's row style, with an external-link
+  // glyph on the right: the row opens the browser.
   class ProfileRow : public Clickable {
   public:
     ProfileRow();
@@ -53,8 +55,8 @@ private:
     void resized() override;
     // Height follows the visible rows.
     void relayout();
-    ProfileRow profile;
     MenuRow settings{"Settings", Icon::Settings};
+    ProfileRow profile;
     MenuRow login{"Login", Icon::LogIn};
     MenuRow logout{"Logout", Icon::LogOut};
   };

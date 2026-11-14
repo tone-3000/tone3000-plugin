@@ -14,6 +14,7 @@ constexpr int kMenuMinWidth = 190;
 constexpr int kMenuPad = 8;
 constexpr int kMenuRadius = 12;
 constexpr int kMenuGap = 8;  // top: calc(100% + 8)
+constexpr int kLinkIcon = 14;
 }  // namespace
 
 // Profile row
@@ -35,6 +36,9 @@ void AccountMenu::ProfileRow::paintButton(juce::Graphics& g, bool highlighted, b
     paint::fill(g, box.toFloat(), 8.0f, juce::Colours::white.withAlpha(0.08f));
   auto content = box.reduced(m.padX, 0);
   content.removeFromLeft(m.icon + m.gap);
+  const auto link = content.removeFromRight(kLinkIcon).withSizeKeepingCentre(kLinkIcon, kLinkIcon);
+  Icons::draw(g, Icon::ExternalLink, link.toFloat(), theme::kGray);
+  content.removeFromRight(m.gap);
   paint::text(g, username_, content, Fonts::sans(m.fontPx), theme::kWhite);
 }
 
@@ -45,8 +49,8 @@ void AccountMenu::ProfileRow::resized() {
 
 // Menu
 AccountMenu::Menu::Menu() {
-  addChildComponent(profile);
   addAndMakeVisible(settings);
+  addChildComponent(profile);
   addChildComponent(login);
   addChildComponent(logout);
   relayout();
@@ -66,8 +70,8 @@ void AccountMenu::Menu::paint(juce::Graphics& g) {
 
 void AccountMenu::Menu::resized() {
   auto area = contentBounds().reduced(kMenuPad);
-  if (profile.isVisible()) profile.setBounds(area.removeFromTop(MenuRow::kHeight));
   settings.setBounds(area.removeFromTop(MenuRow::kHeight));
+  if (profile.isVisible()) profile.setBounds(area.removeFromTop(MenuRow::kHeight));
   const auto second = area.removeFromTop(MenuRow::kHeight);
   login.setBounds(second);
   logout.setBounds(second);
