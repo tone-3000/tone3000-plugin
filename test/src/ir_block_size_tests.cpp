@@ -72,6 +72,19 @@ std::vector<float> renderLeft(TONE3000Processor& proc, const std::vector<float>&
   return out;
 }
 
+std::vector<float> renderLeft(juce::dsp::Convolution& convolver, const std::vector<float>& in) {
+  std::vector<float> out(in.size());
+  juce::AudioBuffer<float> buffer(2, kRealBlock);
+  for (size_t off = 0; off < in.size(); off += kRealBlock) {
+    buffer.copyFrom(0, 0, in.data() + off, kRealBlock);
+    buffer.copyFrom(1, 0, in.data() + off, kRealBlock);
+    juce::dsp::AudioBlock<float> block(buffer);
+    convolver.process(juce::dsp::ProcessContextReplacing<float>(block));
+    std::copy(buffer.getReadPointer(0), buffer.getReadPointer(0) + kRealBlock, out.begin() + off);
+  }
+  return out;
+}
+
 // Wall time to push `seconds` of audio through a one-IR-block chain in
 // kRealBlock callbacks, after the host prepared it with `promisedBlock`.
 double secondsToProcess(const char* irFile, const juce::String& gear, int promisedBlock,
@@ -233,4 +246,40 @@ TEST(IrBlockSizeTest, ReverbIrTailDoesNotSpikeOneCallback) {
   auto offline = makeIrProcessor("reverb-ir-mono-test.wav", "space", kBlock);
   offline->setNonRealtime(true);
   EXPECT_EQ(renderLeft(*offline, in, kBlock), out) << "the tail thread lost or moved samples";
+}
+
+TEST(IrBlockSizeTest, ReverbRenderEqualsOneJuceConvolution) {
+  constexpr const char* kIr = "reverb-ir-stereo-test.wav";
+  auto in = makeNoise(2 * static_cast<int>(kFs), 2027, 0.25f);
+  in.insert(in.begin(), static_cast<size_t>(kFs), 0.0f);
+  auto proc = makeIrProcessor(kIr, "space", kRealBlock);
+  proc->parameters.getParameter("gateEnabled")->setValueNotifyingHost(0.0f);
+  proc->setNonRealtime(true);
+  const auto actual = renderLeft(*proc, in, kRealBlock);
+
+  juce::dsp::Convolution convolver;
+  convolver.loadImpulseResponse(testFile(kIr), juce::dsp::Convolution::Stereo::yes,
+                                juce::dsp::Convolution::Trim::yes, 0,
+                                juce::dsp::Convolution::Normalise::no);
+  convolver.prepare({kFs, static_cast<juce::uint32>(kRealBlock), 2});
+  auto expected = renderLeft(convolver, in);
+  juce::dsp::IIR::Filter<float> dcBlocker(  // the processor's output stage
+      juce::dsp::IIR::Coefficients<float>::makeFirstOrderHighPass(kFs, 5.0f));
+  for (auto& sample : expected)
+    sample = dcBlocker.processSample(sample);
+
+  const size_t settled = static_cast<size_t>(kFs);
+  double cross = 0.0, energy = 0.0;
+  for (size_t i = settled; i < in.size(); ++i) {
+    cross += double(actual[i]) * expected[i];
+    energy += double(expected[i]) * expected[i];
+  }
+  const auto gain = static_cast<float>(cross / energy);
+  float peak = 0.0f, maxDiff = 0.0f;
+  for (size_t i = settled; i < in.size(); ++i) {
+    peak = std::max(peak, std::abs(actual[i]));
+    maxDiff = std::max(maxDiff, std::abs(actual[i] - gain * expected[i]));
+  }
+  ASSERT_GT(peak, 1e-3f);
+  EXPECT_LT(maxDiff, peak * 1e-4f) << "the split IR renders differently from one convolution";
 }
