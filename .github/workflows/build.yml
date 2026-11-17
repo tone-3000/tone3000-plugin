@@ -46,7 +46,7 @@ jobs:
           # macOS universal: build arm64 + x86_64 separately (sccache-friendly),
           # then lipo into one artefact tree before packaging.
           - name: macOS Universal
-            runs-on: macos-14
+            runs-on: macos-15
             os: macos
             arch: universal
           - name: Windows x64
@@ -538,7 +538,7 @@ jobs:
   # launchers, so this job builds cold.
   ios-simulator:
     name: iOS Simulator
-    runs-on: macos-14
+    runs-on: macos-15
     environment: builds
     env:
       T3K_PUBLISHABLE_KEY: ${{ secrets.T3K_PUBLISHABLE_KEY }}
