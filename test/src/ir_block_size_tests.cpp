@@ -199,3 +199,27 @@ TEST(IrBlockSizeTest, IrSoundIsIndependentOfPromisedAndDeliveredBlockSize) {
     }
   }
 }
+
+TEST(IrBlockSizeTest, ReverbIrTailDoesNotSpikeOneCallback) {
+  // Worst/median callback: ~65x with the 8192 head, ~28x with 2048 (#246).
+  constexpr int kBlock = 64;
+  auto proc = makeIrProcessor("reverb-ir-mono-test.wav", "space", kBlock);
+  const auto noise = makeNoise(kBlock, 7, 0.25f);
+  juce::AudioBuffer<float> buffer(2, kBlock);
+  juce::MidiBuffer midi;
+  std::vector<double> took(static_cast<size_t>(kFs) / kBlock);  // 1 s per pass
+  double spike = 1e9;
+  for (int pass = 0; pass < 5; ++pass) {
+    for (auto& t : took) {
+      buffer.copyFrom(0, 0, noise.data(), kBlock);
+      buffer.copyFrom(1, 0, noise.data(), kBlock);
+      const auto start = std::chrono::steady_clock::now();
+      proc->processBlock(buffer, midi);
+      t = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    }
+    const double worst = *std::max_element(took.begin(), took.end());
+    std::nth_element(took.begin(), took.begin() + took.size() / 2, took.end());
+    spike = std::min(spike, worst / took[took.size() / 2]);
+  }
+  EXPECT_LT(spike, 45.0) << "worst 64-frame callback is " << spike << "x the median";
+}
