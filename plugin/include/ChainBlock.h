@@ -10,6 +10,7 @@
 #include "BlockEq.h"
 #include "BlockSpectrum.h"
 #include "ChainOversampler.h"
+#include "IrTail.h"
 #include "NamEngine.h"
 
 // Chain block types
@@ -81,12 +82,19 @@ inline int irConvolverBlockSizeFor(int chainBaseBlockSize) noexcept {
 // block per callback); above it, the convolver was prepared at the cap and
 // the loop keeps every call within what it was prepared for.
 inline void processConvolverInChunks(juce::dsp::Convolution& convolver,
-                                     const juce::dsp::AudioBlock<float>& block) {
+                                     const juce::dsp::AudioBlock<float>& block,
+                                     IrTail* tail = nullptr,
+                                     bool offline = false) {
   const size_t numSamples = block.getNumSamples();
+  const bool tailHere = offline || numSamples > IrTail::kMaxThreadedBlock;
   constexpr size_t chunkSize = static_cast<size_t>(kIrConvolverMaxBlockSize);
   for (size_t start = 0; start < numSamples; start += chunkSize) {
     auto chunk = block.getSubBlock(start, std::min(chunkSize, numSamples - start));
+    if (tail != nullptr)
+      tail->push(chunk, !tailHere);
     convolver.process(juce::dsp::ProcessContextReplacing<float>(chunk));
+    if (tail != nullptr)
+      tail->addTo(chunk, offline);
   }
 }
 
@@ -203,10 +211,11 @@ struct ChainBlock {
   // convolverStereo: IR loaded with Stereo::yes; audio ch0 ⊗ IR ch0, audio ch1 ⊗ IR ch1.
   //   Only created when the IR file actually has >= 2 channels (true stereo IR).
   // The convolution engine is picked at load time by IR length: cab IRs use
-  // JUCE's uniform zero-latency engine, reverb-length IRs the two-stage
-  // non-uniform engine (also zero latency); see prepareBlockModelOffThread.
+  // JUCE's uniform zero-latency engine, reverb-length IRs the same for their
+  // head plus an irTail for the rest; see prepareBlockModelOffThread.
   std::unique_ptr<juce::dsp::Convolution> convolverMono;
   std::unique_ptr<juce::dsp::Convolution> convolverStereo;
+  std::unique_ptr<IrTail> irTailMono, irTailStereo;
   // Convolution always runs at kChainBaseSampleRate: when the chain is
   // oversampled this island decimates the block's wet path to the base rate
   // around the convolver and interpolates back (linear processing gains
@@ -277,6 +286,15 @@ struct ChainBlock {
   // Spectrum analyzer for the EQ editor backdrop. Only fed by the audio thread
   // while the UI has this block's EQ view open (atomic enabled flag).
   BlockSpectrum spectrum;
+
+  void resetIr() {
+    for (auto* convolver : {convolverMono.get(), convolverStereo.get()})
+      if (convolver != nullptr)
+        convolver->reset();
+    for (auto* tail : {irTailMono.get(), irTailStereo.get()})
+      if (tail != nullptr)
+        tail->reset();
+  }
 
   ChainBlock(const std::string& blockId, ChainBlockType blockType)
       : id(blockId), type(blockType), toneId(0), activeModelId(0), loaded(false),

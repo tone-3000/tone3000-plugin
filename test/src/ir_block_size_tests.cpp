@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <thread>
 
 namespace {
 
@@ -177,6 +178,7 @@ TEST(IrBlockSizeTest, IrSoundIsIndependentOfPromisedAndDeliveredBlockSize) {
   for (const char* irFile : {"cab-ir-test.wav", "reverb-ir-mono-test.wav"}) {
     const juce::String gear = juce::String(irFile).startsWith("cab") ? "cab" : "space";
     auto refProc = makeIrProcessor(irFile, gear, reference.promised);
+    refProc->setNonRealtime(true);
     const auto expected = renderLeft(*refProc, in, reference.delivered);
 
     float peak = 0.0f;
@@ -186,6 +188,7 @@ TEST(IrBlockSizeTest, IrSoundIsIndependentOfPromisedAndDeliveredBlockSize) {
 
     for (const Host host : others) {
       auto proc = makeIrProcessor(irFile, gear, host.promised);
+      proc->setNonRealtime(host.delivered <= IrTail::kMaxThreadedBlock);  // bigger runs it inline
       const auto actual = renderLeft(*proc, in, host.delivered);
       ASSERT_EQ(actual.size(), expected.size());
 
@@ -209,17 +212,25 @@ TEST(IrBlockSizeTest, ReverbIrTailDoesNotSpikeOneCallback) {
   juce::MidiBuffer midi;
   std::vector<double> took(static_cast<size_t>(kFs) / kBlock);  // 1 s per pass
   double spike = 1e9;
+  std::vector<float> in, out;
+  auto due = std::chrono::steady_clock::now();  // a host's pace: faster runs the tail inline
   for (int pass = 0; pass < 5; ++pass) {
     for (auto& t : took) {
+      std::this_thread::sleep_until(due += std::chrono::microseconds(1333));
       buffer.copyFrom(0, 0, noise.data(), kBlock);
       buffer.copyFrom(1, 0, noise.data(), kBlock);
       const auto start = std::chrono::steady_clock::now();
       proc->processBlock(buffer, midi);
       t = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+      in.insert(in.end(), noise.begin(), noise.end());
+      out.insert(out.end(), buffer.getReadPointer(0), buffer.getReadPointer(0) + kBlock);
     }
     const double worst = *std::max_element(took.begin(), took.end());
     std::nth_element(took.begin(), took.begin() + took.size() / 2, took.end());
     spike = std::min(spike, worst / took[took.size() / 2]);
   }
   EXPECT_LT(spike, 45.0) << "worst 64-frame callback is " << spike << "x the median";
+  auto offline = makeIrProcessor("reverb-ir-mono-test.wav", "space", kBlock);
+  offline->setNonRealtime(true);
+  EXPECT_EQ(renderLeft(*offline, in, kBlock), out) << "the tail thread lost or moved samples";
 }
