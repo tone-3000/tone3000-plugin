@@ -774,16 +774,24 @@ std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& mo
     juce::Logger::writeToLog("[ModelLoader] Fetching model without auth token (may be rejected)");
   }
 
+  int statusCode = 0;
   auto options =
       juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
           .withConnectionTimeoutMs(30000)
-          .withExtraHeaders(extraHeaders);
+          .withExtraHeaders(extraHeaders)
+          .withStatusCode(&statusCode);
 
   std::unique_ptr<juce::InputStream> stream(url.createInputStream(options));
 
   if (!stream) {
     juce::Logger::writeToLog("[ModelLoader] Failed to open stream for model URL (network down or "
                              "unreachable): " + modelUrl);
+    return {};
+  }
+
+  if (statusCode < 200 || statusCode >= 300) {
+    juce::Logger::writeToLog("[ModelLoader] Model URL returned HTTP " + juce::String(statusCode) +
+                             ": " + modelUrl);
     return {};
   }
 

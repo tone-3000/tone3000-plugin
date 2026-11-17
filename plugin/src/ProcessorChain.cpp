@@ -835,6 +835,9 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, int fir
       return;
     }
 
+    if (!applied)
+      block->modelCache.erase(firstModelId);
+
     if (block->activeModelId != firstModelId) {
       // Superseded by a newer switch/swap while this one loaded; that job
       // owns the block's loading state now; just make sure the block isn't
@@ -932,9 +935,11 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
       return;
     }
 
-    if (needsFetch) {
+    // States saved before the HTTP status check carry cached error bodies.
+    if (!applied)
+      block->modelCache.erase(modelId);
+    else if (needsFetch)
       block->modelCache[modelId] = modelData;
-    }
 
     if (block->activeModelId != modelId) {
       // Superseded by a newer switch/swap while this one downloaded; that
