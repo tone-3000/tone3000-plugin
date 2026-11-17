@@ -792,6 +792,32 @@ if (EXISTS "${_juce_x11_cpp}")
     endif()
 endif()
 
+# T3K_VST3_PROGRAM_CHANGE_MAPPING: JUCE's IMidiMapping overruns its CC table on program change (#232).
+set(_juce_vst3_cpp "${LIB_DIR}/juce/modules/juce_audio_plugin_client/juce_audio_plugin_client_VST3.cpp")
+file(READ "${_juce_vst3_cpp}" _juce_vst3_src)
+if (NOT _juce_vst3_src MATCHES "T3K_VST3_PROGRAM_CHANGE_MAPPING")
+    set(_juce_vst3_pc_old "        resultID = midiControllerToParameter[channel][midiControllerNumber];")
+    set(_juce_vst3_pc_new
+[=[        // T3K_VST3_PROGRAM_CHANGE_MAPPING
+        if (midiControllerNumber == Vst::kCtrlProgramChange && audioProcessor != nullptr
+            && audioProcessor->getParamForVSTParamID (audioProcessor->getProgramParamID()) != nullptr)
+        {
+            resultID = audioProcessor->getProgramParamID();
+            return kResultTrue;
+        }
+
+        if (! isPositiveAndBelow ((int) channel, (int) numMIDIChannels)
+            || ! isPositiveAndBelow ((int) midiControllerNumber, (int) Vst::kCountCtrlNumber))
+            return kResultFalse;
+
+]=])
+    string(REPLACE "${_juce_vst3_pc_old}" "${_juce_vst3_pc_new}${_juce_vst3_pc_old}" _juce_vst3_src "${_juce_vst3_src}")
+    if (NOT _juce_vst3_src MATCHES "T3K_VST3_PROGRAM_CHANGE_MAPPING")
+        message(FATAL_ERROR "T3K_VST3_PROGRAM_CHANGE_MAPPING: JUCE source layout changed; update the patch anchor.")
+    endif()
+    file(WRITE "${_juce_vst3_cpp}" "${_juce_vst3_src}")
+endif()
+
 # T3K_UIA_ANNOUNCE: stop Windows users with no screen reader hearing a
 # synthetic voice from the plugin. Stock JUCE implements
 # AccessibilityHandler::postAnnouncement on Windows by speaking the text
