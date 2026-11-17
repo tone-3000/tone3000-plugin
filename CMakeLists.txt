@@ -487,6 +487,28 @@ if (EXISTS "${_juce_adm_cpp}")
     endif()
 endif()
 
+# Linux: a host-bundled libcurl (Ardour's NSS build) has no trust anchors, so HTTPS fails (#279).
+set(_juce_net_curl "${LIB_DIR}/juce/modules/juce_core/native/juce_Network_curl.cpp")
+file(READ "${_juce_net_curl}" _juce_net_curl_src)
+if (NOT _juce_net_curl_src MATCHES "T3K_CURL_SYSTEM_CA")
+    string(REPLACE "            // handle special http request commands" [=[            // T3K_CURL_SYSTEM_CA
+            for (auto* bundle : { "/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt",
+                                  "/etc/ssl/ca-bundle.pem", "/etc/ssl/cert.pem" })
+            {
+                if (access (bundle, R_OK) == 0)
+                {
+                    symbols->curl_easy_setopt (curl, CURLOPT_CAINFO, bundle);
+                    break;
+                }
+            }
+
+            // handle special http request commands]=] _juce_net_curl_src "${_juce_net_curl_src}")
+    if (NOT _juce_net_curl_src MATCHES "T3K_CURL_SYSTEM_CA")
+        message(FATAL_ERROR "T3K_CURL_SYSTEM_CA: JUCE source layout changed; update the patch anchor.")
+    endif()
+    file(WRITE "${_juce_net_curl}" "${_juce_net_curl_src}")
+endif()
+
 # T3K_ALSA_CLOSE_STUCK_TIMEOUT: ALSAThread::close() waits a fixed 400ms for
 # the audio thread to exit before deciding it's stuck and force-closing the
 # ALSA handles from the message thread (closeNow(), i.e. snd_pcm_close while
