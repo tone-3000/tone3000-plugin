@@ -2591,7 +2591,8 @@ struct IrImageTests : juce::UnitTest {
         auto chain = backend.getChainState(-1);
         report(chain, image);
         backend.setChain(chain);
-        pump(100);
+        // The store sees the chain on a clock tick, which a slow runner can hold past a fixed pump.
+        LiveScenario::until([&] { return stereo->getHelpText() == help::text(key); });
         expectEquals(stereo->getHelpText(), help::text(key), image);
         expect(!stereo->isEnabled(), image);
         drive::click(root, *stereo);
