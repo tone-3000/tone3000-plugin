@@ -1330,7 +1330,8 @@ struct FocusPolicyTests : juce::UnitTest {
     inputMode->grabKeyboardFocus();
     expect(focused() == inputMode);
     expect(key(*peer, juce::KeyPress::returnKey));  // Enter presses the button
-    pump(30);
+    // The press is a posted message, and a slow paint ahead of it outlasts a fixed pump.
+    for (int i = 0; i < 300 && dynamic_cast<Popover*>(focused()) == nullptr; ++i) pump(10);
     auto* menu = dynamic_cast<Popover*>(focused());
     expect(menu != nullptr);
     if (menu != nullptr) {
