@@ -1,5 +1,7 @@
 #pragma once
 
+#include "StageProfiler.h"
+
 #include <array>
 #include <cassert>
 #include <vector>
@@ -96,8 +98,12 @@ public:
     assert(static_cast<size_t>(numFrames) * static_cast<size_t>(factor) <= osCapacityPerChannel);
 
     float** osPointers = workBuffers[0].pointers.data();
-    runUpCascade(inputs, osPointers, kChannels, numFrames);
+    {
+      T3K_PROFILE_STAGE("OversampleUp");
+      runUpCascade(inputs, osPointers, kChannels, numFrames);
+    }
     chainFn(osPointers, osPointers, numFrames * factor);
+    T3K_PROFILE_STAGE("OversampleDown");
     runDownCascade(osPointers, outputs, kChannels, numFrames * factor);
   }
 

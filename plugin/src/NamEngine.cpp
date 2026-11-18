@@ -1,6 +1,7 @@
 #include "NamEngine.h"
 #include "NAM/slimmable.h"
 #include "RtWorkerPool.h"
+#include "StageProfiler.h"
 #include <atomic>
 #include <stdexcept>
 
@@ -73,6 +74,7 @@ void NamEngine::setSlimmableSize(double val) {
 }
 
 void NamEngine::process(juce::AudioBuffer<float>& buffer, RtWorkerPool* pool, bool dualMono) {
+  T3K_PROFILE_STAGE("NamModel");
   if (!isPrepared || maxBlockSize < 1) {
     throw std::runtime_error("NamEngine must be prepared before processing");
   }
@@ -149,6 +151,7 @@ void NamEngine::process(juce::AudioBuffer<float>& buffer, RtWorkerPool* pool, bo
             auto& j = *static_cast<SlotJob*>(ctx);
             if (j.frames <= 0)
               return;
+            T3K_PROFILE_STAGE("NamPhase");
             try {
               NAM_SAMPLE* inputPtrs[] = {j.input};
               NAM_SAMPLE* outputPtrs[] = {j.output};
