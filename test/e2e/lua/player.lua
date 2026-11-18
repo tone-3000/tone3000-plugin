@@ -14,7 +14,7 @@ function dsp_ioconfig() return { { audio_in = -1, audio_out = -1 } } end
 function dsp_init(rate) step = 2 * math.pi * 110 / rate end
 
 function dsp_run(ins, outs, n_samples)
-	local p = phase
+	local p
 	for c = 1, #outs do
 		local out = outs[c]:array()
 		p = phase

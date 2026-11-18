@@ -62,7 +62,6 @@ def run_once(name, fmt, run_dir, ardour, args):
     marks = [m.groups() for line in out.splitlines() if (m := MARKER.match(line.strip()))]
     fails = [rest for kind, rest in marks if kind == "FAIL"]
     metrics = dict(rest.partition("=")[::2] for kind, rest in marks if kind == "METRIC")
-    # luasession aborts with 134 on teardown, so the exit code says nothing.
     ok = any(k == "PASS" for k, _ in marks) and not fails and ("DONE", "") in marks
     print(f"  {'PASS' if ok else 'FAIL'}  {name} {fmt}  {metrics}"
           + ("" if ok else f"  {fails or 'no DONE marker'}"))
