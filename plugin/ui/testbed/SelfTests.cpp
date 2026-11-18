@@ -1742,8 +1742,10 @@ struct ScrollSurfacesTests : juce::UnitTest {
     if (range() <= DragScroller::kKeyLineStep) return;
     const auto pos = [&] { return vertical ? scroller->getViewPositionY() : scroller->getViewPositionX(); };
     const auto rewind = [&] {
-      live.pump(500);  // any drag's momentum has run out
-      scroller->setViewPosition(0, 0);
+      for (int still = 0; still < 500; still += 10) {  // a drag's momentum outlasts any fixed wait on a slow machine
+        live.pump(10);
+        if (pos() != 0) scroller->setViewPosition(0, 0), still = 0;
+      }
     };
     const auto along = [&](float d) { return vertical ? juce::Point<float>(0.0f, d) : juce::Point<float>(d, 0.0f); };
     const auto inView = [&](const juce::Component& c) {
