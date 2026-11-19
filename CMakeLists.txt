@@ -173,12 +173,8 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
         execute_process(
             COMMAND "${GIT_EXECUTABLE}" apply --ignore-space-change "${_juce_nss_patch}"
             WORKING_DIRECTORY "${LIB_DIR}/juce"
-            RESULT_VARIABLE _juce_nss_patch_result
-            ERROR_VARIABLE _juce_nss_patch_error
+            COMMAND_ERROR_IS_FATAL ANY
         )
-        if (NOT _juce_nss_patch_result STREQUAL "0")
-            message(FATAL_ERROR "Cannot apply the JUCE Linux NSS CA fallback. Check the patch against the pinned JUCE version.\n${_juce_nss_patch_error}")
-        endif()
     endif()
 endif()
 
