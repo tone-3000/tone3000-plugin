@@ -1,0 +1,23 @@
+--- a/modules/juce_core/native/juce_Network_curl.cpp
++++ b/modules/juce_core/native/juce_Network_curl.cpp
+@@ -242,5 +242,20 @@
+         curl_version_info_data* data = symbols->curl_version_info (CURLVERSION_NOW);
+         jassert (data != nullptr);
+
++        // Ardour's bundled NSS curl may have no usable default trust roots.
++        if (data->ssl_version != nullptr && String (data->ssl_version).startsWith ("NSS/"))
++        {
++            for (const auto* bundle : { "/etc/ssl/certs/ca-certificates.crt",
++                                        "/etc/pki/tls/certs/ca-bundle.crt",
++                                        "/etc/ssl/ca-bundle.pem", "/etc/ssl/cert.pem" })
++            {
++                const File file (bundle);
++
++                if (file.existsAsFile() && file.hasReadAccess()
++                    && symbols->curl_easy_setopt (curl, CURLOPT_CAINFO, bundle) == CURLE_OK)
++                    break;
++            }
++        }
++
+         if (! requestHeaders.endsWithChar ('\n'))
+             requestHeaders << "\r\n";

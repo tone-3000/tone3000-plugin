@@ -155,8 +155,32 @@ CPMAddPackage(
 )
 
 # JUCE source patches (idempotent, configure time; JUCE lives in the
-# gitignored libs/). Each one is anchored on a T3K_* marker so a re-run is a
-# no-op, and fails loudly when the JUCE layout moves under it.
+# gitignored libs/). Reconfiguring skips applied patches, and incompatible
+# JUCE source changes fail loudly.
+
+# Ardour can supply an NSS curl with no usable default trust roots (#279).
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_package(Git REQUIRED)
+    set(_juce_nss_patch "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/juce-linux-nss-ca-fallback.patch")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_juce_nss_patch}")
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" apply --ignore-space-change --reverse --check "${_juce_nss_patch}"
+        WORKING_DIRECTORY "${LIB_DIR}/juce"
+        RESULT_VARIABLE _juce_nss_already_applied
+        ERROR_QUIET
+    )
+    if (NOT _juce_nss_already_applied STREQUAL "0")
+        execute_process(
+            COMMAND "${GIT_EXECUTABLE}" apply --ignore-space-change "${_juce_nss_patch}"
+            WORKING_DIRECTORY "${LIB_DIR}/juce"
+            RESULT_VARIABLE _juce_nss_patch_result
+            ERROR_VARIABLE _juce_nss_patch_error
+        )
+        if (NOT _juce_nss_patch_result STREQUAL "0")
+            message(FATAL_ERROR "Cannot apply the JUCE Linux NSS CA fallback. Check the patch against the pinned JUCE version.\n${_juce_nss_patch_error}")
+        endif()
+    endif()
+endif()
 
 # iOS: the explicit-rate shortcut skips the normal scan's final rate
 # negotiation/readback. Pimpl starts at 44.1 kHz, so a 48 kHz USB route can
