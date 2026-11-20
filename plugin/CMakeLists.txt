@@ -81,29 +81,29 @@ else()
     add_compile_definitions(HEADLESS=1)
 endif()
 
-# NeuralAmpModelerCore's own CMakeLists only knows Darwin, Linux and Windows
-# and hard-fails with "Unrecognized Platform!" on anything else, iOS included.
-# Nothing in this build actually needs it: the NAM static library below is
-# compiled here from NAM_SRC precisely to keep the submodule pristine, and the
-# include paths and NAM_ENABLE_A2_FAST definition it would set are directory
-# scoped (they never reached this target anyway; both are set explicitly
-# below). The only things it contributes are the submodule's own dev tools,
-# which are excluded from the default build a few lines down. So skip it on
-# iOS and leave every other platform on the existing path.
-if (NOT T3K_IOS)
-    add_subdirectory(NeuralAmpModelerCore)
-endif()
+# NeuralAmpModelerCore's own CMake project is deliberately not added here.
+# Nothing in this build needs it: the NAM static library below is compiled
+# from NAM_SRC precisely to keep the submodule pristine, and the include paths
+# and NAM_ENABLE_A2_FAST definition it would set are directory scoped (they
+# never reached this target anyway; both are set explicitly below). All it
+# contributed were the submodule's own dev tools (benchmarks, render,
+# run_tests), which were already excluded from the default build, at the cost
+# of tying our configure to a CMakeLists we don't control:
+#   - it hard-fails with "Unrecognized Platform!" on anything but Darwin,
+#     Linux and Windows, iOS included;
+#   - its tools/CMakeLists.txt calls source_group() with a stray positional
+#     argument, which CMake 4.5 turned into a hard configure error.
+# To build those tools, configure the submodule on its own (with CMake older
+# than 4.5 until that call is fixed upstream):
+#   cmake -S plugin/NeuralAmpModelerCore -B build-nam-tools
 
-# The NAM dev tools (benchmarks, render, run_tests) are only used by the
-# submodule's own CI; nothing in the plugin build needs them. They also don't
-# compile with MSVC (GCC/Clang-only flags, M_PI, POSIX dlfcn.h in run_tests),
-# and each one recompiles all NAM sources, wasting CI time. Keep them out of
-# the default build; build explicitly if needed: cmake --build build --target benchmodel
-foreach(_nam_tool tools loadmodel benchmodel render benchmodel_bufsize bench_a2_fast run_tests)
-    if(TARGET ${_nam_tool})
-        set_target_properties(${_nam_tool} PROPERTIES EXCLUDE_FROM_ALL TRUE)
-    endif()
-endforeach()
+# The one side effect of that project that did reach this build: with no
+# CMAKE_BUILD_TYPE on a single-config generator, it defaulted the cache to
+# Debug. Keep that, so a bare `cmake -B build -S .` behaves as before.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type (Release, Debug, RelWithDebInfo, MinSizeRel)" FORCE)
+    message(STATUS "No build type specified; defaulting to Debug")
+endif()
 
 # NAM static library - built here (not in submodule) to keep submodule pristine.
 # Must be linked with -force_load/--whole-archive so the static
