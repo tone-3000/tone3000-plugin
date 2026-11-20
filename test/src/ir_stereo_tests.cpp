@@ -190,6 +190,8 @@ TEST(IrStereoTest, ToggleSwitchesTheAudioAndTheReport) {
 
   letAudioGoIdle();
   ASSERT_TRUE(proc->setBlockIrStereo("blk-verb", false));
+  // Silence drains the stereo render from the per-channel filters; on aarch64 it outlasts 1 s.
+  processStereo(*proc, std::vector<float>(100 * kBlock, 0.0f));
   expectImage(*proc, "mono-user");
 
   letAudioGoIdle();

@@ -1330,7 +1330,8 @@ struct FocusPolicyTests : juce::UnitTest {
     inputMode->grabKeyboardFocus();
     expect(focused() == inputMode);
     expect(key(*peer, juce::KeyPress::returnKey));  // Enter presses the button
-    pump(30);
+    // The press is a posted message, and a slow paint ahead of it outlasts a fixed pump.
+    for (int i = 0; i < 300 && dynamic_cast<Popover*>(focused()) == nullptr; ++i) pump(10);
     auto* menu = dynamic_cast<Popover*>(focused());
     expect(menu != nullptr);
     if (menu != nullptr) {
@@ -1742,8 +1743,10 @@ struct ScrollSurfacesTests : juce::UnitTest {
     if (range() <= DragScroller::kKeyLineStep) return;
     const auto pos = [&] { return vertical ? scroller->getViewPositionY() : scroller->getViewPositionX(); };
     const auto rewind = [&] {
-      live.pump(500);  // any drag's momentum has run out
-      scroller->setViewPosition(0, 0);
+      for (int still = 0; still < 500; still += 10) {  // a drag's momentum outlasts any fixed wait on a slow machine
+        live.pump(10);
+        if (pos() != 0) scroller->setViewPosition(0, 0), still = 0;
+      }
     };
     const auto along = [&](float d) { return vertical ? juce::Point<float>(0.0f, d) : juce::Point<float>(d, 0.0f); };
     const auto inView = [&](const juce::Component& c) {
@@ -2589,7 +2592,8 @@ struct IrImageTests : juce::UnitTest {
         auto chain = backend.getChainState(-1);
         report(chain, image);
         backend.setChain(chain);
-        pump(100);
+        // The store sees the chain on a clock tick, which a slow runner can hold past a fixed pump.
+        LiveScenario::until([&] { return stereo->getHelpText() == help::text(key); });
         expectEquals(stereo->getHelpText(), help::text(key), image);
         expect(!stereo->isEnabled(), image);
         drive::click(root, *stereo);
