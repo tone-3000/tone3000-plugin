@@ -46,7 +46,7 @@ jobs:
           # macOS universal: build arm64 + x86_64 separately (sccache-friendly),
           # then lipo into one artefact tree before packaging.
           - name: macOS Universal
-            runs-on: macos-14
+            runs-on: macos-15
             os: macos
             arch: universal
           - name: Windows x64
@@ -212,11 +212,11 @@ jobs:
       # sccache key; cold cache pays ~2× compile once, warm cache hits both.
       - name: Build plugin (macOS arm64)
         if: matrix.os == 'macos'
-        run: cmake --build build-arm64 --config ${{ env.BUILD_TYPE }} --parallel
+        run: cmake --build build-arm64 --config ${{ env.BUILD_TYPE }} --parallel $(sysctl -n hw.ncpu)
 
       - name: Build plugin (macOS x86_64)
         if: matrix.os == 'macos'
-        run: cmake --build build-x86_64 --config ${{ env.BUILD_TYPE }} --parallel
+        run: cmake --build build-x86_64 --config ${{ env.BUILD_TYPE }} --parallel $(sysctl -n hw.ncpu)
 
       # The default build already compiles DspTests (registered with ctest),
       # so running the suite costs seconds. macOS runs the native arm64 build.
@@ -538,7 +538,7 @@ jobs:
   # launchers, so this job builds cold.
   ios-simulator:
     name: iOS Simulator
-    runs-on: macos-14
+    runs-on: macos-15
     environment: builds
     env:
       T3K_PUBLISHABLE_KEY: ${{ secrets.T3K_PUBLISHABLE_KEY }}
