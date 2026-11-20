@@ -183,6 +183,7 @@ std::pair<std::vector<float>, std::vector<float>> runAmpIrSetup(bool branched,
                                                                 const char* irFile,
                                                                 const std::vector<float>& in) {
   ChainTestProcessor proc;
+  proc.setNonRealtime(true);
   proc.setPlayConfigDetails(2, 2, kFs, kBlock);
   proc.prepareToPlay(kFs, kBlock);
 

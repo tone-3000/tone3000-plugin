@@ -607,6 +607,7 @@ private:
 
     std::unique_ptr<juce::dsp::Convolution> convolverMono;
     std::unique_ptr<juce::dsp::Convolution> convolverStereo;
+    std::unique_ptr<IrTail> irTailMono, irTailStereo;
     int irNumChannels = 1;
     int irLengthBaseSamples = 0;  // base-rate kernel length (tail reporting)
     // Kernel length vs the short/long cutoff. The block's classification

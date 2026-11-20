@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <thread>
 
 namespace {
 
@@ -67,6 +68,19 @@ std::vector<float> renderLeft(TONE3000Processor& proc, const std::vector<float>&
     proc.processBlock(view, midi);
     std::copy(view.getReadPointer(0), view.getReadPointer(0) + frames,
               out.begin() + off);
+  }
+  return out;
+}
+
+std::vector<float> renderLeft(juce::dsp::Convolution& convolver, const std::vector<float>& in) {
+  std::vector<float> out(in.size());
+  juce::AudioBuffer<float> buffer(2, kRealBlock);
+  for (size_t off = 0; off < in.size(); off += kRealBlock) {
+    buffer.copyFrom(0, 0, in.data() + off, kRealBlock);
+    buffer.copyFrom(1, 0, in.data() + off, kRealBlock);
+    juce::dsp::AudioBlock<float> block(buffer);
+    convolver.process(juce::dsp::ProcessContextReplacing<float>(block));
+    std::copy(buffer.getReadPointer(0), buffer.getReadPointer(0) + kRealBlock, out.begin() + off);
   }
   return out;
 }
@@ -177,6 +191,7 @@ TEST(IrBlockSizeTest, IrSoundIsIndependentOfPromisedAndDeliveredBlockSize) {
   for (const char* irFile : {"cab-ir-test.wav", "reverb-ir-mono-test.wav"}) {
     const juce::String gear = juce::String(irFile).startsWith("cab") ? "cab" : "space";
     auto refProc = makeIrProcessor(irFile, gear, reference.promised);
+    refProc->setNonRealtime(true);
     const auto expected = renderLeft(*refProc, in, reference.delivered);
 
     float peak = 0.0f;
@@ -186,6 +201,7 @@ TEST(IrBlockSizeTest, IrSoundIsIndependentOfPromisedAndDeliveredBlockSize) {
 
     for (const Host host : others) {
       auto proc = makeIrProcessor(irFile, gear, host.promised);
+      proc->setNonRealtime(host.delivered <= IrTail::kMaxThreadedBlock);  // bigger runs it inline
       const auto actual = renderLeft(*proc, in, host.delivered);
       ASSERT_EQ(actual.size(), expected.size());
 
@@ -198,4 +214,72 @@ TEST(IrBlockSizeTest, IrSoundIsIndependentOfPromisedAndDeliveredBlockSize) {
           << ", peak " << peak << ")";
     }
   }
+}
+
+TEST(IrBlockSizeTest, ReverbIrTailDoesNotSpikeOneCallback) {
+  // Worst/median callback: ~65x with the 8192 head, ~28x with 2048 (#246).
+  constexpr int kBlock = 64;
+  auto proc = makeIrProcessor("reverb-ir-mono-test.wav", "space", kBlock);
+  const auto noise = makeNoise(kBlock, 7, 0.25f);
+  juce::AudioBuffer<float> buffer(2, kBlock);
+  juce::MidiBuffer midi;
+  std::vector<double> took(static_cast<size_t>(kFs) / kBlock);  // 1 s per pass
+  double spike = 1e9;
+  std::vector<float> in, out;
+  auto due = std::chrono::steady_clock::now();  // a host's pace: faster runs the tail inline
+  for (int pass = 0; pass < 5; ++pass) {
+    for (auto& t : took) {
+      std::this_thread::sleep_until(due += std::chrono::microseconds(1333));
+      buffer.copyFrom(0, 0, noise.data(), kBlock);
+      buffer.copyFrom(1, 0, noise.data(), kBlock);
+      const auto start = std::chrono::steady_clock::now();
+      proc->processBlock(buffer, midi);
+      t = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+      in.insert(in.end(), noise.begin(), noise.end());
+      out.insert(out.end(), buffer.getReadPointer(0), buffer.getReadPointer(0) + kBlock);
+    }
+    const double worst = *std::max_element(took.begin(), took.end());
+    std::nth_element(took.begin(), took.begin() + took.size() / 2, took.end());
+    spike = std::min(spike, worst / took[took.size() / 2]);
+  }
+  EXPECT_LT(spike, 45.0) << "worst 64-frame callback is " << spike << "x the median";
+  auto offline = makeIrProcessor("reverb-ir-mono-test.wav", "space", kBlock);
+  offline->setNonRealtime(true);
+  EXPECT_EQ(renderLeft(*offline, in, kBlock), out) << "the tail thread lost or moved samples";
+}
+
+TEST(IrBlockSizeTest, ReverbRenderEqualsOneJuceConvolution) {
+  constexpr const char* kIr = "reverb-ir-stereo-test.wav";
+  auto in = makeNoise(2 * static_cast<int>(kFs), 2027, 0.25f);
+  in.insert(in.begin(), static_cast<size_t>(kFs), 0.0f);
+  auto proc = makeIrProcessor(kIr, "space", kRealBlock);
+  proc->parameters.getParameter("gateEnabled")->setValueNotifyingHost(0.0f);
+  proc->setNonRealtime(true);
+  const auto actual = renderLeft(*proc, in, kRealBlock);
+
+  juce::dsp::Convolution convolver;
+  convolver.loadImpulseResponse(testFile(kIr), juce::dsp::Convolution::Stereo::yes,
+                                juce::dsp::Convolution::Trim::yes, 0,
+                                juce::dsp::Convolution::Normalise::no);
+  convolver.prepare({kFs, static_cast<juce::uint32>(kRealBlock), 2});
+  auto expected = renderLeft(convolver, in);
+  juce::dsp::IIR::Filter<float> dcBlocker(  // the processor's output stage
+      juce::dsp::IIR::Coefficients<float>::makeFirstOrderHighPass(kFs, 5.0f));
+  for (auto& sample : expected)
+    sample = dcBlocker.processSample(sample);
+
+  const size_t settled = static_cast<size_t>(kFs);
+  double cross = 0.0, energy = 0.0;
+  for (size_t i = settled; i < in.size(); ++i) {
+    cross += double(actual[i]) * expected[i];
+    energy += double(expected[i]) * expected[i];
+  }
+  const auto gain = static_cast<float>(cross / energy);
+  float peak = 0.0f, maxDiff = 0.0f;
+  for (size_t i = settled; i < in.size(); ++i) {
+    peak = std::max(peak, std::abs(actual[i]));
+    maxDiff = std::max(maxDiff, std::abs(actual[i] - gain * expected[i]));
+  }
+  ASSERT_GT(peak, 1e-3f);
+  EXPECT_LT(maxDiff, peak * 1e-4f) << "the split IR renders differently from one convolution";
 }

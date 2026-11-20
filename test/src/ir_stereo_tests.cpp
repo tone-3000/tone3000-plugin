@@ -39,6 +39,7 @@ std::unique_ptr<ChainTestProcessor> makeRig(const juce::ValueTree& state,
                                             InputMode mode = InputMode::Stereo,
                                             int outChannels = 2) {
   auto proc = std::make_unique<ChainTestProcessor>();
+  proc->setNonRealtime(true);
   proc->setPlayConfigDetails(2, outChannels, kFs, kBlock);
   proc->prepareToPlay(kFs, kBlock);
   proc->restoreFromTree(state);
