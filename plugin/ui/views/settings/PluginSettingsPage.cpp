@@ -107,6 +107,9 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
       normalizeTip_(copy({TextRun::plain("Normalization is now controlled per block. Look for the "),
                           TextRun::inlineBox(inline_chrome::icon(Icon::Equal)),
                           TextRun::plain(" icon on each block, enabled by default.")})),
+      rememberFilters_("Remember Browser Filters",
+                       "Open the tone browser on the sort, gear, format and Calibrated / Verified filters you chose "
+                       "last, every time. Off: it opens on the defaults whenever the plugin window reopens."),
       calibrateParam_(services.backend, "calibrateInput"),
       dbuParam_(services.backend, "inputCalibrationLevel"),
       osEnabledParam_(services.backend, "osEnabled"),
@@ -170,6 +173,15 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
   normalize_.content().add(normalizeTip_);
   normalize_.onChange = [this](bool on) { services_.prefs.setBool(UiPrefs::kShowBlockNormalizeControl, on); };
   add(normalize_);
+
+  // Tone browser: on, the filters chosen now are remembered at once; off,
+  // the remembered ones go.
+  rememberFilters_.onChange = [this](bool on) {
+    services_.prefs.setBool(UiPrefs::kRememberBrowserFilters, on);
+    if (on) rememberFilters(services_.browser, services_.prefs);
+    else services_.prefs.remove(UiPrefs::kBrowserFilters);
+  };
+  add(rememberFilters_);
 
   // Calibration.
   calibration_.content().add(*dbu_);
@@ -252,7 +264,8 @@ PluginSettingsPage::~PluginSettingsPage() {
 
 void PluginSettingsPage::prefChanged(const juce::String& key) {
   if (key == UiPrefs::kShowHints || key == UiPrefs::kShowGateControl || key == UiPrefs::kShowPitchControl ||
-      key == UiPrefs::kShowBlockSizeControl || key == UiPrefs::kShowBlockNormalizeControl)
+      key == UiPrefs::kShowBlockSizeControl || key == UiPrefs::kShowBlockNormalizeControl ||
+      key == UiPrefs::kRememberBrowserFilters)
     syncPrefs();
 }
 
@@ -266,6 +279,7 @@ void PluginSettingsPage::syncPrefs() {
   const bool normalize = services_.prefs.getBool(UiPrefs::kShowBlockNormalizeControl, false);
   normalize_.setValue(normalize);
   normalize_.setExpanded(normalize);
+  rememberFilters_.setValue(services_.prefs.getBool(UiPrefs::kRememberBrowserFilters, false));
 }
 
 // Calibration and oversampling are host parameters (so a project reopens as
