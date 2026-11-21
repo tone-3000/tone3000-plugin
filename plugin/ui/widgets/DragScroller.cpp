@@ -26,6 +26,21 @@ bool DragScroller::panning(const juce::Component& c) {
   return false;
 }
 
+// Wheel-burst ownership. Wall clock rather than eventTime: the claimant's own
+// handler refreshes the stamp, so both sides agree without sharing one.
+bool DragScroller::wheelBurstLive() const {
+  return burstOwner_ != nullptr && juce::Time::currentTimeMillis() - burstAtMs_ < kWheelBurstMs;
+}
+
+void DragScroller::claimWheelBurst(const juce::Component& owner) {
+  burstOwner_ = const_cast<juce::Component*>(&owner);
+  burstAtMs_ = juce::Time::currentTimeMillis();
+}
+
+bool DragScroller::wheelBurstOwnedByOther(const juce::Component& c) const {
+  return wheelBurstLive() && burstOwner_.getComponent() != &c;
+}
+
 DragScroller::Span DragScroller::span() const {
   const auto* content = getViewedComponent();
   if (axis_ == Axis::vertical)
@@ -102,6 +117,14 @@ void DragScroller::globalFocusChanged(juce::Component* focused) {
 }
 
 void DragScroller::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) {
+  // Someone else claimed this burst, so leave the wheel alone until it ends:
+  // otherwise the value and the view would both change.
+  if (wheelBurstLive() && burstOwner_.getComponent() != this) return;
+
+  // About to pan (or hand the event to the parent Viewport), so this scroller
+  // owns the burst: a knob sliding under the stationary pointer must not edit.
+  claimWheelBurst(*this);
+
   if (axis_ != Axis::horizontal || e.mods.isAltDown() || e.mods.isCtrlDown() || e.mods.isCommandDown()) {
     juce::Viewport::mouseWheelMove(e, wheel);
     return;

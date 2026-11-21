@@ -74,6 +74,17 @@ public:
   // release should not count as a click (Clickable does this itself).
   static bool panning(const juce::Component& c);
 
+  // --- Wheel-burst ownership ------------------------------------------------
+  // A wheel burst (a run of events with no gap over kWheelBurstMs) belongs to
+  // whatever was under the pointer when it began. The first component to act
+  // claims it; both this scroller and any knob inside it then consult the
+  // claim. A Viewport is a recursive mouse listener on its content, so it
+  // receives the wheel over any descendant whether the child handled it or
+  // not, and a child cannot consume the event.
+  void claimWheelBurst(const juce::Component& owner);
+  // True when a live burst exists and `c` is not its owner.
+  bool wheelBurstOwnedByOther(const juce::Component& c) const;
+
   // The view moved (scroll, drag or programmatic).
   std::function<void()> onScroll;
 
@@ -88,6 +99,10 @@ private:
   // gesture pans as it did.
   static constexpr float kWheelPixelsPerUnit = 14 * 16;
 
+  // A gap longer than this starts a new burst. Matches the knob's own gesture
+  // timer, so one burst is one host automation gesture either way.
+  static constexpr int kWheelBurstMs = 250;
+
   // The view's offset, length and the content's length along the axis.
   struct Span {
     int position, visible, content;
@@ -96,10 +111,15 @@ private:
   void setSpanPosition(int position);
   void globalFocusChanged(juce::Component* focused) override;
 
+  bool wheelBurstLive() const;
+
   const Axis axis_;
   const Keys keys_;
   int focusMargin_ = 0;
   float wheelRemainder_ = 0;  // sub-pixel carry between wheel events
+  // Who owns the current wheel burst, and when it last saw an event.
+  juce::Component::SafePointer<juce::Component> burstOwner_;
+  juce::int64 burstAtMs_ = 0;
 };
 
 }  // namespace t3k::ui
