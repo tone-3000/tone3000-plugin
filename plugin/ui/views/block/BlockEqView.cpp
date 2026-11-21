@@ -82,6 +82,20 @@ void paintGrid(juce::Graphics& g) {
 // Web WheelEvent / pointer deltas: Shift = 8x finer.
 double fineFactor(const juce::ModifierKeys& mods) { return mods.isShiftDown() ? 1.0 / 8.0 : 1.0; }
 
+// Screen-reader readings: whole units, no abbreviations a reader spells out
+// ("1.2 kHz", not the chip's "1.20k").
+juce::String spokenFreq(double hz) {
+  if (hz < 1000) return juce::String(juce::roundToInt(hz)) + " Hz";
+  auto k = juce::String(hz / 1000.0, hz >= 10000 ? 1 : 2);
+  if (k.containsChar('.')) k = k.trimCharactersAtEnd("0").trimCharactersAtEnd(".");
+  return k + " kHz";
+}
+juce::String spokenGain(double db) { return juce::String(db, 1) + " dB"; }
+juce::String spokenQ(double q) { return juce::String(q, 2); }
+// Keyboard frequency and Q steps scale with the value (about a twelfth of
+// an octave for frequency) so a press moves as far at 50 Hz as at 5 kHz.
+constexpr double kFreqStep = 0.06, kQStep = 0.1, kGainStep = 0.5, kGainFineStep = 0.1;
+
 // Layers of the body, bottom to top: grid, spectrum, then the editor
 // (Graph or Sliders). The spectrum ticks 30x a second, so it is the only
 // layer a tick invalidates; the others are rasterised once and blitted
@@ -148,11 +162,75 @@ public:
     freq_.onCommit = [this](const juce::String& raw) { commitFreq(raw); };
     gain_.onCommit = [this](const juce::String& raw) { commitGain(raw); };
     q_.onCommit = [this](const juce::String& raw) { commitQ(raw); };
+    wireChipKeys();
     chrome_.setInterceptsMouseClicks(false, true);
     addAndMakeVisible(chrome_);
     rebuildTypeSelector();
+    // Keyboard: the graph itself is the band selector (arrows choose a band,
+    // Delete resets it); Tab goes on to the type and the chips. A click
+    // never takes focus, so the pointer path is unchanged.
+    setWantsKeyboardFocus(true);
+    setMouseClickGrabsKeyboardFocus(false);
     setSize(kGraphW, eq::kBodyH);
   }
+
+  // Keyboard / screen reader: "Band 2, Bell", valued "220 Hz, 3.0 dB, Q 0.71".
+  juce::String bandTitle() const {
+    if (!hasSelection()) return "Band";
+    return "Band " + juce::String(selected_ + 1) + ", " + eq::typeLabel(selectedBandRef().type);
+  }
+  juce::String bandValue() const {
+    if (!hasSelection()) return {};
+    const auto& band = selectedBandRef();
+    juce::String text = spokenFreq(band.freqHz) + ", ";
+    if (eq::hasGain(band.type)) text << spokenGain(band.gainDb) << ", ";
+    return text + "Q " + spokenQ(band.q);
+  }
+  int selectedBand() const { return selected_; }
+  int bandCount() const { return static_cast<int>(owner_.bands().size()); }
+  void selectFromKeyboard(int index) {
+    if (!owner_.eqEnabled() || index < 0 || index >= bandCount() || index == selected_) return;
+    select(index);
+    if (auto* handler = getAccessibilityHandler()) {
+      handler->notifyAccessibilityEvent(juce::AccessibilityEvent::titleChanged);
+      handler->notifyAccessibilityEvent(juce::AccessibilityEvent::valueChanged);
+    }
+#if JUCE_MAC
+    // VoiceOver reads a slider's new value, not its new name.
+    help::announce(bandTitle());
+#endif
+  }
+
+  bool keyPressed(const juce::KeyPress& key) override {
+    using KP = juce::KeyPress;
+    const int n = bandCount();
+    // Only while the graph itself has focus: keys a focused chip or type
+    // cell leaves unhandled bubble up here and must not move the band.
+    if (n == 0 || !hasKeyboardFocus(false)) return false;
+    if (key.isKeyCode(KP::rightKey) || key.isKeyCode(KP::upKey)) {
+      selectFromKeyboard(std::min(n - 1, selected_ + 1));
+    } else if (key.isKeyCode(KP::leftKey) || key.isKeyCode(KP::downKey)) {
+      selectFromKeyboard(std::max(0, selected_ - 1));
+    } else if (key.isKeyCode(KP::homeKey)) {
+      selectFromKeyboard(0);
+    } else if (key.isKeyCode(KP::endKey)) {
+      selectFromKeyboard(n - 1);
+    } else if (key.isKeyCode(KP::deleteKey) || key.isKeyCode(KP::backspaceKey)) {
+      if (editable()) {
+        resetBand(selected_);
+        const auto& band = selectedBandRef();
+        help::announce(eq::hasGain(band.type) ? juce::String("Reset to 0 dB") : "Q reset to " + spokenQ(band.q));
+      }
+    } else {
+      return false;
+    }
+    return true;
+  }
+
+  void focusGained(FocusChangeType) override { repaint(); }
+  void focusLost(FocusChangeType) override { repaint(); }
+
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
   void bandsChanged() {
     const auto& bands = owner_.bands();
@@ -164,6 +242,11 @@ public:
     }
     syncChips();
     repaint();
+    if (hasKeyboardFocus(false))
+      if (auto* handler = getAccessibilityHandler()) {
+        handler->notifyAccessibilityEvent(juce::AccessibilityEvent::titleChanged);
+        handler->notifyAccessibilityEvent(juce::AccessibilityEvent::valueChanged);
+      }
   }
 
   void enabledChanged(bool animate) {
@@ -171,6 +254,9 @@ public:
     if (!on) cancelGesture();
     fade_.animateTo(on ? 1.0f : theme::kDisabledOpacity, kDimMs, animate);
     setInterceptsMouseClicks(on, on);
+    // Bypassed: the type and chips go inert for the keyboard too, as they
+    // already are for the pointer.
+    chrome_.setEnabled(on);
   }
 
   void visibilityChanged() override {
@@ -196,6 +282,11 @@ public:
       g.drawText(band, row, juce::Justification::centredLeft, false);
       g.setColour(theme::kMuted);
       g.drawText(rest, row.translated(bandW, 0), juce::Justification::centredLeft, false);
+    }
+    // Keyboard focus only (a click never focuses the graph), in the faders' style.
+    if (hasKeyboardFocus(false)) {
+      g.setColour(theme::kWhite);
+      g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(1), 4, 1);
     }
   }
 
@@ -523,29 +614,87 @@ private:
                   juce::String(band.gainDb, 1));
     gain_.setDisabledLook(!gain);
     q_.setText(juce::String(band.q, 2), juce::String(band.q, 2));
+    freq_.setSpokenValue(spokenFreq(band.freqHz));
+    gain_.setSpokenValue(gain ? spokenGain(band.gainDb) : juce::String("None"));
+    q_.setSpokenValue(spokenQ(band.q));
+  }
+
+  // Chip names and keyboard steps. The chips' painted labels stay as they are.
+  void wireChipKeys() {
+    freq_.setTitle("Frequency");
+    gain_.setTitle("Gain");
+    q_.setTitle("Q");
+    using Numeric = EditableChip::Numeric;
+    freq_.numeric = [this]() -> std::optional<Numeric> {
+      if (!hasSelection()) return std::nullopt;
+      const double hz = selectedBandRef().freqHz;
+      const auto [lo, hi] = owner_.freqRange(selected_);
+      return Numeric{hz, lo, hi, hz * kFreqStep, hz * kFreqStep / 8};
+    };
+    freq_.onSetValue = [this](double hz) {
+      if (!editable()) return;
+      auto band = selectedBandRef();
+      const auto [lo, hi] = owner_.freqRange(selected_);
+      band.freqHz = juce::jlimit(lo, hi, hz);
+      owner_.updateBand(selected_, band);
+    };
+    gain_.numeric = [this]() -> std::optional<Numeric> {
+      if (!hasSelection() || !eq::hasGain(selectedBandRef().type)) return std::nullopt;
+      return Numeric{selectedBandRef().gainDb, -kEqMaxAbsGainDb, kEqMaxAbsGainDb, kGainStep, kGainFineStep};
+    };
+    gain_.onSetValue = [this](double db) {
+      if (!editable() || !eq::hasGain(selectedBandRef().type)) return;
+      auto band = selectedBandRef();
+      band.gainDb = juce::jlimit(-kEqMaxAbsGainDb, kEqMaxAbsGainDb, std::round(db * 10.0) / 10.0);
+      owner_.updateBand(selected_, band);
+    };
+    q_.numeric = [this]() -> std::optional<Numeric> {
+      if (!hasSelection()) return std::nullopt;
+      const double q = selectedBandRef().q;
+      return Numeric{q, kEqMinQ, kEqMaxQ, q * kQStep, q * kQStep / 8};
+    };
+    q_.onSetValue = [this](double q) {
+      if (!editable()) return;
+      auto band = selectedBandRef();
+      band.q = juce::jlimit(kEqMinQ, kEqMaxQ, q);
+      owner_.updateBand(selected_, band);
+    };
+  }
+  bool hasSelection() const { return selected_ >= 0 && selected_ < static_cast<int>(owner_.bands().size()); }
+  bool editable() const { return owner_.eqEnabled() && hasSelection(); }
+  const EqBand& selectedBandRef() const { return owner_.bands()[static_cast<size_t>(selected_)]; }
+
+  // A typed entry that isn't a number used to drop silently; say so. Values
+  // past the band's limits are clamped, and the reader hears where to.
+  static void announceRejected() { help::announce("Not a number"); }
+  static void announceClamped(double typed, double applied, const juce::String& spoken) {
+    if (std::abs(typed - applied) > 1e-9) help::announce("Limited to " + spoken);
   }
 
   void commitFreq(const juce::String& raw) {
     const auto parsed = eq::parseFreq(raw);
-    if (!parsed) return;
+    if (!parsed) return announceRejected();
     auto band = owner_.bands()[static_cast<size_t>(selected_)];
     const auto [lo, hi] = owner_.freqRange(selected_);
     band.freqHz = juce::jlimit(lo, hi, *parsed);
     owner_.updateBand(selected_, band);
+    announceClamped(*parsed, band.freqHz, spokenFreq(band.freqHz));
   }
   void commitGain(const juce::String& raw) {
     const auto parsed = eq::parseDecimal(raw);
-    if (!parsed) return;
+    if (!parsed) return announceRejected();
     auto band = owner_.bands()[static_cast<size_t>(selected_)];
     band.gainDb = juce::jlimit(-kEqMaxAbsGainDb, kEqMaxAbsGainDb, *parsed);
     owner_.updateBand(selected_, band);
+    announceClamped(*parsed, band.gainDb, spokenGain(band.gainDb));
   }
   void commitQ(const juce::String& raw) {
     const auto parsed = eq::parseDecimal(raw);
-    if (!parsed) return;
+    if (!parsed) return announceRejected();
     auto band = owner_.bands()[static_cast<size_t>(selected_)];
     band.q = juce::jlimit(kEqMinQ, kEqMaxQ, *parsed);
     owner_.updateBand(selected_, band);
+    announceClamped(*parsed, band.q, spokenQ(band.q));
   }
 
   BlockEqView& owner_;
@@ -562,17 +711,120 @@ private:
   AlphaTween fade_{*this};
 };
 
+namespace {
+// The graph as a slider over the bands: its value is the selected band
+// (1..N, so VoiceOver's increment steps to the next), read out as that
+// band's settings; its name follows the selection ("Band 2, Bell").
+class BandSelectValue : public juce::AccessibilityValueInterface {
+public:
+  explicit BandSelectValue(BlockEqView::Graph& graph) : graph_(graph) {}
+  bool isReadOnly() const override { return false; }
+  double getCurrentValue() const override { return graph_.selectedBand() + 1; }
+  juce::String getCurrentValueAsString() const override { return graph_.bandValue(); }
+  void setValue(double value) override {
+    if (graph_.isShowing()) graph_.grabKeyboardFocus();
+    graph_.selectFromKeyboard(juce::roundToInt(value) - 1);
+  }
+  void setValueAsString(const juce::String& text) override { setValue(text.getDoubleValue()); }
+  AccessibleValueRange getRange() const override {
+    const int n = graph_.bandCount();
+    if (n < 1) return {};
+    return {{1.0, static_cast<double>(n)}, 1.0};
+  }
+
+private:
+  BlockEqView::Graph& graph_;
+};
+
+struct GraphHandler : juce::AccessibilityHandler {
+  GraphHandler(BlockEqView::Graph& graph, Interfaces interfaces)
+      : juce::AccessibilityHandler(graph, juce::AccessibilityRole::slider, juce::AccessibilityActions(),
+                                   std::move(interfaces)),
+        graph_(graph) {}
+  juce::String getTitle() const override { return graph_.bandTitle(); }
+  juce::String getHelp() const override { return "Arrows choose a band, Delete resets it."; }
+  BlockEqView::Graph& graph_;
+};
+}  // namespace
+
+std::unique_ptr<juce::AccessibilityHandler> BlockEqView::Graph::createAccessibilityHandler() {
+  juce::AccessibilityHandler::Interfaces interfaces;
+  interfaces.value = std::make_unique<BandSelectValue>(*this);
+  return std::make_unique<GraphHandler>(*this, std::move(interfaces));
+}
+
 // Sliders view
 class BlockEqView::Sliders : public juce::Component, private juce::Timer {
+  class KeyboardFader : public juce::Slider {
+  public:
+    void paint(juce::Graphics& g) override {
+      if (hasKeyboardFocus(false)) {
+        g.setColour(theme::kWhite);
+        g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(1), 4, 1);
+      }
+    }
+    bool keyPressed(const juce::KeyPress& key) override {
+      const auto code = key.getKeyCode();
+      // Delete / Backspace: the double-click reset, for the keyboard.
+      if (code == juce::KeyPress::deleteKey || code == juce::KeyPress::backspaceKey) {
+        setValue(0.0, juce::sendNotificationSync);
+        help::announce("Reset to 0 dB");
+        return true;
+      }
+      if (code != juce::KeyPress::upKey && code != juce::KeyPress::downKey &&
+          code != juce::KeyPress::homeKey && code != juce::KeyPress::endKey) return false;
+      const double step = key.getModifiers().isShiftDown() ? 0.1 : 0.5;
+      setValue(code == juce::KeyPress::homeKey ? getMinimum() : code == juce::KeyPress::endKey ? getMaximum() :
+               getValue() + (code == juce::KeyPress::upKey ? step : -step), juce::sendNotificationSync);
+      return true;
+    }
+  };
+  std::vector<std::unique_ptr<KeyboardFader>> faders_;
 public:
   explicit Sliders(BlockEqView& owner) : owner_(owner) { setSize(kGraphW, eq::kBodyH); }
 
-  void bandsChanged() { repaint(); }
+  void bandsChanged() {
+    const auto& bands = owner_.bands();
+    while (faders_.size() < bands.size()) {
+      const int index = static_cast<int>(faders_.size());
+      auto fader = std::make_unique<KeyboardFader>();
+      fader->setSliderStyle(juce::Slider::LinearVertical);
+      fader->setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+      fader->setRange(-kEqMaxAbsGainDb, kEqMaxAbsGainDb, 0.1);
+      fader->setTextValueSuffix(" dB");
+      fader->setWantsKeyboardFocus(true);
+      fader->setDescription("Delete resets to 0 dB.");
+      fader->setInterceptsMouseClicks(false, false);
+      fader->onValueChange = [this, index] {
+        auto band = owner_.bands()[static_cast<size_t>(index)];
+        band.gainDb = faders_[static_cast<size_t>(index)]->getValue();
+        owner_.updateBand(index, band);
+      };
+      addAndMakeVisible(*fader);
+      faders_.push_back(std::move(fader));
+    }
+    while (faders_.size() > bands.size()) faders_.pop_back();
+    for (size_t i = 0; i < bands.size(); ++i) {
+      // Inside the EQ group already, so "Band 2, 220 Hz"; the unit rides on
+      // the value ("-2.5 dB").
+      faders_[i]->setTitle("Band " + juce::String(static_cast<int>(i) + 1) + ", " + eq::formatFreq(bands[i].freqHz));
+      faders_[i]->setValue(bands[i].gainDb, juce::dontSendNotification);
+      faders_[i]->setEnabled(owner_.eqEnabled() && eq::hasGain(bands[i].type));
+    }
+    resized();
+    repaint();
+  }
+
+  void resized() override {
+    for (size_t i = 0; i < faders_.size(); ++i)
+      faders_[i]->setBounds(juce::roundToInt(columnCentre(static_cast<int>(i))) - 20, 16, 40, getHeight() - 32);
+  }
 
   void enabledChanged(bool animate) {
     const bool on = owner_.eqEnabled();
     fade_.animateTo(on ? 1.0f : theme::kDisabledOpacity, kDimMs, animate);
     setInterceptsMouseClicks(on, on);
+    bandsChanged();
   }
 
   void paint(juce::Graphics& g) override {
@@ -802,6 +1054,11 @@ BlockEqView::BlockEqView(Services& services, std::string blockId)
 }
 
 BlockEqView::~BlockEqView() = default;
+
+void BlockEqView::focusControls() {
+  juce::KeyboardFocusTraverser traverser;
+  if (auto* first = traverser.getDefaultComponent(this)) first->grabKeyboardFocus();
+}
 
 void BlockEqView::setBands(const std::vector<EqBand>& bands) {
   if (dragging_) return;

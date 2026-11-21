@@ -12,21 +12,48 @@ const juce::String kEmptyCopy = "No MIDI devices found. Connect one and it will 
 
 // InputRow
 // Check indicator, device name, and "enabled" on the right while it is.
+// Screen readers: a check box named after the device, checked while it is
+// enabled; Space or Enter toggles it.
 class MidiInputsSection::InputRow : public juce::Component {
 public:
   InputRow(MidiInputDevice input, std::function<void(bool)> onToggle)
       : input_(std::move(input)), onToggle_(std::move(onToggle)) {
     setName(input_.name);
+    setTitle(input_.name);
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    // Keyboard and screen readers only: a click does not move focus, so the
+    // mouse behaves as before.
+    setWantsKeyboardFocus(true);
+    setMouseClickGrabsKeyboardFocus(false);
   }
 
   static int height() { return 2 * kRowPadY + ChoiceIndicator::kSize; }
   const juce::String& id() const { return input_.id; }
+  bool inputEnabled() const { return input_.enabled; }
 
   void setEnabled(bool enabled) {
     if (input_.enabled == enabled) return;
     input_.enabled = enabled;
     repaint();
+    if (auto* handler = getAccessibilityHandler())
+      handler->notifyAccessibilityEvent(juce::AccessibilityEvent::valueChanged);
+  }
+
+  void toggle() {
+    if (isShowing()) grabKeyboardFocus();
+    onToggle_(!input_.enabled);
+  }
+
+  bool keyPressed(const juce::KeyPress& key) override {
+    if (key.getModifiers().isAnyModifierKeyDown()) return false;
+    const int code = key.getKeyCode();
+    if (code != juce::KeyPress::spaceKey && code != juce::KeyPress::returnKey) return false;
+    toggle();
+    return true;
+  }
+
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override {
+    return std::make_unique<Handler>(*this);
   }
 
   void paint(juce::Graphics& g) override {
@@ -57,6 +84,27 @@ public:
   }
 
 private:
+  class Handler : public juce::AccessibilityHandler {
+  public:
+    explicit Handler(InputRow& row)
+        : juce::AccessibilityHandler(row, juce::AccessibilityRole::toggleButton, actions(row)), row_(row) {}
+
+    juce::AccessibleState getCurrentState() const override {
+      auto state = juce::AccessibilityHandler::getCurrentState().withCheckable();
+      return row_.inputEnabled() ? state.withChecked() : state;
+    }
+
+  private:
+    static juce::AccessibilityActions actions(InputRow& row) {
+      juce::AccessibilityActions result;
+      result.addAction(juce::AccessibilityActionType::press, [&row] { row.toggle(); });
+      result.addAction(juce::AccessibilityActionType::toggle, [&row] { row.toggle(); });
+      return result;
+    }
+
+    InputRow& row_;
+  };
+
   MidiInputDevice input_;
   std::function<void(bool)> onToggle_;
 };

@@ -5,6 +5,7 @@
 
 #include "GalleryGeometry.h"
 #include "core/Fonts.h"
+#include "core/Help.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
 #include "widgets/Popover.h"
@@ -135,6 +136,11 @@ void ChainView::syncFromNative() {
 void ChainView::applyLanes() {
   const auto& state = services_.chain.state();
   const int tile = tileSize();
+  // Reparenting a tile across lanes clears JUCE focus, including when a
+  // keyboard move is committed or cancelled. Restore the same block.
+  std::string focusedId;
+  if (auto* focused = dynamic_cast<GalleryTile*>(juce::Component::getCurrentlyFocusedComponent()))
+    if (isParentOf(focused)) focusedId = focused->blockId();
   // A block that changed lanes keeps its tile. Mid-drag this is what keeps
   // the gesture alive: the tile under the pointer is the component JUCE
   // delivers the drag to, and rebuilding the lane it left would destroy it
@@ -150,11 +156,32 @@ void ChainView::applyLanes() {
   left_.setItems(lanes_.left, tile);
   right_.setItems(lanes_.right, tile);
   right_.setVisible(stereo());
+  for (const auto side : {ChainSide::left, ChainSide::right}) {
+    const auto& items = lanes_.of(side);
+    for (size_t i = 0; i < items.size(); ++i) {
+      const auto& item = items[i];
+      if (auto* tile = lane(side).tileFor(item.blockId)) {
+        juce::String context = stereo() ? (side == ChainSide::left ? "Left chain, " : "Right chain, ") : "Chain, ";
+        context += "position " + juce::String(static_cast<int>(i) + 1) + " of " + juce::String(static_cast<int>(items.size()));
+        if (item.isTone()) {
+          context += item.params.enabled ? ", enabled" : ", bypassed";
+          context += item.loadFailed ? ", load failed" : (item.modelLoading || !item.loaded ? ", loading" : ", loaded");
+        } else context += ", add tone slot";
+        // Short: read on every visit. The move keys are spoken when a move
+        // starts ("Moving ...").
+        tile->setDescription(context + ". Enter opens, Space moves, Shift+F10 for more.");
+      }
+    }
+  }
   for (auto* l : {&left_, &right_}) {
     l->setBranch(stereo(), stereo() ? state.branch : std::nullopt, stereo() && !dragging_);
     l->setCanPaste(state.canPasteBlock);
   }
   layoutColumn();
+  if (!focusedId.empty())
+    if (const auto side = laneOf(lanes_, focusedId))
+      if (auto* tile = lane(*side).tileFor(focusedId))
+        if (tile->isShowing() && !tile->hasKeyboardFocus(false)) tile->grabKeyboardFocus();
 }
 
 std::optional<ChainSide> ChainView::laneOf(const Lanes& lanes, const std::string& id) const {
@@ -430,24 +457,27 @@ void ChainView::finishSort() {
   applyLanes();
 }
 
-// Stock keyboard sorting: Space or Enter on a focused tile picks it up,
+// Keyboard sorting: Space on a focused tile picks it up (Enter opens),
 // arrows snap it one slot per press (up/down cross lanes in stereo),
 // Space/Enter drops, Escape cancels.
 bool ChainView::tileKey(GalleryTile& tile, const juce::KeyPress& key) {
   const bool pick = key == juce::KeyPress::spaceKey || key == juce::KeyPress::returnKey;
   if (dragging_ && key == juce::KeyPress::escapeKey) {
     cancelSort();
+    help::announce("Move cancelled");
     return true;
   }
   if (!dragging_) {
     if (!pick) return false;
     beginSort(tile, /*pointer=*/false);
     markActive();
+    help::announce("Moving " + tile.getTitle() + ". Use arrow keys to move, Space to drop, Escape to cancel.");
     return true;
   }
   if (!keyboardSort_ || tile.blockId() != activeId_) return false;
   if (pick) {
     commitSort();
+    help::announce("Move complete");
     return true;
   }
   const auto side = laneOf(lanes_, activeId_);
@@ -465,7 +495,11 @@ bool ChainView::tileKey(GalleryTile& tile, const juce::KeyPress& key) {
   }
   // The travelling tile stays in view, as it would under a finger.
   if (const auto now = laneOf(lanes_, activeId_))
-    if (auto* moved = lane(*now).tileFor(activeId_)) scroller_->reveal(*moved, gallery::kEdgeFadeWidth);
+    if (auto* moved = lane(*now).tileFor(activeId_)) {
+      scroller_->reveal(*moved, gallery::kEdgeFadeWidth);
+      help::announce(moved->getTitle() + ", " + (stereo() ? (*now == ChainSide::left ? "left chain, " : "right chain, ") : "")
+                     + "position " + juce::String(lane(*now).indexOf(activeId_) + 1));
+    }
   return true;
 }
 

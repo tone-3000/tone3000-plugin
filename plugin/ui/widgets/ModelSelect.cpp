@@ -3,6 +3,7 @@
 #include "LoadingDots.h"
 #include "Popover.h"
 #include "core/Fonts.h"
+#include "core/Help.h"
 #include "core/Icons.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
@@ -149,10 +150,22 @@ private:
 
 // ModelSelect
 namespace {
-// The name area between the steppers; a click toggles the list.
+// The name area between the steppers; a click toggles the list. To the
+// keyboard and screen readers it is the "Model" combo box: a Tab stop that
+// a click never focuses (the host keeps its keys), Enter opens the list.
+// It paints nothing itself, so focus changes nothing on screen.
 class Trigger : public juce::Component {
 public:
   std::function<void()> onClick;
+  std::function<juce::String()> valueText;  // "Clean, 3 of 12"
+  std::function<bool()> listOpen;
+
+  Trigger() {
+    setTitle("Model");
+    setWantsKeyboardFocus(true);
+    setMouseClickGrabsKeyboardFocus(false);
+  }
+
   void mouseUp(const juce::MouseEvent& e) override {
     // Local bounds, not Component::contains(): that walks up to the window
     // peer, which an offscreen (testbed) render doesn't have. A press that
@@ -160,6 +173,50 @@ public:
     if (e.mods.isLeftButtonDown() && getLocalBounds().contains(e.getPosition()) &&
         !e.mouseWasDraggedSinceMouseDown() && onClick)
       onClick();
+  }
+
+  // Only reached with keyboard focus, which only Tab or a screen reader gives.
+  bool keyPressed(const juce::KeyPress& key) override {
+    if (key == juce::KeyPress::returnKey && onClick) {
+      onClick();
+      return true;
+    }
+    return false;
+  }
+
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override {
+    class Value : public juce::AccessibilityTextValueInterface {
+    public:
+      explicit Value(Trigger& t) : t_(t) {}
+      bool isReadOnly() const override { return true; }
+      juce::String getCurrentValueAsString() const override { return t_.valueText ? t_.valueText() : juce::String(); }
+      void setValueAsString(const juce::String&) override {}
+
+    private:
+      Trigger& t_;
+    };
+    struct Handler : juce::AccessibilityHandler {
+      Handler(Trigger& t, juce::AccessibilityActions actions, Interfaces interfaces)
+          : juce::AccessibilityHandler(t, juce::AccessibilityRole::comboBox, std::move(actions), std::move(interfaces)),
+            t_(t) {}
+      juce::String getHelp() const override { return "Enter opens the model list."; }
+      juce::AccessibleState getCurrentState() const override {
+        auto state = juce::AccessibilityHandler::getCurrentState().withExpandable();
+        return t_.listOpen && t_.listOpen() ? state.withExpanded() : state.withCollapsed();
+      }
+      Trigger& t_;
+    };
+    auto press = [this] {
+      if (isShowing()) grabKeyboardFocus();  // the list hands focus back on close
+      if (onClick) onClick();
+    };
+    juce::AccessibilityHandler::Interfaces interfaces;
+    interfaces.value = std::make_unique<Value>(*this);
+    return std::make_unique<Handler>(*this,
+                                     juce::AccessibilityActions()
+                                         .addAction(juce::AccessibilityActionType::press, press)
+                                         .addAction(juce::AccessibilityActionType::showMenu, press),
+                                     std::move(interfaces));
   }
 };
 }  // namespace
@@ -175,6 +232,8 @@ ModelSelect::ModelSelect()
   auto trigger = std::make_unique<Trigger>();
   trigger->setName("model select");
   trigger->onClick = [this] { toggleList(); };
+  trigger->valueText = [this] { return spokenValue(currentIndex()); };
+  trigger->listOpen = [this] { return list_->isOpen(); };
   trigger->setMouseCursor(juce::MouseCursor::PointingHandCursor);
   trigger_ = std::move(trigger);
   addAndMakeVisible(*trigger_);
@@ -203,6 +262,15 @@ void ModelSelect::setValue(const juce::String& id) {
   syncSteppers();
   syncList();
   repaint();
+  if (auto* handler = trigger_->getAccessibilityHandler())
+    handler->notifyAccessibilityEvent(juce::AccessibilityEvent::valueChanged);
+}
+
+// "Clean, 3 of 12" (the painted name and n/N tally, for screen readers).
+juce::String ModelSelect::spokenValue(int index) const {
+  if (index < 0 || index >= static_cast<int>(options_.size())) return "No model selected";
+  const int total = juce::jmax(total_, static_cast<int>(options_.size()));
+  return options_[static_cast<size_t>(index)].name + ", " + juce::String(index + 1) + " of " + juce::String(total);
 }
 
 void ModelSelect::setTotalCount(int total) {
@@ -219,12 +287,14 @@ void ModelSelect::setLoading(bool loading) {
 void ModelSelect::setDisabledLook(bool disabled) {
   setAlpha(disabled ? theme::kDisabledOpacity : 1.0f);
   setInterceptsMouseClicks(!disabled, !disabled);
+  trigger_->setEnabled(!disabled);  // nor reachable by keyboard / screen reader press
   if (disabled) list_->close();
 }
 
 void ModelSelect::step(int delta) {
   const int i = currentIndex() + delta;
   if (i < 0 || i >= static_cast<int>(options_.size())) return;
+  help::announce(spokenValue(i));  // the stepper keeps its own name; say where it went
   if (onChange) onChange(options_[static_cast<size_t>(i)].id);
 }
 

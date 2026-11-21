@@ -378,11 +378,11 @@ keys must keep working while the plugin window is in front: Space and Enter
 that no control takes go back to the host (`NativeEditor::keyPressed`, the
 `keyPassthrough.ts` port). The rules that make both true:
 
-- **Clicks never focus a control** except text fields. Every button derives
-  from `widgets/Clickable` (`juce::Button` + `setMouseClickGrabsKeyboardFocus
-  (false)`); `Knob`, `Paginator`, `GalleryTile` and `Popover` do the same. So
-  after any mouse work nothing is focused and Space / Enter reach the DAW.
-- **Tab / Shift+Tab** is the only way to a non-text control. JUCE ignores Tab
+- **Clicks and screen-reader actions focus controls.** Buttons, knobs,
+  gallery tiles and selection controls retain focus after interaction so
+  NVDA stays inside the plugin. Knob value changes through accessibility
+  APIs also take focus. Background presses keep the existing focus.
+- **Tab / Shift+Tab** walks the controls. JUCE ignores Tab
   with nothing focused, so `PluginRoot::FocusPolicy` listens on the window's
   component and enters the order at either end (focus resting on a
   standalone `DocumentWindow` counts as nothing). Tab order is JUCE's
@@ -391,26 +391,35 @@ that no control takes go back to the host (`NativeEditor::keyPressed`, the
   a keyboard focus container, since the chrome it covers is still showing
   to JUCE and must stay out of reach. Every scroller scrolls each stop into
   view (5.8).
-- **Focus is dropped** by Escape (`PluginRoot::keyPressed`) and by a press
-  anywhere outside the focused control's line of ancestry (`FocusPolicy::
-  mouseDown`, a recursive mouse listener on the root). `PluginRoot`,
-  `SettingsScreen` and `Popover` are keyboard focus containers whose traverser
-  (`core/NoDefaultFocus`) names no default, so removing the focused
-  component or activating the window focuses nothing instead of JUCE's
-  "first focusable".
+- **Escape** can clear ordinary control focus; dialogs and popovers handle
+  it by closing and restoring focus. Initial window activation has no
+  default focused control. Opening or closing the tone browser transfers
+  existing plugin focus into the visible screen.
 - **With a control Tab-focused**: Enter presses a button (`juce::Button`);
   Space is not taken by buttons and still reaches the host. Knobs take the
   arrows (Shift: fine), Home/End and Enter (type-in editor); a chip takes
   Backspace/Delete as its ×; the paginator takes Left/Right; a gallery tile
-  takes Space/Enter + arrows for keyboard sorting (5.9). A text field takes
+  takes Enter to open, Shift+F10 for its menu, and Space + arrows for keyboard sorting (5.9).
+  Space/Enter drops the moving tile; Escape cancels. A text field takes
   everything, as it always did.
 - **Popovers** take focus on open and are their own focus container: Tab /
   arrows walk the rows (scrolling them into view), Enter picks. A panel the
   keyboard opened (its anchor had focus) or walked returns focus to its
-  anchor on close; a mouse-opened one leaves nothing focused.
+  anchor on close; clicks now focus the anchor too.
 - **No focus ring**: the design has none for now (`Clickable` and the tiles
   draw no focus state), so the keyboard path is for screen-reader users
   first.
+
+- **Advanced panels**: Shift+F10 and the Windows Applications key open
+  Gate, Pitch and Spread/Align panels from their focused controls. Escape
+  restores the exact opener even when the panel is anchored to another
+  control. Windows delivers Applications through key-state callbacks.
+- **Toggle state**: text toggles and segmented controls expose checked
+  state through JUCE toggle-button accessibility handlers. Spread/Align
+  transfer focus to the replacement switch when their layout collapses or
+  expands, and announce the new on/off state. An effect group stays visible
+  while its power control has keyboard focus, then follows its view setting
+  once focus leaves.
 
 Screen readers get JUCE's accessibility tree with these names and roles:
 `Clickable` reports a button (checkable when toggleable) named by
@@ -430,6 +439,49 @@ On Windows, stock JUCE speaks these itself through SAPI in-process whenever
 screen reader heard a voice from the plugin. The `T3K_UIA_ANNOUNCE` patch in
 the root `CMakeLists.txt` raises a UIA notification event instead, so only an
 actual screen reader reads them.
+
+Custom knobs notify `valueChanged` after their stored value changes, including
+host updates. Power/link/armed icon buttons and parameter text toggles expose
+their actual checked state; the shared handler offers a toggle action only
+for toggleable buttons. Preset search announces its result count after typing
+settles, selection announces the preset name (model preparation can still be
+pending), and the preset bar exposes the current name. Gallery tiles support
+Enter to open and Shift+F10 to reach local-file loading; keyboard sorting
+announces pickup, position, completion and cancellation. These changes do not
+alter painting or layout. Verify spoken feedback with NVDA in both Standalone
+and a VST3 host: unit tests verify semantics and keyboard routes, not speech.
+
+Audio-settings dropdowns expose their labels and current values as combo boxes.
+Enter, Space, arrow keys or F4 open the options; arrows move through them,
+Enter selects, and Escape cancels and restores focus. Unchanged device polling
+preserves option focus, and audio-device errors are announced to screen readers.
+
+Chain state transitions announce model loading, completion and failure for
+online tones, local files and preset blocks. Repeated polling and parameter
+changes stay quiet. Gallery descriptions include lane, position (including
+add-tone slots), enabled/bypassed state and loading state. Space picks up a
+focused tile; Left/Right move it, Up/Down change stereo lanes, Space/Enter
+drop it, and Escape cancels. Focus follows the block through lane changes,
+commit and cancellation. These routes are covered by live-window tests.
+
+Update and connection dialogs expose their complete messages, take focus when
+the editor becomes active, contain Tab/Shift+Tab, and dismiss with Escape.
+The update's Close/Escape action retains its existing one-day reminder policy.
+Closing restores the opening control if it still exists. Rich message text is
+readable, and inline links have keyboard targets without changing painting.
+Preset text fields dismiss their popup on Escape; context menus and native
+file pickers restore their surviving opening control. Sign-in status remains
+available as the screen's description after its announcement has finished.
+
+For manual checks in the actual Standalone/VST3, launch the app or host with
+`T3K_DIALOG_PREVIEW=1` in that process's environment. With focus inside the
+editor, Ctrl+Alt+Shift+U opens a sample update notice, O an offline dialog,
+and S a secure-connection dialog. Preview buttons never download updates,
+retry network calls or persist snoozes. Escape closes the sample. Normal
+launches leave these shortcuts disabled. On Windows/REAPER, enter the plugin
+window with F6 before using the shortcuts; verify NVDA speech and focus return
+manually. Tests exercise the same components and simulated host entry, not
+REAPER's native F6 handoff or NVDA's spoken output.
 
 Tests: `--selftest` runs the naming rules and each control's keys
 (`AccessibilityTests`) and the whole focus policy in a real window

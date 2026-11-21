@@ -30,6 +30,8 @@ public:
   void setWidth(int width);
   void setAutoHeight(bool autoHeight) { autoHeight_ = autoHeight; }
   int lineCount() const;
+  juce::String plainText() const;
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
   float heightFor(float width) const override;
 
@@ -54,6 +56,8 @@ private:
   mutable std::unique_ptr<RichFlow> flow_;
   mutable float flowWidth_ = -1;
   bool autoHeight_ = true;
+  class AccessibleLink;
+  std::vector<std::unique_ptr<juce::Component>> links_;
 };
 
 }  // namespace t3k::ui

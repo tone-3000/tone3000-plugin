@@ -21,11 +21,13 @@
 #include "services/ChainStore.h"
 #include "services/Services.h"
 #include "widgets/DragScroller.h"
+#include "widgets/AccessibleGroup.h"
 
 namespace t3k::ui {
 
 class ChainView : public juce::Component, public TileDragHost, private ChainStore::Listener {
 public:
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override { return a11y::ignoredHandler(*this); }
   // Shared 24px under the header and above the faceplate (Plugin.tsx).
   static constexpr int kPadY = 24;
   static constexpr int kPadX = 24;

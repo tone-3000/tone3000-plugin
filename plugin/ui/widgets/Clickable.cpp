@@ -7,18 +7,44 @@ namespace t3k::ui {
 
 namespace {
 
+juce::AccessibilityActions buttonActions(Clickable& button) {
+  juce::AccessibilityActions actions;
+  actions.addAction(juce::AccessibilityActionType::press, [&button] {
+    if (button.isShowing()) button.grabKeyboardFocus();
+    button.triggerClick();
+  });
+  if (button.isToggleable())
+    actions.addAction(juce::AccessibilityActionType::toggle, [&button] {
+      if (button.isShowing()) button.grabKeyboardFocus();
+      button.triggerClick();
+    });
+  return actions;
+}
+
 // juce::Button's own handler is not public; this is the part of it we use
 // (a pressable button, checked when toggleable) with our naming.
 class Handler : public juce::AccessibilityHandler {
 public:
   explicit Handler(Clickable& button)
-      : juce::AccessibilityHandler(button, juce::AccessibilityRole::button,
-                                   juce::AccessibilityActions().addAction(juce::AccessibilityActionType::press,
-                                                                          [&button] { button.triggerClick(); })),
+      : juce::AccessibilityHandler(button, button.isToggleable() ? juce::AccessibilityRole::toggleButton
+                                                                : juce::AccessibilityRole::button,
+                                   buttonActions(button)),
         button_(button) {}
 
   juce::String getTitle() const override { return button_.accessibleName(); }
-  juce::String getHelp() const override { return button_.getHelpText(); }
+  juce::String getHelp() const override {
+    const auto hint = button_.getHelpText();
+    // A title that stands in for the hint's short lead ("Solo left" for
+    // "Solo L: ..."): the lead is the same name, so it is not spoken again.
+    // The hint bar keeps the whole hint.
+    const auto hintLead = help::lead(hint);
+    const bool titled = button_.getTitle().isNotEmpty() && hint.startsWith(hintLead + ":");
+    auto text = help::spokenHelp(titled ? hintLead : button_.accessibleName(), hint);
+    const auto keys = button_.spokenKeys();
+    if (keys.isEmpty()) return text;
+    if (text.isNotEmpty() && !text.endsWithChar('.')) text << ".";
+    return (text + " " + keys).trim();
+  }
   juce::AccessibleState getCurrentState() const override {
     auto state = juce::AccessibilityHandler::getCurrentState();
     if (!button_.isToggleable()) return state;

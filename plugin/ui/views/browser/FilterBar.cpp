@@ -47,6 +47,7 @@ FilterBar::FilterBar(Services& services, BrowserState& state)
       state_(state),
       query_(state.query),
       scroller_(std::make_unique<DragScroller>(DragScroller::Axis::horizontal)) {
+  a11y::makeGroup(*this, "Filters");
   scroller_->setViewedComponent(&row_, false);
   scroller_->setFocusMargin(kBleed);  // a focused chip clears the edge fade
   scroller_->onScroll = [this] { repaint(); };
@@ -128,9 +129,13 @@ void FilterBar::buildChips() {
   for (const auto& filter : labels::gearFilters()) {
     auto chip = std::make_unique<FilterChip>(filter.label);
     chip->setLeadingSvg(gear::svgFor(filter.id));
+    chip->setToggleable(true);
     chip->setHelpText(help::text(help::Key::browserGear));
-    chip->onPress = [this, id = juce::String(filter.id)] {
+    chip->setDescription(juce::String::fromUTF8(filter.description));  // screen readers only
+    chip->onPress = [this, id = juce::String(filter.id), label = juce::String(filter.label)] {
       query_.gear = query_.gear == id ? juce::String() : id;
+      help::announce(query_.gear.isEmpty() ? "Showing all gear types. Loading tones."
+                                          : "Filtering tones by " + label + ". Loading tones.");
       changed();
     };
     row_.addChildComponent(*chip);
@@ -176,7 +181,11 @@ void FilterBar::setExpanded(bool expanded) {
 // Every chip's label / active state from the query, then the row.
 void FilterBar::refreshChips() {
   const auto& gearFilters = labels::gearFilters();
-  for (size_t i = 0; i < gear_.size(); ++i) gear_[i]->setActive(query_.gear == gearFilters[i].id);
+  for (size_t i = 0; i < gear_.size(); ++i) {
+    const bool active = query_.gear == gearFilters[i].id;
+    gear_[i]->setActive(active);
+    gear_[i]->setToggleState(active, juce::dontSendNotification);
+  }
   if (gearOnly_) {
     // Signed out: nothing but the gear chips exists to the user.
     for (auto* chip : {toggle_.get(), sort_.get(), format_.get(), tags_.get(), makes_.get(), creators_.get(),

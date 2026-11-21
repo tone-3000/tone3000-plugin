@@ -82,7 +82,10 @@ private:
   int indent_ = 0;
 };
 
-// Radio row with label + description (NAM A2 Size options etc).
+// Radio row with label + description (NAM A2 Size options etc). For screen
+// readers and the keyboard it is a radio button: Tab reaches it, Space or
+// Enter selects it, and the arrow keys move to (and select) the previous or
+// next RadioOption sharing its parent.
 class RadioOption : public FormItem {
 public:
   static constexpr int kGap = 12;
@@ -99,9 +102,16 @@ public:
   void paint(juce::Graphics& g) override;
   void resized() override;
   void mouseUp(const juce::MouseEvent& e) override;
+  bool keyPressed(const juce::KeyPress& key) override;
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+
+  // Focus this option and select it (keyboard and screen-reader activation).
+  void choose();
 
 private:
   static float textX() { return ChoiceIndicator::kSize + kGap; }
+  // Choose the sibling RadioOption `step` places away, wrapping at the ends.
+  void chooseSibling(int step);
 
   juce::String label_;
   Paragraph description_;

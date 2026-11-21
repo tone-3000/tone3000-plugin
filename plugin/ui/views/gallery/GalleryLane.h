@@ -18,11 +18,13 @@
 #include "ToneTile.h"
 #include "model/ChainState.h"
 #include "services/Services.h"
+#include "widgets/AccessibleGroup.h"
 
 namespace t3k::ui {
 
 class GalleryLane : public juce::Component {
 public:
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override { return a11y::groupHandler(*this); }
   GalleryLane(Services& services, ChainSide side);
   ~GalleryLane() override;
 

@@ -139,6 +139,10 @@ bool FilterChip::keyPressed(const juce::KeyPress& key) {
   return true;
 }
 
+juce::String FilterChip::spokenKeys() const {
+  return trailing_ == Trailing::clear && !locked_ && onClear ? juce::String("Delete clears.") : juce::String();
+}
+
 void FilterChip::paintButton(juce::Graphics& g, bool, bool) {
   const auto box = getLocalBounds().toFloat();
   const float radius = box.getHeight() / 2;

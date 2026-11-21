@@ -1,6 +1,7 @@
 #include "GalleryTile.h"
 
 #include "GalleryGeometry.h"
+#include "widgets/SecondaryPress.h"
 
 namespace t3k::ui {
 
@@ -15,6 +16,7 @@ GalleryTile::GalleryTile(Services& services, std::string blockId, int size)
   // as the web didn't.
   setWantsKeyboardFocus(true);
   setMouseClickGrabsKeyboardFocus(false);
+  setDescription("Enter opens, Space moves, Shift+F10 for more.");
 }
 
 GalleryTile::~GalleryTile() {
@@ -60,7 +62,11 @@ void GalleryTile::openMenu(juce::Point<int> at) {
     juce::MessageManager::callAsync([old] { delete old; });
   }
   menu_ = std::make_unique<ContextMenu>(menuItems());
-  menu_->onDismiss = [this] { menuDismissedMs_ = juce::Time::currentTimeMillis(); };
+  const bool keyboardOpened = hasKeyboardFocus(false);
+  menu_->onDismiss = [this, keyboardOpened] {
+    menuDismissedMs_ = juce::Time::currentTimeMillis();
+    if (keyboardOpened && isShowing()) grabKeyboardFocus();
+  };
   menu_->openAtPoint(*this, at);
 }
 
@@ -157,12 +163,42 @@ void GalleryTile::mouseUp(const juce::MouseEvent& e) {
 }
 
 bool GalleryTile::keyPressed(const juce::KeyPress& key) {
+  // Enter opens the same editor/browser as a screen-reader press. Space
+  // retains keyboard sorting; Enter can still drop a travelling tile.
+  if (!travelling_ && key == juce::KeyPress::returnKey) {
+    open();
+    return true;
+  }
+  if (!travelling_ && ((key.isKeyCode(juce::KeyPress::F10Key) && key.getModifiers().isShiftDown()) ||
+                       key.isKeyCode(kWindowsApplicationsKey))) {
+    openMenu(getLocalBounds().getCentre());
+    return true;
+  }
   if (auto* h = host()) return h->tileKey(*this, key);
   return false;
 }
 
 std::unique_ptr<juce::AccessibilityHandler> GalleryTile::createAccessibilityHandler() {
-  return std::make_unique<juce::AccessibilityHandler>(
+  // The hint (title, then mouse gestures) stays in the hint bar; a screen
+  // reader has the title as the name and the keys in the description.
+  struct Handler : juce::AccessibilityHandler {
+    Handler(GalleryTile& tile, juce::AccessibilityRole role, juce::AccessibilityActions actions)
+        : juce::AccessibilityHandler(tile, role, std::move(actions)), tile_(tile) {}
+    juce::String getHelp() const override { return {}; }
+    // The load state rides on the description, so it is there on every
+    // visit, not only in the one-time announcement.
+    juce::String getDescription() const override {
+      const auto description = tile_.getDescription();
+      const auto status = tile_.accessibleStatus();
+      if (status.isEmpty() || description.containsIgnoreCase(status)) return description;
+      const auto lead = status.substring(0, 1).toUpperCase() + status.substring(1);
+      return description.isEmpty() ? lead : lead + ". " + description;
+    }
+
+  private:
+    GalleryTile& tile_;
+  };
+  return std::make_unique<Handler>(
       *this, juce::AccessibilityRole::button,
       juce::AccessibilityActions()
           .addAction(juce::AccessibilityActionType::press, [this] { open(); })

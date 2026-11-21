@@ -156,6 +156,7 @@ BlockCard::~BlockCard() {
 
 // Construction
 void BlockCard::buildHeader() {
+  pre_.setToggleable(true);
   power_.onClick = [this] {
     enabled_ = !enabled_;
     services_.chain.setBlockParam(block_.blockId, "enabled", enabled_);
@@ -429,6 +430,8 @@ void BlockCard::syncMeta() {
   state.error = infoError_;
   state.tone = infoTone_;
   state.pageUrl = tonePageUrl();
+  for (const auto& model : block_.tone.models)
+    if (model.id == block_.activeModelId) { state.modelName = model.name; break; }
   meta_.info().setState(state);
   // Fetch in flight: the panel steps aside and the body shows BusyOverlay.
   meta_.setInfoVisible(showInfo_ && !infoLoading_);
@@ -517,6 +520,10 @@ void BlockCard::setShowEq(bool show) {
     body_.addAndMakeVisible(*eqEditor_);
   }
   setBodyView();
+  if (showEq_ && eq_.hasKeyboardFocus(false)) {
+    eqEditor_->focusControls();
+    if (eq_.hasKeyboardFocus(false)) eqPower_.grabKeyboardFocus();
+  }
 }
 
 void BlockCard::setShowInfo(bool show) {
@@ -530,6 +537,7 @@ void BlockCard::setShowInfo(bool show) {
   }
   setBodyView();
   if (onInfoVisible) onInfoVisible(showInfo_);
+  if (showInfo_ && !infoLoading_ && info_.hasKeyboardFocus(false)) meta_.info().focusContent();
 }
 
 void BlockCard::setBodyView() {
@@ -736,6 +744,7 @@ void BlockCard::fetchInfo(bool background) {
         syncMeta();
         setSize(kWidth, preferredHeight());
         resized();
+        if (showInfo_ && !infoLoading_ && info_.hasKeyboardFocus(false)) meta_.info().focusContent();
       }));
 }
 

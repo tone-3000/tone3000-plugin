@@ -10,11 +10,13 @@
 #include "services/Services.h"
 #include "ChainScreen.h"
 #include "widgets/DbMeter.h"
+#include "widgets/AccessibleGroup.h"
 
 namespace t3k::ui {
 
 class MainScreen : public juce::Component, private ChainStore::Listener {
 public:
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override { return a11y::groupHandler(*this); }
   static constexpr int kPadX = 24;
   // 358 matches Figma's BLOCK column (title + gap + card).
   static constexpr int kMeterHeight = 358;

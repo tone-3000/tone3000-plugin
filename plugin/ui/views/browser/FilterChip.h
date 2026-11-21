@@ -48,6 +48,7 @@ public:
   void resized() override;
   void mouseDown(const juce::MouseEvent& e) override;
   bool keyPressed(const juce::KeyPress& key) override;
+  juce::String spokenKeys() const override;
 
 private:
   enum class Glyph { none, icon, svg, badge, avatar };

@@ -118,6 +118,7 @@ private:
 
   OutsidePressWatcher watcher_{*this};
   std::unique_ptr<TargetWatcher> target_;
+  juce::Component::SafePointer<juce::Component> contextReturnFocus_;
   juce::Time openingPress_;  // mouseDownTime of the press that opened the panel
   bool keyboardOpened_ = false;  // the anchor had focus at open(): focus returns to it
   juce::Component::SafePointer<juce::Component> anchor_;

@@ -32,6 +32,30 @@ $UI --selftest                               # unit tests: pure logic + the focu
 $UI --bench [--seconds 10] [--json out.json] [phase…]   # CPU / memory under load (--list for the phases)
 ```
 
+### Accessibility tests
+
+Accessibility checks live with the other UI tests in
+[`testbed/SelfTests.cpp`](testbed/SelfTests.cpp). The suites cover control
+names, roles and keyboard actions, focus policy, presets, dialogs, chain
+controls, audio settings and settings navigation. They run through
+`UiTestbed --selftest` and the `UiSelfTests` CTest entry.
+
+To run just the accessibility suites in a Windows Release build:
+
+```powershell
+$env:T3K_UI_TEST_FILTER = 'accessibility'
+& ./build/plugin/ui/testbed/UiTestbed_artefacts/Release/UiTestbed.exe --selftest
+Remove-Item Env:T3K_UI_TEST_FILTER
+```
+
+Use `Dialog accessibility` for just the dialog regressions, or `Focus policy`
+and `Settings keyboard` for the related keyboard suites. GUI tests need an
+unlocked desktop and may bring test windows to the foreground.
+
+Actual screen-reader speech and host focus handoff also need manual testing.
+See [`testbed/accessibility.md`](testbed/accessibility.md) for the retained
+NVDA, REAPER and standalone dialog procedure and its opt-in launcher.
+
 ### Measuring load
 
 `--bench` runs the UI under a realistic load, one phase at a time. Each phase

@@ -45,11 +45,15 @@ void LocalFiles::pick(const std::string& targetBlockId, Kind kind, juce::Compone
 #endif
 
   juce::WeakReference<LocalFiles> self(this);
-  chooser_->launchAsync(flags, [self, target = targetBlockId](const juce::FileChooser& chooser) {
+  juce::Component::SafePointer<juce::Component> returnFocus(juce::Component::getCurrentlyFocusedComponent());
+  chooser_->launchAsync(flags, [self, returnFocus, target = targetBlockId](const juce::FileChooser& chooser) {
     if (self == nullptr) return;
     // Release the chooser once its callback unwinds (it is the caller).
-    juce::MessageManager::callAsync([self] {
-      if (self != nullptr) self->chooser_.reset();
+    juce::MessageManager::callAsync([self, returnFocus] {
+      if (self == nullptr) return;
+      self->chooser_.reset();
+      if (returnFocus != nullptr && returnFocus->isShowing() && returnFocus->getWantsKeyboardFocus())
+        returnFocus->grabKeyboardFocus();
     });
 #if JUCE_IOS
     // URL results, not paths: the picked files live outside the sandbox and

@@ -47,6 +47,7 @@ public:
   bool isOpen() const;
   void open();
   void close();
+  juce::String selectedLabel() const;
 
   std::function<void(const juce::String& value)> onChange;
 
@@ -55,6 +56,8 @@ public:
   void paint(juce::Graphics& g) override;
   void resized() override;
   void mouseUp(const juce::MouseEvent& e) override;
+  bool keyPressed(const juce::KeyPress& key) override;
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
 private:
   class Dropdown;

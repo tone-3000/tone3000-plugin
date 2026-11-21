@@ -78,12 +78,45 @@ void SignInScreen::IconTitle::paint(juce::Graphics& g) {
                  static_cast<float>(getWidth() - kTitleIcon - kTightGap), Fonts::sans(kTitlePx, true), theme::kWhite);
 }
 
+// DeviceCards::SpokenText
+SignInScreen::DeviceCards::SpokenText::SpokenText(bool focusable) {
+  setInterceptsMouseClicks(false, false);
+  setWantsKeyboardFocus(focusable);
+  setMouseClickGrabsKeyboardFocus(false);
+}
+
+void SignInScreen::DeviceCards::SpokenText::set(const juce::String& title, const juce::String& value) {
+  value_ = value;
+  setTitle(title);
+  if (auto* handler = getAccessibilityHandler())
+    handler->notifyAccessibilityEvent(juce::AccessibilityEvent::valueChanged);
+}
+
+std::unique_ptr<juce::AccessibilityHandler> SignInScreen::DeviceCards::SpokenText::createAccessibilityHandler() {
+  class Value : public juce::AccessibilityTextValueInterface {
+  public:
+    explicit Value(const juce::String& value) : value_(value) {}
+    bool isReadOnly() const override { return true; }
+    juce::String getCurrentValueAsString() const override { return value_; }
+    void setValueAsString(const juce::String&) override {}
+
+  private:
+    const juce::String& value_;
+  };
+  juce::AccessibilityHandler::Interfaces interfaces;
+  interfaces.value = std::make_unique<Value>(value_);
+  return std::make_unique<juce::AccessibilityHandler>(*this, juce::AccessibilityRole::staticText,
+                                                      juce::AccessibilityActions(), std::move(interfaces));
+}
+
 // DeviceCards
 SignInScreen::DeviceCards::DeviceCards() {
   setInterceptsMouseClicks(false, false);
-  setAccessible(false);  // announced with the page
   qr_.setSize(kQrSize, kQrSize);
   addAndMakeVisible(qr_);
+  // Over the cards, painting nothing: the copy for screen readers.
+  addAndMakeVisible(instructions_);
+  addAndMakeVisible(codeText_);
   const int orW = static_cast<int>(std::ceil(Fonts::width(Fonts::sans(kTitlePx, true), kOr)));
   setSize(2 * kCardWidth + 2 * kCardGap + orW, kCardHeight);
 }
@@ -97,11 +130,36 @@ void SignInScreen::DeviceCards::setDevice(const ToneSession::AuthFlow::Device& d
   visit_ = std::make_unique<RichFlow>(RichText{TextRun::plain(kVisit), uri, TextRun::plain(kEnterCode)}, kCopyPx,
                                       lineHeight(kCopyPx), textW);
   code_ = device.userCode;
-  spoken_ = juce::String(kScan) + " Or visit " + uri.text + kEnterCode + " " + code_;
+  spoken_ = juce::String(kScan) + " Or visit " + uri.text + kEnterCode + " " + spelled(code_);
+  instructions_.set(juce::String(kScan) + " Or visit " + uri.text + kEnterCode, {});
+  codeText_.set("Code", spelled(code_));
+  codeText_.setDescription("Enter it at " + uri.text);
   repaint();
 }
 
-void SignInScreen::DeviceCards::resized() { qr_.setTopLeftPosition(kCardPad, kCardPad); }
+juce::String SignInScreen::DeviceCards::spelled(const juce::String& code) {
+  juce::String out;
+  for (auto c : code) {
+    if (juce::CharacterFunctions::isLetterOrDigit(c)) {
+      if (out.isNotEmpty() && !out.endsWithChar(' ')) out << ' ';
+      out << juce::String::charToString(c);
+    } else if (out.isNotEmpty() && !out.endsWithChar(',')) {
+      out << ',';  // a separator ("-") as a pause, not a symbol
+    }
+  }
+  return out.trimCharactersAtEnd(",");
+}
+
+void SignInScreen::DeviceCards::resized() {
+  qr_.setTopLeftPosition(kCardPad, kCardPad);
+  instructions_.setBounds(0, 0, kCardWidth, kCardHeight);
+  codeText_.setBounds(getWidth() - kCardWidth, 0, kCardWidth, kCardHeight);
+}
+
+std::unique_ptr<juce::AccessibilityHandler> SignInScreen::DeviceCards::createAccessibilityHandler() {
+  // A layout box: its texts are read, not the box.
+  return std::make_unique<juce::AccessibilityHandler>(*this, juce::AccessibilityRole::ignored);
+}
 
 void SignInScreen::DeviceCards::paint(juce::Graphics& g) {
   const auto left = juce::Rectangle<float>(0, 0, kCardWidth, kCardHeight);
@@ -168,6 +226,12 @@ void SignInScreen::back() {
   auto& session = services_.session;
   if (session.authFlow().phase == Phase::error) session.clearAuthError();
   else session.cancelFlow();
+}
+
+void SignInScreen::focusFirstControl() {
+  if (!isShowing()) return;
+  const auto order = juce::KeyboardFocusTraverser().getAllComponents(this);
+  if (!order.empty()) order.front()->grabKeyboardFocus();
 }
 
 void SignInScreen::copyLink() {
@@ -277,6 +341,8 @@ void SignInScreen::rebuild() {
   columnHeight_ = 0;
   for (const auto& row : rows_) columnHeight_ += row.gapBefore + row.height;
   layoutColumn();
+  setTitle("Sign in to TONE3000");
+  setDescription(headline);
   if (headline != announced_) {
     announced_ = headline;
     help::announce(headline);

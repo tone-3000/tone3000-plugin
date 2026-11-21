@@ -18,7 +18,8 @@ DbMeter::DbMeter(MeterStore& meters, bool input, int height, Labels labels)
       labels_(labels),
       rail_{kDotSize, kDotGap, DotRail::countForColumn(height, kDotSize, kDotGap), true} {
   setName(input ? "input meter" : "output meter");
-  setAccessible(false);  // live levels: noise to a screen reader
+  setAccessible(false);  // live levels: noise to a screen reader (a latched clip is not; see syncLatch)
+  setMouseClickGrabsKeyboardFocus(false);
   setSize(kWidth, juce::roundToInt(rail_.length()));
   setPaintingIsUnclipped(true);
   setStereo(false);
@@ -36,12 +37,46 @@ void DbMeter::setStereo(bool stereo) {
   else
     columns_ = {MeterStore::mainId(input_)};
   repaint();
+  syncLatch();
+}
+
+bool DbMeter::anyClipped() const {
+  for (const auto& id : columns_)
+    if (meters_.clipped(id)) return true;
+  return false;
+}
+
+void DbMeter::clearClips() {
+  for (const auto& id : columns_)
+    if (meters_.clipped(id)) meters_.clearClip(id);
+}
+
+// Edge-triggered: the meter speaks once when a clip latches and turns into
+// a "Clear input clip" button until it clears; levels never notify.
+void DbMeter::syncLatch() {
+  const bool latched = anyClipped();
+  if (latched == latched_) return;
+  latched_ = latched;
+  setTitle(latched ? juce::String(input_ ? "Clear input clip" : "Clear output clip") : juce::String());
+  clipA11y::setLatched(*this, latched);
+  if (latched && isShowing()) clipA11y::announce(input_ ? "Input" : "Output");
+  repaint();
+}
+
+bool DbMeter::keyPressed(const juce::KeyPress& key) {
+  if (!latched_ || !hasKeyboardFocus(false)) return false;
+  return clipA11y::keyPress(key, [this] { clearClips(); });
+}
+
+std::unique_ptr<juce::AccessibilityHandler> DbMeter::createAccessibilityHandler() {
+  return clipA11y::handler(*this, [this] { clearClips(); });
 }
 
 void DbMeter::meterChanged(const juce::String& id) {
   for (int i = 0; i < static_cast<int>(columns_.size()); ++i)
     if (columns_[static_cast<size_t>(i)] == id) {
       refreshAffordance(getMouseXYRelative());
+      syncLatch();
       // Only that column's rail moved; the labels and the other rail stay.
       repaint(columnBox(i).getSmallestIntegerContainer());
       return;
@@ -82,6 +117,9 @@ void DbMeter::paint(juce::Graphics& g) {
   for (int i = 0; i < static_cast<int>(columns_.size()); ++i)
     rail_.paint(g, columnBox(i), meters_.level(columns_[static_cast<size_t>(i)]),
                 meters_.clipped(columns_[static_cast<size_t>(i)]));
+  if (hasKeyboardFocus(false))
+    for (int i = 0; i < static_cast<int>(columns_.size()); ++i)
+      if (meters_.clipped(columns_[static_cast<size_t>(i)])) clipA11y::paintFocus(g, rail_.clipDot(columnBox(i)));
 }
 
 juce::Point<int> DbMeter::clipDotCentre(int column) const {

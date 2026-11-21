@@ -43,14 +43,14 @@ PluginHeader::PluginHeader(Services& services)
   stereo_.onToggle = [this](bool stereo) {
     if (onStereoToggle) onStereoToggle(stereo);
   };
-  addAndMakeVisible(stereo_);
+  tools_.addAndMakeVisible(stereo_);
 
   tuner_.setHelpText(help::text(help::Key::tuner));
   tuner_.setFillWhenActive(true);
   tuner_.onClick = [this] {
     if (onToggleTuner) onToggleTuner(!tunerShown_);
   };
-  addAndMakeVisible(tuner_);
+  tools_.addAndMakeVisible(tuner_);
 
   undo_.setHelpText(help::text(help::Key::undo));
   undo_.onClick = [this] {
@@ -60,8 +60,8 @@ PluginHeader::PluginHeader(Services& services)
   redo_.onClick = [this] {
     if (onRedo) onRedo();
   };
-  addAndMakeVisible(undo_);
-  addAndMakeVisible(redo_);
+  tools_.addAndMakeVisible(undo_);
+  tools_.addAndMakeVisible(redo_);
 
   account_.onOpenProfile = [this] {
     const auto user = services_.session.user();
@@ -78,7 +78,16 @@ PluginHeader::PluginHeader(Services& services)
   account_.onLogout = [this] {
     if (onLogout) onLogout();
   };
-  addAndMakeVisible(account_);
+  tools_.addAndMakeVisible(account_);
+  addAndMakeVisible(tools_);
+
+  // Left to right, as the bar reads (JUCE would sort by top edge first).
+  logo_->setExplicitFocusOrder(1);
+  presetBar_.setExplicitFocusOrder(2);
+  tools_.setExplicitFocusOrder(3);
+  int order = 1;
+  for (juce::Component* c : std::initializer_list<juce::Component*>{&stereo_, &tuner_, &undo_, &redo_, &account_})
+    c->setExplicitFocusOrder(order++);
 
   services_.chain.addListener(this);
   services_.session.addListener(this);
@@ -136,6 +145,7 @@ void PluginHeader::resized() {
   };
 
   logo_->setBounds(area.getX(), cy - kLogoHeight / 2, kLogoWidth, kLogoHeight);
+  tools_.setBounds(getLocalBounds());  // placed in header coordinates, then fitted
 
   // Right group, laid out from the right edge: account · undo/redo · tuner ·
   // stereo · presets, 40px apart (16px inside the undo/redo pair).
@@ -144,6 +154,7 @@ void PluginHeader::resized() {
   x = place(undo_, x) - kGroupGap;
   x = place(tuner_, x) - kGroupGap;
   x = place(stereo_, x) - kGroupGap;
+  tools_.fitToChildren();
   place(presetBar_, x);
 }
 

@@ -29,6 +29,7 @@
 #include "widgets/ChromeIconButton.h"
 #include "widgets/DimGroup.h"
 #include "widgets/ParamControls.h"
+#include "widgets/AccessibleGroup.h"
 
 namespace t3k::ui {
 
@@ -37,6 +38,7 @@ class Faceplate : public juce::Component,
                   private AutoMeasure::Listener,
                   private UiPrefs::Listener {
 public:
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override { return a11y::groupHandler(*this); }
   static constexpr int kHeight = design::kPlateHeight;
 
   explicit Faceplate(Services& services);
@@ -44,6 +46,7 @@ public:
 
   void paint(juce::Graphics& g) override;
   void resized() override;
+  void focusOfChildComponentChanged(FocusChangeType) override;
 
 private:
   class InputModeButton;
@@ -78,6 +81,13 @@ private:
   // [=][Bal][Output]: inactive companions stay laid out but hidden.
   ChromeIconButton autoBalance_;
   ParamKnob balance_, output_;
+
+  // Screen-reader groups for the peers that have no parent of their own
+  // (gate, pitch and the image features are groups themselves). Laid out at
+  // the plate's origin, then fitted to their children (resized()).
+  a11y::AccessibleGroup inputSection_{"Input", true};
+  a11y::AccessibleGroup toneSection_{"Tone stack", true};
+  a11y::AccessibleGroup outputSection_{"Output", true};
 
   // Mono-mode spread makes the balance trim audible on a stereo rig.
   ParamBinding spreadEnabled_;

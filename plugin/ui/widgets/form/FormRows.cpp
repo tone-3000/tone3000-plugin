@@ -1,8 +1,11 @@
 #include "FormRows.h"
 
+#include <algorithm>
 #include <cmath>
+#include <vector>
 
 #include "core/Paint.h"
+#include "widgets/AccessibleGroup.h"
 
 namespace t3k::ui {
 
@@ -56,8 +59,13 @@ void FieldRow::resized() {
 
 // ToggleRow
 ToggleRow::ToggleRow(const juce::String& label, RichText description)
-    : label_(label), description_(std::move(description)) {
+    : label_(label), description_(description) {
   toggle_.setName(label);
+  // The description under the switch is what it does; screen readers read
+  // it after the switch's name and state.
+  juce::String spoken;
+  for (const auto& run : description) spoken << run.text;
+  toggle_.setDescription(spoken.replace("  ", " ").trim());
   toggle_.onChange = [this](bool on) {
     if (onChange) onChange(on);
   };
@@ -105,17 +113,95 @@ void ToggleRow::resized() {
 }
 
 // RadioOption
+namespace {
+
+// A radio button: checked while selected, pressed to select.
+class RadioOptionHandler : public juce::AccessibilityHandler {
+public:
+  explicit RadioOptionHandler(RadioOption& option)
+      : juce::AccessibilityHandler(option, juce::AccessibilityRole::radioButton, actions(option)), option_(option) {}
+
+  juce::AccessibleState getCurrentState() const override {
+    auto state = juce::AccessibilityHandler::getCurrentState().withCheckable();
+    return option_.selected() ? state.withChecked() : state;
+  }
+
+private:
+  static juce::AccessibilityActions actions(RadioOption& option) {
+    juce::AccessibilityActions result;
+    result.addAction(juce::AccessibilityActionType::press, [&option] { option.choose(); });
+    return result;
+  }
+
+  RadioOption& option_;
+};
+
+}  // namespace
+
 RadioOption::RadioOption(const juce::String& label, const juce::String& description)
     : label_(label), description_(description) {
   setName(label);
+  setTitle(label);
+  setDescription(description);
   setMouseCursor(juce::MouseCursor::PointingHandCursor);
+  // Keyboard and screen readers only: a click does not move focus, so the
+  // mouse behaves as before.
+  setWantsKeyboardFocus(true);
+  setMouseClickGrabsKeyboardFocus(false);
   description_.setInterceptsMouseClicks(false, false);
+  // Spoken as the option's description; not a second item.
+  description_.setAccessible(false);
   addAndMakeVisible(description_);
 }
 
 void RadioOption::setSelected(bool selected) {
+  const bool changed = selected_ != selected;
   selected_ = selected;
   repaint();
+  if (changed)
+    if (auto* handler = getAccessibilityHandler())
+      handler->notifyAccessibilityEvent(juce::AccessibilityEvent::valueChanged);
+}
+
+void RadioOption::choose() {
+  if (isShowing()) grabKeyboardFocus();
+  if (onSelect) onSelect();
+}
+
+void RadioOption::chooseSibling(int step) {
+  auto* parent = getParentComponent();
+  if (parent == nullptr) return;
+  std::vector<RadioOption*> options;
+  for (auto* child : parent->getChildren())
+    if (auto* option = dynamic_cast<RadioOption*>(child); option != nullptr && option->isShowing())
+      options.push_back(option);
+  const auto it = std::find(options.begin(), options.end(), this);
+  if (it == options.end() || options.size() < 2) return;
+  const int count = static_cast<int>(options.size());
+  const int index = static_cast<int>(it - options.begin());
+  options[static_cast<size_t>(((index + step) % count + count) % count)]->choose();
+}
+
+bool RadioOption::keyPressed(const juce::KeyPress& key) {
+  if (key.getModifiers().isAnyModifierKeyDown()) return false;
+  const int code = key.getKeyCode();
+  if (code == juce::KeyPress::spaceKey || code == juce::KeyPress::returnKey) {
+    choose();
+    return true;
+  }
+  if (code == juce::KeyPress::upKey || code == juce::KeyPress::leftKey) {
+    chooseSibling(-1);
+    return true;
+  }
+  if (code == juce::KeyPress::downKey || code == juce::KeyPress::rightKey) {
+    chooseSibling(1);
+    return true;
+  }
+  return false;
+}
+
+std::unique_ptr<juce::AccessibilityHandler> RadioOption::createAccessibilityHandler() {
+  return std::make_unique<RadioOptionHandler>(*this);
 }
 
 float RadioOption::heightFor(float width) const {
@@ -146,6 +232,7 @@ void RadioOption::mouseUp(const juce::MouseEvent& e) {
 // SettingsGroup
 SettingsGroup::SettingsGroup(const juce::String& title, const char* iconSvg)
     : title_(title.toUpperCase()), iconSvg_(iconSvg) {
+  a11y::makeGroup(*this, title);
   addAndMakeVisible(content_);
 }
 

@@ -41,6 +41,7 @@ public:
   void setEqEnabled(bool enabled);
   void setView(View view);
   void setSampleRate(double sampleRate);
+  void focusControls();
 
   void paint(juce::Graphics& g) override;
   void resized() override;

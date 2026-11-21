@@ -59,6 +59,7 @@ public:
       : Clickable(label), label_(label), inward_(arrowsInward) {
     setSize(kWidth, kAdvertHeight);
     setHelpText(help::text(help));
+    setToggleable(true);
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
   }
 
@@ -118,6 +119,7 @@ StereoImageGroup::StereoImageGroup(Services& services, ImageFeature feature)
       offset_(services.backend, imageFeaturePrefix(feature) + "Offset", offsetKnob(copyFor(feature))),
       power_(Icon::Power, ChromeIconButton::Tone::power, copyFor(feature).power),
       deck_(services, feature) {
+  a11y::makeGroup(*this, copyFor(feature).label);
   advert_->onClick = [this] {
     enabled_.set(true);
     syncEnabled();
@@ -165,11 +167,25 @@ void StereoImageGroup::autoMeasureChanged() {
 
 void StereoImageGroup::syncEnabled() {
   const bool on = enabled_.boolValue();
+  power_.setOn(on);
+  advert_->setToggleState(on, juce::dontSendNotification);
   if (offset_.isVisible() == on && advert_->isVisible() == !on) return;
-  advert_->setVisible(!on);
-  offset_.setVisible(on);
-  power_.setVisible(on);
+  const bool retainFocus = hasKeyboardFocus(true);
+  // Focus the replacement before hiding the old face, so the host never
+  // sees an interval with no plugin control focused.
+  if (on) {
+    offset_.setVisible(true);
+    power_.setVisible(true);
+    if (retainFocus) power_.grabKeyboardFocus();
+    advert_->setVisible(false);
+  } else {
+    advert_->setVisible(true);
+    if (retainFocus) advert_->grabKeyboardFocus();
+    offset_.setVisible(false);
+    power_.setVisible(false);
+  }
   if (auto_ != nullptr) auto_->setVisible(on);
+  if (retainFocus) help::announce(juce::String(copyFor(feature_).label) + (on ? " on" : " off"));
   // The deck re-anchors to whichever face is showing.
   if (deck_.isOpen()) {
     deck_.close();

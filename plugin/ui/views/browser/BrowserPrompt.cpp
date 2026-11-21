@@ -16,6 +16,7 @@ constexpr float kMarkAspect = 3.0f;  // assets/t3k-mark.svg is 36 x 12
 
 BrowserPrompt::BrowserPrompt(bool mark, const juce::String& copy, int copyMaxWidth, std::unique_ptr<PillButton> button)
     : mark_(mark), copy_(copy), copyMaxW_(copyMaxWidth), button_(std::move(button)) {
+  button_->setDescription(copy_);
   addAndMakeVisible(*button_);
 }
 

@@ -36,11 +36,14 @@ void paintStat(juce::Graphics& g, juce::Rectangle<int> row, int x, Icon icon, co
 class ToneMeta::BookmarkButton : public Clickable {
 public:
   BookmarkButton() : Clickable("Bookmark") {
+    setToggleable(true);
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
   }
   void set(int count, bool favorited) {
     count_ = labels::count(count);
     favorited_ = favorited;
+    setToggleState(favorited, juce::dontSendNotification);
+    setTitle(favorited ? "Remove from favorites" : "Add to favorites");
     setHelpText(help::text(favorited ? help::Key::unfavoriteTone : help::Key::favoriteTone));
     setSize(statWidth(count_), 16);
     repaint();
@@ -85,6 +88,7 @@ void ToneMeta::setTone(const ToneSummary& tone) {
 void ToneMeta::setCounts(const Counts& counts) {
   counts_ = counts;
   bookmark_->set(counts_.favorites, counts_.favorited);
+  bookmark_->setEnabled(counts_.favoriteToggle);
   bookmark_->setInterceptsMouseClicks(counts_.favoriteToggle, false);
   bookmark_->setMouseCursor(counts_.favoriteToggle ? juce::MouseCursor::PointingHandCursor
                                                    : juce::MouseCursor::NormalCursor);

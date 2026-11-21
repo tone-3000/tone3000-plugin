@@ -1,8 +1,15 @@
 #include "FormItem.h"
 
+#include "widgets/AccessibleGroup.h"
+
 #include <cmath>
 
 namespace t3k::ui {
+
+std::unique_ptr<juce::AccessibilityHandler> FormItem::createAccessibilityHandler() {
+  if (a11y::isGroup(*this)) return a11y::groupHandler(*this);
+  return juce::Component::createAccessibilityHandler();
+}
 
 void FormItem::setSubpixelTop(float fraction) {
   if (juce::approximatelyEqual(fraction, subpixelTop_)) return;

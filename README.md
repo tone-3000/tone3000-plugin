@@ -312,7 +312,10 @@ flowchart LR
 - **Tone stack**: one global Bass/Middle/Treble EQ after the DC blocker,
   voiced to match the reference
   [NeuralAmpModelerPlugin](https://github.com/sdatkinson/NeuralAmpModelerPlugin)
-  tone stack (150 Hz / 425 Hz / 1.8 kHz, ±20 / ±15 / ±10 dB).
+  tone stack (150 Hz / 425 Hz / 1.8 kHz, ±20 / ±15 / ±10 dB). It is
+  neutral at 5/5/5 (or bypassed). Capture descriptions list the original
+  hardware settings already baked into the model: do not copy those values
+  onto the plugin EQ. Adjust this EQ only for additional tone shaping.
 - **Oversampling**: a Plugin Settings option runs the whole chain at 2x/4x/8x the
   48 kHz base rate: minimum-phase half-band filters (zero added latency),
   with NAM models phase-interleaved across N native-rate instances so

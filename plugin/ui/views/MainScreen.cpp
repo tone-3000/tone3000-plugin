@@ -8,6 +8,7 @@ MainScreen::MainScreen(Services& services)
       inputMeter_(services.meters, /*input=*/true, kMeterHeight, DbMeter::Labels::left),
       outputMeter_(services.meters, /*input=*/false, kMeterHeight, DbMeter::Labels::right),
       chain_(services) {
+  a11y::makeGroup(*this, "Signal chain");
   // The meters sit above the chain (its gutter fades), so stereo columns
   // overflowing into the centre aren't covered by it.
   addAndMakeVisible(chain_);

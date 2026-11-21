@@ -9,7 +9,54 @@ namespace t3k::ui {
 
 namespace {
 constexpr float kDimOpacity = 0.22f;
+constexpr juce::uint32 kClipAnnounceGapMs = 3000;
 }
+
+// Clip latches for screen readers
+namespace clipA11y {
+
+void announce(const juce::String& name) {
+  static juce::uint32 last = 0;
+  const auto now = juce::Time::getMillisecondCounter();
+  if (last != 0 && now - last < kClipAnnounceGapMs) return;
+  last = now;
+  help::announce((name.isNotEmpty() ? name.trim() + " clipping" : juce::String("Clipping")));
+}
+
+juce::String context(const juce::Component& component) {
+  for (auto* c = component.getParentComponent(); c != nullptr; c = c->getParentComponent())
+    if (c->getTitle().isNotEmpty()) return c->getTitle();
+  return {};
+}
+
+void setLatched(juce::Component& component, bool latched) {
+  if (!latched && component.hasKeyboardFocus(true)) component.moveKeyboardFocusToSibling(true);
+  component.setWantsKeyboardFocus(latched);
+  component.setMouseClickGrabsKeyboardFocus(false);
+  component.setAccessible(latched);
+  if (latched)
+    if (auto* h = component.getAccessibilityHandler())
+      h->notifyAccessibilityEvent(juce::AccessibilityEvent::structureChanged);
+}
+
+std::unique_ptr<juce::AccessibilityHandler> handler(juce::Component& component, std::function<void()> clear) {
+  juce::AccessibilityActions actions;
+  actions.addAction(juce::AccessibilityActionType::press, [clear] { if (clear) clear(); });
+  return std::make_unique<juce::AccessibilityHandler>(component, juce::AccessibilityRole::button, std::move(actions));
+}
+
+bool keyPress(const juce::KeyPress& key, const std::function<void()>& clear) {
+  if (key != juce::KeyPress::returnKey && key != juce::KeyPress::spaceKey) return false;
+  if (clear) clear();
+  return true;
+}
+
+void paintFocus(juce::Graphics& g, juce::Rectangle<float> dot) {
+  g.setColour(juce::Colours::white);
+  g.drawEllipse(dot.reduced(0.5f), 1.0f);
+}
+
+}  // namespace clipA11y
 
 // DotRail
 juce::Rectangle<float> DotRail::boxAt(juce::Point<float> origin) const {
@@ -50,7 +97,8 @@ DotMeter::DotMeter(int length, bool vertical)
   const int across = static_cast<int>(kDotSize);
   setSize(vertical ? across : extent, vertical ? extent : across);
   setPaintingIsUnclipped(true);
-  setAccessible(false);  // live levels
+  setAccessible(false);  // live levels; accessible only while a clip latches (clipA11y)
+  setMouseClickGrabsKeyboardFocus(false);
 }
 
 void DotMeter::setLevel(float db) {
@@ -64,10 +112,36 @@ void DotMeter::setClipped(bool clipped) {
   clipped_ = clipped;
   refreshAffordance(getMouseXYRelative());
   repaint();
+  // Only a strip whose LED clears by click becomes a button; one inside
+  // another control stays out of the tree.
+  if (onClearClip) {
+    setTitle(clipped ? "Clear " + (clipName_.isNotEmpty() ? clipName_ + " " : juce::String()) + "clip" : juce::String());
+    clipA11y::setLatched(*this, clipped);
+    if (clipped && isShowing()) {  // a latch already set when the strip opens stays quiet
+      const auto where = clipA11y::context(*this);
+      clipA11y::announce((where + " " + clipName_).trim());
+    }
+  }
+}
+
+void DotMeter::clearClip() {
+  if (clipped_ && onClearClip) onClearClip();
+}
+
+bool DotMeter::keyPressed(const juce::KeyPress& key) {
+  if (!clipped_ || !onClearClip || !hasKeyboardFocus(false)) return false;
+  return clipA11y::keyPress(key, [this] { clearClip(); });
+}
+
+std::unique_ptr<juce::AccessibilityHandler> DotMeter::createAccessibilityHandler() {
+  return clipA11y::handler(*this, [this] {
+    clearClip();
+  });
 }
 
 void DotMeter::paint(juce::Graphics& g) {
   rail_.paint(g, getLocalBounds().toFloat(), db_, clipped_);
+  if (clipped_ && hasKeyboardFocus(false)) clipA11y::paintFocus(g, rail_.clipDot(getLocalBounds().toFloat()));
 }
 
 bool DotMeter::overClearableClip(juce::Point<int> p) const {
@@ -94,6 +168,7 @@ void DotMeter::mouseDown(const juce::MouseEvent& e) {
 LiveDotMeter::LiveDotMeter(MeterStore& meters, juce::String id, int length, bool vertical)
     : DotMeter(length, vertical), meters_(meters), id_(std::move(id)) {
   onClearClip = [this] { meters_.clearClip(id_); };
+  setClipName(id_.endsWith(":in") ? "input" : id_.endsWith(":out") ? "output" : juce::String());
   meters_.addListener(this);
   sync();
 }

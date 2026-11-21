@@ -132,6 +132,7 @@ std::map<Key, String> buildTable() {
   t[Key::redo] = U("Redo: re-apply undone edit.");
   t[Key::settings] = U("Settings: plugin and audio options.");
   t[Key::account] = U("Account: settings and TONE3000 sign-out.");
+  t[Key::accountProfile] = U("Profile: open your TONE3000 profile in your browser.");
   t[Key::monoMode] = U("Mono: one chain, both outputs.");
   t[Key::stereoMode] = U("Stereo: independent Left/Right chains.");
 
@@ -298,9 +299,32 @@ String lead(const String& hint) {
   return (colon > 0 ? hint.substring(0, colon) : hint).trim();
 }
 
-void announce(const String& text) {
-  if (text.isNotEmpty())
-    juce::AccessibilityHandler::postAnnouncement(text, juce::AccessibilityHandler::AnnouncementPriority::medium);
+namespace {
+std::function<void(const String&)>& announcementObserver() {
+  static std::function<void(const String&)> observer;
+  return observer;
 }
+}  // namespace
+
+String spokenHelp(const String& name, const String& hint) {
+  auto text = hint.trim();
+  const auto n = name.trim();
+  // Spoken only: the keyboard way to the same advanced panel.
+  if (!kTouch) text = text.replace("Right-click: advanced.", "Right-click or Shift+F10: advanced.");
+  if (n.isEmpty() || !text.startsWithIgnoreCase(n)) return text;
+  const auto rest = text.substring(n.length());
+  if (rest.isEmpty()) return {};
+  if (rest[0] != ':' && rest[0] != '.') return text;  // the name runs on ("Undo all")
+  text = rest.substring(1).trim();
+  return text.isEmpty() ? text : text.substring(0, 1).toUpperCase() + text.substring(1);
+}
+
+void announce(const String& text) {
+  if (text.isEmpty()) return;
+  if (auto& observer = announcementObserver()) observer(text);
+  juce::AccessibilityHandler::postAnnouncement(text, juce::AccessibilityHandler::AnnouncementPriority::medium);
+}
+
+void observeAnnouncements(std::function<void(const String&)> observer) { announcementObserver() = std::move(observer); }
 
 }  // namespace t3k::ui::help

@@ -30,6 +30,10 @@ public:
 
   // The dialog body; it sizes itself and is kept centred.
   void setContent(juce::Component& content);
+  std::function<void()> onEscape;
+  void focusFirstControl();
+  void cancelPendingFocus() { pendingFocus_ = false; focusRequested_ = false; }
+  bool keyPressed(const juce::KeyPress& key) override;
 
   void paint(juce::Graphics& g) override;
   void resized() override;
@@ -40,13 +44,15 @@ public:
   std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
 private:
-  void timerCallback() override { refresh(); }
+  void timerCallback() override;
   void refresh();
   void centreContent();
 
   Backdrop backdrop_;
   juce::Image blurred_;
   juce::Component* content_ = nullptr;
+  bool pendingFocus_ = false;
+  bool focusRequested_ = false;
 };
 
 }  // namespace t3k::ui

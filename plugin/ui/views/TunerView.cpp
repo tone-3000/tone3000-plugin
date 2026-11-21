@@ -5,6 +5,7 @@
 #include "core/Fonts.h"
 #include "core/Pitch.h"
 #include "core/Theme.h"
+#include "core/Help.h"
 
 namespace t3k::ui {
 
@@ -78,6 +79,11 @@ TunerView::TunerView(Services& services)
       feed_(services.backend, services.clock),
       up_(std::make_unique<Triangle>(true)), down_(std::make_unique<Triangle>(false)) {
   setOpaque(true);
+  // A Tab stop for screen readers; a click never focuses it, so the host's
+  // keys keep working. No help text: the hint bar shows nothing here.
+  setWantsKeyboardFocus(true);
+  setMouseClickGrabsKeyboardFocus(false);
+  setTitle("Tuner reading");
   close_.setName("Close tuner");
   close_.onClick = [this] {
     if (onClose) onClose();
@@ -109,6 +115,12 @@ void TunerView::setMuted(bool muted) {
 // never the whole takeover.
 void TunerView::feedChanged() {
   const auto& s = feed_.state();
+  const auto reading = accessibleReading();
+  if (hasKeyboardFocus(false) && s.hasSignal && !announcedSignal_) {
+    announcedSignal_ = true;
+    if (auto* handler = getAccessibilityHandler()) handler->notifyAccessibilityEvent(juce::AccessibilityEvent::valueChanged);
+    help::announce(reading);
+  }
   const bool inTune = s.hasSignal && std::abs(s.cents) <= pitch::kInTuneCents;
   const bool flat = s.hasSignal && s.cents < -pitch::kInTuneCents;
   const bool sharp = s.hasSignal && s.cents > pitch::kInTuneCents;
@@ -214,6 +226,50 @@ void TunerView::paintReadout(juce::Graphics& g, juce::Rectangle<int> box) const 
   subGlyphs.addLineOfText(subFont, sub, box.getCentreX() - Fonts::width(subFont, sub) / 2, subBaseline);
   g.setColour(theme::kGray);
   subGlyphs.draw(g);
+}
+
+juce::String TunerView::accessibleReading() const {
+  const auto& s = feed_.state();
+  if (!s.hasSignal) return "No signal. Play one note.";
+  const auto note = pitch::fromFrequency(s.frequency);
+  const int cents = juce::roundToInt(std::abs(s.cents));
+  const auto direction = std::abs(s.cents) <= pitch::kInTuneCents ? juce::String("in tune")
+      : juce::String(cents) + (s.cents < 0 ? " cents flat, tune up" : " cents sharp, tune down");
+  return s.note.replace(juce::String::fromUTF8("\xe2\x99\xaf"), " sharp") + " " + juce::String(note.octave)
+      + ", " + juce::String(s.frequency, 1) + " hertz, " + direction;
+}
+void TunerView::focusGained(FocusChangeType) {
+  if (!announcedSignal_) {
+    help::announce(accessibleReading());
+    announcedSignal_ = feed_.state().hasSignal;
+  }
+}
+bool TunerView::keyPressed(const juce::KeyPress& key) {
+  if (key == juce::KeyPress::escapeKey) { if (onClose) onClose(); return true; }
+  if (key == juce::KeyPress::returnKey || key.getTextCharacter() == 'r' || key.getTextCharacter() == 'R') {
+    help::announce(accessibleReading()); return true;
+  }
+  return false;
+}
+std::unique_ptr<juce::AccessibilityHandler> TunerView::createAccessibilityHandler() {
+  class Reading : public juce::AccessibilityTextValueInterface {
+  public:
+    explicit Reading(TunerView& view) : view_(view) {}
+    bool isReadOnly() const override { return true; }
+    juce::String getCurrentValueAsString() const override { return view_.accessibleReading(); }
+    void setValueAsString(const juce::String&) override {}
+  private:
+    TunerView& view_;
+  };
+  // Spoken only: the keys.
+  struct Handler : juce::AccessibilityHandler {
+    using juce::AccessibilityHandler::AccessibilityHandler;
+    juce::String getHelp() const override { return "Play one note. Enter or R repeats the reading. Escape closes the tuner."; }
+  };
+  juce::AccessibilityHandler::Interfaces interfaces;
+  interfaces.value = std::make_unique<Reading>(*this);
+  return std::make_unique<Handler>(*this, juce::AccessibilityRole::staticText, juce::AccessibilityActions(),
+                                   std::move(interfaces));
 }
 
 }  // namespace t3k::ui

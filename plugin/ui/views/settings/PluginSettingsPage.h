@@ -45,6 +45,10 @@ private:
 
   Services& services_;
 
+  // Sections, each a named group (period / comma stop at each): the rows
+  // below are added to these rather than to the page.
+  FormStack display_{form::kSectionGap}, models_{form::kSectionGap}, processing_{form::kSectionGap};
+
   ToggleRow infoBar_;
   // View-only toggles for the faceplate's gate / pitch groups; the
   // Faceplate shows a powered effect regardless.

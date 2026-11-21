@@ -18,10 +18,12 @@
 #include "widgets/Clickable.h"
 #include "widgets/FormatBadge.h"
 #include "widgets/ToneImage.h"
+#include "widgets/ContextMenu.h"
+#include "widgets/SecondaryPress.h"
 
 namespace t3k::ui {
 
-class ToneCard : public Clickable {
+class ToneCard : public Clickable, public SecondaryPressTarget {
 public:
   static constexpr int kPad = 12;
   static constexpr int kImage = 112;
@@ -34,6 +36,7 @@ public:
   ~ToneCard() override;
 
   const Tone& tone() const { return tone_; }
+  std::function<void(const juce::String&)> onOpenUrl;
   // NAM tones without an A2 model: the plugin can't load them.
   static bool unavailable(const Tone& tone) { return tone.isNam() && tone.a2ModelsCount == 0; }
 
@@ -45,11 +48,22 @@ public:
   void setContentHeight(float height);
   void setLoading(bool loading);
   void setDisabled(bool disabled);
+  bool canSelect() const { return !disabled_; }
+  // Keyboard / screen reader only (Shift+F10, the Applications key, the
+  // showMenu action on a focused card): "Open on web". A right-click does
+  // nothing here, as before.
+  void openMenu(juce::Point<int> point);
+  void keyboardContextMenu() override { openMenu(getLocalBounds().getCentre()); }
+  void secondaryPress(const juce::MouseEvent&) override {}
+  bool keyPressed(const juce::KeyPress& key) override;
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
   void paintButton(juce::Graphics& g, bool highlighted, bool down) override;
   void resized() override;
 
 private:
+  juce::String webUrl() const;
+  std::unique_ptr<ContextMenu> menu_;
   static constexpr int kGapX = 16;
   static constexpr float kImageCorner = 8;
   static constexpr int kRowGap = 8;

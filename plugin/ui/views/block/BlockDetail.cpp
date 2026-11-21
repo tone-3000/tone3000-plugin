@@ -38,6 +38,7 @@ BlockDetail::BlockDetail(Services& services, const std::string& blockId)
       blockId_(blockId),
       scroller_(std::make_unique<DragScroller>(DragScroller::Axis::vertical)),
       back_(std::make_unique<BackLink>("BLOCK", help::Key::backToChain)) {
+  a11y::makeGroup(*this, "Tone editor");
   back_->onClick = [this] {
     if (onBack) onBack();
   };

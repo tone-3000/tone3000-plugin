@@ -1,3 +1,4 @@
+#include "Popover.h"
 #include "DragScroller.h"
 
 #include <cmath>
@@ -67,7 +68,11 @@ bool DragScroller::scrollByKey(const juce::KeyPress& key) {
   return true;
 }
 
-bool DragScroller::keyPressed(const juce::KeyPress& key) { return keys_ == Keys::scroll && scrollByKey(key); }
+bool DragScroller::keyPressed(const juce::KeyPress& key) {
+  if (key.isKeyCode(juce::KeyPress::upKey) || key.isKeyCode(juce::KeyPress::downKey))
+    if (auto* menu = findParentComponentOfClass<Popover>()) return menu->keyPressed(key);
+  return keys_ == Keys::scroll && scrollByKey(key);
+}
 
 void DragScroller::reveal(const juce::Component& target, int margin) {
   const auto* content = getViewedComponent();

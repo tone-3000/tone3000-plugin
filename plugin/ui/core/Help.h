@@ -4,6 +4,8 @@
 // in a single pass (`Right-click` -> `Touch and hold`, `click` -> `tap`).
 #pragma once
 
+#include <functional>
+
 #include <juce_core/juce_core.h>
 
 namespace t3k::ui::help {
@@ -21,7 +23,7 @@ enum class Key {
   alignOffset, alignWobble, alignWobblePower, alignCrossover, alignCrossoverPower,
   alignDiffuse, alignAdvert, alignPower, autoAlign,
   // Top bar
-  tuner, undo, redo, settings, account, monoMode, stereoMode,
+  tuner, undo, redo, settings, account, accountProfile, monoMode, stereoMode,
   // Presets
   presetPrev, presetNext, presetBrowse, presetSave, presetNew, presetRename, presetDelete,
   presetReorder, presetDrag, presetPcToggle, presetPc,
@@ -62,9 +64,20 @@ juce::String bandType(const juce::String& label);
 // first ": " ("Undo: step back..." -> "Undo"), or the whole hint without one.
 juce::String lead(const juce::String& hint);
 
+// A hint as a screen reader's help: without a lead that repeats the
+// control's name ("Undo: revert last chain edit." after "Undo" becomes
+// "Revert last chain edit."), so the name is not spoken twice. The hint bar
+// keeps the full hint.
+// Desktop "Right-click: advanced." also names Shift+F10, the keyboard way.
+juce::String spokenHelp(const juce::String& name, const juce::String& hint);
+
 // Speak a status change that only paints somewhere else (a toast, a banner,
 // results landing) through the platform's screen reader, if one is running.
 // Interrupts nothing: it queues after whatever is being read.
 void announce(const juce::String& text);
+
+// Also hand every announcement to `observer` (nullptr stops). For the UI
+// self-tests, which check what would be spoken; the product never sets it.
+void observeAnnouncements(std::function<void(const juce::String&)> observer);
 
 }  // namespace t3k::ui::help

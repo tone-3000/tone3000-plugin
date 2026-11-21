@@ -39,6 +39,30 @@ void HintBar::CpuReadout::paint(juce::Graphics& g) {
               font, theme::kMuted);
 }
 
+std::unique_ptr<juce::AccessibilityHandler> HintBar::CpuReadout::createAccessibilityHandler() {
+  class Value : public juce::AccessibilityTextValueInterface {
+  public:
+    explicit Value(MeterStore& meters) : meters_(meters) {}
+    bool isReadOnly() const override { return true; }
+    juce::String getCurrentValueAsString() const override {
+      return juce::String(juce::roundToInt(meters_.cpuPercent())) + " percent";
+    }
+    void setValueAsString(const juce::String&) override {}
+
+  private:
+    MeterStore& meters_;
+  };
+  struct Handler : juce::AccessibilityHandler {
+    using juce::AccessibilityHandler::AccessibilityHandler;
+    juce::String getTitle() const override { return "CPU"; }
+    juce::String getHelp() const override { return help::spokenHelp("CPU", getComponent().getHelpText()); }
+  };
+  juce::AccessibilityHandler::Interfaces interfaces;
+  interfaces.value = std::make_unique<Value>(meters_);
+  return std::make_unique<Handler>(*this, juce::AccessibilityRole::staticText, juce::AccessibilityActions(),
+                                   std::move(interfaces));
+}
+
 // Bar
 HintBar::HintBar(Services& services) : services_(services), cpu_(services.meters) {
   addAndMakeVisible(cpu_);

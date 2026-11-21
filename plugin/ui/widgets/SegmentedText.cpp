@@ -15,6 +15,7 @@ constexpr int kCellPadX = 4;
 class SegmentedText::Segment : public Clickable {
 public:
   Segment(const Cell& cell, const Style& style) : Clickable(cell.label), cell_(cell), style_(style) {
+    setToggleable(true);
     setHelpText(cell.help);
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
   }
@@ -71,6 +72,7 @@ void SegmentedText::setOn(int index, bool on) {
   auto& cell = *cells_[static_cast<size_t>(index)];
   if (cell.on == on) return;
   cell.on = on;
+  cell.setToggleState(on, juce::dontSendNotification);
   cell.repaint();
 }
 

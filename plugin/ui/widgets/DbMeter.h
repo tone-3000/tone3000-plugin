@@ -49,8 +49,17 @@ public:
   void mouseMove(const juce::MouseEvent& e) override;
   void mouseExit(const juce::MouseEvent& e) override;
   void mouseDown(const juce::MouseEvent& e) override;
+  // Keyboard / screen reader, only while a column's clip is latched (see
+  // clipA11y): Enter, Space or the press action clears every lit column.
+  bool keyPressed(const juce::KeyPress& key) override;
+  void focusGained(FocusChangeType) override { repaint(); }
+  void focusLost(FocusChangeType) override { repaint(); }
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
 private:
+  bool anyClipped() const;
+  void clearClips();
+  void syncLatch();
   void meterChanged(const juce::String& id) override;
   // The dots' box for column `i` in local float coordinates.
   juce::Rectangle<float> columnBox(int i) const;
@@ -63,6 +72,7 @@ private:
   Labels labels_;
   DotRail rail_;
   std::vector<juce::String> columns_;  // meter ids, left to right
+  bool latched_ = false;
 };
 
 }  // namespace t3k::ui

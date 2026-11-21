@@ -36,6 +36,7 @@
 #include "widgets/LoadingDots.h"
 #include "widgets/ModelSelect.h"
 #include "widgets/RetryLoadBadge.h"
+#include "widgets/AccessibleGroup.h"
 #include "widgets/SegmentedText.h"
 #include "widgets/ToneImage.h"
 
@@ -124,7 +125,7 @@ private:
   std::unique_ptr<SegmentedText> size_;
   int sizeSignature_ = -1;
   std::unique_ptr<Indicator> calibration_;
-  juce::Component eqPill_;
+  a11y::AccessibleGroup eqPill_{"EQ"};
   ChromeIconButton eqPower_{Icon::Power, ChromeIconButton::Tone::power, help::Key::eqPower};
   DimGroup preGroup_;
   ChromeTextButton pre_{"PRE", help::Key::eqPre};

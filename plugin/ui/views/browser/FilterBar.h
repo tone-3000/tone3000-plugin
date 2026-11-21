@@ -33,11 +33,13 @@
 #include "services/Services.h"
 #include "widgets/DragScroller.h"
 #include "views/gallery/GalleryGeometry.h"
+#include "widgets/AccessibleGroup.h"
 
 namespace t3k::ui {
 
 class FilterBar : public juce::Component {
 public:
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override { return a11y::groupHandler(*this); }
   static constexpr int kHeight = FilterChip::kHeight;
   static constexpr int kBleed = gallery::kEdgeFadeWidth;
   static constexpr int kGap = 10;

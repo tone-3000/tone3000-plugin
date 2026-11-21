@@ -119,13 +119,19 @@ void Knob::setValue(float normalised) {
   value_ = v;
   repaint();
   syncReadout();
+  if (auto* handler = getAccessibilityHandler())
+    handler->notifyAccessibilityEvent(juce::AccessibilityEvent::valueChanged);
 }
 
 void Knob::emit(float v) {
+  const bool changed = !juce::exactlyEqual(value_, v);
   emitted_ = v;
   value_ = v;
   repaint();
   syncReadout();
+  if (changed)
+    if (auto* handler = getAccessibilityHandler())
+      handler->notifyAccessibilityEvent(juce::AccessibilityEvent::valueChanged);
   if (onChange) onChange(v);
 }
 
@@ -252,8 +258,23 @@ void Knob::nudgeTo(float normalised) {
   readoutTimer_.start(kKeyReadoutMs, [this] { setReadoutVisible(false); });
 }
 
+bool Knob::keyboardReset() {
+  // The knob itself must hold focus: keys its type-in editor leaves
+  // unhandled bubble up here.
+  if (dragging_ || !options_.defaultValue || !hasKeyboardFocus(false)) return false;
+  if (onDragStateChange) onDragStateChange(true);
+  resetToDefault();
+  if (onDragStateChange) onDragStateChange(false);
+  setReadoutVisible(true);
+  readoutTimer_.start(kKeyReadoutMs, [this] { setReadoutVisible(false); });
+  help::announce("Reset to " + options_.scale->format(value_));
+  return true;
+}
+
 bool Knob::keyPressed(const juce::KeyPress& key) {
   using KP = juce::KeyPress;
+  if (key.isKeyCode(KP::upKey) || key.isKeyCode(KP::downKey))
+    if (auto* menu = findParentComponentOfClass<Popover>()) return menu->keyPressed(key);
   // A detented knob steps one detent per press (fine has nothing to refine).
   const float step = options_.steps ? (options_.max - options_.min) / static_cast<float>(*options_.steps - 1)
                      : key.getModifiers().isShiftDown() ? kKeyStep / kFineFactor
@@ -268,6 +289,8 @@ bool Knob::keyPressed(const juce::KeyPress& key) {
     nudgeTo(options_.max);
   } else if (key == KP::returnKey) {
     openEditor();
+  } else if (key.isKeyCode(KP::deleteKey) || key.isKeyCode(KP::backspaceKey)) {
+    if (!keyboardReset()) return false;
   } else {
     return false;  // Space and the rest fall through to the host
   }
@@ -301,9 +324,42 @@ private:
 
 std::unique_ptr<juce::AccessibilityHandler> Knob::createAccessibilityHandler() {
   juce::AccessibilityHandler::Interfaces interfaces;
-  interfaces.value = std::make_unique<KnobValue>(*this, options_, [this](float v) { nudgeTo(v); });
-  return std::make_unique<juce::AccessibilityHandler>(*this, juce::AccessibilityRole::slider,
-                                                      juce::AccessibilityActions(), std::move(interfaces));
+  interfaces.value = std::make_unique<KnobValue>(*this, options_, [this](float v) {
+    if (isShowing()) grabKeyboardFocus();
+    nudgeTo(v);
+  });
+  // A knob in a group with an advanced panel (the right-click / Shift+F10
+  // target) offers it as the slider's menu: VoiceOver's VO+Shift+M, the
+  // context-menu command of NVDA, JAWS and Narrator.
+  juce::AccessibilityActions actions;
+  handlerHasMenu_ = findParentComponentOfClass<SecondaryPressTarget>() != nullptr;
+  if (handlerHasMenu_)
+    actions.addAction(juce::AccessibilityActionType::showMenu, [this] {
+      if (auto* target = findParentComponentOfClass<SecondaryPressTarget>()) {
+        if (isShowing()) grabKeyboardFocus();
+        target->keyboardContextMenu();
+      }
+    });
+  // The hint without the name it opens with, then the keys. Screen readers
+  // only: the hint bar shows the hint as it always has.
+  struct Handler : juce::AccessibilityHandler {
+    Handler(Knob& knob, Interfaces interfaces, juce::AccessibilityActions actions, bool resettable)
+        : juce::AccessibilityHandler(knob, juce::AccessibilityRole::slider, std::move(actions),
+                                     std::move(interfaces)),
+          knob_(knob),
+          resettable_(resettable) {}
+    juce::String getHelp() const override {
+      auto text = help::spokenHelp(knob_.getTitle(), knob_.getHelpText());
+      if (text.isNotEmpty() && !text.endsWithChar('.')) text << ".";
+      text << " Arrows adjust, Shift for fine steps, Enter to type a value.";
+      if (resettable_) text << " Delete resets.";
+      return text.trim();
+    }
+    Knob& knob_;
+    bool resettable_;
+  };
+  return std::make_unique<Handler>(*this, std::move(interfaces), std::move(actions),
+                                   options_.defaultValue.has_value());
 }
 
 // Readout / editor
@@ -337,7 +393,16 @@ void Knob::syncReadout() {
   readout_->setText(options_.scale->format(value_));
 }
 
-void Knob::parentHierarchyChanged() { syncReadout(); }
+void Knob::parentHierarchyChanged() {
+  syncReadout();
+  // Moved into (or out of) a group with an advanced panel after the handler
+  // was built: rebuild it so the menu action matches.
+  const bool hasMenu = findParentComponentOfClass<SecondaryPressTarget>() != nullptr;
+  if (hasMenu != handlerHasMenu_) {
+    handlerHasMenu_ = hasMenu;
+    invalidateAccessibilityHandler();
+  }
+}
 
 void Knob::openEditor() {
   if (editor_ != nullptr) return;
@@ -349,6 +414,12 @@ void Knob::openEditor() {
   editor_->setBorder(kEditorBorder);
   editor_->setJustification(juce::Justification::centred);
   editor_->setText(options_.scale->editText(value_));
+  // Screen readers: "Threshold value", with the range the entry is clamped to.
+  editor_->setAccessibleLabel(options_.label + " value");
+  for (auto* child : editor_->getChildren())
+    if (auto* text = dynamic_cast<juce::TextEditor*>(child))
+      text->setDescription("From " + options_.scale->format(options_.min) + " to " +
+                           options_.scale->format(options_.max) + ".");
   editor_->onEnter = [this] { commitEdit(); };
   editor_->onEscape = [this] { closeEditor(); };
   editor_->onBlur = [this] { commitEdit(); };
@@ -362,22 +433,33 @@ void Knob::openEditor() {
 void Knob::commitEdit() {
   if (editor_ == nullptr) return;
   const auto text = editor_->text().replace(",", ".").trim();
+  // Screen readers hear why an entry didn't land as typed; the pointer path
+  // is unchanged (a bad entry still just closes the editor).
+  juce::String spoken;
   if (text.isNotEmpty() && text.containsOnly("0123456789.-+eE")) {
     const double parsed = text.getDoubleValue();
     if (std::isfinite(parsed)) {
-      const double norm = juce::jlimit<double>(options_.min, options_.max,
-                                               options_.scale->fromDisplay(parsed));
+      const double wanted = options_.scale->fromDisplay(parsed);
+      const double norm = juce::jlimit<double>(options_.min, options_.max, wanted);
       // Typed values keep the fine 1e-4 quantum; no centre detent (steps
       // still apply: a typed 2.4 semitones is 2).
       live_ = snapToStep(static_cast<float>(std::round(norm * 10000.0) / 10000.0));
       emit(live_);
+      if (!std::isfinite(wanted) || wanted < options_.min || wanted > options_.max)
+        spoken = "Limited to " + options_.scale->format(value_);
+    } else {
+      spoken = "Not a number";
     }
+  } else if (text.isNotEmpty()) {
+    spoken = "Not a number";
   }
   closeEditor();
+  if (spoken.isNotEmpty()) help::announce(spoken);
 }
 
 void Knob::closeEditor() {
   if (editor_ == nullptr) return;
+  const bool restoreFocus = editor_->hasKeyboardFocus(true);
   // Hiding the editor drops its focus, which would re-enter through onBlur:
   // detach first, delete once the stack has unwound.
   auto editor = std::move(editor_);
@@ -387,6 +469,7 @@ void Knob::closeEditor() {
   removeChildComponent(editor.get());
   auto* raw = editor.release();
   juce::MessageManager::callAsync([raw] { delete raw; });
+  if (restoreFocus && isShowing()) grabKeyboardFocus();
   repaint();
   syncReadout();
 }

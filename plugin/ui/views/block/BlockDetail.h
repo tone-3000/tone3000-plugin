@@ -17,11 +17,13 @@
 #include "widgets/DragScroller.h"
 #include "services/ChainStore.h"
 #include "services/Services.h"
+#include "widgets/AccessibleGroup.h"
 
 namespace t3k::ui {
 
 class BlockDetail : public juce::Component, private ChainStore::Listener, private juce::ComponentListener {
 public:
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override { return a11y::groupHandler(*this); }
   static constexpr int kPadY = 24;
   static constexpr int kBackGap = 16;
 

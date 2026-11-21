@@ -32,9 +32,13 @@ juce::String significantDigits(double v, int significant) {
 
 const std::vector<GearFilter>& gearFilters() {
   static const std::vector<GearFilter> filters = {
-      {"amp-cab", "Amp + Cab"}, {"amp", "Amp Head"},       {"cab", "Cabinet"},
-      {"pedal", "Pedal"},       {"outboard", "Outboard"},  {"space", "Spaces"},
-      {"experimental", "Experimental"},
+      {"amp-cab", "Amp + Cab", "Amplifier and speaker cabinet captured together."},
+      {"amp", "Amp Head", "Amplifier without a speaker cabinet; typically followed by a cabinet tone or IR."},
+      {"cab", "Cabinet", "Speaker cabinet tones and impulse responses, typically used after an amp head."},
+      {"pedal", "Pedal", "Guitar effects pedal captures."},
+      {"outboard", "Outboard", "External studio hardware captures."},
+      {"space", "Spaces", "Room and reverberation impulse responses."},
+      {"experimental", "Experimental", "Unusual or experimental sound captures."},
   };
   return filters;
 }

@@ -12,6 +12,10 @@ ChromeIconButton::ChromeIconButton(Tone tone, help::Key help) : Clickable({}), t
   setSize(theme::kIconBoxSize, theme::kIconBoxSize);
   setHelpText(help::text(help));
   setMouseCursor(juce::MouseCursor::PointingHandCursor);
+  if (tone_ != Tone::plain) {
+    setToggleable(true);
+    setToggleState(on_, juce::dontSendNotification);
+  }
 }
 
 ChromeIconButton::ChromeIconButton(Icon icon, Tone tone, help::Key help)
@@ -33,6 +37,7 @@ void ChromeIconButton::setIcon(Icon icon) {
 void ChromeIconButton::setOn(bool on) {
   if (on_ == on) return;
   on_ = on;
+  if (tone_ != Tone::plain) setToggleState(on, juce::dontSendNotification);
   repaint();
 }
 

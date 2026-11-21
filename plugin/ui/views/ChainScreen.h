@@ -15,11 +15,13 @@
 #include "block/BlockDetail.h"
 #include "gallery/ChainView.h"
 #include "services/Services.h"
+#include "widgets/AccessibleGroup.h"
 
 namespace t3k::ui {
 
 class ChainScreen : public juce::Component {
 public:
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override { return a11y::ignoredHandler(*this); }
   explicit ChainScreen(Services& services);
   ~ChainScreen() override;
 

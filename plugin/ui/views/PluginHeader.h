@@ -10,11 +10,13 @@
 #include "core/Design.h"
 #include "services/Services.h"
 #include "widgets/IconButton.h"
+#include "widgets/AccessibleGroup.h"
 
 namespace t3k::ui {
 
 class PluginHeader : public juce::Component, private ChainStore::Listener, private ToneSession::Listener {
 public:
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override { return a11y::ignoredHandler(*this); }
   static constexpr int kHeight = design::kHeaderHeight;
 
   explicit PluginHeader(Services& services);
@@ -23,6 +25,7 @@ public:
   PresetBar& presetBar() { return presetBar_; }
 
   void setTunerShown(bool shown);
+  void focusTunerButton() { if (tuner_.isShowing()) tuner_.grabKeyboardFocus(); }
 
   std::function<void(bool show)> onToggleTuner;
   std::function<void(bool stereo)> onStereoToggle;
@@ -48,6 +51,9 @@ private:
   IconButton undo_{Icon::Undo2, 28};
   IconButton redo_{Icon::Redo2, 28};
   AccountMenu account_;
+  // Mono/stereo, tuner, undo/redo and account: one group for screen
+  // readers and the group keys, the preset bar being another.
+  a11y::AccessibleGroup tools_{"Toolbar", true};
   bool tunerShown_ = false;
 };
 

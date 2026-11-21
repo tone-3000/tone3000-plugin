@@ -255,9 +255,8 @@ void NativeEditor::resized() {
 // Key presses reach the editor when no control took them (the peer falls
 // back to its component; children pass unused keys up). Space and Enter
 // are the host's transport keys, so they go back to it (keyPassthrough.ts).
-// Since clicks never focus buttons (Clickable), that is the state after any
-// mouse work; only a text field, or a control the user Tabbed to, takes
-// them for itself (PluginRoot's focus policy).
+// Controls retain focus after clicks; keys they do not handle still reach
+// this fallback.
 bool NativeEditor::keyPressed(const juce::KeyPress& key) {
   if (key == juce::KeyPress::spaceKey) return backend_.forwardKeyToHost(Backend::HostKey::space);
   if (key == juce::KeyPress::returnKey) return backend_.forwardKeyToHost(Backend::HostKey::enter);

@@ -23,7 +23,33 @@ std::vector<juce::String> clean(const std::vector<juce::String>& names) {
 }
 
 int ceilInt(float v) { return static_cast<int>(std::ceil(v)); }
+
+juce::String joined(const std::vector<juce::String>& names) {
+  juce::StringArray all;
+  for (const auto& n : names) all.add(n);
+  return all.joinIntoString(", ");
+}
 }  // namespace
+
+// A Tab stop a screen reader reads (title "Description", the full text as
+// its description: read as content, not as a value), laid over the painted
+// text. Invisible: no paint, no mouse, and a click never focuses it.
+class BlockInfoPanel::Readout : public juce::Component {
+public:
+  explicit Readout(const juce::String& title) {
+    setTitle(title);
+    setInterceptsMouseClicks(false, false);
+    setWantsKeyboardFocus(true);
+    setMouseClickGrabsKeyboardFocus(false);
+  }
+  void setText(const juce::String& text) {
+    if (text == getDescription()) return;
+    setDescription(text);
+  }
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override {
+    return std::make_unique<juce::AccessibilityHandler>(*this, juce::AccessibilityRole::staticText);
+  }
+};
 
 // MORE / LESS: mono 14px uppercase + a 16px chevron, gap 8.
 class BlockInfoPanel::MoreButton : public Clickable {
@@ -58,7 +84,10 @@ private:
 BlockInfoPanel::BlockInfoPanel()
     : prompt_(std::make_unique<PillButton>("Log In", PillButton::Style::filled)),
       more_(std::make_unique<MoreButton>()),
-      view_(std::make_unique<PillButton>("View on TONE3000", PillButton::Style::outline)) {
+      view_(std::make_unique<PillButton>("View on TONE3000", PillButton::Style::outline)),
+      descText_(std::make_unique<Readout>("Description")),
+      makesText_(std::make_unique<Readout>("Makes & Models")),
+      tagsText_(std::make_unique<Readout>("Tags")) {
   prompt_->onClick = [this] {
     if (!state_.authenticated) {
       if (onLogin) onLogin();
@@ -84,9 +113,20 @@ BlockInfoPanel::BlockInfoPanel()
     if (onOpenUrl) onOpenUrl(state_.pageUrl);
   };
   addChildComponent(*view_);
+  for (auto* text : {descText_.get(), makesText_.get(), tagsText_.get()}) addChildComponent(*text);
 }
 
 BlockInfoPanel::~BlockInfoPanel() = default;
+
+void BlockInfoPanel::focusContent() {
+  for (auto* target : std::initializer_list<juce::Component*>{descText_.get(), makesText_.get(), tagsText_.get(),
+                                                              prompt_.get(), view_.get()}) {
+    if (target->isShowing() && target->isEnabled()) {
+      target->grabKeyboardFocus();
+      return;
+    }
+  }
+}
 
 void BlockInfoPanel::setState(State state) {
   // A new description collapses back to the clamp (DescriptionBlock's
@@ -143,6 +183,7 @@ void BlockInfoPanel::rebuild(int width) {
   prompt_->setVisible(false);
   more_->setVisible(false);
   view_->setVisible(false);
+  for (auto* text : {descText_.get(), makesText_.get(), tagsText_.get()}) text->setVisible(false);
   if (width <= 0) return;
 
   const float w = static_cast<float>(width);
@@ -179,6 +220,9 @@ void BlockInfoPanel::rebuild(int width) {
       auto& item = add(Item::Kind::body, kLineHeight * static_cast<float>(lines));
       item.maxLines = descExpanded_ ? 0 : kDescClampLines;
       item.flows.push_back(std::move(flow));
+      descText_->setText(description);  // the whole text, clamped or not
+      descText_->setBounds(item.bounds);
+      descText_->setVisible(true);
       if (overflows) {
         cursorY_ += kSectionGap - kGap;
         auto& more = add(Item::Kind::control, more_->getHeight());
@@ -208,6 +252,9 @@ void BlockInfoPanel::rebuild(int width) {
       auto& item = add(Item::Kind::makes, ry - kMakesGap);
       item.flows = std::move(staged.flows);
       item.boxes = std::move(staged.boxes);
+      makesText_->setText(joined(rows));
+      makesText_->setBounds(item.bounds);
+      makesText_->setVisible(true);
     }
     if (!tagNames.empty()) {
       addTitle("Tags");
@@ -228,6 +275,9 @@ void BlockInfoPanel::rebuild(int width) {
       auto& item = add(Item::Kind::tags, cy + th);
       item.boxes = std::move(staged.boxes);
       item.labels = std::move(staged.labels);
+      tagsText_->setText(joined(tagNames));
+      tagsText_->setBounds(item.bounds);
+      tagsText_->setVisible(true);
     }
   }
 
