@@ -19,6 +19,12 @@ public:
 
   void paint(juce::Graphics& g) override;
   void mouseDown(const juce::MouseEvent& e) override;
+  // Keyboard / screen reader while latched (see clipA11y in DotMeter.h): a
+  // "Clear clip" button; Enter, Space or the press action clears it.
+  bool keyPressed(const juce::KeyPress& key) override;
+  void focusGained(FocusChangeType) override { repaint(); }
+  void focusLost(FocusChangeType) override { repaint(); }
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
 private:
   void meterChanged(const juce::String& id) override;
@@ -26,6 +32,7 @@ private:
 
   MeterStore& meters_;
   juce::String id_;
+  bool latched_ = false;
 };
 
 }  // namespace t3k::ui

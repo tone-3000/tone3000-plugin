@@ -392,4 +392,20 @@ juce::var MockBackend::getMeterLevels() {
               {"correlation", 0.85}});
 }
 
+bool MockBackend::setChainBranch(const juce::String& side, const std::string& after) {
+  if (!chain_.getProperty("stereoEnabled", false)) return false;
+  auto* state = chain_.getDynamicObject();
+  if (state == nullptr) return false;
+  state->setProperty("branch", obj({{"side", side}, {"afterBlockId", juce::String(after)}}));
+  state->setProperty("revision", static_cast<int>(chain_.getProperty("revision", 0)) + 1);
+  return true;
+}
+bool MockBackend::clearChainBranch() {
+  auto* state = chain_.getDynamicObject();
+  if (state == nullptr) return false;
+  state->removeProperty("branch");
+  state->setProperty("revision", static_cast<int>(chain_.getProperty("revision", 0)) + 1);
+  return true;
+}
+
 }  // namespace t3k::ui::testbed

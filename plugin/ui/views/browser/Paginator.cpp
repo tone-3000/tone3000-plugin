@@ -25,7 +25,10 @@ void Paginator::turnTo(int page) {
 }
 
 bool Paginator::keyPressed(const juce::KeyPress& key) {
-  const int step = key.isKeyCode(juce::KeyPress::leftKey) ? -1 : key.isKeyCode(juce::KeyPress::rightKey) ? 1 : 0;
+  if (key.isKeyCode(juce::KeyPress::homeKey)) { turnTo(1); return true; }
+  if (key.isKeyCode(juce::KeyPress::endKey)) { turnTo(totalPages_); return true; }
+  const int step = (key.isKeyCode(juce::KeyPress::leftKey) || key.isKeyCode(juce::KeyPress::downKey)) ? -1
+                 : (key.isKeyCode(juce::KeyPress::rightKey) || key.isKeyCode(juce::KeyPress::upKey)) ? 1 : 0;
   if (step == 0) return false;
   turnTo(page_ + step);
   return true;
@@ -50,10 +53,15 @@ private:
 }  // namespace
 
 std::unique_ptr<juce::AccessibilityHandler> Paginator::createAccessibilityHandler() {
+  // Spoken only: the keys (the hint bar has no hint for the row).
+  struct Handler : juce::AccessibilityHandler {
+    using juce::AccessibilityHandler::AccessibilityHandler;
+    juce::String getHelp() const override { return "Arrows turn the page. Home: first page. End: last page."; }
+  };
   juce::AccessibilityHandler::Interfaces interfaces;
   interfaces.value = std::make_unique<PagesValue>(*this);
-  return std::make_unique<juce::AccessibilityHandler>(*this, juce::AccessibilityRole::slider,
-                                                      juce::AccessibilityActions(), std::move(interfaces));
+  return std::make_unique<Handler>(*this, juce::AccessibilityRole::slider, juce::AccessibilityActions(),
+                                   std::move(interfaces));
 }
 
 void Paginator::set(int page, int totalPages) {
@@ -61,6 +69,7 @@ void Paginator::set(int page, int totalPages) {
   page_ = page;
   totalPages_ = totalPages;
   rebuild();
+  if (auto* handler = getAccessibilityHandler()) handler->notifyAccessibilityEvent(juce::AccessibilityEvent::valueChanged);
 }
 
 std::vector<int> Paginator::pagesFor(int page, int totalPages) {

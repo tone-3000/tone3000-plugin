@@ -10,6 +10,10 @@
 
 namespace t3k::ui {
 
+// JUCE's Windows extended-key encoding (VK_APPS | 0x10000). The extended
+// bit prevents the VK_APPS value from being interpreted as the ']' character.
+inline constexpr int kWindowsApplicationsKey = 0x1005d;
+
 // The press that means "context", the way a browser fires contextmenu: any
 // non-primary button, plus Ctrl-click on macOS (isPopupMenu carries that
 // platform rule). Touch is never secondary here; a hold stands in for it.
@@ -21,6 +25,7 @@ class SecondaryPressTarget {
 public:
   virtual ~SecondaryPressTarget() = default;
   virtual void secondaryPress(const juce::MouseEvent& e) = 0;
+  virtual void keyboardContextMenu() = 0;
 };
 
 // Called by a control from its mouseDown for a non-primary press. Returns

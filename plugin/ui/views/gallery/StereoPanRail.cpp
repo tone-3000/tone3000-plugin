@@ -42,6 +42,12 @@ StereoPanRail::Lane::Lane(Services& services, bool left)
       invert(services.backend, left ? "chainInvertLeft" : "chainInvertRight") {
   panOff.addAndMakeVisible(pan);
   panOff.setHelpText(help::text(help::Key::panMonoSum));
+  // Screen-reader names for the [S|Ø] cells (the glyphs alone read as "S"
+  // and "O slash"); their on/off state is the toggle's checked state. The
+  // painted glyphs and the hint bar are unchanged.
+  const juce::String side = left ? "left" : "right";
+  if (auto* soloCell = chips.getChildComponent(0)) soloCell->setTitle("Solo " + side);
+  if (auto* invertCell = chips.getChildComponent(1)) invertCell->setTitle("Invert " + side + " polarity");
 }
 
 void StereoPanRail::MonoChip::paint(juce::Graphics& g) {

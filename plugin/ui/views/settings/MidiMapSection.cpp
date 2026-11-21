@@ -3,9 +3,11 @@
 #include <cmath>
 
 #include "core/Fonts.h"
+#include "core/Help.h"
 #include "core/MidiCatalog.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
+#include "widgets/AccessibleGroup.h"
 #include "widgets/IconButton.h"
 #include "widgets/TextField.h"
 
@@ -25,19 +27,37 @@ const juce::String kPresetsCaption =
 
 int lineHeight(float px) { return Fonts::normalLineHeight(px); }
 int monoLineHeight(float px) { return Fonts::normalLineHeight(Fonts::mono(px)); }
+
+// A target's display name (its id when the catalog has none).
+juce::String targetName(const juce::String& targetId) {
+  if (const auto* target = midi::targetById(targetId)) return target->name;
+  return targetId;
+}
+
+// Spoken context: the painted middle dot reads as a comma.
+juce::String spokenContext(const juce::String& context) {
+  return context.replace(juce::String::fromUTF8(" \xc2\xb7 "), ", ");
+}
 }  // namespace
 
 // Row
 // One list row: the target cell (name over its context) on the left; derived
 // rows add their right-hand controls. Non-first rows draw a hairline on top.
+// Screen readers: a group named after the target, holding the row's controls.
 class MidiMapSection::Row : public juce::Component {
 public:
-  Row(juce::String targetId, juce::String context) : targetId_(std::move(targetId)), context_(std::move(context)) {
-    if (const auto* target = midi::targetById(targetId_)) title_ = target->name;
-    else title_ = targetId_;
+  Row(juce::String targetId, juce::String context)
+      : targetId_(std::move(targetId)), title_(targetName(targetId_)), context_(std::move(context)) {
+    a11y::makeGroup(*this, title_);
+  }
+
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override {
+    return a11y::groupHandler(*this);
   }
 
   const juce::String& targetId() const { return targetId_; }
+  const juce::String& targetTitle() const { return title_; }
+  const juce::String& context() const { return context_; }
   void setFirst(bool first) { first_ = first; }
 
   // Two lines: title and subtitle.
@@ -96,6 +116,14 @@ public:
     }
     relearn_.setName("Re-learn");
     remove_.setName("Remove");
+    // Spoken: which mapping each button acts on, and what it maps from.
+    relearn_.setTitle("Re-learn " + targetTitle());
+    remove_.setTitle("Remove " + targetTitle());
+    const auto spoken = source_ + ", " + behaviour_;
+    relearn_.setDescription(spoken);
+    remove_.setDescription(spoken);
+    auto groupDescription = spokenContext(Row::context());
+    setDescription(groupDescription.isNotEmpty() ? groupDescription + ", " + spoken : spoken);
     relearn_.onClick = std::move(onRelearn);
     remove_.onClick = std::move(onRemove);
   }
@@ -159,6 +187,9 @@ public:
     };
     cc_.onEnter = std::move(onCommit);
     cancel_.onClick = std::move(onCancel);
+    cancel_.setTitle("Cancel learning " + targetTitle());
+    const auto where = spokenContext(Row::context());
+    setDescription(where.isNotEmpty() ? where + ", listening for MIDI" : juce::String("Listening for MIDI"));
     cancel_.fitToContent();
     addAndMakeVisible(cc_);
     addAndMakeVisible(cancel_);
@@ -389,6 +420,36 @@ void MidiMapSection::rebuild() {
 
   channelSelect_.setValue(juce::String(state->channel));
   armTimeout();
+  announceChanges(*state);
+}
+
+// Only the learn row's pulsing dot and the list itself show these, so they
+// are spoken. The first state seen is the starting point, not a change.
+void MidiMapSection::announceChanges(const MidiMapState& state) {
+  std::map<juce::String, juce::String> sources;
+  for (const auto& mapping : state.mappings) sources[mapping.targetId] = midi::sourceLabel(mapping);
+
+  if (seenState_) {
+    const auto& learn = state.learnTargetId;
+    // A learn that ended with its target (re)mapped: the control was learned.
+    bool learned = false;
+    if (seenLearn_.isNotEmpty() && learn != seenLearn_) {
+      const auto now = sources.find(seenLearn_);
+      const auto before = seenSources_.find(seenLearn_);
+      if (now != sources.end() && (before == seenSources_.end() || before->second != now->second)) {
+        help::announce(targetName(seenLearn_) + " mapped to " + now->second);
+        learned = true;
+      }
+    }
+    if (learn.isNotEmpty() && learn != seenLearn_) help::announce("Listening for MIDI. Move a control.");
+    else if (learn.isEmpty() && seenLearn_.isNotEmpty() && !learned) help::announce("Stopped listening.");
+    for (const auto& seen : seenSources_)
+      if (sources.find(seen.first) == sources.end()) help::announce(targetName(seen.first) + " mapping removed");
+  }
+
+  seenState_ = true;
+  seenLearn_ = state.learnTargetId;
+  seenSources_ = std::move(sources);
 }
 
 // Learn is armed until hardware answers; give up after a while so an

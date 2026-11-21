@@ -27,6 +27,10 @@ class FormItem : public juce::Component {
 public:
   virtual float heightFor(float width) const = 0;
 
+  // A row or stack made a named group (a11y::makeGroup) reads as a group;
+  // anything else keeps JUCE's default.
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+
   // The fraction of a pixel the item's true top sits below its snapped
   // bounds (-0.5 .. 0.5); set by the parent that placed it.
   void setSubpixelTop(float fraction);

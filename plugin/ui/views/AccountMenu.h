@@ -24,6 +24,10 @@ public:
   ~AccountMenu() override;
 
   void setAuthenticated(bool authenticated);
+  // The signed-in user's name, for screen readers: the button's
+  // description reads "Signed in as <name>" (or "Signed in" / "Signed out").
+  void setDisplayName(const juce::String& name);
+  // The account handle shown on the menu's profile row.
   void setUsername(const juce::String& username);
   void setAvatar(ImageLoader& images, const juce::String& url);
   void openMenu();
@@ -61,11 +65,13 @@ private:
     MenuRow logout{"Logout", Icon::LogOut};
   };
 
+  void updateDescription();
   void updateProfileRow();
 
   Avatar avatar_;
   Menu menu_;
   bool authenticated_ = false;
+  juce::String displayName_;
   juce::String username_;
 };
 

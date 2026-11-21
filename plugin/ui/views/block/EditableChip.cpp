@@ -11,6 +11,9 @@ EditableChip::EditableChip(juce::String label, int valueWidth, help::Key help)
   setHelpText(help::text(help_));
   setMouseCursor(juce::MouseCursor::IBeamCursor);
   setViewportIgnoreDragFlag(true);  // a drag on the value selects it; the column around it stays put
+  setTitle(label_);
+  setWantsKeyboardFocus(true);
+  setMouseClickGrabsKeyboardFocus(false);  // a click opens the editor, as it always has
 
   editor_.setMultiLine(false);
   editor_.setReturnKeyStartsNewLine(false);
@@ -41,6 +44,15 @@ void EditableChip::setText(const juce::String& text, const juce::String& editTex
   repaint();
 }
 
+void EditableChip::setSpokenValue(const juce::String& spoken) {
+  if (spoken_ == spoken) return;
+  spoken_ = spoken;
+  // Only a focused chip speaks its changes (a dot drag moves all three).
+  if (hasKeyboardFocus(false))
+    if (auto* handler = getAccessibilityHandler())
+      handler->notifyAccessibilityEvent(juce::AccessibilityEvent::valueChanged);
+}
+
 void EditableChip::setDisabledLook(bool disabled) {
   disabled_ = disabled;
   setAlpha(disabled ? theme::kDisabledOpacity : 1.0f);
@@ -58,7 +70,32 @@ void EditableChip::mouseUp(const juce::MouseEvent& e) {
   beginEdit();
 }
 
+bool EditableChip::keyPressed(const juce::KeyPress& key) {
+  using KP = juce::KeyPress;
+  if (editing_ || !hasKeyboardFocus(false)) return false;
+  if (key == KP::returnKey || key == KP::spaceKey) {
+    if (!disabled_) beginKeyboardEdit();
+    return true;
+  }
+  const bool up = key.isKeyCode(KP::upKey) || key.isKeyCode(KP::rightKey);
+  const bool down = key.isKeyCode(KP::downKey) || key.isKeyCode(KP::leftKey);
+  if (!up && !down) return false;
+  if (disabled_ || !numeric || !onSetValue) return true;
+  if (const auto n = numeric()) {
+    const double step = key.getModifiers().isShiftDown() ? n->fineStep : n->step;
+    onSetValue(juce::jlimit(n->min, n->max, n->value + (up ? step : -step)));
+  }
+  return true;
+}
+
+void EditableChip::beginKeyboardEdit() {
+  if (disabled_ || editing_) return;
+  beginEdit();
+  keyboardEdit_ = true;
+}
+
 void EditableChip::beginEdit() {
+  keyboardEdit_ = false;
   editing_ = true;
   editor_.setText({}, false);
   editor_.setTextToShowWhenEmpty(editText_, theme::kGray);
@@ -71,16 +108,21 @@ void EditableChip::beginEdit() {
 void EditableChip::commit() {
   if (!editing_) return;
   const auto raw = editor_.getText();
-  editing_ = false;
-  editor_.setVisible(false);
+  endEdit();
   if (raw.trim().isNotEmpty() && onCommit) onCommit(raw);
-  repaint();
 }
 
 void EditableChip::cancel() {
   if (!editing_) return;
+  endEdit();
+}
+
+void EditableChip::endEdit() {
+  const bool returnFocus = keyboardEdit_ && editor_.hasKeyboardFocus(true);
   editing_ = false;
+  keyboardEdit_ = false;
   editor_.setVisible(false);
+  if (returnFocus && isShowing()) grabKeyboardFocus();
   repaint();
 }
 
@@ -99,6 +141,66 @@ void EditableChip::paint(juce::Graphics& g) {
     g.setColour(theme::kWhite);
     g.drawText(text_, valueBounds().withWidth(valueWidth_ + 40), juce::Justification::centredLeft, false);
   }
+  // Keyboard focus only (a click never focuses the chip), in the EQ faders' style.
+  if (hasKeyboardFocus(false)) {
+    g.setColour(theme::kWhite);
+    g.drawRoundedRectangle(box.toFloat().reduced(0.5f), theme::kIconBoxRadius, 1.0f);
+  }
+}
+
+namespace {
+// The chip's reading for screen readers: the spoken value with its unit, and
+// the numbers behind it so VoiceOver's increment and decrement step it.
+class ChipValue : public juce::AccessibilityValueInterface {
+public:
+  explicit ChipValue(EditableChip& chip) : chip_(chip) {}
+
+  bool isReadOnly() const override {
+    return chip_.isDisabledLook() || !chip_.numeric || !chip_.onSetValue || !chip_.numeric();
+  }
+  double getCurrentValue() const override {
+    const auto n = chip_.numeric ? chip_.numeric() : std::nullopt;
+    return n ? n->value : 0.0;
+  }
+  juce::String getCurrentValueAsString() const override { return chip_.spokenValue(); }
+  void setValue(double value) override {
+    if (isReadOnly()) return;
+    if (const auto n = chip_.numeric()) chip_.onSetValue(juce::jlimit(n->min, n->max, value));
+  }
+  void setValueAsString(const juce::String& text) override {
+    if (!chip_.isDisabledLook() && text.trim().isNotEmpty() && chip_.onCommit) chip_.onCommit(text);
+  }
+  AccessibleValueRange getRange() const override {
+    const auto n = chip_.numeric ? chip_.numeric() : std::nullopt;
+    if (!n) return {};
+    return {{n->min, n->max}, n->step};
+  }
+
+private:
+  EditableChip& chip_;
+};
+
+struct ChipHandler : juce::AccessibilityHandler {
+  ChipHandler(EditableChip& chip, Interfaces interfaces, juce::AccessibilityActions actions)
+      : juce::AccessibilityHandler(chip, juce::AccessibilityRole::slider, std::move(actions), std::move(interfaces)),
+        chip_(chip) {}
+  // The hint bar's copy speaks of clicking; the keys are what a reader needs.
+  juce::String getHelp() const override {
+    return chip_.isDisabledLook() ? juce::String() : juce::String("Arrows adjust, Enter to type a value.");
+  }
+  EditableChip& chip_;
+};
+}  // namespace
+
+std::unique_ptr<juce::AccessibilityHandler> EditableChip::createAccessibilityHandler() {
+  juce::AccessibilityHandler::Interfaces interfaces;
+  interfaces.value = std::make_unique<ChipValue>(*this);
+  juce::AccessibilityActions actions;
+  actions.addAction(juce::AccessibilityActionType::press, [this] {
+    if (isShowing()) grabKeyboardFocus();
+    beginKeyboardEdit();
+  });
+  return std::make_unique<ChipHandler>(*this, std::move(interfaces), std::move(actions));
 }
 
 }  // namespace t3k::ui

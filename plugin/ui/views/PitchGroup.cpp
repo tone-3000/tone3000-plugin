@@ -38,6 +38,7 @@ PitchGroup::PitchGroup(Services& services)
       power_(services.backend, "pitchEnabled", help::Key::pitchPower),
       step_(services.backend, "pitchStep"),
       deck_(services) {
+  a11y::makeGroup(*this, "Pitch");
   dim_.addAndMakeVisible(semitones_);
   dim_.setOff(!power_.value(), false);
   power_.onValueChange = [this](bool on) { dim_.setOff(!on); };

@@ -29,6 +29,7 @@ GateGroup::GateGroup(Services& services)
       threshold_(services.backend, "gateThreshold", thresholdKnob()),
       power_(services.backend, "gateEnabled", help::Key::gatePower),
       deck_(services) {
+  a11y::makeGroup(*this, "Gate");
   dim_.addAndMakeVisible(threshold_);
   dim_.setOff(!power_.value(), false);
   power_.onValueChange = [this](bool on) { dim_.setOff(!on); };

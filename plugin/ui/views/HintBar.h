@@ -26,6 +26,9 @@ private:
     explicit CpuReadout(MeterStore& meters);
     ~CpuReadout() override;
     void paint(juce::Graphics& g) override;
+    // Static text "CPU", value "12 percent": readable by screen-reader
+    // review, never focused, and no change events (it moves constantly).
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
   private:
     void cpuChanged() override { repaint(); }

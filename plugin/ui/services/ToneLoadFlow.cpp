@@ -1,6 +1,7 @@
 #include "ToneLoadFlow.h"
 
 #include <utility>
+#include "core/Help.h"
 
 namespace t3k::ui {
 
@@ -43,6 +44,7 @@ void ToneLoadFlow::swapBlock(const std::string& blockId) {
 // at the remembered insert slot.
 void ToneLoadFlow::toneSelected(const Tone& tone) {
   if (tone.models.empty()) {
+    help::announce("Could not load " + tone.title + ": no compatible models.");
     DBG("Tone has no models");
     return;
   }
@@ -57,7 +59,8 @@ void ToneLoadFlow::toneSelected(const Tone& tone) {
     if (chain_.swapTone(swapId, toneJson)) return;
     DBG("Swap target no longer exists; adding tone as a new block");
   }
-  if (chain_.loadTone(toneJson, insertId).empty()) DBG("Failed to load tone");
+  if (chain_.loadTone(toneJson, insertId).empty())
+    help::announce("Could not add " + tone.title + " to the signal chain.");
 }
 
 void ToneLoadFlow::clearPendingTargets() {

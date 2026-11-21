@@ -66,6 +66,12 @@ public:
   void paint(juce::Graphics& g) override;
   void resized() override;
 
+  // The ← path: abandon the sign-in (or clear a failed one). Escape runs it
+  // too (PluginRoot).
+  void back();
+  // Keyboard focus onto the page's first control, as it opens.
+  void focusFirstControl();
+
 private:
   // A line of grey copy that is a button ("Sign in on a different device"):
   // the hand cursor is its one affordance, no hover or pressed look (mockup).
@@ -89,19 +95,40 @@ private:
   // The device page's body: the QR card, OR, and the card with the code to
   // type at the verification URI (underlined to read as an address, not a
   // link: it is for typing into another device's browser).
+  //
+  // Screen readers get the cards' copy as two read-only texts laid over
+  // them (they paint nothing): the instructions, and the code, titled
+  // "Code" with its characters spaced out so readers spell it. The code is
+  // in the Tab order too, so it can be reached and re-read from the keyboard.
   class DeviceCards : public juce::Component {
   public:
     DeviceCards();
     void setDevice(const ToneSession::AuthFlow::Device& device);
     // What a screen reader hears of the cards.
     juce::String spoken() const { return spoken_; }
+    // "BCDF-GHJK" as "B C D F, G H J K".
+    static juce::String spelled(const juce::String& code);
     void paint(juce::Graphics& g) override;
     void resized() override;
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
   private:
+    // A read-only text for screen readers: `title` as its name, `value` as
+    // its value. Paints nothing and never takes the pointer.
+    class SpokenText : public juce::Component {
+    public:
+      explicit SpokenText(bool focusable);
+      void set(const juce::String& title, const juce::String& value);
+      std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+
+    private:
+      juce::String value_;
+    };
+
     QrCode qr_;
     std::unique_ptr<RichFlow> scan_, visit_;
     juce::String code_, spoken_;
+    SpokenText instructions_{false}, codeText_{true};
   };
 
   // One centred row of the column: a component, a text block, or the
@@ -124,7 +151,6 @@ private:
   // Rebuild the column for the flow's state.
   void rebuild();
   void layoutColumn();
-  void back();
   void copyLink();
   Row& addComponent(juce::Component& c, int gapBefore);
   Row& addText(const RichText& runs, float px, juce::Colour colour, int maxWidth, int gapBefore);

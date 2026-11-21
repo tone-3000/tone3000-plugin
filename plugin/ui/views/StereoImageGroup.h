@@ -22,6 +22,7 @@
 #include "widgets/ChromeIconButton.h"
 #include "widgets/ParamControls.h"
 #include "widgets/SecondaryPress.h"
+#include "widgets/AccessibleGroup.h"
 
 namespace t3k::ui {
 
@@ -29,6 +30,7 @@ class StereoImageGroup : public juce::Component,
                          public SecondaryPressTarget,
                          private AutoMeasure::Listener {
 public:
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override { return a11y::groupHandler(*this); }
   // Fixed slot width shared by the advert pill, the expanded row and the
   // other feature's group: every state occupies the same footprint. Sized
   // for the advert, the widest face.
@@ -43,6 +45,7 @@ public:
   // Right-click anywhere on the group toggles the deck.
   void mouseDown(const juce::MouseEvent& e) override;
   void secondaryPress(const juce::MouseEvent&) override { toggleDeck(); }
+  void keyboardContextMenu() override { toggleDeck(); }
 
 private:
   class Advert;

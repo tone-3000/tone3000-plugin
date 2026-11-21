@@ -13,9 +13,11 @@
 //   scrolling chain view.
 // On a touch screen: double tap resets, tapping the label opens the editor,
 // and a touch-and-hold fires onLongPress (the right-click of the platform).
-// From the keyboard (Tab to the knob; a click never focuses it): arrows step
+// From the keyboard (Tab or click to focus the knob): arrows step
 // the value (Shift: fine), Home/End go to the ends, Enter opens the type-in
-// editor. Screen readers see a slider named by the label, valued in units.
+// editor, Delete or Backspace resets to the default. Screen readers see a
+// slider named by the label, valued in units; inside a group with an
+// advanced panel (Gate, Pitch, Spread) the slider's menu action opens it.
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -111,6 +113,8 @@ private:
   // with the readout shown for a moment.
   void nudgeTo(float normalised);
   bool resetToDefault();
+  // Delete / Backspace: the reset as one host gesture, announced.
+  bool keyboardReset();
   void applyLive(float raw, bool fine);
   void emit(float v);
   void openEditor();
@@ -139,6 +143,9 @@ private:
   juce::int64 lastTapMs_ = 0;
   juce::Point<float> lastTapPos_;
   bool touchPress_ = false;
+  // Whether the current accessibility handler was built with the group's
+  // menu action; a reparent that changes it rebuilds the handler.
+  bool handlerHasMenu_ = false;
 
   DelayedCall readoutTimer_, holdTimer_;
   std::unique_ptr<TextField> editor_;

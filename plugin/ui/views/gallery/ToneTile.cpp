@@ -63,6 +63,9 @@ void ToneTile::setBlock(const ChainItem& block) {
   enabled_ = block.params.enabled;
   setHelpText(help::toneTile(block.tone.title));
   setTitle(block.tone.title);
+  power_.setTitle("Enable " + block.tone.title);
+  swap_.setTitle("Replace " + block.tone.title);
+  remove_.setTitle("Remove " + block.tone.title);
   image_.setTone(block.tone.image, block.tone.gear, block.tone.local, kGlyphSize);
   syncState();
 }
@@ -81,6 +84,13 @@ void ToneTile::syncState() {
   ledSlot_.setVisible(!armed);
   power_.setOn(enabled_);
   repaint();
+}
+
+// The same words ChainView's description uses, so the two never repeat.
+juce::String ToneTile::accessibleStatus() const {
+  if (block_.loadFailed) return "load failed";
+  if (block_.modelLoading || !block_.loaded) return "loading";
+  return {};
 }
 
 void ToneTile::togglePower() {

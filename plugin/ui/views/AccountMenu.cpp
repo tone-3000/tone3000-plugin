@@ -20,6 +20,8 @@ constexpr int kLinkIcon = 14;
 // Profile row
 AccountMenu::ProfileRow::ProfileRow() : Clickable({}) {
   setMouseCursor(juce::MouseCursor::PointingHandCursor);
+  // The title is the username; the help says the row opens the profile.
+  setHelpText(help::text(help::Key::accountProfile));
   addAndMakeVisible(avatar);
 }
 
@@ -115,7 +117,19 @@ void AccountMenu::setAuthenticated(bool authenticated) {
   authenticated_ = authenticated;
   menu_.login.setVisible(!authenticated);
   menu_.logout.setVisible(authenticated);
+  updateDescription();
   updateProfileRow();
+}
+
+void AccountMenu::setDisplayName(const juce::String& name) {
+  displayName_ = name;
+  updateDescription();
+}
+
+void AccountMenu::updateDescription() {
+  setDescription(!authenticated_ ? juce::String("Signed out")
+                 : displayName_.isNotEmpty() ? "Signed in as " + displayName_
+                                             : juce::String("Signed in"));
 }
 
 void AccountMenu::setUsername(const juce::String& username) {

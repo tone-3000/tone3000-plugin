@@ -61,8 +61,9 @@ private:
 
 // The scrolled column: hosts the cards, prompts and paginator, and paints
 // the two bare text rows (pick error, empty copy) itself.
-class ToneBrowser::Content : public juce::Component {
+class ToneBrowser::Content : public a11y::AccessibleGroup {
 public:
+  Content() : AccessibleGroup("Results") {}
   juce::String pickError, emptyCopy;
   juce::Rectangle<int> pickErrorBox, emptyBox;
 
@@ -82,6 +83,7 @@ ToneBrowser::ToneBrowser(Services& services)
       filters_(services, services.browser),
       scroller_(std::make_unique<DragScroller>(DragScroller::Axis::vertical)),
       content_(std::make_unique<Content>()) {
+  a11y::makeGroup(*this, "Select Tone");
   setOpaque(true);  // covers the meters, chain and faceplate outright
   back_.onClick = [this] {
     if (onClose) onClose();
@@ -241,6 +243,7 @@ void ToneBrowser::pick(const Tone& tone) {
     pickError_ = kPickError;
     pickingId_.reset();
     rebuildBody();
+    help::announce(pickError_);
   }));
 }
 
@@ -278,7 +281,7 @@ void ToneBrowser::rebuildCards() {
         return;
       }
       const auto it = std::find_if(cards_.begin(), cards_.end(), [id](const auto& c) { return c->tone().id == id; });
-      if (it != cards_.end()) pick((*it)->tone());
+      if (it != cards_.end() && (*it)->canSelect()) pick((*it)->tone());
     };
     content_->addAndMakeVisible(*card);
     cards_.push_back(std::move(card));

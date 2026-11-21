@@ -6,6 +6,7 @@
 #include "core/NoDefaultFocus.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
+#include "widgets/AccessibleGroup.h"
 #include "widgets/Clickable.h"
 #include "widgets/IconButton.h"
 #include "widgets/form/FormStyle.h"
@@ -126,6 +127,7 @@ SettingsScreen::SettingsScreen(Services& services, Tab initialTab)
   stack_.add(*header_);
   if (standalone_) {
     tabBar_ = std::make_unique<TabBar>();
+    a11y::makeGroup(*tabBar_, "Settings pages");
     tabBar_->system_.onClick = [this] { setTab(Tab::system); };
     tabBar_->plugin_.onClick = [this] { setTab(Tab::plugin); };
     stack_.add(*tabBar_, kHeaderGap);

@@ -23,11 +23,14 @@ public:
   Segment(const char* svg, float glyphWidth, help::Key helpKey)
       : Clickable({}), svg_(svg), glyphWidth_(glyphWidth) {
     setHelpText(help::text(helpKey));
+    setTitle(helpKey == help::Key::monoMode ? "Mono" : "Stereo");
+    setToggleable(true);
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
   }
 
   void setSelected(bool selected) {
     selected_ = selected;
+    setToggleState(selected, juce::dontSendNotification);
     repaint();
   }
 
@@ -47,8 +50,8 @@ StereoModeToggle::StereoModeToggle()
     : mono_(std::make_unique<Segment>(custom_icons::kCircleBold, kGlyph, help::Key::monoMode)),
       stereo_(std::make_unique<Segment>(custom_icons::kStereoCircles, kGlyph + kGlyph * 0.45f,
                                         help::Key::stereoMode)) {
-  mono_->onClick = [this] { if (onToggle) onToggle(false); };
-  stereo_->onClick = [this] { if (onToggle) onToggle(true); };
+  mono_->onClick = [this] { if (onToggle) onToggle(false); help::announce("Mono selected"); };
+  stereo_->onClick = [this] { if (onToggle) onToggle(true); help::announce("Stereo selected"); };
   addAndMakeVisible(*mono_);
   addAndMakeVisible(*stereo_);
   setStereoEnabled(false);

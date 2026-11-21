@@ -4,8 +4,10 @@
 
 #include "core/CustomIcons.h"
 #include "core/Fonts.h"
+#include "core/Help.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
+#include "widgets/AccessibleGroup.h"
 #include "widgets/Clickable.h"
 #include "widgets/form/FormControls.h"
 
@@ -210,6 +212,7 @@ SystemSettingsPage::SystemSettingsPage(Services& services)
   hearYourself_.onChange = [this, &dev](bool hear) { apply([&] { return dev.setHearYourself(hear); }); };
   hearYourself_.content().add(feedbackRisk_);
   hearYourself_.content().add(inputMuted_);
+  a11y::makeGroup(hearYourself_, "Monitoring");
   add(hearYourself_);
 
   // Audio interface card.
@@ -274,6 +277,7 @@ SystemSettingsPage::SystemSettingsPage(Services& services)
 
   // MIDI hardware: which devices feed the plugin. Every section carries the
   // SECTION_GAP below it, the last one included.
+  a11y::makeGroup(midiInputs_, "MIDI Inputs");
   add(midiInputs_);
   setTrailing(form::kSectionGap);
 
@@ -289,6 +293,7 @@ template <typename Fn>
 void SystemSettingsPage::apply(Fn&& fn) {
   error_ = fn();
   sync();
+  if (error_.isNotEmpty()) help::announce(error_);
 }
 
 void SystemSettingsPage::sync() {

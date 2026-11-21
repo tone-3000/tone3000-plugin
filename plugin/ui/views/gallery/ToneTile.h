@@ -46,6 +46,7 @@ protected:
   std::vector<ContextMenu::Item> menuItems() override;
   void dropArmedChanged(bool armed) override;
   void travellingChanged(bool travelling) override;
+  juce::String accessibleStatus() const override;
 
 private:
   // Reveals the action strip while the pointer is anywhere over the tile

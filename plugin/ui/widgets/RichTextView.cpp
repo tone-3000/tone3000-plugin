@@ -4,11 +4,56 @@
 
 namespace t3k::ui {
 
+// Keyboard/screen-reader targets for the already painted inline links.
+// Mouse hit testing and painting remain with RichFlow.
+class RichTextView::AccessibleLink : public juce::Component {
+public:
+  AccessibleLink(RichTextView& owner, const TextRun& run) : owner_(owner), href_(run.href) {
+    setTitle(run.text);
+    setDescription(run.href);
+    setWantsKeyboardFocus(true);
+    setInterceptsMouseClicks(false, false);
+  }
+  bool keyPressed(const juce::KeyPress& key) override {
+    if (key != juce::KeyPress::returnKey) return false;
+    activate();
+    return true;
+  }
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override {
+    return std::make_unique<juce::AccessibilityHandler>(*this, juce::AccessibilityRole::hyperlink,
+        juce::AccessibilityActions().addAction(juce::AccessibilityActionType::press, [this] { activate(); }));
+  }
+private:
+  void activate() { if (owner_.onLink) owner_.onLink(href_); }
+  RichTextView& owner_;
+  juce::String href_;
+};
+
+juce::String RichTextView::plainText() const {
+  juce::String text;
+  for (const auto& run : runs_) text += run.text;
+  return text;
+}
+
+std::unique_ptr<juce::AccessibilityHandler> RichTextView::createAccessibilityHandler() {
+  return std::make_unique<juce::AccessibilityHandler>(*this, juce::AccessibilityRole::staticText);
+}
+
 RichTextView::RichTextView(float px, float lineHeightPx, juce::Colour colour, juce::Justification align)
     : px_(px), lineHeightPx_(lineHeightPx), colour_(colour), align_(align) {}
 
 void RichTextView::setText(RichText runs) {
+  if (runs_ == runs) return;
   runs_ = std::move(runs);
+  setTitle(plainText());
+  links_.clear();
+  for (const auto& run : runs_) {
+    if (run.href.isEmpty()) continue;
+    auto link = std::make_unique<AccessibleLink>(*this, run);
+    addAndMakeVisible(*link);
+    link->setBounds(getLocalBounds());
+    links_.push_back(std::move(link));
+  }
   flow_.reset();
   reflow();
   if (!autoHeight_) heightChanged();
@@ -43,7 +88,10 @@ void RichTextView::reflow() {
   repaint();
 }
 
-void RichTextView::resized() { reflow(); }
+void RichTextView::resized() {
+  reflow();
+  for (auto& link : links_) link->setBounds(getLocalBounds());
+}
 
 void RichTextView::paint(juce::Graphics& g) {
   if (flow_) flow_->draw(g, {0, subpixelTop()}, colour_, align_);

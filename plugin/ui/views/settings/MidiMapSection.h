@@ -9,6 +9,7 @@
 // chain slot after the tone currently in it (from the chain state).
 #pragma once
 
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -59,6 +60,13 @@ private:
   // is armed at a time, so one draft suffices.
   juce::String ccDraft_;
   DelayedCall learnTimeout_;
+
+  // What the last rebuild saw, so screen readers hear what changed: a learn
+  // starting, a control learned, a mapping removed.
+  void announceChanges(const MidiMapState& state);
+  bool seenState_ = false;
+  juce::String seenLearn_;
+  std::map<juce::String, juce::String> seenSources_;  // target id -> source label
 };
 
 }  // namespace t3k::ui

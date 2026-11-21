@@ -13,6 +13,7 @@
 
 #include "services/Services.h"
 #include "widgets/IconButton.h"
+#include "widgets/AccessibleGroup.h"
 
 namespace t3k::ui {
 
@@ -21,6 +22,7 @@ class PresetBar : public juce::Component,
                   private ChainStore::Listener,
                   private UiPrefs::Listener {
 public:
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override { return a11y::groupHandler(*this); }
   static constexpr int kHeight = 36;
   static constexpr int kPillWidth = 202;
   static constexpr int kWidth = kPillWidth + 8 + 28 + 8 + 28;

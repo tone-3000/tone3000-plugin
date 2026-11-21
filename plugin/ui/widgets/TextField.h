@@ -21,6 +21,7 @@ public:
   ~TextField() override;
 
   void setPlaceholder(const juce::String& text);
+  void setAccessibleLabel(const juce::String& text) { editor_.setTitle(text); }
   void setText(const juce::String& text, bool notify = false);
   juce::String text() const { return editor_.getText(); }
   void setFontSize(float px);

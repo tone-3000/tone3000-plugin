@@ -17,11 +17,13 @@
 #include "widgets/DimGroup.h"
 #include "widgets/ParamControls.h"
 #include "widgets/SecondaryPress.h"
+#include "widgets/AccessibleGroup.h"
 
 namespace t3k::ui {
 
 class PitchGroup : public juce::Component, public SecondaryPressTarget {
 public:
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override { return a11y::groupHandler(*this); }
   // Knob + the plate's knob-to-companion gap + the power box, like Gate.
   static constexpr int kWidth = theme::kKnobSizeSecondary + 10 + theme::kIconBoxSize;
   static int height() { return Knob::heightFor(theme::kKnobSizeSecondary); }
@@ -34,6 +36,7 @@ public:
   void visibilityChanged() override;
   void mouseDown(const juce::MouseEvent& e) override;
   void secondaryPress(const juce::MouseEvent&) override { toggleDeck(); }
+  void keyboardContextMenu() override { toggleDeck(); }
 
 private:
   void toggleDeck();

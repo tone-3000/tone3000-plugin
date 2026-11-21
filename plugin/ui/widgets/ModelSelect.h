@@ -50,6 +50,7 @@ private:
   class Dropdown;
 
   int currentIndex() const;
+  juce::String spokenValue(int index) const;
   void step(int delta);
   void toggleList();
   void dismissAndSelect(const juce::String& id);

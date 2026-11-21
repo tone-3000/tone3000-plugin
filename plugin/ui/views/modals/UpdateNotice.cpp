@@ -3,6 +3,7 @@
 #include <cmath>
 
 #include "core/Fonts.h"
+#include "core/Help.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
 #include "widgets/Clickable.h"
@@ -50,12 +51,18 @@ public:
     setOpaque(false);
     message_.setText(Html::toRichText(info.messageHtml));
     message_.onLink = [](const juce::String& href) { juce::URL(href).launchInDefaultBrowser(); };
-    download_.onClick = [url = info.url] { juce::URL(url).launchInDefaultBrowser(); };
+    download_.onClick = [url = info.url] {
+      if (url.isEmpty()) help::announce("Test dialog: no update will be downloaded.");
+      else juce::URL(url).launchInDefaultBrowser();
+    };
     close_.setActive(false);
     close_.setName("Close");
+    close_.setTitle("Close");
+    close_.setDescription("Reminds you again in 1 day.");
     close_.onClick = [this] { owner_.remind(kDismissDays); };
     for (const auto& option : kRemindOptions) {
       auto button = std::make_unique<LinkButton>(option.label, kRemindPx);
+      button->setTitle("Remind me in " + juce::String(option.label));
       button->onClick = [this, days = option.days] { owner_.remind(days); };
       addAndMakeVisible(*button);
       remind_.push_back(std::move(button));
@@ -134,7 +141,11 @@ private:
 UpdateNotice::UpdateNotice(Backdrop backdrop, const UpdateInfo& info)
     : ModalLayer(std::move(backdrop)), card_(std::make_unique<Card>(*this, info)) {
   setName("update notice");
-  setTitle("Update available");
+  setTitle("Update available: v" + info.version);
+  juce::String copy;
+  for (const auto& run : Html::toRichText(info.messageHtml)) copy += run.text;
+  setDescription(copy);
+  onEscape = [this] { remind(kDismissDays); };
   setContent(*card_);
 }
 

@@ -18,6 +18,7 @@ ChromeTextButton::ChromeTextButton(juce::String label, help::Key help)
 }
 
 void ChromeTextButton::setArmed(bool armed) {
+  if (isToggleable()) setToggleState(armed, juce::dontSendNotification);
   if (armed_ == armed) return;
   armed_ = armed;
   repaint();

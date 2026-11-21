@@ -1,6 +1,9 @@
 #include "ImageDeckPanel.h"
 
+#include <functional>
+
 #include "core/Fonts.h"
+#include "core/Help.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
 #include "services/MeterStore.h"
@@ -60,8 +63,14 @@ juce::String imageFeaturePrefix(ImageFeature feature) {
 // below 0 it actively cancels.
 class ImageDeckPanel::Led : public juce::Component, private MeterStore::Listener {
 public:
+  // The three colours as states, for screen readers (the colour is the only
+  // cue on screen).
+  enum class State { safe, caution, cancels };
+
   explicit Led(MeterStore& meters) : meters_(meters) {
     setHelpText(help::text(help::Key::imageCorrelation));
+    setTitle("Mono safety");
+    state_ = stateFor(meters_.correlation());
     meters_.addListener(this);
   }
   ~Led() override { meters_.removeListener(this); }
@@ -71,10 +80,70 @@ public:
     g.fillEllipse(getLocalBounds().toFloat());
   }
 
+  static State stateFor(float c) { return c < 0 ? State::cancels : c < 0.5f ? State::caution : State::safe; }
+  static juce::String spoken(State s) {
+    switch (s) {
+      case State::cancels: return "Cancels in mono";
+      case State::caution: return "Thins in mono";
+      case State::safe: break;
+    }
+    return "Mono safe";
+  }
+  State state() const { return state_; }
+
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+
 private:
-  void correlationChanged() override { repaint(); }
+  // Correlation arrives in 0.05 steps several times a second; only a change
+  // of colour notifies, and only a worsening one is announced, at most
+  // every few seconds, so a signal hovering at a threshold stays quiet.
+  void correlationChanged() override {
+    repaint();
+    const auto next = stateFor(meters_.correlation());
+    if (next == state_) return;
+    const bool worse = static_cast<int>(next) > static_cast<int>(state_);
+    state_ = next;
+    if (auto* handler = getAccessibilityHandler())
+      handler->notifyAccessibilityEvent(juce::AccessibilityEvent::valueChanged);
+    const auto now = juce::Time::getMillisecondCounter();
+    if (worse && isShowing() && (lastAnnounceMs_ == 0 || now - lastAnnounceMs_ >= kAnnounceGapMs)) {
+      lastAnnounceMs_ = now;
+      help::announce(spoken(next));
+    }
+  }
+
+  static constexpr juce::uint32 kAnnounceGapMs = 5000;
   MeterStore& meters_;
+  State state_ = State::safe;
+  juce::uint32 lastAnnounceMs_ = 0;
 };
+
+namespace {
+// The LED as read-only text: "Mono safety, Mono safe".
+class LedValue : public juce::AccessibilityTextValueInterface {
+public:
+  explicit LedValue(std::function<juce::String()> read) : read_(std::move(read)) {}
+  bool isReadOnly() const override { return true; }
+  juce::String getCurrentValueAsString() const override { return read_(); }
+  void setValueAsString(const juce::String&) override {}
+
+private:
+  std::function<juce::String()> read_;
+};
+}  // namespace
+
+std::unique_ptr<juce::AccessibilityHandler> ImageDeckPanel::Led::createAccessibilityHandler() {
+  juce::AccessibilityHandler::Interfaces interfaces;
+  interfaces.value = std::make_unique<LedValue>([this] { return spoken(state_); });
+  // Spoken help: what the states mean, in words, without the hint's symbols.
+  struct Handler : juce::AccessibilityHandler {
+    Handler(juce::Component& led, Interfaces interfaces)
+        : juce::AccessibilityHandler(led, juce::AccessibilityRole::staticText, juce::AccessibilityActions(),
+                                     std::move(interfaces)) {}
+    juce::String getHelp() const override { return "Live check of how the output survives a mono sum."; }
+  };
+  return std::make_unique<Handler>(*this, std::move(interfaces));
+}
 
 // Section
 ImageDeckPanel::Section::Section(Services& services, const juce::String& param,

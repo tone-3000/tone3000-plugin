@@ -14,23 +14,68 @@ namespace t3k::ui {
 // ChannelRow
 // Indicator, 1-based index, mono channel name (ellipsised) and the live peak
 // strip; the whole row is the button, lit on hover.
+//
+// Screen readers: a radio button in mono (one channel) and a check box in
+// stereo (any two), checked while the channel is in use. Space or Enter
+// picks it; picking a channel already in use does nothing (one stays
+// selected). The arrow keys step through the rows, picking as they go in
+// mono, as radio buttons do.
 class InputChannelPicker::ChannelRow : public juce::Component {
 public:
   ChannelRow(const AudioInputChannel& channel, std::function<void()> onClick)
       : channel_(channel), meter_(kMeterLength, false), onClick_(std::move(onClick)) {
+    // The name stays the bare 1-based index: the picker reads it back.
     setName(juce::String(channel.index + 1));
+    const juce::String number = "Input " + juce::String(channel.index + 1);
+    const auto name = channel.name.trim();
+    setTitle(name.isNotEmpty() ? name : number);
+    if (name.isNotEmpty() && name != number) setDescription(number);
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    // Keyboard and screen readers only: a click does not move focus (or
+    // scroll the list to the row), so the mouse behaves as before.
+    setWantsKeyboardFocus(true);
+    setMouseClickGrabsKeyboardFocus(false);
     meter_.setInterceptsMouseClicks(false, false);
+    meter_.setAccessible(false);
     addAndMakeVisible(meter_);
   }
 
   static int height() { return 2 * kRowPadY + ChoiceIndicator::kSize; }
 
+  bool selected() const { return selected_; }
+
   void setSelected(bool selected, bool square) {
     if (selected_ == selected && square_ == square) return;
+    const bool roleChanged = square_ != square;
     selected_ = selected;
     square_ = square;
     repaint();
+    // The role follows the mode (radio in mono, check box in stereo) and a
+    // handler's role is fixed, so a mode switch builds a new one.
+    if (roleChanged) invalidateAccessibilityHandler();
+    else if (auto* handler = getAccessibilityHandler())
+      handler->notifyAccessibilityEvent(juce::AccessibilityEvent::valueChanged);
+  }
+
+  void choose() {
+    if (isShowing()) grabKeyboardFocus();
+    onClick_();
+  }
+
+  bool keyPressed(const juce::KeyPress& key) override {
+    if (key.getModifiers().isAnyModifierKeyDown()) return false;
+    const int code = key.getKeyCode();
+    if (code == juce::KeyPress::spaceKey || code == juce::KeyPress::returnKey) {
+      choose();
+      return true;
+    }
+    if (code == juce::KeyPress::upKey || code == juce::KeyPress::leftKey) return step(-1);
+    if (code == juce::KeyPress::downKey || code == juce::KeyPress::rightKey) return step(1);
+    return false;
+  }
+
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override {
+    return std::make_unique<Handler>(*this);
   }
   void setLevel(float db) {
     meter_.setLevel(db);
@@ -69,6 +114,47 @@ public:
   }
 
 private:
+  class Handler : public juce::AccessibilityHandler {
+  public:
+    explicit Handler(ChannelRow& row)
+        : juce::AccessibilityHandler(row,
+                                     row.square_ ? juce::AccessibilityRole::toggleButton
+                                                 : juce::AccessibilityRole::radioButton,
+                                     actions(row)),
+          row_(row) {}
+
+    juce::AccessibleState getCurrentState() const override {
+      auto state = juce::AccessibilityHandler::getCurrentState().withCheckable();
+      return row_.selected() ? state.withChecked() : state;
+    }
+
+  private:
+    static juce::AccessibilityActions actions(ChannelRow& row) {
+      juce::AccessibilityActions result;
+      result.addAction(juce::AccessibilityActionType::press, [&row] { row.choose(); });
+      if (row.square_) result.addAction(juce::AccessibilityActionType::toggle, [&row] { row.choose(); });
+      return result;
+    }
+
+    ChannelRow& row_;
+  };
+
+  // Move to the neighbouring row (wrapping); mono picks it as well.
+  bool step(int delta) {
+    auto* parent = getParentComponent();
+    if (parent == nullptr) return false;
+    std::vector<ChannelRow*> rows;
+    for (auto* child : parent->getChildren())
+      if (auto* row = dynamic_cast<ChannelRow*>(child); row != nullptr && row->isVisible()) rows.push_back(row);
+    const auto it = std::find(rows.begin(), rows.end(), this);
+    if (it == rows.end()) return false;
+    const int count = static_cast<int>(rows.size());
+    auto* next = rows[static_cast<size_t>(((static_cast<int>(it - rows.begin()) + delta) % count + count) % count)];
+    if (square_) next->grabKeyboardFocus();
+    else next->choose();
+    return true;
+  }
+
   AudioInputChannel channel_;
   bool selected_ = false, square_ = false;
   DotMeter meter_;

@@ -14,6 +14,8 @@ ConnectionModal::ConnectionModal(Backdrop backdrop, ConnectionGate::Problem prob
   const bool offline = problem == ConnectionGate::Problem::offline;
   setName(offline ? "No internet connection" : "Secure connection failed");
   setTitle(getName());
+  setDescription(offline ? kOfflineCopy : kInsecureCopy);
+  onEscape = [this] { if (onDismiss) onDismiss(); };
   body_.setIcon(offline ? Icon::WifiOff : Icon::ShieldAlert);
   body_.setCopy(offline ? kOfflineCopy : kInsecureCopy, kBodyMaxW);
   body_.addButton("Try again", PillButton::Style::filled).onClick = [this] {

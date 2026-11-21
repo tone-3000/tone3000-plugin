@@ -30,6 +30,8 @@ public:
   const ChainState& state() const { return state_; }
   // A fresh pull; `force` ignores the known revision.
   void refresh(bool force = false);
+  // Status transitions only: ordinary polling, edits and reorders stay quiet.
+  static juce::String loadingFeedback(const ChainState& before, const ChainState& after);
 
   void addListener(Listener* l) { listeners.add(l); }
   void removeListener(Listener* l) { listeners.remove(l); }

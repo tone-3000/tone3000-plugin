@@ -141,6 +141,8 @@ private:
     Row(const ModeOption& option, bool selected)
         : Clickable(option.label), option_(option), selected_(selected) {
       setHelpText(help::text(option.help));
+      setToggleable(true);
+      setToggleState(selected, juce::dontSendNotification);
       setMouseCursor(juce::MouseCursor::PointingHandCursor);
     }
     InputMode mode() const { return option_.mode; }
@@ -168,9 +170,10 @@ private:
         const ModeOption& option =
             stereoChains && entry.mode == InputMode::stereo ? kStereoChainsOption : entry;
         auto row = std::make_unique<Row>(option, option.mode == mode);
-        row->onClick = [this, onPick, m = option.mode] {
+        row->onClick = [this, onPick, m = option.mode, label = juce::String(option.label)] {
           close();
           onPick(m);
+          help::announce(label + " selected");
         };
         addAndMakeVisible(*row);
         rows_.push_back(std::move(row));
@@ -241,10 +244,12 @@ Faceplate::Faceplate(Services& services)
       output_(services.backend, "outputLevel",
               primaryKnob("Output", scales::gainDb(), 0.5f, help::Key::outputLevel)),
       spreadEnabled_(services.backend, "spreadEnabled") {
+  a11y::makeGroup(*this, "Global controls");
   setOpaque(true);
 
-  addAndMakeVisible(input_);
-  addChildComponent(*inputMode_);
+  inputSection_.addAndMakeVisible(input_);
+  inputSection_.addChildComponent(*inputMode_);
+  addAndMakeVisible(inputSection_);
   // The effects start hidden; syncFlags shows what the view settings and
   // the power switches ask for.
   addChildComponent(gate_);
@@ -255,8 +260,9 @@ Faceplate::Faceplate(Services& services)
   for (auto* k : {&bass_, &middle_, &treble_}) toneDim_.addAndMakeVisible(*k);
   toneDim_.setOff(!tonePower_.value(), false);
   tonePower_.onValueChange = [this](bool on) { toneDim_.setOff(!on); };
-  addAndMakeVisible(toneDim_);
-  addAndMakeVisible(tonePower_);
+  toneSection_.addAndMakeVisible(toneDim_);
+  toneSection_.addAndMakeVisible(tonePower_);
+  addAndMakeVisible(toneSection_);
 
   // Its hint (the reason it's dimmed) is set by syncFlags.
   imageDim_.addChildComponent(spread_);
@@ -264,9 +270,25 @@ Faceplate::Faceplate(Services& services)
   addAndMakeVisible(imageDim_);
 
   autoBalance_.onClick = [this] { services_.autoBalance.toggle(); };
-  addChildComponent(autoBalance_);
-  addChildComponent(balance_);
-  addAndMakeVisible(output_);
+  outputSection_.addChildComponent(autoBalance_);
+  outputSection_.addChildComponent(balance_);
+  outputSection_.addAndMakeVisible(output_);
+  addAndMakeVisible(outputSection_);
+
+  // Tab and the group keys run left to right as the plate reads. (JUCE's
+  // default order is top-to-bottom first, which put the taller primary
+  // knobs ahead of everything else.)
+  int order = 1;
+  for (juce::Component* peer : std::initializer_list<juce::Component*>{
+           &inputSection_, &gate_, &pitch_, &toneSection_, &imageDim_, &outputSection_})
+    peer->setExplicitFocusOrder(order++);
+  input_.setExplicitFocusOrder(1);
+  inputMode_->setExplicitFocusOrder(2);
+  toneDim_.setExplicitFocusOrder(1);
+  tonePower_.setExplicitFocusOrder(2);
+  autoBalance_.setExplicitFocusOrder(1);
+  balance_.setExplicitFocusOrder(2);
+  output_.setExplicitFocusOrder(3);
 
   for (auto* p : {&spreadEnabled_, &gateEnabled_, &pitchEnabled_}) p->onChange = [this] { syncFlags(); };
   services_.prefs.addListener(this);
@@ -288,9 +310,16 @@ void Faceplate::prefChanged(const juce::String& key) {
 }
 
 void Faceplate::showEffect(juce::Component& group, bool show) {
+  show = show || group.hasKeyboardFocus(true);
   if (group.isVisible() == show) return;
   group.setVisible(show);
   resized();
+}
+
+void Faceplate::focusOfChildComponentChanged(FocusChangeType) {
+  juce::MessageManager::callAsync([self = juce::Component::SafePointer(this)] {
+    if (self != nullptr) self->syncFlags();
+  });
 }
 
 void Faceplate::syncFlags() {
@@ -344,6 +373,8 @@ void Faceplate::paint(juce::Graphics& g) {
 }
 
 void Faceplate::resized() {
+  // The sections take plate coordinates while their children are placed.
+  for (auto* section : {&inputSection_, &toneSection_, &outputSection_}) section->setBounds(getLocalBounds());
   const auto content = getLocalBounds().reduced(kPadX, kPadY);
   const int baseline = content.getBottom();  // every label slot ends here
   const int knobBottom = baseline + Knob::kEditorOverflow;
@@ -404,6 +435,8 @@ void Faceplate::resized() {
   autoBalance_.setTopLeftPosition(at(x), chromeY);
   balance_.setTopLeftPosition(at(x) + box + kGroupGap, knobY(secondary));
   output_.setTopLeftPosition(at(x) + box + kGroupGap + secondary + kGroupGap, knobY(primary));
+
+  for (auto* section : {&inputSection_, &toneSection_, &outputSection_}) section->fitToChildren();
 }
 
 }  // namespace t3k::ui

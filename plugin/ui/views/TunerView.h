@@ -38,6 +38,10 @@ public:
 
   void paint(juce::Graphics& g) override;
   void resized() override;
+  bool keyPressed(const juce::KeyPress& key) override;
+  void focusGained(FocusChangeType) override;
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+  juce::String accessibleReading() const;
 
 private:
   class Triangle;
@@ -62,6 +66,7 @@ private:
   // What is on screen, so a feed change dirties only what it moved.
   int shownLeftLit_ = 0, shownRightLit_ = 0;
   juce::String shownReadout_;
+  bool announcedSignal_ = false;
 };
 
 }  // namespace t3k::ui

@@ -40,11 +40,17 @@ void ParamPowerButton::sync() {
 ParamTextToggle::ParamTextToggle(Backend& backend, const juce::String& paramId, juce::String label,
                                  help::Key help)
     : ChromeTextButton(std::move(label), help), binding_(backend, paramId) {
+  setToggleable(true);
+  setToggleState(binding_.boolValue(), juce::dontSendNotification);
   setArmed(binding_.boolValue());
-  binding_.onChange = [this] { setArmed(binding_.boolValue()); };
+  binding_.onChange = [this] {
+    setArmed(binding_.boolValue());
+    setToggleState(binding_.boolValue(), juce::dontSendNotification);
+  };
   onClick = [this] {
     binding_.set(!binding_.boolValue());
     setArmed(binding_.boolValue());  // the host write is synchronous; don't wait for the echo
+    setToggleState(binding_.boolValue(), juce::dontSendNotification);
   };
 }
 

@@ -17,6 +17,7 @@ juce::String toFixed(double value, int decimals);
 struct GearFilter {
   const char* id;
   const char* label;
+  const char* description;
 };
 const std::vector<GearFilter>& gearFilters();
 

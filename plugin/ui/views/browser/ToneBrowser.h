@@ -43,11 +43,13 @@
 #include "widgets/LoadingDots.h"
 #include "widgets/PillButton.h"
 #include "widgets/TextField.h"
+#include "widgets/AccessibleGroup.h"
 
 namespace t3k::ui {
 
 class ToneBrowser : public juce::Component, private ToneSession::Listener, private Zoom::Listener {
 public:
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override { return a11y::groupHandler(*this); }
   // Plugin.tsx's shared 24px pad under the header (design px); half that
   // closes the screen under the paginator (1x body, screen px).
   static constexpr int kPadTop = 24, kPadBottom = 12;

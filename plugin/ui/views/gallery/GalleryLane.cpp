@@ -23,18 +23,20 @@ public:
       : Clickable({}), pointer_(pointer) {
     setHelpText(help::text(helpKey));
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
-    onClick = std::move(action);
+    onClick = [action = std::move(action)] { juce::MessageManager::callAsync(action); };
     pointer_.addListener(this);
     pointerChanged();
   }
   ~BranchGap() override { pointer_.removeListener(this); }
 
+  void focusGained(FocusChangeType) override { setAlpha(1.0f); }
+  void focusLost(FocusChangeType) override { pointerChanged(); }
   void mouseEnter(const juce::MouseEvent&) override { setAlpha(1.0f); }
   void mouseExit(const juce::MouseEvent&) override {
-    if (!pointer_.coarse()) setAlpha(0.0f);
+    if (!pointer_.coarse() && !hasKeyboardFocus(false)) setAlpha(0.0f);
   }
   void pointerChanged() override {
-    if (!isMouseOver()) setAlpha(pointer_.coarse() ? 1.0f : 0.0f);
+    if (!isMouseOver()) setAlpha(pointer_.coarse() || hasKeyboardFocus(false) ? 1.0f : 0.0f);
   }
 
   void paintButton(juce::Graphics& g, bool, bool) override {
@@ -47,6 +49,7 @@ private:
 };
 
 GalleryLane::GalleryLane(Services& services, ChainSide side) : services_(services), side_(side) {
+  a11y::makeGroup(*this, "Chain");
   setInterceptsMouseClicks(false, true);
 }
 
@@ -109,6 +112,9 @@ void GalleryLane::setBranch(bool stereo, const std::optional<ChainBranch>& branc
   stereo_ = stereo;
   branch_ = branch;
   branchInteractive_ = interactive;
+  // The same lane names the tiles' descriptions use (ChainView).
+  const juce::String title = !stereo ? "Chain" : side_ == ChainSide::left ? "Left chain" : "Right chain";
+  if (getTitle() != title) setTitle(title);
   rebuildBranchGaps();
   resized();
 }
@@ -155,6 +161,9 @@ void GalleryLane::wire(GalleryTile& tile) {
 // Every gap following a tone block carries a set-branch dot, except the
 // active tap gap on the trunk lane, whose dot clears the branch instead.
 void GalleryLane::rebuildBranchGaps() {
+  std::optional<int> focusedX;
+  for (const auto& gap : gaps_)
+    if (gap->hasKeyboardFocus(false)) focusedX = gap->getX();
   gaps_.clear();
   if (!stereo_) return;
   const bool trunk = branch_.has_value() && branch_->side == side_;
@@ -166,15 +175,19 @@ void GalleryLane::rebuildBranchGaps() {
     const bool tap = trunk && i == tapIndex;
     if (!tap && !branchInteractive_) continue;
     auto gap = tap ? std::make_unique<BranchGap>(services_.pointer, help::Key::branchJunction,
-                                                 [this] { if (onClearBranch) onClearBranch(); })
+                                                 [safe = juce::Component::SafePointer<GalleryLane>(this)] { if (safe != nullptr && safe->onClearBranch) safe->onClearBranch(); })
                    : std::make_unique<BranchGap>(services_.pointer, help::Key::branchGap,
-                                                 [this, id = item.blockId] {
-                                                   if (onSetBranch) onSetBranch(id);
+                                                 [safe = juce::Component::SafePointer<GalleryLane>(this), id = item.blockId] {
+                                                   if (safe != nullptr && safe->onSetBranch) safe->onSetBranch(id);
                                                  });
+    gap->setTitle((tap ? "Remove branch after " : "Branch after ") + item.tone.title);
+    gap->setToggleable(true);
+    gap->setToggleState(tap, juce::dontSendNotification);
     gap->setBounds(design::snap(gallery::gapCentreX(i + 1, tile_) - gallery::kTileGap / 2.0f), 0,
                    gallery::kTileGap, tile_);
     addAndMakeVisible(*gap);
     gap->toFront(false);
+    if (focusedX && gap->getX() == *focusedX && gap->isShowing()) gap->grabKeyboardFocus();
     gaps_.push_back(std::move(gap));
   }
 }

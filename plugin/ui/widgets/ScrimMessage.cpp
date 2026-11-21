@@ -29,6 +29,7 @@ void ScrimMessage::setBusy(bool busy) {
 
 void ScrimMessage::setCopy(const juce::String& copy, int maxWidth) {
   copy_ = copy;
+  setTitle(copy);
   copyMaxW_ = maxWidth;
   if (copy_.isNotEmpty()) {
     const auto font = Fonts::sans(kBodyPx);

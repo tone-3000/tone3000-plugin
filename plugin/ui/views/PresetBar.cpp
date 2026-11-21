@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "core/Fonts.h"
+#include "core/DelayedCall.h"
 #include "core/Help.h"
 #include "core/Icons.h"
 #include "core/Paint.h"
@@ -50,6 +51,18 @@ private:
   int glyph_;
   juce::Colour colour_ = theme::kWhite;
   bool filled_ = false;
+};
+
+// The reorder grip: a drag sorts the row (Row's mouse handlers); the keys
+// go to the panel first, for the keyboard move (BrowsePanel::gripKey).
+class GripButton : public GlyphButton {
+public:
+  using GlyphButton::GlyphButton;
+  std::function<bool(const juce::KeyPress&)> onKey;
+  bool keyPressed(const juce::KeyPress& key) override {
+    if (onKey && onKey(key)) return true;  // may have destroyed this button (a drop rebuilds the rows)
+    return GlyphButton::keyPressed(key);
+  }
 };
 
 // Section header / empty-state text.
@@ -99,6 +112,7 @@ public:
   void set(const juce::String& text, bool active) {
     text_ = text;
     active_ = active;
+    setTitle(active ? "Presets: " + text : juce::String("Presets"));
     repaint();
   }
   void paintButton(juce::Graphics& g, bool, bool) override {
@@ -121,10 +135,13 @@ public:
   static constexpr int kButtonHeight = 35;
 
   explicit SavePanel(PresetBar& owner) : owner_(owner) {
+    setTitle("Save preset");
     setSize(kWidth, kBorder * 2 + kPad + kTitleHeight + 12 + kInputHeight + 12 + kButtonHeight + kPad);
     name_.setPlaceholder("Name");
+    name_.setAccessibleLabel("Preset name");
     name_.onChange = [this](const juce::String&) { repaint(); };
     name_.onEnter = [this] { save(); };
+    name_.onEscape = [this] { dismiss(); };
     addAndMakeVisible(name_);
     saveButton_.onClick = [this] { save(); };
     saveButton_.setMouseCursor(juce::MouseCursor::PointingHandCursor);
@@ -189,10 +206,19 @@ public:
   static constexpr int kSearchHeight = 33;  // 13px text + 8px padding + 1px border
 
   explicit BrowsePanel(PresetBar& owner) : owner_(owner) {
+    setTitle("Search and load presets");
     search_.setPlaceholder("Search presets");
+    search_.onEscape = [this] { dismiss(); };
     search_.setPadding(8, 32, 12);
     search_.setLeadingIcon(Icon::Search, 14, 12, kMutedText);
-    search_.onChange = [this](const juce::String&) { rebuild(); };
+    search_.onChange = [this](const juce::String&) {
+      rebuild();
+      searchAnnouncement_.start(350, [this] {
+        if (!isOpen()) return;
+        help::announce(rows_.empty() ? juce::String("No matching presets")
+                                    : juce::String(static_cast<int>(rows_.size())) + " presets found");
+      });
+    };
     addAndMakeVisible(search_);
 
     pcToggle_.onClick = [this] {
@@ -264,8 +290,26 @@ private:
   void dragTo(Row& row, int dy);
   void endDrag(Row& row);
 
+  // Keyboard move on a focused grip, as the chain's tiles do it
+  // (ChainView::tileKey): Space or Enter picks the row up, the arrows move
+  // it one slot, Space or Enter drops it through the same path as a drag
+  // (endDrag), Escape cancels. Returns whether the key was used.
+  bool gripKey(Row& row, const juce::KeyPress& key);
+  void cancelKeyMove();
+
+  // Which control of which row had focus, so a rebuild (rename, delete, a
+  // move landing) can put it back on the new rows.
+  struct FocusMemory {
+    juce::String id;
+    int index = -1;  // in rows_
+    int part = 0;    // Row::Part
+  };
+  std::optional<FocusMemory> rememberFocus() const;
+  void restoreFocus(const FocusMemory& memory);
+
   PresetBar& owner_;
   TextField search_;
+  DelayedCall searchAnnouncement_;
   GlyphButton pcToggle_{Icon::MidiPort, 15, 7, help::Key::presetPcToggle};
   GlyphButton reorderToggle_{Icon::ArrowUpDown, 15, 7, help::Key::presetReorder};
   DragScroller viewport_{DragScroller::Axis::vertical, DragScroller::Keys::none};  // the arrows walk the rows
@@ -277,6 +321,7 @@ private:
   std::optional<std::vector<PresetInfo>> ordered_;
   bool dragging_ = false;
   int dragStartY_ = 0, dragSectionTop_ = 0, dragTarget_ = 0;
+  juce::String keyMoveId_;  // the row a keyboard move holds, if any
 };
 
 class PresetBar::BrowsePanel::Row : public juce::Component {
@@ -291,6 +336,7 @@ public:
 
     if (renaming_) {
       rename_ = std::make_unique<TextField>();
+      rename_->setAccessibleLabel("Preset name");
       rename_->setPadding(4, 8, 8);
       rename_->setCornerRadius(6);
       rename_->setText(preset_.name);
@@ -305,20 +351,29 @@ public:
     }
 
     if (sortable_) {
-      grip_ = std::make_unique<GlyphButton>(Icon::GripVertical, 14, 3, help::Key::presetDrag);
+      grip_ = std::make_unique<GripButton>(Icon::GripVertical, 14, 3, help::Key::presetDrag);
+      grip_->setTitle("Move " + preset_.name);
+      grip_->setDescription("Space to move.");
+      grip_->onKey = [this](const juce::KeyPress& key) { return panel_.gripKey(*this, key); };
       grip_->setMouseCursor(juce::MouseCursor::DraggingHandCursor);
       grip_->setViewportIgnoreDragFlag(true);  // a drag on the grip sorts the row; the list does not pan
       grip_->addMouseListener(this, false);
       addAndMakeVisible(*grip_);
     } else if (!preset_.factory && !renaming_) {
       pencil_ = std::make_unique<GlyphButton>(Icon::Pencil, 13, 3, help::Key::presetRename);
+      pencil_->setTitle("Rename " + preset_.name);
       pencil_->onClick = [this] {
         panel_.renamingId_ = preset_.id;
         panel_.rebuild();
       };
       addAndMakeVisible(*pencil_);
       trash_ = std::make_unique<GlyphButton>(Icon::Trash2, 13, 3, help::Key::presetDelete);
-      trash_->onClick = [this] { panel_.owner_.services_.presets.remove(preset_.id); };
+      trash_->setTitle("Delete " + preset_.name);
+      trash_->onClick = [this] {
+        // The store refresh rebuilds the rows, this one included: copy first.
+        const juce::String id = preset_.id, name = preset_.name;
+        if (panel_.owner_.services_.presets.remove(id)) help::announce("Deleted " + name);
+      };
       addAndMakeVisible(*trash_);
     }
     setSize(0, kRowHeight);
@@ -326,6 +381,31 @@ public:
 
   const PresetInfo& preset() const { return preset_; }
   int sectionIndex() const { return sectionIndex_; }
+
+  // The row's controls, for putting focus back after a rebuild.
+  enum Part { none = 0, name, rename, grip, pencil, trash };
+  int focusedPart() const {
+    if (rename_ && rename_->hasKeyboardFocus(true)) return rename;
+    if (grip_ && grip_->hasKeyboardFocus(true)) return grip;
+    if (pencil_ && pencil_->hasKeyboardFocus(true)) return pencil;
+    if (trash_ && trash_->hasKeyboardFocus(true)) return trash;
+    if (name_.hasKeyboardFocus(true)) return name;
+    return none;
+  }
+  // Focus `part`, or the nearest this row has: a rename that ended goes
+  // back to its pencil; anything else missing, the preset's name.
+  void focusPart(int part) {
+    if (part == rename && rename_) {
+      rename_->focus();
+      return;
+    }
+    juce::Component* target = nullptr;
+    if (part == grip) target = grip_.get();
+    if (part == pencil || part == rename) target = pencil_.get();
+    if (part == trash) target = trash_.get();
+    if (target == nullptr) target = &name_;
+    if (target->isShowing()) target->grabKeyboardFocus();
+  }
   void focusRename() {
     if (rename_) rename_->focus();
   }
@@ -376,7 +456,10 @@ public:
 private:
   class NameButton : public Clickable {
   public:
-    NameButton(const juce::String& text, bool active) : Clickable(text), text_(text), active_(active) {}
+    NameButton(const juce::String& text, bool active) : Clickable(text), text_(text), active_(active) {
+      setToggleable(true);
+      setToggleState(active, juce::dontSendNotification);
+    }
     void paintButton(juce::Graphics& g, bool, bool) override {
       paint::text(g, text_, getLocalBounds(), Fonts::sans(14), active_ ? theme::kWhite : kMutedText);
     }
@@ -391,10 +474,13 @@ private:
     const auto value = rename_->text().trim();
     auto& panel = panel_;
     panel.renamingId_.clear();
-    if (value.isNotEmpty() && value != preset_.name)
-      panel.owner_.services_.presets.rename(preset_.id, value);  // rebuilds via store listener
-    else
+    if (value.isNotEmpty() && value != preset_.name) {
+      const juce::String id = preset_.id;
+      if (panel.owner_.services_.presets.rename(id, value))  // rebuilds via store listener
+        help::announce("Renamed to " + value);
+    } else {
       panel.rebuild();
+    }
   }
 
   BrowsePanel& panel_;
@@ -405,11 +491,19 @@ private:
   bool renaming_;
   NameButton name_{preset_.name, active_};
   std::unique_ptr<TextField> rename_;
-  std::unique_ptr<GlyphButton> grip_, pencil_, trash_;
+  std::unique_ptr<GripButton> grip_;
+  std::unique_ptr<GlyphButton> pencil_, trash_;
   juce::Rectangle<int> pcArea_;
 };
 
 void PresetBar::BrowsePanel::rebuild() {
+  // A focused row control is destroyed below: note it to put focus back.
+  const auto focus = rememberFocus();
+  // A keyboard move does not survive its rows (a drop has already ended it).
+  if (keyMoveId_.isNotEmpty()) {
+    keyMoveId_.clear();
+    dragging_ = false;
+  }
   // Keep the search field's text; everything below it is regenerated.
   items_.clear();
   rows_.clear();
@@ -471,6 +565,31 @@ void PresetBar::BrowsePanel::rebuild() {
   reposition();
   for (auto* row : rows_)
     if (row->preset().id == renamingId_) row->focusRename();
+  if (focus && !content_.hasKeyboardFocus(true)) restoreFocus(*focus);
+}
+
+std::optional<PresetBar::BrowsePanel::FocusMemory> PresetBar::BrowsePanel::rememberFocus() const {
+  for (size_t i = 0; i < rows_.size(); ++i)
+    if (const int part = rows_[i]->focusedPart(); part != Row::none)
+      return FocusMemory{rows_[i]->preset().id, static_cast<int>(i), part};
+  return std::nullopt;
+}
+
+void PresetBar::BrowsePanel::restoreFocus(const FocusMemory& memory) {
+  if (!isShowing()) return;
+  for (auto* row : rows_)
+    if (row->preset().id == memory.id) {
+      row->focusPart(memory.part);
+      return;
+    }
+  // The row went (deleted): the one now in its place, else the one before,
+  // on its name; with none left, the search field.
+  if (rows_.empty()) {
+    search_.focus();
+    return;
+  }
+  const auto index = static_cast<size_t>(juce::jlimit(0, static_cast<int>(rows_.size()) - 1, memory.index));
+  rows_[index]->focusPart(Row::name);
 }
 
 void PresetBar::BrowsePanel::layoutRows() {
@@ -497,6 +616,7 @@ std::vector<PresetBar::BrowsePanel::Row*> PresetBar::BrowsePanel::sectionOf(cons
 }
 
 void PresetBar::BrowsePanel::beginDrag(Row& row) {
+  if (keyMoveId_.isNotEmpty() && keyMoveId_ != row.preset().id) cancelKeyMove();
   dragging_ = true;
   row.setDragging(true);
   row.toFront(false);
@@ -554,6 +674,54 @@ void PresetBar::BrowsePanel::endDrag(Row& row) {
   owner_.services_.presets.move(id, to - from);
 }
 
+// Keyboard sorting, as ChainView::tileKey: Space on a focused grip picks
+// the row up (Enter too), the arrows move it one slot within its section,
+// Space/Enter drops, Escape cancels. The drop is the drag's own endDrag.
+bool PresetBar::BrowsePanel::gripKey(Row& row, const juce::KeyPress& key) {
+  const bool pick = key == juce::KeyPress::spaceKey || key == juce::KeyPress::returnKey;
+  const bool moving = keyMoveId_.isNotEmpty();
+  if (moving && key == juce::KeyPress::escapeKey) {
+    cancelKeyMove();
+    help::announce("Move cancelled");
+    return true;
+  }
+  if (!moving) {
+    if (!pick || dragging_) return false;
+    beginDrag(row);
+    keyMoveId_ = row.preset().id;
+    help::announce("Moving " + row.preset().name + ". Use arrow keys to move, Space to drop, Escape to cancel.");
+    return true;
+  }
+  if (row.preset().id != keyMoveId_) return false;
+  if (pick) {
+    keyMoveId_.clear();
+    endDrag(row);  // rebuilds the rows: `row` is gone, focus lands on its grip again
+    help::announce("Move complete");
+    return true;
+  }
+  int step = 0;
+  if (key == juce::KeyPress::upKey || key == juce::KeyPress::leftKey) step = -1;
+  else if (key == juce::KeyPress::downKey || key == juce::KeyPress::rightKey) step = 1;
+  else return false;
+  const int last = static_cast<int>(sectionOf(row).size()) - 1;
+  const int target = juce::jlimit(0, last, dragTarget_ + step);
+  // The drag's own slide: the row sits in the target slot, its neighbours
+  // make room, and the moved row stays in view.
+  dragTo(row, (target - row.sectionIndex()) * kRowHeight);
+  viewport_.reveal(row, 0);
+  help::announce(row.preset().name + ", position " + juce::String(dragTarget_ + 1));
+  return true;
+}
+
+void PresetBar::BrowsePanel::cancelKeyMove() {
+  const auto id = keyMoveId_;
+  keyMoveId_.clear();
+  dragging_ = false;
+  for (auto* r : rows_)
+    if (r->preset().id == id) r->setDragging(false);
+  layoutRows();  // every row back in its slot
+}
+
 // Bar
 PresetBar::PresetBar(Services& services)
     : services_(services),
@@ -562,6 +730,7 @@ PresetBar::PresetBar(Services& services)
       name_(std::make_unique<NameButton>()),
       savePanel_(std::make_unique<SavePanel>(*this)),
       browsePanel_(std::make_unique<BrowsePanel>(*this)) {
+  a11y::makeGroup(*this, "Presets");
   prev_->onClick = [this] { step(-1); };
   next_->onClick = [this] { step(1); };
   name_->onClick = [this] { openBrowsePanel(); };
@@ -631,9 +800,15 @@ void PresetBar::step(int direction) {
 }
 
 void PresetBar::loadAndClose(const juce::String& id) {
+  // The id can belong to a row destroyed when the panel rebuilds.
+  const juce::String presetId = id;
+  juce::String presetName = id;
+  for (const auto& preset : presets())
+    if (preset.id == presetId) presetName = preset.name;
   closePanels();
   if (beforeLoad) beforeLoad();
-  services_.presets.load(id);
+  const bool loaded = services_.presets.load(presetId);
+  help::announce((loaded ? "Preset selected: " : "Could not load preset: ") + presetName);
 }
 
 int PresetBar::pcLabelWidth(int pc) {

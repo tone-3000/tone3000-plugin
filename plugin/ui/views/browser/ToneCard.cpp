@@ -10,6 +10,7 @@
 #include "core/Labels.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
+#include "widgets/SecondaryPress.h"
 
 namespace t3k::ui {
 
@@ -21,8 +22,35 @@ constexpr float kBadgeWidth = kBadgeHeight * 17.5f / 20.0f;
 constexpr float kBadgeGap = 6;
 }  // namespace
 
+namespace {
+class ToneCardAccessibility : public juce::AccessibilityHandler {
+public:
+  explicit ToneCardAccessibility(ToneCard& card)
+      : juce::AccessibilityHandler(card, juce::AccessibilityRole::button,
+            juce::AccessibilityActions()
+                .addAction(juce::AccessibilityActionType::press, [&card] {
+                  if (!card.canSelect()) return;
+                  if (card.isShowing()) card.grabKeyboardFocus();
+                  card.triggerClick();
+                })
+                .addAction(juce::AccessibilityActionType::showMenu, [&card] {
+                  if (!card.canSelect()) return;
+                  if (card.isShowing()) card.grabKeyboardFocus();
+                  card.openMenu(card.getLocalBounds().getCentre());
+                })), card_(card) {}
+  juce::String getTitle() const override { return card_.accessibleName(); }
+  // Spoken only (the card has no hint-bar text, as before).
+  juce::String getHelp() const override {
+    return card_.canSelect() ? "Enter selects. Shift+F10: open on web." : juce::String();
+  }
+private:
+  ToneCard& card_;
+};
+}  // namespace
+
 ToneCard::ToneCard(ImageLoader& images, const Tone& tone)
     : Clickable(tone.title), tone_(tone), image_(images) {
+  onOpenUrl = [](const juce::String& target) { juce::URL(target).launchInDefaultBrowser(); };
 
   image_.setCornerRadius(kImageCorner);
   image_.setTone(tone_.images.empty() ? juce::String() : tone_.images.front(), tone_.gear, /*local=*/false);
@@ -41,7 +69,41 @@ ToneCard::ToneCard(ImageLoader& images, const Tone& tone)
   syncState();
 }
 
-ToneCard::~ToneCard() = default;
+ToneCard::~ToneCard() {
+  if (menu_) menu_->close();
+}
+
+juce::String ToneCard::webUrl() const {
+  if (tone_.url.startsWithIgnoreCase("https://") || tone_.url.startsWithIgnoreCase("http://")) return tone_.url;
+  return "https://www.tone3000.com/tones/" + juce::String(tone_.id);
+}
+
+void ToneCard::openMenu(juce::Point<int> point) {
+  if (menu_ && menu_->isOpen()) return;
+  // A dismissed row may still be executing its callback.
+  if (auto* old = menu_.release()) juce::MessageManager::callAsync([old] { delete old; });
+  menu_ = std::make_unique<ContextMenu>(std::vector<ContextMenu::Item>{
+      {"Open on web", Icon::ExternalLink, help::Key::viewOnT3k,
+       [this] { if (onOpenUrl) onOpenUrl(webUrl()); }},
+  });
+  menu_->setTitle(tone_.title + " menu");
+  menu_->openAtPoint(*this, point);
+}
+
+bool ToneCard::keyPressed(const juce::KeyPress& key) {
+  // Only with keyboard focus (a click never focuses the card); the mouse
+  // has no menu here.
+  if ((key.isKeyCode(juce::KeyPress::F10Key) && key.getModifiers().isShiftDown()) ||
+      key.isKeyCode(kWindowsApplicationsKey)) {
+    keyboardContextMenu();
+    return true;
+  }
+  return Clickable::keyPressed(key);
+}
+
+std::unique_ptr<juce::AccessibilityHandler> ToneCard::createAccessibilityHandler() {
+  return std::make_unique<ToneCardAccessibility>(*this);
+}
 
 void ToneCard::setLoading(bool loading) {
   if (loading == loading_) return;
@@ -65,6 +127,9 @@ void ToneCard::setDisabled(bool disabled) {
 
 void ToneCard::syncState() {
   setEnabled(!disabled_);
+  // Screen readers only: the creator's description, and why a dimmed card
+  // does nothing (a disabled card is still in the screen reader's tree).
+  setDescription((disabled_ ? juce::String("Unavailable in the plugin. ") : juce::String()) + tone_.description.trim());
   // JUCE has no not-allowed cursor; the dimmed card carries the meaning.
   setMouseCursor(disabled_ ? juce::MouseCursor::NormalCursor : juce::MouseCursor::PointingHandCursor);
   // opacity: DISABLED_OPACITY while disabled and not the card being picked.
