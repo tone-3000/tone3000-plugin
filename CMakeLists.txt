@@ -250,6 +250,26 @@ if (EXISTS "${_juce_threads_mac}")
     endif()
 endif()
 
+# Linux: a host-exported LD_LIBRARY_PATH (Ardour bundle) makes the browser from Process::openDocument load the host's libs and die (#276).
+set(_juce_files_linux "${LIB_DIR}/juce/modules/juce_core/native/juce_Files_linux.cpp")
+file(READ "${_juce_files_linux}" _juce_files_linux_src)
+if (NOT _juce_files_linux_src MATCHES "T3K_OPEN_WITHOUT_HOST_LIBS")
+    string(REPLACE "    const auto cpid = fork();" [=[    // T3K_OPEN_WITHOUT_HOST_LIBS
+    std::vector<char*> env;
+    for (auto** e = environ; *e != nullptr; ++e)
+        if (strncmp (*e, "LD_LIBRARY_PATH=", 16) != 0)
+            env.push_back (*e);
+    env.push_back (nullptr);
+
+    const auto cpid = fork();]=] _juce_files_linux_src "${_juce_files_linux_src}")
+    string(REPLACE "execv (argv[0], (char**) argv);" "execve (argv[0], (char**) argv, env.data());"
+        _juce_files_linux_src "${_juce_files_linux_src}")
+    if (NOT _juce_files_linux_src MATCHES "T3K_OPEN_WITHOUT_HOST_LIBS" OR NOT _juce_files_linux_src MATCHES "execve")
+        message(FATAL_ERROR "T3K_OPEN_WITHOUT_HOST_LIBS: JUCE source layout changed; update the patch anchor.")
+    endif()
+    file(WRITE "${_juce_files_linux}" "${_juce_files_linux_src}")
+endif()
+
 # StandaloneFilterWindow patches (idempotent; JUCE lives in gitignored libs/).
 #
 # T3K_NO_MUTE_BANNER: never show JUCE's native "Audio input is muted" strip.
