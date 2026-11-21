@@ -149,6 +149,12 @@ inline const KnobScale& bufferMs() {
   return s;
 }
 
+// Metronome tempo: whole beats per minute, mirroring the APVTS range.
+inline const KnobScale& bpm() {
+  static const KnobScale s = linear(20, 400, "BPM", 0);
+  return s;
+}
+
 // Faceplate tone stack knobs: 0..10, 5 = flat.
 inline const KnobScale& tone() {
   static const KnobScale s = linear(0, 10, {}, 1);

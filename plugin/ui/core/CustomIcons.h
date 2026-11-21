@@ -8,6 +8,10 @@ namespace t3k::ui::custom_icons {
 inline constexpr const char* kTuningFork =
     R"svg(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v7a4 4 0 0 0 8 0V3"/><line x1="12" y1="14" x2="12" y2="21"/></svg>)svg";
 
+// Metronome: tapered body and pendulum, Lucide's 24x24 stroke style.
+inline constexpr const char* kMetronome =
+    R"svg(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 21 9.5 3h5L17 21z"/><path d="m12 16 4-8"/></svg>)svg";
+
 // Two overlapping 12px circles for the stereo segment (StereoModeToggle.tsx,
 // size 12: r = 6, overlap = 5.4).
 inline constexpr const char* kStereoCircles =

@@ -21,7 +21,7 @@ enum class Key {
   alignOffset, alignWobble, alignWobblePower, alignCrossover, alignCrossoverPower,
   alignDiffuse, alignAdvert, alignPower, autoAlign,
   // Top bar
-  tuner, undo, redo, settings, account, monoMode, stereoMode,
+  tuner, metronome, undo, redo, settings, account, monoMode, stereoMode,
   // Presets
   presetPrev, presetNext, presetBrowse, presetSave, presetNew, presetRename, presetDelete,
   presetReorder, presetDrag, presetPcToggle, presetPc,
@@ -44,6 +44,8 @@ enum class Key {
   modelSelectSignedOut, backToChain,
   // EQ editor
   eqFader, eqFaderPass, eqDot, eqFreqChip, eqGainChip, eqQChip,
+  // Metronome panel
+  metronomeToggle, metronomeTempo, metronomeVolume,
   // Meters
   clipDot,
   // The hint bar itself

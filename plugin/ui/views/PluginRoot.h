@@ -51,6 +51,7 @@
 #include "PluginHeader.h"
 #include "SignInScreen.h"
 #include "ToastView.h"
+#include "MetronomeView.h"
 #include "TunerView.h"
 #include "browser/ToneBrowser.h"
 #include "core/DelayedCall.h"
@@ -96,6 +97,9 @@ public:
   // detector runs only while it is up.
   void setTunerShown(bool shown);
   bool tunerShown() const { return tuner_ != nullptr; }
+  // The metronome takeover takes the same band; the tuner and it exclude each other.
+  void setMetronomeShown(bool shown);
+  bool metronomeShown() const { return metronome_ != nullptr; }
   // The tone browser takeover covers everything under the header (meters,
   // chain and faceplate); mounted only while open. A tuner opened over it
   // hides it until the tuner closes.
@@ -144,8 +148,8 @@ private:
   void bannerShow();
   void handleBannerAction(BannerAction action);
   // Top-bar actions whose effect lands on the main screen leave the tuner
-  // first so the result is visible.
-  void closeTunerThen(const std::function<void()>& fn);
+  // and metronome first so the result is visible.
+  void closeBandViewsThen(const std::function<void()>& fn);
   // Loading a preset / resetting replaces the chain: leave any takeover.
   void showChainThen(const std::function<void()>& fn);
   void logout();
@@ -168,6 +172,7 @@ private:
   std::unique_ptr<ToneBrowser> browser_;
   std::unique_ptr<SignInScreen> signIn_;
   std::unique_ptr<TunerView> tuner_;
+  std::unique_ptr<MetronomeView> metronome_;
   std::unique_ptr<SettingsScreen> settings_;
   Faceplate faceplate_;
   AppBanner banner_;

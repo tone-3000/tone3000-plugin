@@ -9,6 +9,7 @@
 
 #include "MockSignal.h"
 #include "backend/Backend.h"
+#include "core/BeatPulse.h"
 
 namespace t3k::ui::testbed {
 
@@ -128,6 +129,7 @@ public:
   void setTunerMuted(bool muted) override { tunerMuted_ = muted; }
   bool tunerMuted() const { return tunerMuted_; }
   juce::var getTunerReading() override { return signal_ != nullptr ? signal_->tuner() : tuner_; }
+  double getMetronomeBeats() override { return -kMetronomeLeadInBeats; }
   void startAutoBalance() override {}
   void cancelAutoBalance() override {}
   juce::var pollAutoBalance() override { return autoMeasure_; }

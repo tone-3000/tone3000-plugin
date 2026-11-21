@@ -8,6 +8,7 @@
 #include "PresetBar.h"
 #include "StereoModeToggle.h"
 #include "core/Design.h"
+#include "services/ParamBinding.h"
 #include "services/Services.h"
 #include "widgets/IconButton.h"
 
@@ -23,8 +24,9 @@ public:
   PresetBar& presetBar() { return presetBar_; }
 
   void setTunerShown(bool shown);
+  void setMetronomeShown(bool shown);
 
-  std::function<void(bool show)> onToggleTuner;
+  std::function<void(bool show)> onToggleTuner, onToggleMetronome;
   std::function<void(bool stereo)> onStereoToggle;
   std::function<void()> onUndo, onRedo, onOpenSettings, onLogin, onLogout;
 
@@ -38,6 +40,7 @@ private:
   // Signed in / out, or the identity refreshed: the account pill's menu
   // and avatar follow the session.
   void sessionChanged() override;
+  void syncMetronomeButton();
 
   Services& services_;
   juce::String avatarUrl_;
@@ -45,10 +48,12 @@ private:
   PresetBar presetBar_;
   StereoModeToggle stereo_;
   IconButton tuner_;
+  IconButton metronome_;
+  ParamBinding metronomeRunning_;
   IconButton undo_{Icon::Undo2, 28};
   IconButton redo_{Icon::Redo2, 28};
   AccountMenu account_;
-  bool tunerShown_ = false;
+  bool tunerShown_ = false, metronomeShown_ = false;
 };
 
 }  // namespace t3k::ui
