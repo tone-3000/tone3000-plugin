@@ -32,6 +32,29 @@ void forwardKeyToHost(void* nativeHandle, HostKey key) {
   PostMessageW(host, WM_KEYUP, virtualKey, up);
 }
 
+bool forwardKeyCodeToHost(void* nativeHandle, int juceKeyCode) {
+  // JUCE's Windows key codes: a virtual key flagged as extended (arrows,
+  // F-keys, Home…), or the character typed (letters, digits, punctuation).
+  constexpr int kExtended = 0x10000;  // juce::KeyPress's extended-key flag
+  UINT virtualKey = 0;
+  if ((juceKeyCode & kExtended) != 0)
+    virtualKey = static_cast<UINT>(juceKeyCode & 0xffff);
+  else if (const SHORT scan = VkKeyScanW(static_cast<WCHAR>(juceKeyCode)); scan != -1)
+    virtualKey = LOBYTE(scan);
+  if (virtualKey == 0)
+    return false;
+  HWND host = GetAncestor(static_cast<HWND>(nativeHandle), GA_ROOT);
+  if (host == nullptr)
+    return false;
+  SetFocus(host);
+  const auto scanCode = static_cast<LPARAM>(MapVirtualKeyW(virtualKey, MAPVK_VK_TO_VSC));
+  const LPARAM down = 1 | (scanCode << 16);
+  const LPARAM up = down | (LPARAM{1} << 30) | (LPARAM{1} << 31);
+  PostMessageW(host, WM_KEYDOWN, virtualKey, down);
+  PostMessageW(host, WM_KEYUP, virtualKey, up);
+  return true;
+}
+
 }  // namespace HostKeys
 
 #elif JUCE_LINUX
@@ -93,6 +116,8 @@ void forwardKeyToHost(void* nativeHandle, HostKey key) {
 
   XCloseDisplay(display);  // flushes the queue
 }
+
+bool forwardKeyCodeToHost(void*, int) { return false; }
 
 }  // namespace HostKeys
 
