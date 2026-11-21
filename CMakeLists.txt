@@ -962,6 +962,11 @@ CPMAddPackage(
 
 enable_testing() # Allow running build tests
 
+option(T3K_PROFILE "Record audio callback stage timings to $T3K_PROFILE_OUT (plugin/include/StageProfiler.h)" OFF)
+if (T3K_PROFILE)
+    add_compile_definitions(T3K_PROFILE=1)
+endif()
+
 add_subdirectory(plugin) # Add plugin project
 # The DSP suite is a host-run console binary (it reads test assets off the
 # build machine's disk and is driven by script/test-dsp.sh). Cross-compiling it

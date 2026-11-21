@@ -3,6 +3,7 @@
 #include "NativeEditor.h"
 #endif
 #include "AppData.h"
+#include "StageProfiler.h"
 #include "StandaloneStateAutosave.h"
 #include <cmath>
 #include <mutex>
@@ -1081,6 +1082,7 @@ void TONE3000Processor::updateEqCoefficients() {
 // while powered off; filters reset on re-enable so no stale state rings in.
 void TONE3000Processor::processToneStack(juce::AudioBuffer<float>& buffer) {
   if (cacheToneEqEnabled) {
+    T3K_PROFILE_STAGE("ToneStack");
     if (!toneEqWasEnabled) {
       bassFilter.reset();
       midFilter.reset();
@@ -1181,6 +1183,7 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
                                              juce::AudioBuffer<float>& buffer,
                                              juce::AudioBuffer<float>& dryScratch, int beginIdx,
                                              int endIdx) {
+  T3K_PROFILE_STAGE("Chain", &blocks == &lanes[1] ? 1 : 0);
   const int numSamples = buffer.getNumSamples();
   const int numChannels = buffer.getNumChannels();
 
@@ -1238,6 +1241,7 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
       continue;
     }
 
+    T3K_PROFILE_STAGE(block->type == ChainBlockType::NAM ? "NamBlock" : "IrBlock", idx);
     // Prepare dry copy before processing for mix (reuse the lane's scratch)
     jassert(dryScratch.getNumChannels() >= numChannels);
     jassert(dryScratch.getNumSamples() >= numSamples);
@@ -1412,6 +1416,7 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
         block->irBaseRateIsland.processBaseRateIsland(
             buffer.getArrayOfWritePointers(), numChannels, numSamples,
             [&convolver, numChannels](float* const* baseChannels, int baseFrames) {
+              T3K_PROFILE_STAGE("IrConvolve");
               juce::dsp::AudioBlock<float> irBlock(baseChannels, static_cast<size_t>(numChannels),
                                                    static_cast<size_t>(baseFrames));
               processConvolverInChunks(convolver, irBlock);
@@ -1757,6 +1762,7 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   juce::ScopedNoDenormals noDenormals;
   // Times this whole callback against its real-time budget (the CPU readout).
   juce::AudioProcessLoadMeasurer::ScopedTimer loadTimer(loadMeasurer, buffer.getNumSamples());
+  T3K_PROFILE_BLOCK(buffer.getNumSamples(), hostSampleRate);
 
   // Mapped MIDI first, so parameter moves (bypass stomps, expression sweeps)
   // land before this block's cached-parameter refresh below.
@@ -1866,6 +1872,7 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // re-enabling resets the detector so a stale envelope never gates the
   // first block.
   if (cacheGateEnabled) {
+    T3K_PROFILE_STAGE("Gate");
     if (!gateWasEnabled)
       inputGate.reset();
     inputGate.setParams({cacheGateThreshold, cacheGateRelease, cacheGateHold, cacheGateRange});
@@ -1882,6 +1889,7 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // (updateLatency), not this path.
   pitchShift.setEnabled(cachePitchEnabled);
   if (pitchShift.isRunning()) {
+    T3K_PROFILE_STAGE("PitchShift");
     pitchShift.setParams(cachePitch);
     pitchShift.process(buffer);
   }
@@ -1972,9 +1980,10 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
       if (numChannels == 1 && rtStereoChains)
         std::memcpy(channels[1], channels[0], sizeof(float) * static_cast<size_t>(sliceLen));
 
-      if (chainBoundary != nullptr)
+      if (chainBoundary != nullptr) {
+        T3K_PROFILE_STAGE("Resample");
         chainBoundary->ProcessBlock(channels, channels, sliceLen, chainStageFunc);
-      else
+      } else
         processOversampledChainStage(channels, channels, sliceLen);
 
       // Image stage per slice: on a mono host buffer the scratch channel
