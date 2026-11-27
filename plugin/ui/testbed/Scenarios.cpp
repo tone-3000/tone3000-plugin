@@ -508,6 +508,11 @@ const std::map<juce::String, Drive>& drives() {
          openSettings(root);
          scrollSettingsTo(root, "Presets");
        }},
+      {"settings-account",
+       [](PluginRoot& root, MockBackend&) {
+         openSettings(root);
+         scrollSettingsTo(root, "Account");
+       }},
       {"settings-system", [](PluginRoot& root, MockBackend&) { openSystemSettings(root); }},
       {"settings-system-mic-denied", [](PluginRoot& root, MockBackend&) { openSystemSettings(root); }},
       {"settings-system-feedback-risk", [](PluginRoot& root, MockBackend&) { openSystemSettings(root); }},
@@ -517,6 +522,11 @@ const std::map<juce::String, Drive>& drives() {
          openSystemSettings(root);
          if (auto* settings = root.settings()) settings->scrollToHeading("MIDI Inputs", /*centre=*/true);
          wait(300);
+       }},
+      {"settings-system-account",
+       [](PluginRoot& root, MockBackend&) {
+         openSystemSettings(root);
+         scrollSettingsTo(root, "Account");
        }},
   };
   return table;

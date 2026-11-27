@@ -197,7 +197,8 @@ SystemSettingsPage::SystemSettingsPage(Services& services)
             "needs it or you prefer it."),
       driverSettings_("Driver Settings", "Buffer and clock options live in the manufacturer's app for this driver."),
       panelButtons_(std::make_unique<ButtonPair>("Open Control Panel", "Reset Device")),
-      midiInputs_(services) {
+      midiInputs_(services),
+      account_(services) {
   auto& dev = services_.audioDevice;
 
   // OS mic gate: the one form error whose fix lives outside the app, so
@@ -275,6 +276,7 @@ SystemSettingsPage::SystemSettingsPage(Services& services)
   // MIDI hardware: which devices feed the plugin. Every section carries the
   // SECTION_GAP below it, the last one included.
   add(midiInputs_);
+  account_.addTo(*this);
   setTrailing(form::kSectionGap);
 
   dev.addListener(this);

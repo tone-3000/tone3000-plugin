@@ -374,12 +374,23 @@ picker instead (see Known gaps).
   The app no longer leaves the foreground to sign in, so the listener no
   longer depends on background audio for this. The AUv3 cannot present the
   sheet at all and hands sign-in to the app (see AUv3 above).
-- **Account deletion.** The same rejection notes that an app offering
-  account creation must also offer account deletion in the app (Guideline
-  5.1.1(v)). The sign-in sheet reaches tone3000.com's own register page, so
-  expect review to look for a deletion path too; today there is none in
-  the plugin, and adding one needs an API endpoint (or at least a deep link
-  to the account page) on the TONE3000 side first.
+- **Account deletion.** An app that offers account creation must also offer
+  account deletion (Guideline 5.1.1(v)), and the sign-in sheet reaches
+  tone3000.com's own register page, so the requirement applies. The account
+  lives on the website, which the guideline allows for as long as the app
+  links directly to the page where the deletion is done. So while signed
+  in, Settings ends (on both tabs: System Settings is the one the app opens
+  on) with an Account section, `views/settings/AccountSection`, whose
+  **Delete Account** link opens `tone3000.com/settings/delete-account` in
+  the browser: a page that holds only the delete form, and that sends a
+  browser that is not signed in through sign-in and back. Leaving the app
+  is what the guideline describes here, unlike for sign-in above. A link to
+  the user's profile, with deletion further on in the web settings, is not
+  enough: the option has to be named for what it does and land on the
+  deletion page. The link is iOS-only (`design::kIos`); the other
+  builds show the section with the profile link alone. The AUv3 cannot
+  open a URL (see Known gaps), so the section is hidden there and the app
+  carries it.
 
 ## Known gaps
 

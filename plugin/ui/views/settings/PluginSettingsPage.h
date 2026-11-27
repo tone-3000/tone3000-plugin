@@ -3,11 +3,13 @@
 // (which of the two the faceplate shows), NAM A2 size default, the per-block
 // size / normalization controls, calibration (with its dBu field),
 // oversampling (with its rate), multi-core, MIDI Mapping, Presets (open the
-// user presets folder), diagnostics, and the version / update footer.
+// user presets folder), diagnostics, the signed-in account's links
+// (AccountSection), and the version / update footer.
 #pragma once
 
 #include <memory>
 
+#include "AccountSection.h"
 #include "MidiMapSection.h"
 #include "core/DelayedCall.h"
 #include "services/ParamBinding.h"
@@ -79,6 +81,8 @@ private:
   FormBox copyLogsBox_, revealLogsBox_;
   Paragraph logStatus_;
   DelayedCall logStatusClear_;
+
+  AccountSection account_;
 
   FormStack footer_;
   FormButton update_;

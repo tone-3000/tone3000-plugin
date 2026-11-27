@@ -13,6 +13,7 @@
 
 #include <memory>
 
+#include "AccountSection.h"
 #include "InlineBannerAlert.h"
 #include "InputChannelPicker.h"
 #include "MidiInputsSection.h"
@@ -80,6 +81,10 @@ private:
   std::unique_ptr<ButtonPair> panelButtons_;
 
   MidiInputsSection midiInputs_;
+
+  // The same section closes Plugin Settings: this tab is the one the app
+  // opens on, and the account links have to be findable from it.
+  AccountSection account_;
 };
 
 }  // namespace t3k::ui
