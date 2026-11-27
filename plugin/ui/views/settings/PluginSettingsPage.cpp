@@ -141,6 +141,7 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
       copyLogsBox_(copyLogs_, static_cast<float>(copyLogs_.preferredHeight())),
       revealLogsBox_(revealLogs_, static_cast<float>(revealLogs_.preferredHeight())),
       logStatus_(juce::String(), form::kSmallPx),
+      account_(services),
       update_({}, FormButton::cta()),
       updateBox_(update_, static_cast<float>(update_.preferredHeight())),
       version_(juce::String(), form::kSmallPx, theme::kSubtle) {
@@ -224,6 +225,9 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
     showLogStatus(services_.backend.revealLogs().isNotEmpty() ? "Revealed log file" : "No log file found yet");
   };
   add(diagnostics_);
+
+  // Account: the links to tone3000.com, while signed in.
+  account_.addTo(*this);
 
   // Version / update footer.
   footer_.add(updateBox_);

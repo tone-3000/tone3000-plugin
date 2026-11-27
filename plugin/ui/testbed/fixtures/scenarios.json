@@ -26294,6 +26294,293 @@
    "hasDrive": true
   },
   {
+   "id": "settings-account",
+   "section": "settings",
+   "title": "Account",
+   "description": "Signed in: the Account section between Diagnostics and the version footer, naming the user, with a link to their TONE3000 profile. Hidden when signed out. The iOS app adds a Delete Account link under the profile link.",
+   "chain": {
+    "revision": 1,
+    "canUndo": true,
+    "canRedo": false,
+    "stereoEnabled": false,
+    "activeSide": "left",
+    "stereoInput": false,
+    "standalone": false,
+    "inputMode": "stereo",
+    "namFullSize": false,
+    "multiCore": true,
+    "sampleRate": 48000,
+    "chain": [
+     {
+      "blockId": "blk-1",
+      "kind": "tone",
+      "tone": {
+       "id": 104,
+       "title": "Green Russian Big Muff + BD-2",
+       "format": "nam",
+       "gear": "pedal",
+       "images": [
+        "https://t3k-fixtures.local/img/pedal-muff"
+       ],
+       "user": {
+        "username": "kosmicaudio",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-kosmic"
+       },
+       "models": [
+        {
+         "id": 1104,
+         "name": "D-12_00 T-12_00 + BD-2 Boost"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 4100,
+       "url": "https://www.tone3000.com/tones/green-russian-big-muff-clone-boss-bd-2-pack-80291"
+      },
+      "activeModelId": 1104,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-2",
+      "kind": "tone",
+      "tone": {
+       "id": 101,
+       "title": "'02 Vox AC30/6 Top Boost",
+       "format": "nam",
+       "gear": "amp",
+       "images": [
+        "https://t3k-fixtures.local/img/amp-vox"
+       ],
+       "user": {
+        "username": "signaltheoryaudio",
+        "display_name": "Signal Theory Audio",
+        "is_verified": true,
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-signaltheory"
+       },
+       "models": [
+        {
+         "id": 1101,
+         "name": "AC30-6 TB Brl 3"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 5246,
+       "url": "https://www.tone3000.com/tones/02-vox-ac306-top-boost-70408"
+      },
+      "activeModelId": 1101,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-3",
+      "kind": "tone",
+      "tone": {
+       "id": 103,
+       "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+       "format": "ir",
+       "gear": "cab",
+       "images": [
+        "https://t3k-fixtures.local/img/cab-412"
+       ],
+       "user": {
+        "username": "outmodedelectronics",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-outmoded"
+       },
+       "models": [
+        {
+         "id": 1103,
+         "name": "M201 Cap Edge"
+        }
+       ],
+       "models_count": 24,
+       "a2_models_count": 0,
+       "downloads_count": 31000,
+       "url": "https://www.tone3000.com/tones/uk-greenback-marshall-1960tv-4x12-m201-75087"
+      },
+      "activeModelId": 1103,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "ins-1",
+      "kind": "insert"
+     },
+     {
+      "blockId": "ins-2",
+      "kind": "insert"
+     }
+    ],
+    "preset": {
+     "id": "factory-1",
+     "name": "Crunch Rhythm"
+    }
+   },
+   "midiMap": {
+    "channel": 0,
+    "learnTargetId": "",
+    "mappings": []
+   },
+   "hints": true,
+   "banner": false,
+   "auth": true,
+   "hasDrive": true
+  },
+  {
    "id": "settings-system",
    "section": "settings",
    "title": "System Settings (standalone)",
@@ -28036,6 +28323,355 @@
    "banner": true,
    "hints": true,
    "auth": false,
+   "hasDrive": true
+  },
+  {
+   "id": "settings-system-account",
+   "section": "settings",
+   "title": "System Settings - account",
+   "description": "Signed in, scrolled to the end of the tab the standalone app opens on: the same Account section closes it, under MIDI Inputs.",
+   "chain": {
+    "revision": 1,
+    "canUndo": true,
+    "canRedo": false,
+    "stereoEnabled": false,
+    "activeSide": "left",
+    "stereoInput": false,
+    "standalone": true,
+    "inputMode": "stereo",
+    "namFullSize": false,
+    "multiCore": true,
+    "sampleRate": 48000,
+    "chain": [
+     {
+      "blockId": "blk-1",
+      "kind": "tone",
+      "tone": {
+       "id": 104,
+       "title": "Green Russian Big Muff + BD-2",
+       "format": "nam",
+       "gear": "pedal",
+       "images": [
+        "https://t3k-fixtures.local/img/pedal-muff"
+       ],
+       "user": {
+        "username": "kosmicaudio",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-kosmic"
+       },
+       "models": [
+        {
+         "id": 1104,
+         "name": "D-12_00 T-12_00 + BD-2 Boost"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 4100,
+       "url": "https://www.tone3000.com/tones/green-russian-big-muff-clone-boss-bd-2-pack-80291"
+      },
+      "activeModelId": 1104,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-2",
+      "kind": "tone",
+      "tone": {
+       "id": 101,
+       "title": "'02 Vox AC30/6 Top Boost",
+       "format": "nam",
+       "gear": "amp",
+       "images": [
+        "https://t3k-fixtures.local/img/amp-vox"
+       ],
+       "user": {
+        "username": "signaltheoryaudio",
+        "display_name": "Signal Theory Audio",
+        "is_verified": true,
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-signaltheory"
+       },
+       "models": [
+        {
+         "id": 1101,
+         "name": "AC30-6 TB Brl 3"
+        }
+       ],
+       "models_count": 6,
+       "a2_models_count": 6,
+       "downloads_count": 5246,
+       "url": "https://www.tone3000.com/tones/02-vox-ac306-top-boost-70408"
+      },
+      "activeModelId": 1101,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "blk-3",
+      "kind": "tone",
+      "tone": {
+       "id": 103,
+       "title": "UK Greenback - Marshall 1960TV 4x12 M201",
+       "format": "ir",
+       "gear": "cab",
+       "images": [
+        "https://t3k-fixtures.local/img/cab-412"
+       ],
+       "user": {
+        "username": "outmodedelectronics",
+        "avatar_url": "https://t3k-fixtures.local/img/avatar-outmoded"
+       },
+       "models": [
+        {
+         "id": 1103,
+         "name": "M201 Cap Edge"
+        }
+       ],
+       "models_count": 24,
+       "a2_models_count": 0,
+       "downloads_count": 31000,
+       "url": "https://www.tone3000.com/tones/uk-greenback-marshall-1960tv-4x12-m201-75087"
+      },
+      "activeModelId": 1103,
+      "loaded": true,
+      "loadFailed": false,
+      "modelLoading": false,
+      "irLong": false,
+      "params": {
+       "enabled": true,
+       "normalize": true,
+       "inputGain": 0.5,
+       "outputGain": 0.5,
+       "mix": 1,
+       "eq": {
+        "enabled": false,
+        "pre": false,
+        "bands": [
+         {
+          "type": "lowcut",
+          "freqHz": 20,
+          "gainDb": 0,
+          "q": 0.71
+         },
+         {
+          "type": "bell",
+          "freqHz": 150,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 1500,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "bell",
+          "freqHz": 4000,
+          "gainDb": 0,
+          "q": 1
+         },
+         {
+          "type": "highshelf",
+          "freqHz": 8000,
+          "gainDb": 0,
+          "q": 0.71
+         }
+        ]
+       }
+      }
+     },
+     {
+      "blockId": "ins-1",
+      "kind": "insert"
+     },
+     {
+      "blockId": "ins-2",
+      "kind": "insert"
+     }
+    ],
+    "preset": {
+     "id": "factory-1",
+     "name": "Crunch Rhythm"
+    }
+   },
+   "device": {
+    "deviceTypes": [
+     "CoreAudio"
+    ],
+    "currentType": "CoreAudio",
+    "separateIO": true,
+    "inputDevices": [
+     "MacBook Pro Microphone",
+     "Scarlett 2i2 USB"
+    ],
+    "outputDevices": [
+     "MacBook Pro Speakers",
+     "Scarlett 2i2 USB",
+     "AirPods Pro"
+    ],
+    "inputDevice": "Scarlett 2i2 USB",
+    "outputDevice": "Scarlett 2i2 USB",
+    "deviceOpen": true,
+    "inputChannels": [
+     {
+      "index": 0,
+      "name": "Input 1",
+      "active": true
+     },
+     {
+      "index": 1,
+      "name": "Input 2",
+      "active": false
+     }
+    ],
+    "outputPairs": [],
+    "activeOutputPair": -1,
+    "sampleRates": [
+     44100,
+     48000,
+     88200,
+     96000
+    ],
+    "sampleRate": 48000,
+    "bufferSizes": [
+     32,
+     64,
+     128,
+     256,
+     512,
+     1024
+    ],
+    "bufferSize": 128,
+    "hasControlPanel": false,
+    "hearYourself": true,
+    "feedbackRisk": false,
+    "asioAvailable": false,
+    "micPermission": "granted",
+    "midiInputs": [
+     {
+      "id": "midi-1",
+      "name": "KeyLab 61 MkII",
+      "enabled": true
+     },
+     {
+      "id": "midi-2",
+      "name": "FCB1010 Foot Controller",
+      "enabled": false
+     }
+    ],
+    "btMidiAvailable": true
+   },
+   "hints": true,
+   "banner": false,
+   "auth": true,
    "hasDrive": true
   },
   {
