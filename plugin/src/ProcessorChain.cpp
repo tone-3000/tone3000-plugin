@@ -1628,10 +1628,7 @@ bool TONE3000Processor::setBlockIrStereo(const std::string& blockId, bool stereo
   pushChainHistory();
   block->irStereoEnabled = stereo;
   // The convolver coming back in last ran a while ago; drop its old tail.
-  if (block->convolverMono != nullptr)
-    block->convolverMono->reset();
-  if (block->convolverStereo != nullptr)
-    block->convolverStereo->reset();
+  block->resetIr();
 
   bumpChainRevision();
   return true;

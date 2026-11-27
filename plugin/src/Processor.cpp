@@ -606,6 +606,7 @@ void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& b
       block->convolverMono->prepare(spec);
       if (block->convolverStereo != nullptr)
         block->convolverStereo->prepare(spec);
+      block->resetIr();
 
       // Reset normalization smoother to current gain to prevent jumps on re-prepare
       if (block->loaded) {
@@ -1402,6 +1403,8 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
                                  !rtDualMono && block->irStereoEnabled &&
                                  block->convolverStereo != nullptr;
         auto& convolver = useStereoIr ? *block->convolverStereo : *block->convolverMono;
+        IrTail* const tail = (useStereoIr ? block->irTailStereo : block->irTailMono).get();
+        const bool offline = isNonRealtime();
 
         // Convolution runs at the base rate inside the block's island: when
         // the chain is oversampled the island decimates the wet path, hands
@@ -1411,10 +1414,10 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
         // sound bit-identical to the non-oversampled chain.
         block->irBaseRateIsland.processBaseRateIsland(
             buffer.getArrayOfWritePointers(), numChannels, numSamples,
-            [&convolver, numChannels](float* const* baseChannels, int baseFrames) {
+            [&convolver, tail, offline, numChannels](float* const* baseChannels, int baseFrames) {
               juce::dsp::AudioBlock<float> irBlock(baseChannels, static_cast<size_t>(numChannels),
                                                    static_cast<size_t>(baseFrames));
-              processConvolverInChunks(convolver, irBlock);
+              processConvolverInChunks(convolver, irBlock, tail, offline);
             });
 
         // Unit-energy normalization, always on: an IR file's absolute level

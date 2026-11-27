@@ -22,7 +22,7 @@
 // cutoff (kShortIrMaxSeconds) splits every IR into short or long, and that
 // split drives everything downstream:
 //   short: uniform zero-latency engine, -18 dB output pad, 100% default mix
-//   long:  non-uniform engine,           no output pad,     50% default mix
+//   long:  head + threaded tail,         no output pad,     50% default mix
 // The engine choice is always by length (a CPU decision, inaudible). The
 // audible pair (pad, default mix) is by length only when the tone's catalog
 // gear doesn't already say what the IR is; see irIsLongFor.
@@ -55,14 +55,49 @@ bool irIsLongFor(const juce::String& gear, bool longByLength) {
   return longByLength;
 }
 
-// Long IRs use JUCE's two-stage non-uniform engine (still zero latency):
-// the first kIrNonUniformHeadSamples convolve in partitions of the
-// convolver's prepared block size (irConvolverBlockSizeFor, ChainBlock.h),
-// the tail in partitions of this size, so per-callback CPU stops scaling
+// Long IR tails (IrTail.h) use JUCE's two-stage non-uniform engine:
+// the first kIrNonUniformHeadSamples convolve in kIrTailChunk partitions,
+// the rest in partitions of this size, so per-callback CPU stops scaling
 // linearly with tail length. Bigger head = more per-callback FFT work;
 // smaller = chunkier tail batches. 8192 (~170 ms) is a conventional
 // reverb head size.
 constexpr int kIrNonUniformHeadSamples = 8192;
+
+// The kernel JUCE convolves for Trim::yes, Normalise::no at the base rate (juce_Convolution.cpp).
+juce::AudioBuffer<float> baseRateKernel(const juce::AudioBuffer<float>& file,
+                                        int numChannels,
+                                        double fileSampleRate) {
+  const int numSamples = file.getNumSamples();
+  const auto loud = [](float sample) {
+    return std::abs(sample) >= juce::Decibels::decibelsToGain(-80.0f);
+  };
+  int lead = numSamples, trail = numSamples;
+  for (int ch = 0; ch < numChannels; ++ch) {
+    const float* x = file.getReadPointer(ch);
+    const auto rend = std::make_reverse_iterator(x);
+    lead = std::min(lead, static_cast<int>(std::find_if(x, x + numSamples, loud) - x));
+    trail = std::min(
+        trail, static_cast<int>(std::find_if(rend - numSamples, rend, loud) - (rend - numSamples)));
+  }
+  juce::AudioBuffer<float> kernel(numChannels, std::max(1, numSamples - lead - trail));
+  kernel.clear();
+  if (lead < numSamples)
+    for (int ch = 0; ch < numChannels; ++ch)
+      kernel.copyFrom(ch, 0, file, ch, lead, kernel.getNumSamples());
+  const double ratio = fileSampleRate / kChainBaseSampleRate;
+  if (!juce::approximatelyEqual(fileSampleRate, kChainBaseSampleRate)) {
+    juce::MemoryAudioSource source(kernel, false);
+    juce::ResamplingAudioSource resampler(&source, false, numChannels);
+    const int resampledSize = juce::roundToInt(juce::jmax(1.0, kernel.getNumSamples() / ratio));
+    resampler.setResamplingRatio(ratio);
+    resampler.prepareToPlay(resampledSize, fileSampleRate);
+    juce::AudioBuffer<float> resampled(numChannels, resampledSize);
+    resampler.getNextAudioBlock({&resampled, 0, resampledSize});
+    kernel = std::move(resampled);
+  }
+  kernel.applyGain(static_cast<float>(ratio));
+  return kernel;
+}
 
 // NAM phase-interleaved oversampling eligibility (see NamEngine.h).
 // Phase interleaving is exact only for architectures whose temporal structure
@@ -987,12 +1022,6 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
       // non-uniform engine, a CPU choice, not an audible one. All audible
       // logic (output pad, default mix) uses the trimmed length below.
       const bool engineLongIr = irLengthUpperBound > kShortIrMaxBaseSamples;
-      auto makeConvolver = [engineLongIr] {
-        return engineLongIr ? std::make_unique<juce::dsp::Convolution>(
-                                  juce::dsp::Convolution::NonUniform{kIrNonUniformHeadSamples})
-                            : std::make_unique<juce::dsp::Convolution>();
-      };
-
       // IR convolution always runs at the base rate: when the chain is
       // oversampled, the block's island (ChainBlock::irBaseRateIsland) hands
       // the convolver base-rate frames, and the RT path never passes more
@@ -1018,7 +1047,8 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
       // the convolver until that window has provably elapsed: the install
       // and its crossfade happen here on the loader thread, and the engine
       // goes live deterministically full-wet with silent state.
-      auto elapseConvolverInstallFade = [&spec](juce::dsp::Convolution& convolver) {
+      auto elapseConvolverInstallFade = [](juce::dsp::Convolution& convolver,
+                                           const juce::dsp::ProcessSpec& spec) {
         const int chunk = static_cast<int>(spec.maximumBlockSize);
         juce::AudioBuffer<float> silence(static_cast<int>(spec.numChannels), chunk);
         silence.clear();
@@ -1030,25 +1060,48 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
         }
       };
 
-      // Mono fallback convolver: IR channel 0 applied to every audio channel.
-      auto convolverMono = makeConvolver();
-      convolverMono->loadImpulseResponse(tempFile, juce::dsp::Convolution::Stereo::no,
-                                         juce::dsp::Convolution::Trim::yes, maxIrFileSamples,
-                                         juce::dsp::Convolution::Normalise::no);
-      convolverMono->prepare(spec);
-      elapseConvolverInstallFade(*convolverMono);
-      out.convolverMono = std::move(convolverMono);
+      using Conv = juce::dsp::Convolution;
+      juce::AudioBuffer<float> fileIr(irNumChannels, engineLongIr ? int(fileSamplesToLoad) : 0);
+      reader->read(fileIr.getArrayOfWritePointers(), irNumChannels, 0, fileIr.getNumSamples());
+      auto buildConvolver = [&](Conv::Stereo stereo, std::unique_ptr<Conv>& head,
+                                std::unique_ptr<IrTail>& tail) {
+        head = std::make_unique<Conv>();
+        int kernelSamples = 0;
+        if (!engineLongIr) {
+          head->loadImpulseResponse(tempFile, stereo, Conv::Trim::yes, maxIrFileSamples,
+                                    Conv::Normalise::no);
+        } else {
+          auto kernel = baseRateKernel(fileIr, stereo == Conv::Stereo::yes ? irNumChannels : 1,
+                                       fileSampleRate);
+          kernelSamples = kernel.getNumSamples();
+          const int split = std::min(kernelSamples, kIrTailSplit);
+          if (kernelSamples > split) {
+            juce::AudioBuffer<float> tailIr(kernel.getNumChannels(), kernelSamples - split);
+            for (int ch = 0; ch < kernel.getNumChannels(); ++ch)
+              tailIr.copyFrom(ch, 0, kernel, ch, split, tailIr.getNumSamples());
+            auto tailConvolver = std::make_unique<Conv>(Conv::NonUniform{kIrNonUniformHeadSamples});
+            tailConvolver->loadImpulseResponse(std::move(tailIr), kChainBaseSampleRate, stereo,
+                                               Conv::Trim::no, Conv::Normalise::no);
+            const juce::dsp::ProcessSpec tailSpec{kChainBaseSampleRate, kIrTailChunk, 2};
+            tailConvolver->prepare(tailSpec);
+            elapseConvolverInstallFade(*tailConvolver, tailSpec);
+            tail = std::make_unique<IrTail>(std::move(tailConvolver));
+          }
+          kernel.setSize(kernel.getNumChannels(), split, true);
+          head->loadImpulseResponse(std::move(kernel), kChainBaseSampleRate, stereo, Conv::Trim::no,
+                                    Conv::Normalise::no);
+        }
+        head->prepare(spec);
+        elapseConvolverInstallFade(*head, spec);
+        return engineLongIr ? kernelSamples : head->getCurrentIRSize();
+      };
 
+      // Mono fallback convolver: IR channel 0 applied to every audio channel.
+      const int engineIrSamples =
+          buildConvolver(Conv::Stereo::no, out.convolverMono, out.irTailMono);
       // True-stereo convolver: only meaningful when the file actually has 2 channels.
-      if (irNumChannels > 1) {
-        auto convolverStereo = makeConvolver();
-        convolverStereo->loadImpulseResponse(tempFile, juce::dsp::Convolution::Stereo::yes,
-                                             juce::dsp::Convolution::Trim::yes, maxIrFileSamples,
-                                             juce::dsp::Convolution::Normalise::no);
-        convolverStereo->prepare(spec);
-        elapseConvolverInstallFade(*convolverStereo);
-        out.convolverStereo = std::move(convolverStereo);
-      }
+      if (irNumChannels > 1)
+        buildConvolver(Conv::Stereo::yes, out.convolverStereo, out.irTailStereo);
 
       // The engine was built synchronously above, so it can report the real
       // (trimmed + resampled) kernel length, the basis for the length verdict
@@ -1056,7 +1109,6 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
       // defensively. (The block's final cab/reverb classification also
       // weighs the tone's gear, which only the apply step knows; see
       // irIsLongFor.)
-      const int engineIrSamples = out.convolverMono->getCurrentIRSize();
       const int irLengthBaseSamples = engineIrSamples > 0 ? engineIrSamples : irLengthUpperBound;
 
       out.irNumChannels = irNumChannels;
@@ -1078,6 +1130,8 @@ TONE3000Processor::PreparedBlockModel TONE3000Processor::prepareBlockModelOffThr
     out.namEngine.reset();
     out.convolverMono.reset();
     out.convolverStereo.reset();
+    out.irTailMono.reset();
+    out.irTailStereo.reset();
   }
 
   return out;
@@ -1333,6 +1387,8 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
     std::swap(block.namEngine, prepared.namEngine);            // new engine in, old out
     std::swap(block.convolverMono, prepared.convolverMono);    // null in, any old IR out
     std::swap(block.convolverStereo, prepared.convolverStereo);
+    std::swap(block.irTailMono, prepared.irTailMono);
+    std::swap(block.irTailStereo, prepared.irTailStereo);
     block.irNumChannels = 1;
     block.irLengthBaseSamples = 0;
     block.irIsLong = false;
@@ -1351,6 +1407,8 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
     std::swap(block.namEngine, prepared.namEngine);            // null in, any old NAM out
     std::swap(block.convolverMono, prepared.convolverMono);
     std::swap(block.convolverStereo, prepared.convolverStereo);
+    std::swap(block.irTailMono, prepared.irTailMono);
+    std::swap(block.irTailStereo, prepared.irTailStereo);
     block.irNumChannels = prepared.irNumChannels;
     block.irLengthBaseSamples = prepared.irLengthBaseSamples;
 
