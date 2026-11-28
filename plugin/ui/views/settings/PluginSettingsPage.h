@@ -57,6 +57,7 @@ private:
   TipRow blockSizeTip_;
   ToggleRow normalize_;
   TipRow normalizeTip_;
+  ToggleRow rememberFilters_;
 
   ParamBinding calibrateParam_, dbuParam_, osEnabledParam_, osFactorParam_;
   ToggleRow calibration_;
